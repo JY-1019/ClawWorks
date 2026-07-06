@@ -8,7 +8,10 @@ import path from "node:path";
 import { addTimerTimeoutGraceMs } from "@openclaw/normalization-core/number-coercion";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
-import { evaluateEnterpriseToolCall } from "../enterprise/runtime.js";
+import {
+  evaluateEnterpriseToolCall,
+  recordEnterpriseApprovalResolution,
+} from "../enterprise/runtime.js";
 import {
   diagnosticErrorCategory,
   diagnosticHttpStatusCode,
@@ -34,6 +37,8 @@ import {
 import {
   DEFAULT_PLUGIN_APPROVAL_TIMEOUT_MS,
   MAX_PLUGIN_APPROVAL_TIMEOUT_MS,
+  PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH,
+  PLUGIN_APPROVAL_TITLE_MAX_LENGTH,
 } from "../infra/plugin-approvals.js";
 import type { SessionState } from "../logging/diagnostic-session-state.js";
 import { redactToolDetail } from "../logging/redact.js";
@@ -1051,7 +1056,7 @@ async function recordLoopOutcome(args: {
 }
 
 /** Run the full before_tool_call policy chain for a pending tool call. */
-export async function runBeforeToolCallHook(args: {
+type RunBeforeToolCallHookArgs = {
   toolName: string;
   params: unknown;
   toolKind?: PluginHookToolKind;
@@ -1060,7 +1065,9 @@ export async function runBeforeToolCallHook(args: {
   ctx?: HookContext;
   signal?: AbortSignal;
   approvalMode?: "request" | "report" | "defer";
-}): Promise<HookOutcome> {
+};
+
+export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Promise<HookOutcome> {
   const toolName = normalizeToolName(args.toolName || "tool");
   const params = args.params;
 
@@ -1151,6 +1158,151 @@ export async function runBeforeToolCallHook(args: {
     };
   }
 
+  // Run the trusted-policy / plugin-hook / final-approval chain first, then
+  // apply the enterprise approval (if any) as the LAST gate. Placing it last
+  // means a deferred enterprise approval never skips the chain, and it honors
+  // the caller's approvalMode (so the native pre-tool relay can defer it
+  // within its own deadline instead of blocking on a synchronous request).
+  const chainOutcome = await runBeforeToolCallChain(args);
+  if (chainOutcome.blocked || !enterpriseVerdict?.requiresApproval) {
+    // Chain already blocked, or no enterprise approval is required — return the
+    // chain outcome verbatim (including any deferred approval it produced).
+    return chainOutcome;
+  }
+  if (chainOutcome.deferredApproval) {
+    // The chain deferred its own approval and the enterprise gate also needs
+    // one. Two deferred approvals cannot be composed through a single deferred
+    // outcome, so fail closed rather than let the chain's deferral resolve and
+    // run the tool without the enterprise prompt. Cancel the chain's deferred
+    // approval so its callback settles, and record the enterprise denial.
+    cancelDeferredPluginToolApproval(chainOutcome.deferredApproval);
+    recordEnterpriseApprovalResolution({
+      runId: args.ctx?.runId ?? "",
+      verdict: enterpriseVerdict,
+      toolName,
+      ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+      outcome: "denied",
+      resolution: "blocked-conflicting-approval",
+    });
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: `${enterpriseVerdict.decision.reason} (another approval gate is already pending for this call)`,
+      params: chainOutcome.params,
+    };
+  }
+  return applyEnterpriseApproval({
+    args,
+    toolName,
+    verdict: enterpriseVerdict,
+    chainOutcome,
+  });
+}
+
+/**
+ * Enterprise require_approval gate, applied after the rest of the
+ * before-tool-call chain so deferral is safe and budget-aware.
+ */
+async function applyEnterpriseApproval(params: {
+  args: RunBeforeToolCallHookArgs;
+  toolName: string;
+  verdict: NonNullable<ReturnType<typeof evaluateEnterpriseToolCall>>;
+  chainOutcome: Extract<HookOutcome, { blocked: false }>;
+}): Promise<HookOutcome> {
+  const { args, toolName, verdict, chainOutcome } = params;
+  const approvalSettings = verdict.decision.approval;
+  const timeoutBehavior = approvalSettings?.timeoutBehavior ?? "deny";
+  const enterpriseRunId = args.ctx?.runId ?? "";
+  // Record via onResolution so every path resolves the trace uniformly:
+  // inline (request) fires before this returns, deferred fires later from
+  // requestDeferredPluginToolApproval, and report/cancel fire on CANCELLED.
+  // timeoutBehavior is ours, so timeout maps deterministically.
+  const onResolution = (resolution: PluginApprovalResolution) => {
+    const approved =
+      resolution === PluginApprovalResolutions.ALLOW_ONCE ||
+      resolution === PluginApprovalResolutions.ALLOW_ALWAYS ||
+      (resolution === PluginApprovalResolutions.TIMEOUT && timeoutBehavior === "allow");
+    recordEnterpriseApprovalResolution({
+      runId: enterpriseRunId,
+      verdict,
+      toolName,
+      ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+      outcome: approved ? "approved" : "denied",
+      resolution,
+    });
+  };
+  const baseParams = chainOutcome.params;
+  const approvalOutcome = await resolveBeforeToolCallApprovalOutcome({
+    result: {
+      requireApproval: {
+        // Clamp to the gateway plugin-approval protocol caps so a long policy
+        // description or MCP/plugin tool name never makes the RPC fail
+        // validation and fall closed instead of prompting.
+        title: truncateUtf16Safe(
+          `Enterprise approval: ${toolName}`,
+          PLUGIN_APPROVAL_TITLE_MAX_LENGTH,
+        ),
+        description: truncateUtf16Safe(
+          verdict.decision.reason,
+          PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH,
+        ),
+        pluginId: "enterprise-governance",
+        severity: approvalSettings?.severity ?? "warning",
+        // Enterprise governance keeps no durable per-tool trust, so an Allow
+        // Always choice would silently behave like allow-once.
+        allowedDecisions: ["allow-once", "deny"],
+        timeoutBehavior,
+        onResolution,
+        ...(approvalSettings?.timeoutMs !== undefined
+          ? { timeoutMs: approvalSettings.timeoutMs }
+          : {}),
+      },
+    },
+    approvalMode: args.approvalMode,
+    toolName,
+    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+    ...(args.ctx ? { ctx: args.ctx } : {}),
+    signal: args.signal,
+    baseParams,
+  });
+  if (!approvalOutcome) {
+    return chainOutcome;
+  }
+  if (approvalOutcome.blocked) {
+    if (args.approvalMode === "report") {
+      // Report mode does not prompt: the plugin-approval block is the signal
+      // invokeGatewayTool reads (deniedReason === "plugin-approval") to tell
+      // clients the call requires approval and to retry with confirmation.
+      // Preserve it verbatim rather than reclassify it as a plain denial.
+      return approvalOutcome;
+    }
+    // Normalize to a governance veto: a denied/timed-out/unreachable
+    // enterprise approval is a policy rejection, not a tool failure, so the
+    // wrapper emits the structured block path rather than throwing a tool
+    // error. The trace is recorded by onResolution.
+    return { ...approvalOutcome, kind: "veto", deniedReason: "enterprise-governance" };
+  }
+  if (approvalOutcome.deferredApproval) {
+    // Deferred: the caller's pipeline resolves it later (onResolution records
+    // the real outcome then). Carry the chain's final params forward.
+    return {
+      blocked: false,
+      params: baseParams,
+      deferredApproval: approvalOutcome.deferredApproval,
+    };
+  }
+  // Approved: thread the resolution so downstream approval bridges do not
+  // prompt a second time for the same call, keeping the chain's params.
+  return {
+    ...chainOutcome,
+    approvalResolution: approvalOutcome.approvalResolution ?? PluginApprovalResolutions.ALLOW_ONCE,
+  };
+}
+
+async function runBeforeToolCallChain(args: RunBeforeToolCallHookArgs): Promise<HookOutcome> {
+  const toolName = normalizeToolName(args.toolName || "tool");
+  const params = args.params;
   const hookRunner = getGlobalHookRunner();
   try {
     const hasBeforeToolCallHooks = hookRunner?.hasHooks("before_tool_call") === true;

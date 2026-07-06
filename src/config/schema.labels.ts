@@ -635,6 +635,13 @@ export const FIELD_LABELS: Record<string, string> = {
   "enterprise.governance.policies[].trees": "Enterprise Governance Policy Trees",
   "enterprise.governance.policies[].nodes": "Enterprise Governance Policy Nodes",
   "enterprise.governance.policies[].tools": "Enterprise Governance Policy Tools",
+  "enterprise.governance.policies[].actions": "Enterprise Governance Policy Actions",
+  "enterprise.governance.policies[].approval": "Enterprise Governance Policy Approval",
+  "enterprise.governance.policies[].approval.timeoutMs":
+    "Enterprise Governance Approval Timeout Ms",
+  "enterprise.governance.policies[].approval.timeoutBehavior":
+    "Enterprise Governance Approval Timeout Behavior",
+  "enterprise.governance.policies[].approval.severity": "Enterprise Governance Approval Severity",
   "models.providers.*.request.tls": "Model Provider Request TLS",
   "models.providers.*.request.tls.ca": "Model Provider Request TLS CA",
   "models.providers.*.request.tls.cert": "Model Provider Request TLS Cert",

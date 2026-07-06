@@ -67,6 +67,8 @@ export type EnterpriseToolCallVerdict = {
   mode: Exclude<EnterpriseMode, "off">;
   /** True when the decision must block execution (enforce mode denials). */
   blocked: boolean;
+  /** True when enforce mode must gate this call behind a human approval. */
+  requiresApproval: boolean;
 };
 
 /**
@@ -105,13 +107,15 @@ export function evaluateEnterpriseToolCall(params: {
       treeId: plan.treeId,
       mode: plan.mode,
       blocked: decision.effect === "deny" && plan.mode === "enforce",
+      requiresApproval: decision.effect === "require_approval" && plan.mode === "enforce",
     };
     // Default allows stay silent (matching run-start mediation) so the stock
     // enterprise path adds no per-tool-call SQLite writes; nodes opt into
-    // full decision auditing with ontology.audit.
+    // full decision auditing with ontology.audit. Approval-gated calls are
+    // recorded by the caller once the human decision resolves.
     const silentDefaultAllow =
       decision.effect === "allow" && decision.source === "default" && node.ontology.audit !== true;
-    if (!silentDefaultAllow) {
+    if (!silentDefaultAllow && !verdict.requiresApproval) {
       recordDecision(run, verdict, params);
     }
     return verdict;
@@ -129,9 +133,52 @@ export function evaluateEnterpriseToolCall(params: {
       treeId: plan.treeId,
       mode: plan.mode,
       blocked: plan.mode === "enforce",
+      requiresApproval: false,
     };
     recordDecision(run, verdict, params);
     return verdict;
+  }
+}
+
+export type EnterpriseApprovalOutcome = "approved" | "denied";
+
+/**
+ * Record the resolution of an approval-gated tool call. Called from the
+ * approval onResolution callback so the trace reflects the real outcome
+ * across inline, deferred, and cancelled resolutions.
+ */
+export function recordEnterpriseApprovalResolution(params: {
+  runId: string;
+  verdict: EnterpriseToolCallVerdict;
+  toolName: string;
+  toolCallId?: string;
+  outcome: EnterpriseApprovalOutcome;
+  resolution: string;
+}): void {
+  const run = getEnterpriseActiveRun(params.runId);
+  if (!run) {
+    return;
+  }
+  try {
+    run.sink?.({
+      kind: "governance.decision",
+      nodeId: params.verdict.nodeId,
+      payload: {
+        subject: "tool_call",
+        toolName: params.toolName,
+        ...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
+        effect: "require_approval",
+        enforced: params.outcome === "denied",
+        approved: params.outcome === "approved",
+        resolution: params.resolution,
+        policyId: params.verdict.decision.policyId,
+        source: params.verdict.decision.source,
+        reason: params.verdict.decision.reason,
+      },
+    });
+  } catch {
+    // Trace sinks fail open: a persistence fault must never affect the
+    // approval outcome already resolved for this call.
   }
 }
 

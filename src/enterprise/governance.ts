@@ -1,9 +1,9 @@
 /**
  * Governance policy resolution and evaluation for enterprise-mode runs.
- * Slice 1 evaluates two layers per decision: the active node's ontology tool
- * scope, then config-declared policies. Matching policies compose deny-wins
- * regardless of declaration order (repo tool-policy semantics); allow beats
- * audit; audit records without changing the outcome.
+ * Two layers per decision: the active node's ontology scope, then
+ * config-declared policies. Matching policies compose order-independently
+ * with precedence deny > require_approval > allow > audit (deny-wins matches
+ * repo tool-policy semantics; audit records without changing the outcome).
  */
 import { isToolAllowedByPolicyName } from "../agents/tool-policy-match.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -12,6 +12,7 @@ import type {
   EnterpriseRunPlan,
   GovernanceDecision,
   GovernancePolicy,
+  OntologyAction,
 } from "./types.js";
 
 /** Governance policies declared in config, in declaration order. */
@@ -27,18 +28,52 @@ function matchesSelector(value: string, globs: readonly string[] | undefined): b
   return isToolAllowedByPolicyName(value, { allow: [...globs] });
 }
 
+function hasSubjectSelectors(policy: GovernancePolicy): boolean {
+  return Boolean(policy.tools?.length || policy.actions?.length);
+}
+
+/**
+ * Ontology actions on the node that cover the called tool. An omitted
+ * `tools` list means the action covers every tool; an empty list (which the
+ * schema rejects, but guard programmatic policies) covers nothing rather than
+ * widening to match-all via the empty-globs matcher.
+ */
+function actionsCoveringTool(node: EnterprisePlanNode, toolName: string): OntologyAction[] {
+  return (node.ontology.actions ?? []).filter((action) => {
+    if (action.tools === undefined) {
+      return true;
+    }
+    return action.tools.length > 0 && matchesSelector(toolName, action.tools);
+  });
+}
+
 function policyAppliesToToolCall(
   policy: GovernancePolicy,
-  params: { treeId: string; nodeId: string; toolName: string },
+  params: {
+    treeId: string;
+    node: EnterprisePlanNode;
+    toolName: string;
+    coveringActions: readonly OntologyAction[];
+  },
 ): boolean {
-  if (!policy.tools || policy.tools.length === 0) {
-    // Selector-less tool dimension means the policy targets runs, not calls.
+  const toolScoped = Boolean(policy.tools?.length);
+  const actionScoped = Boolean(policy.actions?.length);
+  if (!toolScoped && !actionScoped) {
+    // Selector-less policies target runs, not calls.
+    return false;
+  }
+  if (toolScoped && !matchesSelector(params.toolName, policy.tools)) {
+    return false;
+  }
+  if (
+    actionScoped &&
+    !params.coveringActions.some((action) => matchesSelector(action.id, policy.actions))
+  ) {
     return false;
   }
   return (
-    matchesSelector(params.toolName, policy.tools) &&
     matchesSelector(params.treeId, policy.trees) &&
-    matchesSelector(params.nodeId, policy.nodes)
+    matchesSelector(params.node.nodeId, policy.nodes)
   );
 }
 
@@ -46,7 +81,7 @@ function policyAppliesToRun(
   policy: GovernancePolicy,
   params: { treeId: string; activeNodeId: string },
 ): boolean {
-  if (policy.tools && policy.tools.length > 0) {
+  if (hasSubjectSelectors(policy)) {
     return false;
   }
   return (
@@ -79,18 +114,16 @@ export function evaluateToolCallGovernance(params: {
     };
   }
 
+  const coveringActions = actionsCoveringTool(params.node, params.toolName);
   const matching = params.policies.filter((policy) =>
     policyAppliesToToolCall(policy, {
       treeId: params.plan.treeId,
-      nodeId: params.node.nodeId,
+      node: params.node,
       toolName: params.toolName,
+      coveringActions,
     }),
   );
-  const decision = resolvePolicyDecision(matching, (policy) =>
-    policy.effect === "deny"
-      ? `tool "${params.toolName}" is denied by governance policy "${policy.id}"`
-      : `${policy.effect === "allow" ? "allowed" : "audited"} by governance policy "${policy.id}"`,
-  );
+  const decision = resolvePolicyDecision(matching, () => `tool "${params.toolName}"`);
   if (decision) {
     return decision;
   }
@@ -102,26 +135,39 @@ export function evaluateToolCallGovernance(params: {
   };
 }
 
-/** Compose matching policies deny-wins > allow > audit, order-independent. */
+/**
+ * Compose matching policies deny > require_approval > allow > audit,
+ * order-independent.
+ */
 function resolvePolicyDecision(
   matching: readonly GovernancePolicy[],
-  defaultReason: (policy: GovernancePolicy) => string,
+  describeSubject: (policy: GovernancePolicy) => string,
 ): GovernanceDecision | null {
   const winner =
     matching.find((policy) => policy.effect === "deny") ??
+    matching.find((policy) => policy.effect === "require_approval") ??
     matching.find((policy) => policy.effect === "allow") ??
     matching.find((policy) => policy.effect === "audit");
   if (!winner) {
     return null;
   }
-  // Blank descriptions fall back to the generated reason so denial messages
+  // Blank descriptions fall back to a generated reason so denial messages
   // and decision traces never surface empty text.
   const description = winner.description?.trim();
+  const generated =
+    winner.effect === "deny"
+      ? `${describeSubject(winner)} is denied by governance policy "${winner.id}"`
+      : winner.effect === "require_approval"
+        ? `${describeSubject(winner)} requires approval by governance policy "${winner.id}"`
+        : `${winner.effect === "allow" ? "allowed" : "audited"} by governance policy "${winner.id}"`;
   return {
     effect: winner.effect,
     policyId: winner.id,
     source: "policy",
-    reason: description || defaultReason(winner),
+    reason: description || generated,
+    ...(winner.effect === "require_approval" && winner.approval
+      ? { approval: winner.approval }
+      : {}),
   };
 }
 
@@ -132,11 +178,7 @@ export function evaluateRunStartGovernance(params: {
 }): GovernanceDecision {
   const runScope = { treeId: params.plan.treeId, activeNodeId: params.plan.activeNodeId };
   const matching = params.policies.filter((policy) => policyAppliesToRun(policy, runScope));
-  const decision = resolvePolicyDecision(matching, (policy) =>
-    policy.effect === "deny"
-      ? `workflow tree "${params.plan.treeId}" is denied by governance policy "${policy.id}"`
-      : `${policy.effect === "allow" ? "allowed" : "audited"} by governance policy "${policy.id}"`,
-  );
+  const decision = resolvePolicyDecision(matching, () => `workflow tree "${params.plan.treeId}"`);
   if (decision) {
     return decision;
   }

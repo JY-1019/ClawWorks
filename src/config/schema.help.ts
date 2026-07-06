@@ -251,21 +251,31 @@ export const FIELD_HELP: Record<string, string> = {
   "enterprise.governance":
     "Governance policy declarations evaluated at run start and before every tool call in enterprise mode. Matching policies compose deny-first regardless of declaration order.",
   "enterprise.governance.policies":
-    "Governance policies. Each policy applies when all of its selectors (trees, nodes, tools) match; deny wins over allow regardless of declaration order, allow beats audit, and audit records the decision without changing the outcome.",
+    "Governance policies. Each policy applies when all of its selectors (trees, nodes, tools, actions) match; matching policies compose order-independently with precedence deny > require_approval > allow > audit, and audit records the decision without changing the outcome.",
   "enterprise.governance.policies[]":
-    "One governance policy with an effect (allow, deny, or audit) plus optional tree, node, and tool glob selectors that scope where it applies.",
+    "One governance policy with an effect (allow, deny, audit, or require_approval) plus optional tree, node, tool, and action glob selectors that scope where it applies, and approval settings for require_approval policies.",
   "enterprise.governance.policies[].id":
     "Stable dotted identifier for this policy (e.g. finance.deny-exec). Used in governance decision traces and UI inspection.",
   "enterprise.governance.policies[].description":
     "Human-readable rationale surfaced in decision traces and denial messages. Keep it actionable for operators reviewing blocked calls.",
   "enterprise.governance.policies[].effect":
-    'Policy effect: "deny" blocks matching subjects in enforce mode and takes precedence over "allow", "allow" explicitly permits when no matching deny exists, and "audit" records the decision while allowing execution.',
+    'Policy effect: "deny" blocks matching subjects in enforce mode, "require_approval" gates matching tool calls behind a human approval prompt, "allow" explicitly permits when nothing stricter matches, and "audit" records the decision while allowing execution. Precedence: deny > require_approval > allow > audit.',
   "enterprise.governance.policies[].trees":
     "Workflow tree id globs this policy applies to. Omit to match every tree.",
   "enterprise.governance.policies[].nodes":
     "Workflow node id globs this policy applies to. Omit to match every node.",
   "enterprise.governance.policies[].tools":
-    "Tool name globs this policy applies to. Omit to make this a run-level policy evaluated when the workflow tree is selected.",
+    "Tool name globs this policy applies to. Omit all subject selectors (tools, actions) to make this a run-level policy evaluated when the workflow tree is selected.",
+  "enterprise.governance.policies[].actions":
+    "Ontology action id globs this policy applies to. The policy matches tool calls covered by a matching action declared on the active workflow node (an action without tools covers every tool).",
+  "enterprise.governance.policies[].approval":
+    'Approval delivery settings used when effect is "require_approval": how long to wait for a reviewer and what happens on timeout.',
+  "enterprise.governance.policies[].approval.timeoutMs":
+    "Milliseconds to wait for a human decision before timeoutBehavior applies. Defaults to the gateway plugin-approval timeout.",
+  "enterprise.governance.policies[].approval.timeoutBehavior":
+    'What happens when nobody decides in time: "deny" blocks the call (default), "allow" lets it proceed.',
+  "enterprise.governance.policies[].approval.severity":
+    'Approval prompt severity shown to reviewers: "info", "warning" (default), or "critical".',
   "agents.list.*.skills":
     "Optional allowlist of skills for this agent. If omitted, the agent inherits agents.defaults.skills when set; otherwise skills stay unrestricted. Set [] for no skills. An explicit list fully replaces inherited defaults instead of merging with them.",
   "agents.list[].skills":

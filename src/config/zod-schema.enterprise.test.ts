@@ -53,6 +53,55 @@ describe("EnterpriseConfigSchema", () => {
     }
   });
 
+  it("accepts require_approval policies with approval settings", () => {
+    const result = EnterpriseConfigSchema.safeParse({
+      governance: {
+        policies: [
+          {
+            id: "approve.exec",
+            effect: "require_approval",
+            tools: ["exec"],
+            approval: { timeoutMs: 60000, timeoutBehavior: "deny", severity: "critical" },
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects run-level require_approval and stray approval settings", () => {
+    expect(
+      EnterpriseConfigSchema.safeParse({
+        governance: {
+          policies: [{ id: "approve.runs", effect: "require_approval", trees: ["acme.*"] }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      EnterpriseConfigSchema.safeParse({
+        governance: {
+          policies: [
+            { id: "deny.exec", effect: "deny", tools: ["exec"], approval: { severity: "info" } },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      EnterpriseConfigSchema.safeParse({
+        governance: {
+          policies: [
+            {
+              id: "approve.exec",
+              effect: "require_approval",
+              tools: ["exec"],
+              approval: { timeoutBehavior: "escalate" },
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects blank selector entries (matcher would widen them to match-all)", () => {
     for (const selector of ["tools", "trees", "nodes"] as const) {
       const result = EnterpriseConfigSchema.safeParse({

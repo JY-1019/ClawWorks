@@ -78,6 +78,21 @@ describe("validateWorkflowTreeDefinition", () => {
     expect(validateWorkflowTreeDefinition(tree).ok).toBe(false);
   });
 
+  it("accepts empty no-op ontology arrays for load compatibility", () => {
+    // Empty arrays are no-ops the runtime treats as omitted (an empty action
+    // tool list covers no tool in the matcher), so rejecting them would break
+    // already-imported trees. Rejecting them would need a doctor migration.
+    const tree = validTree();
+    (tree.root as { ontology: Record<string, unknown> }).ontology = {
+      actions: [{ id: "act.one", tools: [] }],
+      allowedTools: [],
+      deniedTools: [],
+      knowledgeFoundations: [],
+      contextHints: [],
+    };
+    expect(validateWorkflowTreeDefinition(tree).ok).toBe(true);
+  });
+
   it("rejects blank tool globs and keywords (matcher/selection hazards)", () => {
     const blankTool = validTree();
     (blankTool.root as { ontology: { allowedTools: string[] } }).ontology.allowedTools = [" "];

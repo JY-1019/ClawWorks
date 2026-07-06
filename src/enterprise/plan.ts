@@ -185,6 +185,7 @@ export function buildEnterprisePromptSection(plan: EnterpriseRunPlan): string {
     ontology.allowedTools?.length ||
     ontology.deniedTools?.length ||
     ontology.actions?.length ||
+    ontology.knowledgeFoundations?.length ||
     ontology.expectedOutput,
   );
   if (!hasGuidance) {
@@ -231,6 +232,9 @@ export function buildEnterprisePromptSection(plan: EnterpriseRunPlan): string {
   }
   if (ontology.deniedTools?.length) {
     lines.push(`Denied tools: ${ontology.deniedTools.toSorted().join(", ")}`);
+  }
+  if (ontology.knowledgeFoundations?.length) {
+    lines.push(`Knowledge sources: ${ontology.knowledgeFoundations.toSorted().join(", ")}`);
   }
   if (ontology.expectedOutput) {
     lines.push(`Expected output: ${ontology.expectedOutput}`);

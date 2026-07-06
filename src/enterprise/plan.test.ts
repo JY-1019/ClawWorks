@@ -179,6 +179,27 @@ describe("buildEnterprisePromptSection", () => {
     expect(section).toContain("Expected output: Refund decision with rationale.");
   });
 
+  it("renders knowledge sources when the ontology declares them", () => {
+    const tree: WorkflowTreeDefinition = {
+      ...REFUND_TREE,
+      root: {
+        id: "refunds",
+        title: "Handle a refund request",
+        ontology: { knowledgeFoundations: ["acme.support-kb", "acme.policy-kb"] },
+      },
+    };
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-6",
+      requestText: "refund",
+      trigger: "user",
+      mode: "enforce",
+      trees: [tree],
+    });
+    expect(buildEnterprisePromptSection(plan)).toContain(
+      "Knowledge sources: acme.policy-kb, acme.support-kb",
+    );
+  });
+
   it("renders action guidance when actions are the only ontology content", () => {
     const tree: WorkflowTreeDefinition = {
       ...REFUND_TREE,

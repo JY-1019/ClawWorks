@@ -101,12 +101,23 @@ export type WorkflowTreeDefinition = {
   root: WorkflowNodeDefinition;
 };
 
-/** Governance policy effects supported by the slice-1 evaluator. */
-export type GovernanceEffect = "allow" | "deny" | "audit";
+/** Governance policy effects. Precedence: deny > require_approval > allow > audit. */
+export type GovernanceEffect = "allow" | "deny" | "audit" | "require_approval";
+
+/** Approval delivery settings for require_approval policies. */
+export type GovernanceApprovalSettings = {
+  /** Milliseconds to wait for a human decision before timeoutBehavior applies. */
+  timeoutMs?: number;
+  /** What happens when nobody decides in time. Default: deny. */
+  timeoutBehavior?: "allow" | "deny";
+  /** Approval prompt severity shown to reviewers. Default: warning. */
+  severity?: "info" | "warning" | "critical";
+};
 
 /**
  * One governance policy. All present selectors must match for the policy to
- * apply; a policy with no selectors applies to every subject in scope.
+ * apply; a policy with no subject selectors (tools/actions/knowledge)
+ * applies at run level when the tree/node selectors match.
  */
 export type GovernancePolicy = {
   id: EnterpriseId;
@@ -116,8 +127,16 @@ export type GovernancePolicy = {
   trees?: string[];
   /** Workflow node id globs this policy applies to. */
   nodes?: string[];
-  /** Tool name globs this policy applies to. Omitted = run-level policy. */
+  /** Tool name globs this policy applies to (tool-call scope). */
   tools?: string[];
+  /**
+   * Ontology action id globs (tool-call scope). Matches when the active node
+   * declares a matching action and the called tool falls inside that
+   * action's tool globs (an action without tools covers every tool).
+   */
+  actions?: string[];
+  /** Approval settings when effect is "require_approval". */
+  approval?: GovernanceApprovalSettings;
 };
 
 /** Outcome of one governance evaluation. */
@@ -128,6 +147,8 @@ export type GovernanceDecision = {
   /** "ontology" | "policy" | "default" — which layer produced the effect. */
   source: "ontology" | "policy" | "default";
   reason: string;
+  /** Approval settings carried from a require_approval policy. */
+  approval?: GovernanceApprovalSettings;
 };
 
 /** Flattened plan node with its resolved ontology. */

@@ -3,18 +3,20 @@ import {
   clearEnterpriseActiveRunsForTest,
   evaluateEnterpriseToolCall,
   getEnterpriseActiveRun,
+  recordEnterpriseApprovalResolution,
   registerEnterpriseActiveRun,
   resolveEnterpriseMode,
   unregisterEnterpriseActiveRun,
   type EnterpriseActiveRun,
 } from "./runtime.js";
-import type { EnterpriseRunPlan } from "./types.js";
+import type { EnterpriseRunPlan, GovernancePolicy } from "./types.js";
 
 function makeRun(overrides: {
   runId?: string;
   mode?: "enforce" | "observe";
   allowedTools?: string[];
   audit?: boolean;
+  policies?: GovernancePolicy[];
   sink?: EnterpriseActiveRun["sink"];
 }): EnterpriseActiveRun {
   const plan: EnterpriseRunPlan = {
@@ -42,7 +44,7 @@ function makeRun(overrides: {
   };
   return {
     plan,
-    policies: [],
+    policies: overrides.policies ?? [],
     ...(overrides.sink ? { sink: overrides.sink } : {}),
   };
 }
@@ -174,6 +176,82 @@ describe("evaluateEnterpriseToolCall", () => {
       }),
     );
     expect(() => evaluateEnterpriseToolCall({ runId: "run-1", toolName: "exec" })).not.toThrow();
+  });
+
+  it("marks require_approval verdicts for enforce mode without pre-recording", () => {
+    const events: Array<Record<string, unknown>> = [];
+    const approvalPolicies: GovernancePolicy[] = [
+      {
+        id: "approve.exec",
+        effect: "require_approval",
+        tools: ["exec"],
+        approval: { severity: "critical" },
+      },
+    ];
+    registerEnterpriseActiveRun(
+      makeRun({
+        policies: approvalPolicies,
+        sink: (event) => {
+          events.push(event.payload);
+        },
+      }),
+    );
+    const verdict = evaluateEnterpriseToolCall({ runId: "run-1", toolName: "exec" });
+    expect(verdict?.requiresApproval).toBe(true);
+    expect(verdict?.blocked).toBe(false);
+    expect(verdict?.decision.approval).toEqual({ severity: "critical" });
+    // The gate records the decision once the human resolution settles.
+    expect(events).toHaveLength(0);
+
+    recordEnterpriseApprovalResolution({
+      runId: "run-1",
+      verdict: verdict!,
+      toolName: "exec",
+      toolCallId: "call-9",
+      outcome: "approved",
+      resolution: "allow-once",
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      effect: "require_approval",
+      approved: true,
+      enforced: false,
+      resolution: "allow-once",
+      toolCallId: "call-9",
+      policyId: "approve.exec",
+    });
+
+    recordEnterpriseApprovalResolution({
+      runId: "run-1",
+      verdict: verdict!,
+      toolName: "exec",
+      outcome: "denied",
+      resolution: "deny",
+    });
+    expect(events[1]).toMatchObject({
+      effect: "require_approval",
+      approved: false,
+      enforced: true,
+      resolution: "deny",
+    });
+  });
+
+  it("records require_approval decisions immediately in observe mode", () => {
+    const events: Array<Record<string, unknown>> = [];
+    registerEnterpriseActiveRun(
+      makeRun({
+        mode: "observe",
+        policies: [{ id: "approve.exec", effect: "require_approval", tools: ["exec"] }],
+        sink: (event) => {
+          events.push(event.payload);
+        },
+      }),
+    );
+    const verdict = evaluateEnterpriseToolCall({ runId: "run-1", toolName: "exec" });
+    expect(verdict?.requiresApproval).toBe(false);
+    expect(verdict?.blocked).toBe(false);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ effect: "require_approval", enforced: false });
   });
 
   it("stops gating after unregistering", () => {

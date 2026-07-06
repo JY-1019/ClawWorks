@@ -139,7 +139,12 @@ export function beginEnterpriseRun(params: BeginEnterpriseRunParams): Enterprise
     });
   });
 
-  const runStartBlocked = startDecision.effect === "deny" && mode === "enforce";
+  // Run-level approvals have no interactive channel at run start (the config
+  // schema rejects them; this guards programmatic policies), so they compose
+  // as deny-equivalent in enforce mode rather than silently passing.
+  const runStartDenied =
+    startDecision.effect === "deny" || startDecision.effect === "require_approval";
+  const runStartBlocked = runStartDenied && mode === "enforce";
   if (startDecision.source !== "default") {
     // Policy-sourced run decisions (deny, audit, explicit allow) are trace
     // evidence operators configured; only default allows stay silent.

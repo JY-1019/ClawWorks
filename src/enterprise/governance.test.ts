@@ -115,6 +115,72 @@ describe("evaluateToolCallGovernance", () => {
     const decision = evaluateToolCallGovernance({ plan, node, toolName: "exec", policies });
     expect(decision.effect).toBe("allow");
   });
+
+  it("ranks require_approval between deny and allow", () => {
+    const { plan, node } = planWith({});
+    const policies: GovernancePolicy[] = [
+      { id: "allow.exec", effect: "allow", tools: ["exec"] },
+      {
+        id: "approve.exec",
+        effect: "require_approval",
+        tools: ["exec"],
+        approval: { timeoutBehavior: "deny", severity: "critical" },
+      },
+    ];
+    const approval = evaluateToolCallGovernance({ plan, node, toolName: "exec", policies });
+    expect(approval.effect).toBe("require_approval");
+    expect(approval.policyId).toBe("approve.exec");
+    expect(approval.approval).toEqual({ timeoutBehavior: "deny", severity: "critical" });
+
+    const withDeny = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "exec",
+      policies: [...policies, { id: "deny.exec", effect: "deny", tools: ["exec"] }],
+    });
+    expect(withDeny.effect).toBe("deny");
+  });
+
+  it("matches action selectors through the active node's ontology actions", () => {
+    const { plan, node } = planWith({
+      ontology: {
+        actions: [{ id: "refund.issue", tools: ["message"] }, { id: "notes.write" }],
+      },
+    });
+    const policies: GovernancePolicy[] = [
+      { id: "approve.refunds", effect: "require_approval", actions: ["refund.*"] },
+    ];
+    // message is covered by refund.issue AND by the tool-less notes.write.
+    expect(evaluateToolCallGovernance({ plan, node, toolName: "message", policies }).effect).toBe(
+      "require_approval",
+    );
+    // exec is only covered by the tool-less action, which the selector misses.
+    expect(evaluateToolCallGovernance({ plan, node, toolName: "exec", policies }).effect).toBe(
+      "allow",
+    );
+    // Nodes without a matching action are unaffected.
+    const bare = planWith({});
+    expect(
+      evaluateToolCallGovernance({
+        plan: bare.plan,
+        node: bare.node,
+        toolName: "message",
+        policies,
+      }).effect,
+    ).toBe("allow");
+  });
+
+  it("treats an empty action tool list as covering nothing (no match-all widening)", () => {
+    // The schema rejects empty tool lists, but a programmatic policy with one
+    // must not widen an action-scoped policy across the node.
+    const { plan, node } = planWith({
+      ontology: { actions: [{ id: "act.empty", tools: [] }] },
+    });
+    const policies: GovernancePolicy[] = [{ id: "deny.act", effect: "deny", actions: ["act.*"] }];
+    expect(evaluateToolCallGovernance({ plan, node, toolName: "exec", policies }).effect).toBe(
+      "allow",
+    );
+  });
 });
 
 describe("evaluateRunStartGovernance", () => {

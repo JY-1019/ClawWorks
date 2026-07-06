@@ -47,6 +47,10 @@ const OntologyActionSchema = z
   .object({
     id: EnterpriseIdSchema,
     description: z.string().optional(),
+    // Omit `tools` to mean "this action covers every tool". An empty array is
+    // accepted for load compatibility (it never widens: the governance
+    // matcher treats an empty action tool list as covering no tool). Blank
+    // entries are still rejected.
     tools: z.array(NonBlankStringSchema).optional(),
   })
   .strict();
@@ -138,14 +142,23 @@ export const WorkflowTreeDefinitionSchema = z
     visit(tree.root, ["root"]);
   });
 
-export const GovernanceEffectSchema = z.enum(["allow", "deny", "audit"]);
+export const GovernanceEffectSchema = z.enum(["allow", "deny", "audit", "require_approval"]);
 
 // Empty selector arrays are rejected rather than treated as omitted: the
-// evaluator reads a missing `tools` selector as "run-level policy", so
-// `tools: []` would silently flip a tool policy into a run-wide one.
+// evaluator reads missing subject selectors as "run-level policy", so an
+// empty array would silently flip a scoped policy into a run-wide one.
 const GovernanceSelectorSchema = z
   .array(NonBlankStringSchema)
   .min(1, "omit the selector instead of passing an empty array")
+  .optional();
+
+const GovernanceApprovalSettingsSchema = z
+  .object({
+    timeoutMs: z.number().int().positive().optional(),
+    timeoutBehavior: z.enum(["allow", "deny"]).optional(),
+    severity: z.enum(["info", "warning", "critical"]).optional(),
+  })
+  .strict()
   .optional();
 
 export const GovernancePolicySchema = z
@@ -156,6 +169,8 @@ export const GovernancePolicySchema = z
     trees: GovernanceSelectorSchema,
     nodes: GovernanceSelectorSchema,
     tools: GovernanceSelectorSchema,
+    actions: GovernanceSelectorSchema,
+    approval: GovernanceApprovalSettingsSchema,
   })
   .strict();
 
