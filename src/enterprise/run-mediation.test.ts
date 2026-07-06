@@ -180,6 +180,87 @@ describe("beginEnterpriseRun", () => {
     expect(latestEventKinds(runId)).toContain("governance.decision");
   });
 
+  it("fails closed in enforce mode when imported trees cannot load", async () => {
+    const { upsertEnterpriseWorkflowTree, deleteEnterpriseWorkflowTree } =
+      await import("./tree-store.sqlite.js");
+    const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
+    const corrupt = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.corrupt",
+      version: "1.0.0",
+      name: "Corrupt",
+      root: {
+        id: "root",
+        title: "Root",
+        children: [
+          { id: "dup", title: "A" },
+          { id: "dup", title: "B" },
+        ],
+      },
+    } as never;
+    upsertEnterpriseWorkflowTree({ tree: corrupt, sourceFormat: "yaml" });
+    invalidateWorkflowTreeRegistry();
+    try {
+      const runId = nextRunId();
+      const blocked = beginEnterpriseRun({ runId, prompt: "hello" });
+      expect(blocked.kind).toBe("blocked");
+      if (blocked.kind === "blocked") {
+        expect(blocked.reason).toContain('"acme.corrupt"');
+      }
+      expect(getEnterpriseActiveRun(runId)).toBeUndefined();
+
+      // Observe mode records the degradation but keeps running on built-ins.
+      const observeRunId = nextRunId();
+      const observed = beginEnterpriseRun({
+        runId: observeRunId,
+        prompt: "hello",
+        config: { enterprise: { mode: "observe" } },
+      });
+      expect(observed.kind).toBe("mediated");
+      if (observed.kind === "mediated") {
+        expect(observed.plan.treeId).toBe("clawworks.assist");
+      }
+      endEnterpriseRun({ runId: observeRunId, status: "completed" });
+    } finally {
+      deleteEnterpriseWorkflowTree("acme.corrupt");
+      invalidateWorkflowTreeRegistry();
+    }
+  });
+
+  it("selects imported trees over built-ins when their keywords match", async () => {
+    const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
+    const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
+    const imported = importWorkflowTreeContent({
+      content: JSON.stringify({
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.billing",
+        version: "1.0.0",
+        name: "Billing",
+        match: { keywords: ["invoice"], triggers: ["user"] },
+        root: { id: "billing", title: "Handle billing", ontology: { allowedTools: ["message"] } },
+      }),
+      format: "json",
+    });
+    expect(imported.ok).toBe(true);
+    try {
+      const runId = nextRunId();
+      const mediation = beginEnterpriseRun({ runId, prompt: "please fix my invoice" });
+      expect(mediation.kind).toBe("mediated");
+      if (mediation.kind === "mediated") {
+        expect(mediation.plan.treeId).toBe("acme.billing");
+        expect(mediation.plan.matchedBy).toBe("keywords");
+      }
+      const verdict = evaluateEnterpriseToolCall({ runId, toolName: "exec" });
+      expect(verdict?.blocked).toBe(true);
+      endEnterpriseRun({ runId, status: "completed" });
+    } finally {
+      removeImportedWorkflowTree("acme.billing");
+      invalidateWorkflowTreeRegistry();
+    }
+  });
+
   it("wires the gate sink so tool decisions land in the event log", () => {
     const runId = nextRunId();
     const config: OpenClawConfig = {

@@ -1256,3 +1256,13 @@ CREATE TABLE IF NOT EXISTS enterprise_run_events (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, seq)
 );
+
+CREATE TABLE IF NOT EXISTS enterprise_workflow_trees (
+  tree_id TEXT NOT NULL PRIMARY KEY,
+  version TEXT NOT NULL,
+  name TEXT NOT NULL,
+  definition_json TEXT NOT NULL,
+  source_format TEXT NOT NULL,
+  imported_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);

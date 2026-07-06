@@ -98,6 +98,12 @@ const subCliCommandCatalog = defineCommandDescriptorCatalog([
     hasSubcommands: true,
   },
   {
+    name: "enterprise",
+    description: "Manage ClawWorks enterprise workflow trees and run traces",
+    hasSubcommands: true,
+    parentDefaultHelp: true,
+  },
+  {
     name: "docs",
     description: "Search the live OpenClaw docs",
     hasSubcommands: false,

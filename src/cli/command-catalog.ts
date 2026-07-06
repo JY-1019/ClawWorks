@@ -267,6 +267,10 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
   { commandPath: ["daemon"], policy: { networkProxy: "bypass" } },
   { commandPath: ["devices"], policy: { networkProxy: "bypass" } },
   {
+    commandPath: ["enterprise"],
+    policy: { loadPlugins: "never", networkProxy: "bypass" },
+  },
+  {
     commandPath: ["doctor"],
     policy: {
       bypassConfigGuard: true,

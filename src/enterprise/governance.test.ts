@@ -72,7 +72,7 @@ describe("evaluateToolCallGovernance", () => {
       { id: "allow.first", effect: "allow", tools: ["exec"] },
       { id: "deny.later", effect: "deny", tools: ["exec"] },
     ];
-    const denyFirst = [...allowFirst].reverse();
+    const denyFirst = allowFirst.toReversed();
     for (const policies of [allowFirst, denyFirst]) {
       const decision = evaluateToolCallGovernance({ plan, node, toolName: "exec", policies });
       expect(decision.effect).toBe("deny");

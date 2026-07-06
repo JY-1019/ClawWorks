@@ -4,7 +4,7 @@
  * match hints and the highest-scoring tree wins deterministically.
  */
 import { redactSecrets } from "../logging/redact.js";
-import { BUILTIN_WORKFLOW_TREES } from "./builtin-trees.js";
+import { BUILTIN_ASSIST_TREE } from "./builtin-trees.js";
 import type {
   EnterpriseMode,
   EnterprisePlanNode,
@@ -94,9 +94,13 @@ export function selectWorkflowTree(params: {
       matchedBy: best.keywordHits > 0 ? "keywords" : "trigger",
     };
   }
-  // No tree matched the trigger class: fall back to the built-in default so
-  // enterprise mode never leaves a run without a bound tree.
-  return { tree: BUILTIN_WORKFLOW_TREES[0], matchedBy: "default" };
+  // No tree matched the trigger class: fall back to the default tree so
+  // enterprise mode never leaves a run without a bound tree. The fallback is
+  // resolved from the provided list first so imported overrides of the
+  // built-in default keep governing unmatched runs.
+  const fallback =
+    params.trees.find((tree) => tree.id === BUILTIN_ASSIST_TREE.id) ?? BUILTIN_ASSIST_TREE;
+  return { tree: fallback, matchedBy: "default" };
 }
 
 function flattenPlanNodes(root: WorkflowNodeDefinition): EnterprisePlanNode[] {

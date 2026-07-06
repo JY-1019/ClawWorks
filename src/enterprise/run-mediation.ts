@@ -11,7 +11,6 @@
 import { randomUUID } from "node:crypto";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { BUILTIN_WORKFLOW_TREES } from "./builtin-trees.js";
 import { evaluateRunStartGovernance, resolveGovernancePolicies } from "./governance.js";
 import {
   buildEnterprisePromptSection,
@@ -29,6 +28,7 @@ import {
   finalizeEnterpriseRun,
   persistEnterpriseRunStart,
 } from "./trace-store.sqlite.js";
+import { getWorkflowTreeRegistrySnapshot } from "./tree-registry.js";
 import type { EnterpriseRunEventKind, EnterpriseRunPlan, EnterpriseRunStatus } from "./types.js";
 
 const log = createSubsystemLogger("enterprise");
@@ -75,6 +75,27 @@ export function beginEnterpriseRun(params: BeginEnterpriseRunParams): Enterprise
     };
   }
 
+  // Enforce mode fails closed whenever imported tree definitions may exist
+  // but cannot be loaded: running on permissive built-ins would silently
+  // drop the org's restrictions. Both failure classes carry an actionable
+  // repair path so state-DB repair debt surfaces loudly instead of blocking
+  // opaquely; observe/off remain the availability escape hatches.
+  const registry = getWorkflowTreeRegistrySnapshot();
+  const treeLoadFailure =
+    registry.importErrors.length > 0
+      ? `imported enterprise workflow trees failed to load: ${registry.importErrors
+          .map((entry) => `"${entry.treeId}" (${entry.message})`)
+          .join(", ")}; re-import or remove them`
+      : registry.storeError
+        ? `the enterprise workflow tree store could not be read (${registry.storeError}); repair the state database (openclaw doctor --fix) or relax enterprise.mode to "observe"/"off"`
+        : undefined;
+  if (treeLoadFailure) {
+    if (mode === "enforce") {
+      return { kind: "blocked", reason: treeLoadFailure };
+    }
+    log.warn(`enterprise observe mode continuing on built-in trees: ${treeLoadFailure}`);
+  }
+
   const plan = buildEnterpriseRunPlan({
     runId: params.runId,
     requestText: params.prompt,
@@ -83,7 +104,7 @@ export function beginEnterpriseRun(params: BeginEnterpriseRunParams): Enterprise
       ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
     }),
     mode,
-    trees: BUILTIN_WORKFLOW_TREES,
+    trees: registry.entries.map((entry) => entry.tree),
   });
   const policies = resolveGovernancePolicies(params.config);
   const startDecision = evaluateRunStartGovernance({ plan, policies });

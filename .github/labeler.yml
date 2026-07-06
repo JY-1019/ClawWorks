@@ -264,6 +264,15 @@
       - any-glob-to-any-file:
           - "src/agents/**"
 
+"enterprise":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/enterprise/**"
+          - "src/cli/enterprise-cli.ts"
+          - "src/commands/enterprise*.ts"
+          - "src/config/zod-schema.enterprise*.ts"
+          - "docs/cli/enterprise.md"
+
 "security":
   - changed-files:
       - any-glob-to-any-file:

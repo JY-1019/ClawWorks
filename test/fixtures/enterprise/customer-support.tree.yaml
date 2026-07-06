@@ -1,0 +1,49 @@
+# Example ClawWorks workflow tree: customer support with a scoped refund step.
+# Import with: openclaw enterprise trees import customer-support.tree.yaml
+schema: clawworks.workflow-tree
+schemaVersion: 1
+id: acme.customer-support
+version: 1.2.0
+name: Customer support
+description: Handles support requests with a governed refund path.
+match:
+  keywords: [support, refund, complaint, order]
+  triggers: [user]
+  priority: 10
+root:
+  id: support
+  title: Resolve a customer support request
+  ontology:
+    entities:
+      - id: customer
+        description: The requesting customer account.
+      - id: order
+        description: A purchase the request refers to.
+    relationships:
+      - id: customer-owns-order
+        from: customer
+        to: order
+    actions:
+      - id: lookup-history
+        description: Look up prior conversations and orders.
+        tools: [memory_search]
+      - id: reply
+        description: Respond to the customer.
+        tools: [message]
+    constraints:
+      - id: no-card-numbers
+        description: Never echo full payment card numbers.
+    allowedTools: [memory_search, memory_get, message]
+    knowledgeFoundations: [acme.support-kb]
+    contextHints:
+      - Support tone is concise and empathetic.
+      - Refunds over $200 require a human approval.
+    expectedOutput: A resolution message or an escalation summary.
+    audit: true
+  children:
+    - id: support.triage
+      title: Triage the request
+    - id: support.investigate
+      title: Investigate account and order history
+    - id: support.resolve
+      title: Resolve or escalate

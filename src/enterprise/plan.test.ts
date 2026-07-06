@@ -82,6 +82,21 @@ describe("selectWorkflowTree", () => {
     expect(selection.matchedBy).toBe("default");
   });
 
+  it("falls back to an imported override of the default tree, not the static built-in", () => {
+    const assistOverride: WorkflowTreeDefinition = {
+      ...BUILTIN_ASSIST_TREE,
+      version: "9.9.9",
+      match: { keywords: ["special"], triggers: ["user"] },
+    };
+    const selection = selectWorkflowTree({
+      requestText: "hello",
+      trigger: "user",
+      trees: [assistOverride, BUILTIN_SYSTEM_TREE],
+    });
+    expect(selection.matchedBy).toBe("default");
+    expect(selection.tree.version).toBe("9.9.9");
+  });
+
   it("treats an empty trigger list like user-triggered (programmatic trees)", () => {
     const tree: WorkflowTreeDefinition = {
       ...REFUND_TREE,

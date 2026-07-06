@@ -480,6 +480,16 @@ export interface EnterpriseRuns {
   updated_at: number;
 }
 
+export interface EnterpriseWorkflowTrees {
+  definition_json: string;
+  imported_at: number;
+  name: string;
+  source_format: string;
+  tree_id: string;
+  updated_at: number;
+  version: string;
+}
+
 export interface ExecApprovalsConfig {
   agent_count: number;
   allowlist_count: number;
@@ -1011,6 +1021,7 @@ export interface DB {
   diagnostic_stability_bundles: DiagnosticStabilityBundles;
   enterprise_run_events: EnterpriseRunEvents;
   enterprise_runs: EnterpriseRuns;
+  enterprise_workflow_trees: EnterpriseWorkflowTrees;
   exec_approvals_config: ExecApprovalsConfig;
   flow_runs: FlowRuns;
   gateway_restart_handoff: GatewayRestartHandoff;
