@@ -106,6 +106,7 @@ import {
   classifyEmbeddedAgentRunResultForModelFallback,
   mergeEmbeddedAgentRunResultForModelFallbackExhaustion,
 } from "./embedded-agent-runner/result-fallback-classifier.js";
+import { applyEnterpriseMediation, finishEnterpriseMediation } from "./enterprise-mediation.js";
 import { resolveFastModeState } from "./fast-mode.js";
 import { ensureSelectedAgentHarnessPlugin } from "./harness/runtime-plugin.js";
 import { resolveAvailableAgentHarnessPolicy } from "./harness/selection.js";
@@ -999,6 +1000,24 @@ async function agentCommandInternal(
           throw agentPolicyError;
         }
 
+        // ACP runs bypass runEmbeddedAgent/runCliAgent, so enterprise
+        // run-level governance and tracing bind here. ACP owns its prompt
+        // channel, so the step digest is not injected for this runtime.
+        const enterpriseMediation = applyEnterpriseMediation({
+          runId,
+          prompt: body,
+          sessionKey,
+          agentId: acpAgent,
+          config: cfg,
+          ...(normalizedSpawned.spawnedBy ? { spawnedBy: normalizedSpawned.spawnedBy } : {}),
+        });
+        if (enterpriseMediation.blockedResult) {
+          throw new Error(
+            enterpriseMediation.blockedResult.meta.error?.message ??
+              "Run blocked by enterprise governance",
+          );
+        }
+
         const acpImageAttachments = resolveInlineAgentImageAttachments(opts.images);
         assertAgentRunLifecycleGenerationCurrent(lifecycleGeneration);
         await acpManager.runTurn({
@@ -1067,6 +1086,7 @@ async function agentCommandInternal(
           lifecycleGeneration,
           abortSignal: opts.abortSignal,
         });
+        finishEnterpriseMediation(runId, { error: acpError });
         throw acpError;
       }
 
@@ -1135,6 +1155,7 @@ async function agentCommandInternal(
           lifecycleGeneration,
           abortSignal: opts.abortSignal,
         });
+        finishEnterpriseMediation(runId, { error: restartAbortReason });
         throw restartAbortReason;
       }
       attemptExecutionRuntime.emitAcpLifecycleEnd({
@@ -1152,6 +1173,7 @@ async function agentCommandInternal(
         }),
         opts.abortSignal,
       );
+      finishEnterpriseMediation(runId, { result });
       const payloads = result.payloads;
       const { deliverAgentCommandResult } = await loadDeliveryRuntime();
 

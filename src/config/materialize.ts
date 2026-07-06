@@ -5,6 +5,7 @@ import {
   applyContextPruningDefaults,
   applyAgentDefaults,
   applyCronDefaults,
+  applyEnterpriseDefaults,
   applyLoggingDefaults,
   applyMessageDefaults,
   applyModelDefaults,
@@ -70,6 +71,7 @@ export function materializeRuntimeConfig(
   next = applySessionDefaults(next);
   next = applyAgentDefaults(next);
   next = applyCronDefaults(next);
+  next = applyEnterpriseDefaults(next);
   if (profile.includeContextPruningDefaults) {
     next = applyContextPruningDefaults(next, { manifestRegistry: options.manifestRegistry });
   }

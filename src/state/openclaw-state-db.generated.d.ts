@@ -455,6 +455,31 @@ export interface DiagnosticStabilityBundles {
   reason: string;
 }
 
+export interface EnterpriseRunEvents {
+  created_at: number;
+  execution_id: string;
+  kind: string;
+  node_id: string | null;
+  payload_json: string;
+  seq: number;
+}
+
+export interface EnterpriseRuns {
+  agent_id: string | null;
+  created_at: number;
+  ended_at: number | null;
+  execution_id: string;
+  mode: string;
+  plan_json: string;
+  request_summary: string;
+  run_id: string;
+  session_key: string | null;
+  status: string;
+  tree_id: string;
+  tree_version: string;
+  updated_at: number;
+}
+
 export interface ExecApprovalsConfig {
   agent_count: number;
   allowlist_count: number;
@@ -984,6 +1009,8 @@ export interface DB {
   device_pairing_pending: DevicePairingPending;
   diagnostic_events: DiagnosticEvents;
   diagnostic_stability_bundles: DiagnosticStabilityBundles;
+  enterprise_run_events: EnterpriseRunEvents;
+  enterprise_runs: EnterpriseRuns;
   exec_approvals_config: ExecApprovalsConfig;
   flow_runs: FlowRuns;
   gateway_restart_handoff: GatewayRestartHandoff;

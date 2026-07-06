@@ -8,6 +8,7 @@ import path from "node:path";
 import { addTimerTimeoutGraceMs } from "@openclaw/normalization-core/number-coercion";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
+import { evaluateEnterpriseToolCall } from "../enterprise/runtime.js";
 import {
   diagnosticErrorCategory,
   diagnosticHttpStatusCode,
@@ -147,7 +148,11 @@ export type HookContext = {
 };
 
 type HookBlockedKind = "veto" | "failure";
-type HookBlockedReason = "plugin-before-tool-call" | "plugin-approval" | "tool-loop";
+type HookBlockedReason =
+  | "plugin-before-tool-call"
+  | "plugin-approval"
+  | "tool-loop"
+  | "enterprise-governance";
 type HookOutcome =
   | {
       blocked: true;
@@ -584,17 +589,23 @@ function emitToolBlockedSecurityEvent(params: {
           controlId: "tool-loop-detection",
           family: "authorization",
         } as const)
-      : params.deniedReason === "plugin-approval"
+      : params.deniedReason === "enterprise-governance"
         ? ({
-            policyId: "plugin-tool-approval",
-            controlId: "plugin-tool-approval",
-            family: "approval",
+            policyId: "enterprise-governance",
+            controlId: "enterprise-governance",
+            family: "authorization",
           } as const)
-        : ({
-            policyId: "plugin-before-tool-call",
-            controlId: "before-tool-call",
-            family: "approval",
-          } as const);
+        : params.deniedReason === "plugin-approval"
+          ? ({
+              policyId: "plugin-tool-approval",
+              controlId: "plugin-tool-approval",
+              family: "approval",
+            } as const)
+          : ({
+              policyId: "plugin-before-tool-call",
+              controlId: "before-tool-call",
+              family: "approval",
+            } as const);
   emitTrustedSecurityEvent({
     category: "tool",
     action: "tool.execution.blocked",
@@ -1120,6 +1131,24 @@ export async function runBeforeToolCallHook(args: {
         loopScope,
       );
     }
+  }
+
+  // Enterprise governance gate: runs for every mediated run before plugin
+  // machinery so ontology/policy denials cannot be widened by plugin hooks.
+  // Registry lookup by runId only — no config or definition re-resolution.
+  const enterpriseVerdict = evaluateEnterpriseToolCall({
+    ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
+    toolName,
+    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+  });
+  if (enterpriseVerdict?.blocked) {
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: enterpriseVerdict.decision.reason,
+      params,
+    };
   }
 
   const hookRunner = getGlobalHookRunner();

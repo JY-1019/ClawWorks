@@ -30,6 +30,7 @@ import type { PluginsConfig } from "./types.plugins.js";
 import type { SecretsConfig } from "./types.secrets.js";
 import type { SkillsConfig } from "./types.skills.js";
 import type { ToolsConfig } from "./types.tools.js";
+import type { EnterpriseConfig } from "./zod-schema.enterprise.js";
 import type { ProxyConfig } from "./zod-schema.proxy.js";
 
 /** One persisted suppression for a known security audit finding. */
@@ -237,6 +238,8 @@ export type OpenClawConfig = {
   mcp?: McpConfig;
   /** Network-level SSRF protection via an operator-managed forward proxy. */
   proxy?: ProxyConfig;
+  /** ClawWorks enterprise workflow, ontology, and governance settings. */
+  enterprise?: EnterpriseConfig;
 };
 
 /** Config input shape accepted before model provider defaults are fully materialized. */

@@ -34,6 +34,7 @@ import { classifyFailoverReason, isFailoverErrorMessage } from "./embedded-agent
 import type { EmbeddedAgentRunResult } from "./embedded-agent-runner.js";
 import { waitForDeferredTurnMaintenanceForSession } from "./embedded-agent-runner/context-engine-maintenance.js";
 import { buildEmbeddedRunPayloads } from "./embedded-agent-runner/run/payloads.js";
+import { applyEnterpriseMediation, finishEnterpriseMediation } from "./enterprise-mediation.js";
 import { FailoverError, isFailoverError, resolveFailoverStatus } from "./failover-error.js";
 import {
   awaitAgentEndSideEffects,
@@ -390,13 +391,31 @@ async function finalizeCliContextEngineTurn(params: {
 
 /** Prepares and runs one CLI-backed agent turn. */
 export function runCliAgent(paramsInput: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
+  // Enterprise mediation covers CLI-backed runtimes too: run-level governance
+  // and traces apply to every agent runtime, not only the embedded loop.
+  const mediation = applyEnterpriseMediation(paramsInput);
+  if (mediation.blockedResult) {
+    return Promise.resolve(mediation.blockedResult);
+  }
+  const params = mediation.params;
   const lifecycleGeneration =
-    paramsInput.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(paramsInput.runId);
-  return withAgentRunLifecycleGeneration(lifecycleGeneration, () =>
+    params.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(params.runId);
+  const runPromise = withAgentRunLifecycleGeneration(lifecycleGeneration, () =>
     runCliAgentInternal({
-      ...paramsInput,
+      ...params,
       lifecycleGeneration,
     }),
+  );
+  // finishEnterpriseMediation no-ops for unmediated runs (mode off).
+  return runPromise.then(
+    (result) => {
+      finishEnterpriseMediation(params.runId, { result });
+      return result;
+    },
+    (error: unknown) => {
+      finishEnterpriseMediation(params.runId, { error });
+      throw error;
+    },
   );
 }
 

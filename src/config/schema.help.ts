@@ -244,6 +244,28 @@ export const FIELD_HELP: Record<string, string> = {
     "Enable hidden LLM extraction, storage, and heartbeat delivery for inferred follow-up commitments. Default: false.",
   "commitments.maxPerDay":
     "Maximum inferred follow-up commitments delivered per agent session in a rolling day. Default: 3.",
+  enterprise:
+    "ClawWorks enterprise execution controls: workflow-tree mediation, per-node ontology binding, and governance policies applied to every agent run. Default mode is enforce; set mode to observe or off to relax mediation.",
+  "enterprise.mode":
+    'Enterprise execution mode. "enforce" binds every run to a workflow tree and blocks governance denials, "observe" records decisions without blocking, and "off" disables enterprise mediation entirely. Default: enforce.',
+  "enterprise.governance":
+    "Governance policy declarations evaluated at run start and before every tool call in enterprise mode. Matching policies compose deny-first regardless of declaration order.",
+  "enterprise.governance.policies":
+    "Governance policies. Each policy applies when all of its selectors (trees, nodes, tools) match; deny wins over allow regardless of declaration order, allow beats audit, and audit records the decision without changing the outcome.",
+  "enterprise.governance.policies[]":
+    "One governance policy with an effect (allow, deny, or audit) plus optional tree, node, and tool glob selectors that scope where it applies.",
+  "enterprise.governance.policies[].id":
+    "Stable dotted identifier for this policy (e.g. finance.deny-exec). Used in governance decision traces and UI inspection.",
+  "enterprise.governance.policies[].description":
+    "Human-readable rationale surfaced in decision traces and denial messages. Keep it actionable for operators reviewing blocked calls.",
+  "enterprise.governance.policies[].effect":
+    'Policy effect: "deny" blocks matching subjects in enforce mode and takes precedence over "allow", "allow" explicitly permits when no matching deny exists, and "audit" records the decision while allowing execution.',
+  "enterprise.governance.policies[].trees":
+    "Workflow tree id globs this policy applies to. Omit to match every tree.",
+  "enterprise.governance.policies[].nodes":
+    "Workflow node id globs this policy applies to. Omit to match every node.",
+  "enterprise.governance.policies[].tools":
+    "Tool name globs this policy applies to. Omit to make this a run-level policy evaluated when the workflow tree is selected.",
   "agents.list.*.skills":
     "Optional allowlist of skills for this agent. If omitted, the agent inherits agents.defaults.skills when set; otherwise skills stay unrestricted. Set [] for no skills. An explicit list fully replaces inherited defaults instead of merging with them.",
   "agents.list[].skills":

@@ -13,6 +13,7 @@ const ROOT_SECTIONS = [
   "cli",
   "update",
   "commitments",
+  "enterprise",
   "browser",
   "ui",
   "tui",

@@ -84,6 +84,7 @@ import {
   parseImageSizeError,
   pickFallbackThinkingLevel,
 } from "../embedded-agent-helpers.js";
+import { applyEnterpriseMediation, finishEnterpriseMediation } from "../enterprise-mediation.js";
 import { isStrictAgenticExecutionContractActive } from "../execution-contract.js";
 import {
   coerceToFailoverError,
@@ -613,12 +614,23 @@ export function runEmbeddedAgent(
     (needsConfiguredDefault ? (getRuntimeConfigSnapshot() ?? undefined) : undefined);
   const lifecycleGeneration =
     paramsInput.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(paramsInput.runId);
-  return withAgentRunLifecycleGeneration(lifecycleGeneration, () =>
+  const runPromise = withAgentRunLifecycleGeneration(lifecycleGeneration, () =>
     runEmbeddedAgentInternal({
       ...paramsInput,
       config,
       lifecycleGeneration,
     }),
+  );
+  // finishEnterpriseMediation no-ops for unmediated runs (mode off, probes).
+  return runPromise.then(
+    (result) => {
+      finishEnterpriseMediation(paramsInput.runId, { result });
+      return result;
+    },
+    (error: unknown) => {
+      finishEnterpriseMediation(paramsInput.runId, { error });
+      throw error;
+    },
   );
 }
 
@@ -647,6 +659,14 @@ async function runEmbeddedAgentInternal(
     sessionKey: normalizeOptionalString(effectiveSessionKey ?? runSessionTarget.sessionKey),
     sessionFile: runSessionTarget.sessionFile,
   };
+  // Enterprise mediation binds the run to a workflow subtree (idempotent per
+  // runId across fallback retries). It runs after session identity resolution
+  // so the persisted trace carries the resolved sessionKey/agentId.
+  const enterpriseMediation = applyEnterpriseMediation(params);
+  if (enterpriseMediation.blockedResult) {
+    return enterpriseMediation.blockedResult;
+  }
+  params = enterpriseMediation.params;
   const sessionLane = resolveSessionLane(params.sessionKey?.trim() || params.sessionId);
   const globalLane = resolveGlobalLane(params.lane);
   // Outer fallback attempts defer session suspension only while another

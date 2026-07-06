@@ -463,6 +463,20 @@ export function applyCronDefaults(cfg: OpenClawConfig): OpenClawConfig {
   };
 }
 
+export function applyEnterpriseDefaults(cfg: OpenClawConfig): OpenClawConfig {
+  // ClawWorks enterprise mode is on by default; "off" restores stock behavior.
+  if (cfg.enterprise?.mode) {
+    return cfg;
+  }
+  return {
+    ...cfg,
+    enterprise: {
+      ...cfg.enterprise,
+      mode: "enforce",
+    },
+  };
+}
+
 export function applyLoggingDefaults(cfg: OpenClawConfig): OpenClawConfig {
   const logging = cfg.logging;
   if (!logging) {

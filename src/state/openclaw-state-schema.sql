@@ -1224,3 +1224,35 @@ CREATE TABLE IF NOT EXISTS backup_runs (
 
 CREATE INDEX IF NOT EXISTS idx_backup_runs_created
   ON backup_runs(created_at DESC, id);
+
+CREATE TABLE IF NOT EXISTS enterprise_runs (
+  execution_id TEXT NOT NULL PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  session_key TEXT,
+  agent_id TEXT,
+  tree_id TEXT NOT NULL,
+  tree_version TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  request_summary TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  ended_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_enterprise_runs_run
+  ON enterprise_runs(run_id, created_at DESC, execution_id);
+
+CREATE INDEX IF NOT EXISTS idx_enterprise_runs_created
+  ON enterprise_runs(created_at DESC, execution_id);
+
+CREATE TABLE IF NOT EXISTS enterprise_run_events (
+  execution_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  node_id TEXT,
+  kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, seq)
+);
