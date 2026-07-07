@@ -4,6 +4,8 @@ import type {
   EnterpriseRunsGetResult,
   EnterpriseRunsListResult,
   EnterpriseRunSummary,
+  EnterpriseTreeDetail,
+  EnterpriseTreesGetResult,
   EnterpriseTreeSummary,
   EnterpriseTreesListResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
@@ -24,6 +26,10 @@ export type EnterpriseState = {
   enterpriseSelectedExecutionId: string | null;
   enterpriseDetail: EnterpriseRunDetail | null;
   enterpriseDetailLoading: boolean;
+  enterpriseSelectedTreeId: string | null;
+  enterpriseTreeDetail: EnterpriseTreeDetail | null;
+  enterpriseTreeLoading: boolean;
+  enterpriseTreeIssue: string | null;
   enterpriseError: string | null;
 };
 
@@ -89,25 +95,85 @@ export async function loadEnterpriseRunDetail(state: EnterpriseState, executionI
   }
 }
 
-/** Reload the list + registry and, when one is open, the selected run detail. */
+// Separate token: tree-detail loads race independently from run-detail loads.
+let treeRequestSeq = 0;
+
+/** Fetch one workflow tree's full definition + ontology for the visualizer. */
+export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: string) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const requestSeq = ++treeRequestSeq;
+  state.enterpriseSelectedTreeId = treeId;
+  state.enterpriseTreeDetail = null;
+  state.enterpriseTreeLoading = true;
+  state.enterpriseTreeIssue = null;
+  // Clear any prior banner (e.g. a transient runs.get failure); a successful
+  // tree load must not render beneath a stale global error.
+  state.enterpriseError = null;
+  try {
+    const res = await state.client.request<EnterpriseTreesGetResult>("enterprise.trees.get", {
+      treeId,
+    });
+    if (requestSeq !== treeRequestSeq) {
+      return;
+    }
+    state.enterpriseTreeDetail = res.tree;
+    // A stale built-in may be returned; surface the failed override/store read.
+    state.enterpriseTreeIssue = res.storeError ?? res.importError ?? null;
+  } catch (err) {
+    if (requestSeq !== treeRequestSeq) {
+      return;
+    }
+    if (isMissingOperatorReadScopeError(err)) {
+      // Losing operator.read must clear ALL governed data (runs, trees, open
+      // detail, selection), not just the tree — mirror loadEnterprise.
+      applyError(state, err);
+    } else {
+      state.enterpriseTreeIssue = String(err);
+    }
+  } finally {
+    if (requestSeq === treeRequestSeq) {
+      state.enterpriseTreeLoading = false;
+    }
+  }
+}
+
+/**
+ * Reload the list + registry and, when open, the selected run detail and tree.
+ */
 export async function refreshEnterprise(state: EnterpriseState) {
   await loadEnterprise(state);
   // If the list/tree refresh failed, keep its error banner; a following detail
   // reload would clear enterpriseError and hide the stale-list failure. (An auth
-  // failure also clears the selection, so the guard below would skip anyway.)
+  // failure also clears the selection, so the guards below would skip anyway.)
   if (state.enterpriseError) {
     return;
   }
-  const selected = state.enterpriseSelectedExecutionId;
-  if (selected) {
-    await loadEnterpriseRunDetail(state, selected);
+  const selectedRun = state.enterpriseSelectedExecutionId;
+  if (selectedRun) {
+    await loadEnterpriseRunDetail(state, selectedRun);
+    // A failed run-detail reload set the banner; the tree reload below clears
+    // enterpriseError at request start, which would hide that failure.
+    if (state.enterpriseError) {
+      return;
+    }
+  }
+  const selectedTree = state.enterpriseSelectedTreeId;
+  if (selectedTree) {
+    await loadEnterpriseTreeDetail(state, selectedTree);
   }
 }
 
 function applyError(state: EnterpriseState, err: unknown) {
   if (isMissingOperatorReadScopeError(err)) {
+    // Advance both request tokens so any in-flight run/tree detail response is
+    // dropped by its sequence guard — otherwise a load started before the scope
+    // loss could resolve afterward and repopulate the governed data cleared here.
+    detailRequestSeq++;
+    treeRequestSeq++;
     // A downgraded/reconnected token without operator.read must not keep prior
-    // governed run data on screen under the error banner.
+    // governed run/tree data on screen under the error banner.
     state.enterpriseRuns = [];
     state.enterpriseTrees = [];
     state.enterpriseImportErrors = [];
@@ -115,6 +181,10 @@ function applyError(state: EnterpriseState, err: unknown) {
     state.enterpriseSelectedExecutionId = null;
     state.enterpriseDetail = null;
     state.enterpriseDetailLoading = false;
+    state.enterpriseSelectedTreeId = null;
+    state.enterpriseTreeDetail = null;
+    state.enterpriseTreeLoading = false;
+    state.enterpriseTreeIssue = null;
     state.enterpriseError = formatMissingOperatorReadScopeMessage("enterprise runs");
     return;
   }

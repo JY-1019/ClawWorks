@@ -581,6 +581,7 @@ export type {
 export type {
   EnterpriseRunDetail,
   EnterpriseRunSummary,
+  EnterpriseTreeDetail,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
 } from "../../../packages/gateway-protocol/src/index.js";

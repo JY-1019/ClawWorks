@@ -149,6 +149,7 @@ import type {
   CronStatus,
   EnterpriseRunDetail,
   EnterpriseRunSummary,
+  EnterpriseTreeDetail,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
   HealthSummary,
@@ -473,6 +474,10 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseSelectedExecutionId: string | null = null;
   @state() enterpriseDetail: EnterpriseRunDetail | null = null;
   @state() enterpriseDetailLoading = false;
+  @state() enterpriseSelectedTreeId: string | null = null;
+  @state() enterpriseTreeDetail: EnterpriseTreeDetail | null = null;
+  @state() enterpriseTreeLoading = false;
+  @state() enterpriseTreeIssue: string | null = null;
   @state() enterpriseError: string | null = null;
 
   @state() agentsLoading = false;

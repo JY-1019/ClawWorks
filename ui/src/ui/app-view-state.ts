@@ -42,6 +42,7 @@ import type {
   ChatModelOverride,
   EnterpriseRunDetail,
   EnterpriseRunSummary,
+  EnterpriseTreeDetail,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
   ModelAuthStatusResult,
@@ -290,6 +291,10 @@ export type AppViewState = {
   enterpriseSelectedExecutionId: string | null;
   enterpriseDetail: EnterpriseRunDetail | null;
   enterpriseDetailLoading: boolean;
+  enterpriseSelectedTreeId: string | null;
+  enterpriseTreeDetail: EnterpriseTreeDetail | null;
+  enterpriseTreeLoading: boolean;
+  enterpriseTreeIssue: string | null;
   enterpriseError: string | null;
   agentsLoading: boolean;
   agentsList: AgentsListResult | null;

@@ -113,7 +113,11 @@ import {
   resolveConfiguredDreaming,
   updateDreamingEnabled,
 } from "./controllers/dreaming.ts";
-import { loadEnterpriseRunDetail, refreshEnterprise } from "./controllers/enterprise.ts";
+import {
+  loadEnterpriseRunDetail,
+  loadEnterpriseTreeDetail,
+  refreshEnterprise,
+} from "./controllers/enterprise.ts";
 import {
   loadExecApprovals,
   removeExecApprovalsFormValue,
@@ -2852,9 +2856,14 @@ export function renderApp(state: AppViewState) {
                 selectedExecutionId: state.enterpriseSelectedExecutionId,
                 detail: state.enterpriseDetail,
                 detailLoading: state.enterpriseDetailLoading,
+                selectedTreeId: state.enterpriseSelectedTreeId,
+                treeDetail: state.enterpriseTreeDetail,
+                treeLoading: state.enterpriseTreeLoading,
+                treeIssue: state.enterpriseTreeIssue,
                 error: state.enterpriseError,
                 onRefresh: () => void refreshEnterprise(state),
                 onSelectRun: (executionId) => void loadEnterpriseRunDetail(state, executionId),
+                onSelectTree: (treeId) => void loadEnterpriseTreeDetail(state, treeId),
               }),
             )
           : nothing}
