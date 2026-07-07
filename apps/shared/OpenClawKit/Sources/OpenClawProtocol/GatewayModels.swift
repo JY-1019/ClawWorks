@@ -6419,6 +6419,316 @@ public struct CronRunLogEntry: Codable, Sendable {
     }
 }
 
+public struct EnterpriseTreeSummary: Codable, Sendable {
+    public let id: String
+    public let version: String
+    public let name: String
+    public let source: AnyCodable
+    public let nodecount: Int
+
+    public init(
+        id: String,
+        version: String,
+        name: String,
+        source: AnyCodable,
+        nodecount: Int)
+    {
+        self.id = id
+        self.version = version
+        self.name = name
+        self.source = source
+        self.nodecount = nodecount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case version
+        case name
+        case source
+        case nodecount = "nodeCount"
+    }
+}
+
+public struct EnterpriseTreesListParams: Codable, Sendable {}
+
+public struct EnterpriseTreesListResult: Codable, Sendable {
+    public let trees: [EnterpriseTreeSummary]
+    public let importerrors: [[String: AnyCodable]]
+    public let storeerror: String?
+
+    public init(
+        trees: [EnterpriseTreeSummary],
+        importerrors: [[String: AnyCodable]],
+        storeerror: String?)
+    {
+        self.trees = trees
+        self.importerrors = importerrors
+        self.storeerror = storeerror
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case trees
+        case importerrors = "importErrors"
+        case storeerror = "storeError"
+    }
+}
+
+public struct EnterpriseRunSummary: Codable, Sendable {
+    public let executionid: String
+    public let runid: String
+    public let treeid: String
+    public let treeversion: String
+    public let mode: String
+    public let status: AnyCodable
+    public let requestsummary: String
+    public let activenodeid: String
+    public let createdat: Int
+    public let updatedat: Int
+    public let endedat: AnyCodable
+
+    public init(
+        executionid: String,
+        runid: String,
+        treeid: String,
+        treeversion: String,
+        mode: String,
+        status: AnyCodable,
+        requestsummary: String,
+        activenodeid: String,
+        createdat: Int,
+        updatedat: Int,
+        endedat: AnyCodable)
+    {
+        self.executionid = executionid
+        self.runid = runid
+        self.treeid = treeid
+        self.treeversion = treeversion
+        self.mode = mode
+        self.status = status
+        self.requestsummary = requestsummary
+        self.activenodeid = activenodeid
+        self.createdat = createdat
+        self.updatedat = updatedat
+        self.endedat = endedat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case executionid = "executionId"
+        case runid = "runId"
+        case treeid = "treeId"
+        case treeversion = "treeVersion"
+        case mode
+        case status
+        case requestsummary = "requestSummary"
+        case activenodeid = "activeNodeId"
+        case createdat = "createdAt"
+        case updatedat = "updatedAt"
+        case endedat = "endedAt"
+    }
+}
+
+public struct EnterpriseRunsListParams: Codable, Sendable {
+    public let limit: Int?
+
+    public init(
+        limit: Int?)
+    {
+        self.limit = limit
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case limit
+    }
+}
+
+public struct EnterpriseRunsListResult: Codable, Sendable {
+    public let runs: [EnterpriseRunSummary]
+
+    public init(
+        runs: [EnterpriseRunSummary])
+    {
+        self.runs = runs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case runs
+    }
+}
+
+public struct EnterprisePlanNode: Codable, Sendable {
+    public let nodeid: String
+    public let parentid: AnyCodable
+    public let seq: Int
+    public let title: String
+    public let description: String?
+    public let ontology: [String: AnyCodable]
+
+    public init(
+        nodeid: String,
+        parentid: AnyCodable,
+        seq: Int,
+        title: String,
+        description: String?,
+        ontology: [String: AnyCodable])
+    {
+        self.nodeid = nodeid
+        self.parentid = parentid
+        self.seq = seq
+        self.title = title
+        self.description = description
+        self.ontology = ontology
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case nodeid = "nodeId"
+        case parentid = "parentId"
+        case seq
+        case title
+        case description
+        case ontology
+    }
+}
+
+public struct EnterpriseRunEvent: Codable, Sendable {
+    public let seq: Int
+    public let nodeid: AnyCodable
+    public let kind: AnyCodable
+    public let payload: [String: AnyCodable]
+    public let createdat: Int
+
+    public init(
+        seq: Int,
+        nodeid: AnyCodable,
+        kind: AnyCodable,
+        payload: [String: AnyCodable],
+        createdat: Int)
+    {
+        self.seq = seq
+        self.nodeid = nodeid
+        self.kind = kind
+        self.payload = payload
+        self.createdat = createdat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case seq
+        case nodeid = "nodeId"
+        case kind
+        case payload
+        case createdat = "createdAt"
+    }
+}
+
+public struct EnterpriseRunDetail: Codable, Sendable {
+    public let executionid: String
+    public let runid: String
+    public let sessionkey: AnyCodable
+    public let agentid: AnyCodable
+    public let treeid: String
+    public let treeversion: String
+    public let treename: String
+    public let mode: String
+    public let status: AnyCodable
+    public let matchedby: String
+    public let requestsummary: String
+    public let activenodeid: String
+    public let nodes: [EnterprisePlanNode]
+    public let events: [EnterpriseRunEvent]
+    public let executioncount: Int
+    public let createdat: Int
+    public let updatedat: Int
+    public let endedat: AnyCodable
+
+    public init(
+        executionid: String,
+        runid: String,
+        sessionkey: AnyCodable,
+        agentid: AnyCodable,
+        treeid: String,
+        treeversion: String,
+        treename: String,
+        mode: String,
+        status: AnyCodable,
+        matchedby: String,
+        requestsummary: String,
+        activenodeid: String,
+        nodes: [EnterprisePlanNode],
+        events: [EnterpriseRunEvent],
+        executioncount: Int,
+        createdat: Int,
+        updatedat: Int,
+        endedat: AnyCodable)
+    {
+        self.executionid = executionid
+        self.runid = runid
+        self.sessionkey = sessionkey
+        self.agentid = agentid
+        self.treeid = treeid
+        self.treeversion = treeversion
+        self.treename = treename
+        self.mode = mode
+        self.status = status
+        self.matchedby = matchedby
+        self.requestsummary = requestsummary
+        self.activenodeid = activenodeid
+        self.nodes = nodes
+        self.events = events
+        self.executioncount = executioncount
+        self.createdat = createdat
+        self.updatedat = updatedat
+        self.endedat = endedat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case executionid = "executionId"
+        case runid = "runId"
+        case sessionkey = "sessionKey"
+        case agentid = "agentId"
+        case treeid = "treeId"
+        case treeversion = "treeVersion"
+        case treename = "treeName"
+        case mode
+        case status
+        case matchedby = "matchedBy"
+        case requestsummary = "requestSummary"
+        case activenodeid = "activeNodeId"
+        case nodes
+        case events
+        case executioncount = "executionCount"
+        case createdat = "createdAt"
+        case updatedat = "updatedAt"
+        case endedat = "endedAt"
+    }
+}
+
+public struct EnterpriseRunsGetParams: Codable, Sendable {
+    public let executionid: String
+
+    public init(
+        executionid: String)
+    {
+        self.executionid = executionid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case executionid = "executionId"
+    }
+}
+
+public struct EnterpriseRunsGetResult: Codable, Sendable {
+    public let run: AnyCodable
+
+    public init(
+        run: AnyCodable)
+    {
+        self.run = run
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case run
+    }
+}
+
 public struct LogsTailParams: Codable, Sendable {
     public let cursor: Int?
     public let limit: Int?

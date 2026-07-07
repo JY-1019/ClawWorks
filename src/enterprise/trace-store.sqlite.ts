@@ -254,6 +254,31 @@ export function getEnterpriseRunRecord(
   return row ? rowToRunRecord(row) : null;
 }
 
+/**
+ * Read one execution trace by its execution id (the stable per-execution key).
+ * A runId can span multiple executions (fallback retries, recurring cron), so
+ * inspection tools resolve a specific listed row by execution id, not runId.
+ */
+export function getEnterpriseRunRecordByExecutionId(
+  executionId: string,
+  options: EnterpriseTraceStoreOptions = {},
+): EnterpriseRunRecord | null {
+  if (!enterpriseStateDatabaseExists(options)) {
+    return null;
+  }
+  const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
+  const row = executeSqliteQueryTakeFirstSync(
+    database.db,
+    stateDb
+      .selectFrom("enterprise_runs")
+      .selectAll()
+      .where("execution_id", "=", executionId)
+      .limit(1),
+  ) as EnterpriseRunRow | undefined;
+  return row ? rowToRunRecord(row) : null;
+}
+
 /** List every execution recorded for a runId, newest first. */
 export function listEnterpriseRunExecutions(
   runId: string,

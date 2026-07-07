@@ -194,6 +194,28 @@ import {
   DeviceTokenRevokeParamsSchema,
   type DeviceTokenRotateParams,
   DeviceTokenRotateParamsSchema,
+  type EnterprisePlanNode,
+  EnterprisePlanNodeSchema,
+  type EnterpriseRunDetail,
+  EnterpriseRunDetailSchema,
+  type EnterpriseRunEvent,
+  EnterpriseRunEventSchema,
+  type EnterpriseRunsGetParams,
+  EnterpriseRunsGetParamsSchema,
+  type EnterpriseRunsGetResult,
+  EnterpriseRunsGetResultSchema,
+  type EnterpriseRunsListParams,
+  EnterpriseRunsListParamsSchema,
+  type EnterpriseRunsListResult,
+  EnterpriseRunsListResultSchema,
+  type EnterpriseRunSummary,
+  EnterpriseRunSummarySchema,
+  type EnterpriseTreesListParams,
+  EnterpriseTreesListParamsSchema,
+  type EnterpriseTreesListResult,
+  EnterpriseTreesListResultSchema,
+  type EnterpriseTreeSummary,
+  EnterpriseTreeSummarySchema,
   type ExecApprovalsGetParams,
   ExecApprovalsGetParamsSchema,
   type ExecApprovalsNodeGetParams,
@@ -705,6 +727,15 @@ export const validateSessionsUsageParams =
 export const validateTasksListParams = lazyCompile<TasksListParams>(TasksListParamsSchema);
 export const validateTasksGetParams = lazyCompile<TasksGetParams>(TasksGetParamsSchema);
 export const validateTasksCancelParams = lazyCompile<TasksCancelParams>(TasksCancelParamsSchema);
+export const validateEnterpriseTreesListParams = lazyCompile<EnterpriseTreesListParams>(
+  EnterpriseTreesListParamsSchema,
+);
+export const validateEnterpriseRunsListParams = lazyCompile<EnterpriseRunsListParams>(
+  EnterpriseRunsListParamsSchema,
+);
+export const validateEnterpriseRunsGetParams = lazyCompile<EnterpriseRunsGetParams>(
+  EnterpriseRunsGetParamsSchema,
+);
 export const validateConfigGetParams = lazyCompile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = lazyCompile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = lazyCompile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -1075,6 +1106,17 @@ export {
   TasksGetResultSchema,
   TasksCancelParamsSchema,
   TasksCancelResultSchema,
+  EnterpriseTreeSummarySchema,
+  EnterpriseTreesListParamsSchema,
+  EnterpriseTreesListResultSchema,
+  EnterpriseRunSummarySchema,
+  EnterpriseRunsListParamsSchema,
+  EnterpriseRunsListResultSchema,
+  EnterprisePlanNodeSchema,
+  EnterpriseRunEventSchema,
+  EnterpriseRunDetailSchema,
+  EnterpriseRunsGetParamsSchema,
+  EnterpriseRunsGetResultSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -1392,6 +1434,17 @@ export type {
   TasksGetResult,
   TasksCancelParams,
   TasksCancelResult,
+  EnterpriseTreeSummary,
+  EnterpriseTreesListParams,
+  EnterpriseTreesListResult,
+  EnterpriseRunSummary,
+  EnterpriseRunsListParams,
+  EnterpriseRunsListResult,
+  EnterprisePlanNode,
+  EnterpriseRunEvent,
+  EnterpriseRunDetail,
+  EnterpriseRunsGetParams,
+  EnterpriseRunsGetResult,
   CronJob,
   CronListParams,
   CronStatusParams,

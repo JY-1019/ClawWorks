@@ -164,6 +164,19 @@ import {
   DeviceTokenRotateParamsSchema,
 } from "./devices.js";
 import {
+  EnterprisePlanNodeSchema,
+  EnterpriseRunDetailSchema,
+  EnterpriseRunEventSchema,
+  EnterpriseRunsGetParamsSchema,
+  EnterpriseRunsGetResultSchema,
+  EnterpriseRunsListParamsSchema,
+  EnterpriseRunsListResultSchema,
+  EnterpriseRunSummarySchema,
+  EnterpriseTreesListParamsSchema,
+  EnterpriseTreesListResultSchema,
+  EnterpriseTreeSummarySchema,
+} from "./enterprise.js";
+import {
   EnvironmentSummarySchema,
   EnvironmentsListParamsSchema,
   EnvironmentsListResultSchema,
@@ -554,6 +567,20 @@ export const ProtocolSchemas = {
   CronRunParams: CronRunParamsSchema,
   CronRunsParams: CronRunsParamsSchema,
   CronRunLogEntry: CronRunLogEntrySchema,
+
+  // ClawWorks enterprise workflow-tree registry + run trace inspection (read-only).
+  EnterpriseTreeSummary: EnterpriseTreeSummarySchema,
+  EnterpriseTreesListParams: EnterpriseTreesListParamsSchema,
+  EnterpriseTreesListResult: EnterpriseTreesListResultSchema,
+  EnterpriseRunSummary: EnterpriseRunSummarySchema,
+  EnterpriseRunsListParams: EnterpriseRunsListParamsSchema,
+  EnterpriseRunsListResult: EnterpriseRunsListResultSchema,
+  EnterprisePlanNode: EnterprisePlanNodeSchema,
+  EnterpriseRunEvent: EnterpriseRunEventSchema,
+  EnterpriseRunDetail: EnterpriseRunDetailSchema,
+  EnterpriseRunsGetParams: EnterpriseRunsGetParamsSchema,
+  EnterpriseRunsGetResult: EnterpriseRunsGetResultSchema,
+
   LogsTailParams: LogsTailParamsSchema,
   LogsTailResult: LogsTailResultSchema,
   ExecApprovalsGetParams: ExecApprovalsGetParamsSchema,

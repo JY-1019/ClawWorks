@@ -11,9 +11,18 @@ import {
   listEnterpriseWorkflowTrees,
   type EnterpriseTreeStoreOptions,
 } from "./tree-store.sqlite.js";
-import type { WorkflowTreeDefinition } from "./types.js";
+import type { WorkflowNodeDefinition, WorkflowTreeDefinition } from "./types.js";
 
 const log = createSubsystemLogger("enterprise");
+
+/** Count a tree definition's nodes (root + all descendants) for summaries. */
+export function countWorkflowTreeNodes(node: WorkflowNodeDefinition): number {
+  let count = 1;
+  for (const child of node.children ?? []) {
+    count += countWorkflowTreeNodes(child);
+  }
+  return count;
+}
 
 export type WorkflowTreeRegistryEntry = {
   tree: WorkflowTreeDefinition;

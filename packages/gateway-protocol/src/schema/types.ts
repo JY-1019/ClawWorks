@@ -264,6 +264,19 @@ export type CronRunParams = SchemaType<"CronRunParams">;
 export type CronRunsParams = SchemaType<"CronRunsParams">;
 export type CronRunLogEntry = SchemaType<"CronRunLogEntry">;
 
+/** ClawWorks enterprise workflow-tree registry + run trace inspection payloads. */
+export type EnterpriseTreeSummary = SchemaType<"EnterpriseTreeSummary">;
+export type EnterpriseTreesListParams = SchemaType<"EnterpriseTreesListParams">;
+export type EnterpriseTreesListResult = SchemaType<"EnterpriseTreesListResult">;
+export type EnterpriseRunSummary = SchemaType<"EnterpriseRunSummary">;
+export type EnterpriseRunsListParams = SchemaType<"EnterpriseRunsListParams">;
+export type EnterpriseRunsListResult = SchemaType<"EnterpriseRunsListResult">;
+export type EnterprisePlanNode = SchemaType<"EnterprisePlanNode">;
+export type EnterpriseRunEvent = SchemaType<"EnterpriseRunEvent">;
+export type EnterpriseRunDetail = SchemaType<"EnterpriseRunDetail">;
+export type EnterpriseRunsGetParams = SchemaType<"EnterpriseRunsGetParams">;
+export type EnterpriseRunsGetResult = SchemaType<"EnterpriseRunsGetResult">;
+
 /** Logs and approval payloads for chat, exec commands, plugins, and devices. */
 export type LogsTailParams = SchemaType<"LogsTailParams">;
 export type LogsTailResult = SchemaType<"LogsTailResult">;

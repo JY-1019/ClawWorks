@@ -19,7 +19,10 @@ import {
   parseWorkflowTreeContent,
 } from "../enterprise/tree-io.js";
 import { removeImportedWorkflowTree } from "../enterprise/tree-io.js";
-import { getWorkflowTreeRegistrySnapshot } from "../enterprise/tree-registry.js";
+import {
+  countWorkflowTreeNodes,
+  getWorkflowTreeRegistrySnapshot,
+} from "../enterprise/tree-registry.js";
 import type { WorkflowTreeSourceFormat } from "../enterprise/tree-store.sqlite.js";
 import type { RuntimeEnv } from "../runtime.js";
 
@@ -69,7 +72,7 @@ export function enterpriseTreesListCommand(runtime: RuntimeEnv, opts: { json?: b
             version: entry.tree.version,
             name: entry.tree.name,
             source: entry.source,
-            nodeCount: countTreeNodes(entry.tree.root),
+            nodeCount: countWorkflowTreeNodes(entry.tree.root),
           })),
           importErrors: snapshot.importErrors,
           ...(snapshot.storeError !== undefined ? { storeError: snapshot.storeError } : {}),
@@ -112,7 +115,7 @@ export function enterpriseTreesValidateCommand(filePath: string, runtime: Runtim
     return;
   }
   runtime.log(
-    `${theme.success("Valid")}: ${result.tree.id}@${result.tree.version} — ${result.tree.name} (${countTreeNodes(result.tree.root)} node(s))`,
+    `${theme.success("Valid")}: ${result.tree.id}@${result.tree.version} — ${result.tree.name} (${countWorkflowTreeNodes(result.tree.root)} node(s))`,
   );
 }
 
@@ -269,12 +272,4 @@ function formatRunStatus(status: string): string {
     default:
       return theme.warn(status);
   }
-}
-
-function countTreeNodes(node: { children?: unknown[] }): number {
-  let count = 1;
-  for (const child of node.children ?? []) {
-    count += countTreeNodes(child as { children?: unknown[] });
-  }
-  return count;
 }
