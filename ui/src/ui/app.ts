@@ -147,6 +147,10 @@ import type {
   CronJob,
   CronRunLogEntry,
   CronStatus,
+  EnterpriseRunDetail,
+  EnterpriseRunSummary,
+  EnterpriseTreesListResult,
+  EnterpriseTreeSummary,
   HealthSummary,
   LogEntry,
   LogLevel,
@@ -461,6 +465,15 @@ export class OpenClawApp extends LitElement {
   @state() presenceEntries: PresenceEntry[] = [];
   @state() presenceError: string | null = null;
   @state() presenceStatus: string | null = null;
+  @state() enterpriseLoading = false;
+  @state() enterpriseRuns: EnterpriseRunSummary[] = [];
+  @state() enterpriseTrees: EnterpriseTreeSummary[] = [];
+  @state() enterpriseImportErrors: EnterpriseTreesListResult["importErrors"] = [];
+  @state() enterpriseStoreError: string | null = null;
+  @state() enterpriseSelectedExecutionId: string | null = null;
+  @state() enterpriseDetail: EnterpriseRunDetail | null = null;
+  @state() enterpriseDetailLoading = false;
+  @state() enterpriseError: string | null = null;
 
   @state() agentsLoading = false;
   @state() agentsList: AgentsListResult | null = null;

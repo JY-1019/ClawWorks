@@ -113,6 +113,7 @@ import {
   resolveConfiguredDreaming,
   updateDreamingEnabled,
 } from "./controllers/dreaming.ts";
+import { loadEnterpriseRunDetail, refreshEnterprise } from "./controllers/enterprise.ts";
 import {
   loadExecApprovals,
   removeExecApprovalsFormValue,
@@ -675,6 +676,7 @@ const lazyActivity = createLazyView(() => import("./views/activity.ts"), notifyL
 const lazyChannels = createLazyView(() => import("./views/channels.ts"), notifyLazyViewChanged);
 const lazyCron = createLazyView(() => import("./views/cron.ts"), notifyLazyViewChanged);
 const lazyDebug = createLazyView(() => import("./views/debug.ts"), notifyLazyViewChanged);
+const lazyEnterprise = createLazyView(() => import("./views/enterprise.ts"), notifyLazyViewChanged);
 const lazyInstances = createLazyView(() => import("./views/instances.ts"), notifyLazyViewChanged);
 const lazyLogs = createLazyView(() => import("./views/logs.ts"), notifyLazyViewChanged);
 const lazyNodes = createLazyView(() => import("./views/nodes.ts"), notifyLazyViewChanged);
@@ -2836,6 +2838,23 @@ export function renderApp(state: AppViewState) {
                 lastError: state.presenceError,
                 statusMessage: state.presenceStatus,
                 onRefresh: () => void loadPresence(state),
+              }),
+            )
+          : nothing}
+        ${state.tab === "enterprise"
+          ? renderLazyView(lazyEnterprise, (m) =>
+              m.renderEnterprise({
+                loading: state.enterpriseLoading,
+                runs: state.enterpriseRuns,
+                trees: state.enterpriseTrees,
+                importErrors: state.enterpriseImportErrors,
+                storeError: state.enterpriseStoreError,
+                selectedExecutionId: state.enterpriseSelectedExecutionId,
+                detail: state.enterpriseDetail,
+                detailLoading: state.enterpriseDetailLoading,
+                error: state.enterpriseError,
+                onRefresh: () => void refreshEnterprise(state),
+                onSelectRun: (executionId) => void loadEnterpriseRunDetail(state, executionId),
               }),
             )
           : nothing}

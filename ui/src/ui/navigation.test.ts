@@ -51,6 +51,7 @@ describe("iconForTab", () => {
       aiAgents: "brain",
       debug: "bug",
       logs: "scrollText",
+      enterprise: "book",
     });
   });
 
@@ -87,6 +88,7 @@ describe("titleForTab", () => {
       aiAgents: "AI & Agents",
       debug: "Debug",
       logs: "Logs",
+      enterprise: "Enterprise",
     });
   });
 });
@@ -117,6 +119,7 @@ describe("subtitleForTab", () => {
       aiAgents: "Agents, models, skills, tools, memory, session.",
       debug: "Snapshots, events, RPC.",
       logs: "Live gateway logs.",
+      enterprise: "Workflow trees and governed runs.",
     });
   });
 });

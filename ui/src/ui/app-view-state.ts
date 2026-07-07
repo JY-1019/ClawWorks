@@ -40,6 +40,10 @@ import type {
   LogEntry,
   LogLevel,
   ChatModelOverride,
+  EnterpriseRunDetail,
+  EnterpriseRunSummary,
+  EnterpriseTreesListResult,
+  EnterpriseTreeSummary,
   ModelAuthStatusResult,
   ModelCatalogEntry,
   NostrProfile,
@@ -278,6 +282,15 @@ export type AppViewState = {
   presenceEntries: PresenceEntry[];
   presenceError: string | null;
   presenceStatus: string | null;
+  enterpriseLoading: boolean;
+  enterpriseRuns: EnterpriseRunSummary[];
+  enterpriseTrees: EnterpriseTreeSummary[];
+  enterpriseImportErrors: EnterpriseTreesListResult["importErrors"];
+  enterpriseStoreError: string | null;
+  enterpriseSelectedExecutionId: string | null;
+  enterpriseDetail: EnterpriseRunDetail | null;
+  enterpriseDetailLoading: boolean;
+  enterpriseError: string | null;
   agentsLoading: boolean;
   agentsList: AgentsListResult | null;
   agentsError: string | null;

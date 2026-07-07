@@ -578,6 +578,13 @@ export type {
   SessionUsageTimeSeries,
 } from "./usage-types.ts";
 
+export type {
+  EnterpriseRunDetail,
+  EnterpriseRunSummary,
+  EnterpriseTreesListResult,
+  EnterpriseTreeSummary,
+} from "../../../packages/gateway-protocol/src/index.js";
+
 export type CronRunStatus = "ok" | "error" | "skipped";
 export type CronDeliveryStatus = "delivered" | "not-delivered" | "unknown" | "not-requested";
 export type CronJobsEnabledFilter = "all" | "enabled" | "disabled";

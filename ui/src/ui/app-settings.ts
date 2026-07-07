@@ -44,6 +44,7 @@ import {
   loadWikiMemoryPalace,
   type DreamingState,
 } from "./controllers/dreaming.ts";
+import { refreshEnterprise, type EnterpriseState } from "./controllers/enterprise.ts";
 import { loadExecApprovals, type ExecApprovalsState } from "./controllers/exec-approvals.ts";
 import { loadLogs, type LogsState } from "./controllers/logs.ts";
 import {
@@ -155,6 +156,7 @@ type SettingsAppHost = SettingsHost &
   DebugState &
   DevicesState &
   DreamingState &
+  EnterpriseState &
   ExecApprovalsState &
   LogsState &
   NodesState &
@@ -463,6 +465,9 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
         break;
       case "instances":
         await loadPresence(app);
+        break;
+      case "enterprise":
+        await refreshEnterprise(app);
         break;
       case "usage":
         await loadUsage(app);
