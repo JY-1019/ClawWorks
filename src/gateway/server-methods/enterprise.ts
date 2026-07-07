@@ -10,15 +10,26 @@ import {
   type EnterpriseTreeDetail,
   type EnterpriseTreeNode,
   type EnterpriseTreeOntology,
+  type EnterpriseTreesExportResult,
   type EnterpriseTreesGetResult,
+  type EnterpriseTreesHistoryGetResult,
+  type EnterpriseTreesHistoryListResult,
+  type EnterpriseTreesImportResult,
+  type EnterpriseTreesRemoveResult,
   type EnterpriseTreeSummary,
+  type EnterpriseTreeVersionSummary,
   ErrorCodes,
   errorShape,
   formatValidationErrors,
   validateEnterpriseRunsGetParams,
   validateEnterpriseRunsListParams,
+  validateEnterpriseTreesExportParams,
   validateEnterpriseTreesGetParams,
+  validateEnterpriseTreesHistoryGetParams,
+  validateEnterpriseTreesHistoryListParams,
+  validateEnterpriseTreesImportParams,
   validateEnterpriseTreesListParams,
+  validateEnterpriseTreesRemoveParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import {
   type EnterpriseRunEventRecord,
@@ -29,10 +40,20 @@ import {
   listEnterpriseRunRecords,
 } from "../../enterprise/trace-store.sqlite.js";
 import {
+  exportWorkflowTree,
+  importWorkflowTreeContent,
+  removeImportedWorkflowTree,
+  serializeWorkflowTree,
+} from "../../enterprise/tree-io.js";
+import {
   countWorkflowTreeNodes,
   getWorkflowTreeRegistrySnapshot,
   type WorkflowTreeRegistryEntry,
 } from "../../enterprise/tree-registry.js";
+import {
+  getEnterpriseWorkflowTreeVersion,
+  listEnterpriseWorkflowTreeVersions,
+} from "../../enterprise/tree-store.sqlite.js";
 import type {
   OntologyBinding,
   WorkflowNodeDefinition,
@@ -280,6 +301,112 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
     if (importError) {
       result.importError = importError.message;
     }
+    respond(true, result);
+  },
+  "enterprise.trees.import": ({ params, respond }) => {
+    if (!validateEnterpriseTreesImportParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.trees.import params: ${formatValidationErrors(validateEnterpriseTreesImportParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    // Persist + snapshot a revision + refresh the registry. Schema-invalid
+    // content is user data, not a protocol error: report it as ok:false issues
+    // the editor renders inline rather than a request failure.
+    const outcome = importWorkflowTreeContent({ content: params.content, format: params.format });
+    const result: EnterpriseTreesImportResult = outcome.ok
+      ? { ok: true, treeId: outcome.tree.id, replaced: outcome.replaced }
+      : { ok: false, issues: outcome.issues.map((issue) => ({ ...issue })) };
+    respond(true, result);
+  },
+  "enterprise.trees.export": ({ params, respond }) => {
+    if (!validateEnterpriseTreesExportParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.trees.export params: ${formatValidationErrors(validateEnterpriseTreesExportParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const outcome = exportWorkflowTree({ treeId: params.treeId, format: params.format });
+    const result: EnterpriseTreesExportResult = outcome.ok
+      ? { content: outcome.content, source: outcome.source }
+      : { content: null, reason: outcome.reason };
+    respond(true, result);
+  },
+  "enterprise.trees.remove": ({ params, respond }) => {
+    if (!validateEnterpriseTreesRemoveParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.trees.remove params: ${formatValidationErrors(validateEnterpriseTreesRemoveParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    // Only imported rows are removable; a shadowed built-in reappears. The
+    // append-only version history is retained as an audit trail.
+    const result: EnterpriseTreesRemoveResult = {
+      removed: removeImportedWorkflowTree(params.treeId),
+    };
+    respond(true, result);
+  },
+  "enterprise.trees.history.list": ({ params, respond }) => {
+    if (!validateEnterpriseTreesHistoryListParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.trees.history.list params: ${formatValidationErrors(validateEnterpriseTreesHistoryListParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    // Bound the read: history is append-only and grows per save. Default to a
+    // page of the newest revisions when the client does not specify a limit.
+    const limit = params.limit ?? 100;
+    const result: EnterpriseTreesHistoryListResult = {
+      versions: listEnterpriseWorkflowTreeVersions(params.treeId, {}, limit).map(
+        (record): EnterpriseTreeVersionSummary => ({
+          revision: record.revision,
+          version: record.version,
+          name: record.name,
+          sourceFormat: record.sourceFormat,
+          savedAt: record.savedAt,
+        }),
+      ),
+    };
+    respond(true, result);
+  },
+  "enterprise.trees.history.get": ({ params, respond }) => {
+    if (!validateEnterpriseTreesHistoryGetParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.trees.history.get params: ${formatValidationErrors(validateEnterpriseTreesHistoryGetParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    // Serialize the stored revision into the requested exchange format so the
+    // editor can load it directly. Null content signals an unknown revision.
+    const detail = getEnterpriseWorkflowTreeVersion(params.treeId, params.revision);
+    const result: EnterpriseTreesHistoryGetResult = detail
+      ? { content: serializeWorkflowTree(detail.tree, params.format), savedAt: detail.savedAt }
+      : { content: null };
     respond(true, result);
   },
   "enterprise.runs.list": ({ params, respond }) => {

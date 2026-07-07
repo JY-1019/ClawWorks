@@ -1266,3 +1266,17 @@ CREATE TABLE IF NOT EXISTS enterprise_workflow_trees (
   imported_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Append-only history of imported tree definitions: every upsert records one
+-- revision so the editor can list and restore prior versions. The (tree_id,
+-- revision) primary key also serves the newest-first history listing.
+CREATE TABLE IF NOT EXISTS enterprise_workflow_tree_versions (
+  tree_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  version TEXT NOT NULL,
+  name TEXT NOT NULL,
+  definition_json TEXT NOT NULL,
+  source_format TEXT NOT NULL,
+  saved_at INTEGER NOT NULL,
+  PRIMARY KEY (tree_id, revision)
+);

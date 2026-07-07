@@ -5,7 +5,11 @@
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { validateWorkflowTreeDefinition, type WorkflowTreeValidationIssue } from "./schema.js";
-import { getWorkflowTreeRegistryEntry, invalidateWorkflowTreeRegistry } from "./tree-registry.js";
+import {
+  getWorkflowTreeRegistryEntry,
+  getWorkflowTreeRegistrySnapshot,
+  invalidateWorkflowTreeRegistry,
+} from "./tree-registry.js";
 import {
   deleteEnterpriseWorkflowTree,
   upsertEnterpriseWorkflowTree,
@@ -82,7 +86,18 @@ export function exportWorkflowTree(
   params: { treeId: string; format: WorkflowTreeSourceFormat },
   options: EnterpriseTreeStoreOptions = {},
 ): WorkflowTreeExportResult {
-  const entry = getWorkflowTreeRegistryEntry(params.treeId, options);
+  // Use the full snapshot, not the resolved entry, so a corrupt imported
+  // override or an unreadable store fails closed here instead of exporting a
+  // stale built-in the caller would then edit or restore as the wrong tree.
+  const snapshot = getWorkflowTreeRegistrySnapshot(options);
+  if (snapshot.storeError !== undefined) {
+    return { ok: false, reason: snapshot.storeError };
+  }
+  const importError = snapshot.importErrors.find((issue) => issue.treeId === params.treeId);
+  if (importError) {
+    return { ok: false, reason: importError.message };
+  }
+  const entry = snapshot.entries.find((candidate) => candidate.tree.id === params.treeId);
   if (!entry) {
     return { ok: false, reason: `no workflow tree registered with id "${params.treeId}"` };
   }

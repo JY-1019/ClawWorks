@@ -172,6 +172,112 @@ export const EnterpriseTreesGetResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** Exchange serialization format for tree import/export. */
+export const EnterpriseTreeFormatSchema = Type.Union([Type.Literal("yaml"), Type.Literal("json")]);
+
+/** One validation issue for a rejected tree import (path + message). */
+export const EnterpriseTreeImportIssueSchema = Type.Object(
+  { path: Type.String(), message: Type.String() },
+  { additionalProperties: false },
+);
+
+/** Import (create/overwrite) one tree from raw YAML/JSON content. */
+export const EnterpriseTreesImportParamsSchema = Type.Object(
+  { content: Type.String(), format: EnterpriseTreeFormatSchema },
+  { additionalProperties: false },
+);
+
+/**
+ * Import outcome. `ok: true` carries the stored id and what it replaced (an
+ * existing import, a shadowed built-in, or nothing). `ok: false` carries the
+ * schema validation issues so the editor can surface them inline; the request
+ * itself still succeeds (bad content is user data, not a protocol error).
+ */
+export const EnterpriseTreesImportResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    treeId: Type.Optional(NonEmptyString),
+    replaced: Type.Optional(
+      Type.Union([Type.Literal("builtin"), Type.Literal("imported"), Type.Null()]),
+    ),
+    issues: Type.Optional(Type.Array(EnterpriseTreeImportIssueSchema)),
+  },
+  { additionalProperties: false },
+);
+
+/** Export one registered tree as YAML/JSON. */
+export const EnterpriseTreesExportParamsSchema = Type.Object(
+  { treeId: NonEmptyString, format: EnterpriseTreeFormatSchema },
+  { additionalProperties: false },
+);
+
+/** Export result; `content` is null (with a `reason`) when the id is unknown. */
+export const EnterpriseTreesExportResultSchema = Type.Object(
+  {
+    content: Type.Union([Type.String(), Type.Null()]),
+    source: Type.Optional(EnterpriseTreeSourceSchema),
+    reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** Remove one imported tree (a shadowed built-in reappears). */
+export const EnterpriseTreesRemoveParamsSchema = Type.Object(
+  { treeId: NonEmptyString },
+  { additionalProperties: false },
+);
+
+/** Remove result; `removed` is false when no imported row existed. */
+export const EnterpriseTreesRemoveResultSchema = Type.Object(
+  { removed: Type.Boolean() },
+  { additionalProperties: false },
+);
+
+/** One recorded revision of a tree, summarized for the history list. */
+export const EnterpriseTreeVersionSummarySchema = Type.Object(
+  {
+    revision: Type.Integer({ minimum: 1 }),
+    version: Type.String(),
+    name: Type.String(),
+    sourceFormat: EnterpriseTreeFormatSchema,
+    savedAt: TimestampSchema,
+  },
+  { additionalProperties: false },
+);
+
+/** List the saved revisions of one tree (newest first), bounded by limit. */
+export const EnterpriseTreesHistoryListParamsSchema = Type.Object(
+  {
+    treeId: NonEmptyString,
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  },
+  { additionalProperties: false },
+);
+
+export const EnterpriseTreesHistoryListResultSchema = Type.Object(
+  { versions: Type.Array(EnterpriseTreeVersionSummarySchema) },
+  { additionalProperties: false },
+);
+
+/** Load one saved revision's definition, serialized in the requested format. */
+export const EnterpriseTreesHistoryGetParamsSchema = Type.Object(
+  {
+    treeId: NonEmptyString,
+    revision: Type.Integer({ minimum: 1 }),
+    format: EnterpriseTreeFormatSchema,
+  },
+  { additionalProperties: false },
+);
+
+/** History get result; `content` is null when the revision is unknown. */
+export const EnterpriseTreesHistoryGetResultSchema = Type.Object(
+  {
+    content: Type.Union([Type.String(), Type.Null()]),
+    savedAt: Type.Optional(TimestampSchema),
+  },
+  { additionalProperties: false },
+);
+
 /** One run execution, summarized for the run list. */
 export const EnterpriseRunSummarySchema = Type.Object(
   {

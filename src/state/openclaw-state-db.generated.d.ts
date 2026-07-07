@@ -480,6 +480,16 @@ export interface EnterpriseRuns {
   updated_at: number;
 }
 
+export interface EnterpriseWorkflowTreeVersions {
+  definition_json: string;
+  name: string;
+  revision: number;
+  saved_at: number;
+  source_format: string;
+  tree_id: string;
+  version: string;
+}
+
 export interface EnterpriseWorkflowTrees {
   definition_json: string;
   imported_at: number;
@@ -1021,6 +1031,7 @@ export interface DB {
   diagnostic_stability_bundles: DiagnosticStabilityBundles;
   enterprise_run_events: EnterpriseRunEvents;
   enterprise_runs: EnterpriseRuns;
+  enterprise_workflow_tree_versions: EnterpriseWorkflowTreeVersions;
   enterprise_workflow_trees: EnterpriseWorkflowTrees;
   exec_approvals_config: ExecApprovalsConfig;
   flow_runs: FlowRuns;

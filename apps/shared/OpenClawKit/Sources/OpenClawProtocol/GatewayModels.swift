@@ -6887,6 +6887,238 @@ public struct EnterpriseTreesGetResult: Codable, Sendable {
     }
 }
 
+public struct EnterpriseTreeImportIssue: Codable, Sendable {
+    public let path: String
+    public let message: String
+
+    public init(
+        path: String,
+        message: String)
+    {
+        self.path = path
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case message
+    }
+}
+
+public struct EnterpriseTreesImportParams: Codable, Sendable {
+    public let content: String
+    public let format: AnyCodable
+
+    public init(
+        content: String,
+        format: AnyCodable)
+    {
+        self.content = content
+        self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case content
+        case format
+    }
+}
+
+public struct EnterpriseTreesImportResult: Codable, Sendable {
+    public let ok: Bool
+    public let treeid: String?
+    public let replaced: AnyCodable?
+    public let issues: [EnterpriseTreeImportIssue]?
+
+    public init(
+        ok: Bool,
+        treeid: String?,
+        replaced: AnyCodable?,
+        issues: [EnterpriseTreeImportIssue]?)
+    {
+        self.ok = ok
+        self.treeid = treeid
+        self.replaced = replaced
+        self.issues = issues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case treeid = "treeId"
+        case replaced
+        case issues
+    }
+}
+
+public struct EnterpriseTreesExportParams: Codable, Sendable {
+    public let treeid: String
+    public let format: AnyCodable
+
+    public init(
+        treeid: String,
+        format: AnyCodable)
+    {
+        self.treeid = treeid
+        self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+        case format
+    }
+}
+
+public struct EnterpriseTreesExportResult: Codable, Sendable {
+    public let content: AnyCodable
+    public let source: AnyCodable?
+    public let reason: String?
+
+    public init(
+        content: AnyCodable,
+        source: AnyCodable?,
+        reason: String?)
+    {
+        self.content = content
+        self.source = source
+        self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case content
+        case source
+        case reason
+    }
+}
+
+public struct EnterpriseTreesRemoveParams: Codable, Sendable {
+    public let treeid: String
+
+    public init(
+        treeid: String)
+    {
+        self.treeid = treeid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+    }
+}
+
+public struct EnterpriseTreesRemoveResult: Codable, Sendable {
+    public let removed: Bool
+
+    public init(
+        removed: Bool)
+    {
+        self.removed = removed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case removed
+    }
+}
+
+public struct EnterpriseTreeVersionSummary: Codable, Sendable {
+    public let revision: Int
+    public let version: String
+    public let name: String
+    public let sourceformat: AnyCodable
+    public let savedat: Int
+
+    public init(
+        revision: Int,
+        version: String,
+        name: String,
+        sourceformat: AnyCodable,
+        savedat: Int)
+    {
+        self.revision = revision
+        self.version = version
+        self.name = name
+        self.sourceformat = sourceformat
+        self.savedat = savedat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case revision
+        case version
+        case name
+        case sourceformat = "sourceFormat"
+        case savedat = "savedAt"
+    }
+}
+
+public struct EnterpriseTreesHistoryListParams: Codable, Sendable {
+    public let treeid: String
+    public let limit: Int?
+
+    public init(
+        treeid: String,
+        limit: Int?)
+    {
+        self.treeid = treeid
+        self.limit = limit
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+        case limit
+    }
+}
+
+public struct EnterpriseTreesHistoryListResult: Codable, Sendable {
+    public let versions: [EnterpriseTreeVersionSummary]
+
+    public init(
+        versions: [EnterpriseTreeVersionSummary])
+    {
+        self.versions = versions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case versions
+    }
+}
+
+public struct EnterpriseTreesHistoryGetParams: Codable, Sendable {
+    public let treeid: String
+    public let revision: Int
+    public let format: AnyCodable
+
+    public init(
+        treeid: String,
+        revision: Int,
+        format: AnyCodable)
+    {
+        self.treeid = treeid
+        self.revision = revision
+        self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+        case revision
+        case format
+    }
+}
+
+public struct EnterpriseTreesHistoryGetResult: Codable, Sendable {
+    public let content: AnyCodable
+    public let savedat: Int?
+
+    public init(
+        content: AnyCodable,
+        savedat: Int?)
+    {
+        self.content = content
+        self.savedat = savedat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case content
+        case savedat = "savedAt"
+    }
+}
+
 public struct LogsTailParams: Codable, Sendable {
     public let cursor: Int?
     public let limit: Int?

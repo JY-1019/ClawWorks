@@ -220,12 +220,17 @@ event log of run lifecycle plus governance decisions.
 
 - **CLI**: `openclaw enterprise runs list` and `openclaw enterprise runs show
 <runId>` (see [`openclaw enterprise`](/cli/enterprise)).
-- **Gateway**: operator clients call the read-only methods
-  `enterprise.trees.list`, `enterprise.runs.list`, and `enterprise.runs.get`
-  (keyed by execution id, since one run id can span retries).
+- **Gateway**: operator clients read via `enterprise.trees.list`,
+  `enterprise.trees.get`, `enterprise.trees.export`, `enterprise.runs.list`,
+  and `enterprise.runs.get` (keyed by execution id, since one run id can span
+  retries) — all `operator.read`. Editing the tree registry is admin-scoped:
+  `enterprise.trees.import` and `enterprise.trees.remove` require
+  `operator.admin`, and every import records a revision browsable through
+  `enterprise.trees.history.list` / `enterprise.trees.history.get`.
 - **Control UI**: the **Enterprise** tab lists recent runs and shows a
   per-execution inspector with the plan steps, their ontology scope, and the
-  governance trace, alongside the workflow-tree registry.
+  governance trace. Selecting a workflow tree renders its node hierarchy and an
+  ontology graph of the entities and relationships it declares.
 
 ## Related
 

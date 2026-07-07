@@ -226,6 +226,30 @@ import {
   EnterpriseTreesGetParamsSchema,
   type EnterpriseTreesGetResult,
   EnterpriseTreesGetResultSchema,
+  type EnterpriseTreeImportIssue,
+  EnterpriseTreeImportIssueSchema,
+  type EnterpriseTreesImportParams,
+  EnterpriseTreesImportParamsSchema,
+  type EnterpriseTreesImportResult,
+  EnterpriseTreesImportResultSchema,
+  type EnterpriseTreesExportParams,
+  EnterpriseTreesExportParamsSchema,
+  type EnterpriseTreesExportResult,
+  EnterpriseTreesExportResultSchema,
+  type EnterpriseTreesRemoveParams,
+  EnterpriseTreesRemoveParamsSchema,
+  type EnterpriseTreesRemoveResult,
+  EnterpriseTreesRemoveResultSchema,
+  type EnterpriseTreeVersionSummary,
+  EnterpriseTreeVersionSummarySchema,
+  type EnterpriseTreesHistoryListParams,
+  EnterpriseTreesHistoryListParamsSchema,
+  type EnterpriseTreesHistoryListResult,
+  EnterpriseTreesHistoryListResultSchema,
+  type EnterpriseTreesHistoryGetParams,
+  EnterpriseTreesHistoryGetParamsSchema,
+  type EnterpriseTreesHistoryGetResult,
+  EnterpriseTreesHistoryGetResultSchema,
   type ExecApprovalsGetParams,
   ExecApprovalsGetParamsSchema,
   type ExecApprovalsNodeGetParams,
@@ -749,6 +773,20 @@ export const validateEnterpriseRunsGetParams = lazyCompile<EnterpriseRunsGetPara
 export const validateEnterpriseTreesGetParams = lazyCompile<EnterpriseTreesGetParams>(
   EnterpriseTreesGetParamsSchema,
 );
+export const validateEnterpriseTreesImportParams = lazyCompile<EnterpriseTreesImportParams>(
+  EnterpriseTreesImportParamsSchema,
+);
+export const validateEnterpriseTreesExportParams = lazyCompile<EnterpriseTreesExportParams>(
+  EnterpriseTreesExportParamsSchema,
+);
+export const validateEnterpriseTreesRemoveParams = lazyCompile<EnterpriseTreesRemoveParams>(
+  EnterpriseTreesRemoveParamsSchema,
+);
+export const validateEnterpriseTreesHistoryListParams =
+  lazyCompile<EnterpriseTreesHistoryListParams>(EnterpriseTreesHistoryListParamsSchema);
+export const validateEnterpriseTreesHistoryGetParams = lazyCompile<EnterpriseTreesHistoryGetParams>(
+  EnterpriseTreesHistoryGetParamsSchema,
+);
 export const validateConfigGetParams = lazyCompile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = lazyCompile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = lazyCompile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -1135,6 +1173,18 @@ export {
   EnterpriseTreeDetailSchema,
   EnterpriseTreesGetParamsSchema,
   EnterpriseTreesGetResultSchema,
+  EnterpriseTreeImportIssueSchema,
+  EnterpriseTreesImportParamsSchema,
+  EnterpriseTreesImportResultSchema,
+  EnterpriseTreesExportParamsSchema,
+  EnterpriseTreesExportResultSchema,
+  EnterpriseTreesRemoveParamsSchema,
+  EnterpriseTreesRemoveResultSchema,
+  EnterpriseTreeVersionSummarySchema,
+  EnterpriseTreesHistoryListParamsSchema,
+  EnterpriseTreesHistoryListResultSchema,
+  EnterpriseTreesHistoryGetParamsSchema,
+  EnterpriseTreesHistoryGetResultSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -1468,6 +1518,18 @@ export type {
   EnterpriseTreeDetail,
   EnterpriseTreesGetParams,
   EnterpriseTreesGetResult,
+  EnterpriseTreeImportIssue,
+  EnterpriseTreesImportParams,
+  EnterpriseTreesImportResult,
+  EnterpriseTreesExportParams,
+  EnterpriseTreesExportResult,
+  EnterpriseTreesRemoveParams,
+  EnterpriseTreesRemoveResult,
+  EnterpriseTreeVersionSummary,
+  EnterpriseTreesHistoryListParams,
+  EnterpriseTreesHistoryListResult,
+  EnterpriseTreesHistoryGetParams,
+  EnterpriseTreesHistoryGetResult,
   CronJob,
   CronListParams,
   CronStatusParams,

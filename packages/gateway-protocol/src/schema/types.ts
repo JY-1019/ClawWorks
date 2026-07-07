@@ -281,6 +281,18 @@ export type EnterpriseTreeNode = SchemaType<"EnterpriseTreeNode">;
 export type EnterpriseTreeDetail = SchemaType<"EnterpriseTreeDetail">;
 export type EnterpriseTreesGetParams = SchemaType<"EnterpriseTreesGetParams">;
 export type EnterpriseTreesGetResult = SchemaType<"EnterpriseTreesGetResult">;
+export type EnterpriseTreeImportIssue = SchemaType<"EnterpriseTreeImportIssue">;
+export type EnterpriseTreesImportParams = SchemaType<"EnterpriseTreesImportParams">;
+export type EnterpriseTreesImportResult = SchemaType<"EnterpriseTreesImportResult">;
+export type EnterpriseTreesExportParams = SchemaType<"EnterpriseTreesExportParams">;
+export type EnterpriseTreesExportResult = SchemaType<"EnterpriseTreesExportResult">;
+export type EnterpriseTreesRemoveParams = SchemaType<"EnterpriseTreesRemoveParams">;
+export type EnterpriseTreesRemoveResult = SchemaType<"EnterpriseTreesRemoveResult">;
+export type EnterpriseTreeVersionSummary = SchemaType<"EnterpriseTreeVersionSummary">;
+export type EnterpriseTreesHistoryListParams = SchemaType<"EnterpriseTreesHistoryListParams">;
+export type EnterpriseTreesHistoryListResult = SchemaType<"EnterpriseTreesHistoryListResult">;
+export type EnterpriseTreesHistoryGetParams = SchemaType<"EnterpriseTreesHistoryGetParams">;
+export type EnterpriseTreesHistoryGetResult = SchemaType<"EnterpriseTreesHistoryGetResult">;
 
 /** Logs and approval payloads for chat, exec commands, plugins, and devices. */
 export type LogsTailParams = SchemaType<"LogsTailParams">;
