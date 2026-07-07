@@ -272,6 +272,35 @@ function createLegacyAgentDatabaseRegistry(stateDir: string): string {
   return stateDatabasePath;
 }
 
+function createLegacyEnterpriseTraceRegistry(stateDir: string): string {
+  const stateDatabasePath = path.join(stateDir, "state", "openclaw.sqlite");
+  fs.mkdirSync(path.dirname(stateDatabasePath), { recursive: true });
+  const { DatabaseSync } = requireNodeSqlite();
+  const db = new DatabaseSync(stateDatabasePath);
+  try {
+    // Early-build shape: run_id primary key, no execution_id column.
+    db.exec(`
+      CREATE TABLE enterprise_runs (
+        run_id TEXT NOT NULL PRIMARY KEY,
+        tree_id TEXT NOT NULL,
+        plan_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE enterprise_run_events (
+        run_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (run_id, seq)
+      );
+    `);
+  } finally {
+    db.close();
+  }
+  return stateDatabasePath;
+}
+
 function writeLegacySessionsFixture(params: {
   root: string;
   sessions: Record<string, Record<string, unknown> & { sessionId: string; updatedAt: number }>;
@@ -1003,6 +1032,27 @@ describe("doctor legacy state migrations", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("migrates the legacy enterprise run-trace schema", async () => {
+    const root = await makeTempRoot();
+    const stateDir = path.join(root, ".openclaw");
+    createLegacyEnterpriseTraceRegistry(stateDir);
+    const detected = await detectLegacyStateMigrations({
+      cfg: {},
+      env: {} as NodeJS.ProcessEnv,
+      homedir: () => root,
+    });
+
+    expect(detected.preview).toContain(
+      "- Shared SQLite schema: rebuild legacy enterprise run-trace tables → execution_id key",
+    );
+
+    const result = await runLegacyStateMigrations({ detected });
+    expect(result.warnings).toStrictEqual([]);
+    expect(result.changes).toContain(
+      "Rebuilt legacy enterprise run-trace tables → execution_id key",
+    );
   });
 
   it("migrates legacy ACP metadata from sessions.json into shared SQLite", async () => {

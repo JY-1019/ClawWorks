@@ -51,7 +51,7 @@ export type OpenClawStateDatabaseOptions = {
 };
 
 export type OpenClawStateDatabaseSchemaMigration = {
-  kind: "agent-databases-composite-primary-key";
+  kind: "agent-databases-composite-primary-key" | "enterprise-trace-execution-id-key";
   path: string;
 };
 
@@ -245,13 +245,44 @@ function repairAgentDatabasesCompositePrimaryKey(db: DatabaseSync): boolean {
   return true;
 }
 
-function assertCanonicalStateSchemaShape(db: DatabaseSync, pathname: string): void {
-  if (hasCanonicalAgentDatabasesPrimaryKey(db)) {
-    return;
+function hasCanonicalEnterpriseTraceSchema(db: DatabaseSync): boolean {
+  // Enterprise run traces are keyed by execution_id (one runId can span retries
+  // and recurring cron executions). Early builds keyed enterprise_runs/events by
+  // run_id with no execution_id column, which makes the current schema's
+  // execution_id index (applied on every open) fail with "no such column".
+  for (const table of ["enterprise_runs", "enterprise_run_events"] as const) {
+    if (tableExists(db, table) && !tableHasColumn(db, table, "execution_id")) {
+      return false;
+    }
   }
-  throw new Error(
-    `OpenClaw state database ${pathname} has a legacy agent database registry schema; run openclaw doctor --fix to migrate it.`,
-  );
+  return true;
+}
+
+function repairEnterpriseTraceExecutionIdKey(db: DatabaseSync): boolean {
+  if (hasCanonicalEnterpriseTraceSchema(db)) {
+    return false;
+  }
+  // Run traces are transient audit records with no shipped retention contract,
+  // so the legacy-shaped tables are dropped and ensureSchema recreates them
+  // empty on the next open (drop/rebuild over row-by-row migration).
+  db.exec(`
+    DROP TABLE IF EXISTS enterprise_run_events;
+    DROP TABLE IF EXISTS enterprise_runs;
+  `);
+  return true;
+}
+
+function assertCanonicalStateSchemaShape(db: DatabaseSync, pathname: string): void {
+  if (!hasCanonicalAgentDatabasesPrimaryKey(db)) {
+    throw new Error(
+      `OpenClaw state database ${pathname} has a legacy agent database registry schema; run openclaw doctor --fix to migrate it.`,
+    );
+  }
+  if (!hasCanonicalEnterpriseTraceSchema(db)) {
+    throw new Error(
+      `OpenClaw state database ${pathname} has a legacy enterprise run-trace schema; run openclaw doctor --fix to migrate it.`,
+    );
+  }
 }
 
 export function detectOpenClawStateDatabaseSchemaMigrations(
@@ -264,9 +295,14 @@ export function detectOpenClawStateDatabaseSchemaMigrations(
   const sqlite = requireNodeSqlite();
   const db = new sqlite.DatabaseSync(pathname, { readOnly: true });
   try {
-    return hasCanonicalAgentDatabasesPrimaryKey(db)
-      ? []
-      : [{ kind: "agent-databases-composite-primary-key", path: pathname }];
+    const migrations: OpenClawStateDatabaseSchemaMigration[] = [];
+    if (!hasCanonicalAgentDatabasesPrimaryKey(db)) {
+      migrations.push({ kind: "agent-databases-composite-primary-key", path: pathname });
+    }
+    if (!hasCanonicalEnterpriseTraceSchema(db)) {
+      migrations.push({ kind: "enterprise-trace-execution-id-key", path: pathname });
+    }
+    return migrations;
   } finally {
     db.close();
   }
@@ -287,15 +323,18 @@ export function repairOpenClawStateDatabaseSchema(options: OpenClawStateDatabase
   db.exec(`PRAGMA busy_timeout = ${OPENCLAW_SQLITE_BUSY_TIMEOUT_MS};`);
   try {
     assertSupportedSchemaVersion(db, pathname);
-    const repaired = runSqliteImmediateTransactionSync(db, () =>
-      repairAgentDatabasesCompositePrimaryKey(db),
-    );
-    return repaired
-      ? {
-          changes: [`Migrated shared state agent database registry primary key → agent_id,path`],
-          warnings: [],
-        }
-      : { changes: [], warnings: [] };
+    const repaired = runSqliteImmediateTransactionSync(db, () => ({
+      agentDatabases: repairAgentDatabasesCompositePrimaryKey(db),
+      enterpriseTrace: repairEnterpriseTraceExecutionIdKey(db),
+    }));
+    const changes: string[] = [];
+    if (repaired.agentDatabases) {
+      changes.push(`Migrated shared state agent database registry primary key → agent_id,path`);
+    }
+    if (repaired.enterpriseTrace) {
+      changes.push(`Rebuilt legacy enterprise run-trace tables → execution_id key`);
+    }
+    return { changes, warnings: [] };
   } catch (err) {
     return {
       changes: [],

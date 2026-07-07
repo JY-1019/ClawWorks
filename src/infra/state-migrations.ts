@@ -4257,7 +4257,15 @@ export async function detectLegacyStateMigrations(params: {
     );
   }
   if (stateSchemaMigrations.length > 0) {
-    preview.push("- Shared SQLite schema: agent database registry primary key → agent_id,path");
+    for (const migration of stateSchemaMigrations) {
+      if (migration.kind === "agent-databases-composite-primary-key") {
+        preview.push("- Shared SQLite schema: agent database registry primary key → agent_id,path");
+      } else if (migration.kind === "enterprise-trace-execution-id-key") {
+        preview.push(
+          "- Shared SQLite schema: rebuild legacy enterprise run-trace tables → execution_id key",
+        );
+      }
+    }
     preview.push(
       "- Rerun doctor after shared SQLite schema repair to detect plugin state migrations",
     );
