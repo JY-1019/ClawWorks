@@ -6729,6 +6729,164 @@ public struct EnterpriseRunsGetResult: Codable, Sendable {
     }
 }
 
+public struct EnterpriseTreeOntology: Codable, Sendable {
+    public let entities: [[String: AnyCodable]]?
+    public let relationships: [[String: AnyCodable]]?
+    public let actions: [[String: AnyCodable]]?
+    public let constraints: [[String: AnyCodable]]?
+    public let allowedtools: [String]?
+    public let deniedtools: [String]?
+    public let knowledgefoundations: [String]?
+    public let contexthints: [String]?
+    public let expectedoutput: String?
+    public let audit: Bool?
+
+    public init(
+        entities: [[String: AnyCodable]]?,
+        relationships: [[String: AnyCodable]]?,
+        actions: [[String: AnyCodable]]?,
+        constraints: [[String: AnyCodable]]?,
+        allowedtools: [String]?,
+        deniedtools: [String]?,
+        knowledgefoundations: [String]?,
+        contexthints: [String]?,
+        expectedoutput: String?,
+        audit: Bool?)
+    {
+        self.entities = entities
+        self.relationships = relationships
+        self.actions = actions
+        self.constraints = constraints
+        self.allowedtools = allowedtools
+        self.deniedtools = deniedtools
+        self.knowledgefoundations = knowledgefoundations
+        self.contexthints = contexthints
+        self.expectedoutput = expectedoutput
+        self.audit = audit
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entities
+        case relationships
+        case actions
+        case constraints
+        case allowedtools = "allowedTools"
+        case deniedtools = "deniedTools"
+        case knowledgefoundations = "knowledgeFoundations"
+        case contexthints = "contextHints"
+        case expectedoutput = "expectedOutput"
+        case audit
+    }
+}
+
+public struct EnterpriseTreeNode: Codable, Sendable {
+    public let id: String
+    public let parentid: AnyCodable
+    public let depth: Int
+    public let title: String
+    public let description: String?
+    public let ontology: EnterpriseTreeOntology
+
+    public init(
+        id: String,
+        parentid: AnyCodable,
+        depth: Int,
+        title: String,
+        description: String?,
+        ontology: EnterpriseTreeOntology)
+    {
+        self.id = id
+        self.parentid = parentid
+        self.depth = depth
+        self.title = title
+        self.description = description
+        self.ontology = ontology
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case parentid = "parentId"
+        case depth
+        case title
+        case description
+        case ontology
+    }
+}
+
+public struct EnterpriseTreeDetail: Codable, Sendable {
+    public let id: String
+    public let version: String
+    public let name: String
+    public let description: String?
+    public let source: AnyCodable
+    public let match: [String: AnyCodable]?
+    public let nodes: [EnterpriseTreeNode]
+
+    public init(
+        id: String,
+        version: String,
+        name: String,
+        description: String?,
+        source: AnyCodable,
+        match: [String: AnyCodable]?,
+        nodes: [EnterpriseTreeNode])
+    {
+        self.id = id
+        self.version = version
+        self.name = name
+        self.description = description
+        self.source = source
+        self.match = match
+        self.nodes = nodes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case version
+        case name
+        case description
+        case source
+        case match
+        case nodes
+    }
+}
+
+public struct EnterpriseTreesGetParams: Codable, Sendable {
+    public let treeid: String
+
+    public init(
+        treeid: String)
+    {
+        self.treeid = treeid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+    }
+}
+
+public struct EnterpriseTreesGetResult: Codable, Sendable {
+    public let tree: AnyCodable
+    public let importerror: String?
+    public let storeerror: String?
+
+    public init(
+        tree: AnyCodable,
+        importerror: String?,
+        storeerror: String?)
+    {
+        self.tree = tree
+        self.importerror = importerror
+        self.storeerror = storeerror
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tree
+        case importerror = "importError"
+        case storeerror = "storeError"
+    }
+}
+
 public struct LogsTailParams: Codable, Sendable {
     public let cursor: Int?
     public let limit: Int?

@@ -337,7 +337,12 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
     loadHandlers: loadDeviceHandlers,
   }),
   ...createLazyCoreHandlers({
-    methods: ["enterprise.trees.list", "enterprise.runs.list", "enterprise.runs.get"],
+    methods: [
+      "enterprise.trees.list",
+      "enterprise.trees.get",
+      "enterprise.runs.list",
+      "enterprise.runs.get",
+    ],
     loadHandlers: loadEnterpriseHandlers,
   }),
   ...createLazyCoreHandlers({

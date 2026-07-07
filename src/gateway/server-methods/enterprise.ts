@@ -7,12 +7,17 @@ import {
   type EnterpriseRunDetail,
   type EnterpriseRunEvent,
   type EnterpriseRunSummary,
+  type EnterpriseTreeDetail,
+  type EnterpriseTreeNode,
+  type EnterpriseTreeOntology,
+  type EnterpriseTreesGetResult,
   type EnterpriseTreeSummary,
   ErrorCodes,
   errorShape,
   formatValidationErrors,
   validateEnterpriseRunsGetParams,
   validateEnterpriseRunsListParams,
+  validateEnterpriseTreesGetParams,
   validateEnterpriseTreesListParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import {
@@ -26,7 +31,13 @@ import {
 import {
   countWorkflowTreeNodes,
   getWorkflowTreeRegistrySnapshot,
+  type WorkflowTreeRegistryEntry,
 } from "../../enterprise/tree-registry.js";
+import type {
+  OntologyBinding,
+  WorkflowNodeDefinition,
+  WorkflowTreeMatch,
+} from "../../enterprise/types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 type PlanNodeRecord = EnterpriseRunRecord["plan"]["nodes"][number];
@@ -109,6 +120,112 @@ function mapRunDetail(
   };
 }
 
+/** Project a node's full ontology (structure graph + execution scope). */
+function mapTreeOntology(ontology: OntologyBinding | undefined): EnterpriseTreeOntology {
+  if (!ontology) {
+    return {};
+  }
+  const projected: EnterpriseTreeOntology = {};
+  if (ontology.entities?.length) {
+    projected.entities = ontology.entities.map((entity) => ({
+      id: entity.id,
+      description: entity.description,
+    }));
+  }
+  if (ontology.relationships?.length) {
+    projected.relationships = ontology.relationships.map((relationship) => ({
+      id: relationship.id,
+      from: relationship.from,
+      to: relationship.to,
+      description: relationship.description,
+    }));
+  }
+  if (ontology.actions?.length) {
+    // Clone the tool globs: the registry snapshot is process-stable and shared,
+    // so the read-only payload must not hand out its mutable arrays.
+    projected.actions = ontology.actions.map((action) => ({
+      id: action.id,
+      description: action.description,
+      tools: action.tools ? [...action.tools] : undefined,
+    }));
+  }
+  if (ontology.constraints?.length) {
+    projected.constraints = ontology.constraints.map((constraint) => ({
+      id: constraint.id,
+      description: constraint.description,
+    }));
+  }
+  if (ontology.allowedTools) {
+    projected.allowedTools = [...ontology.allowedTools];
+  }
+  if (ontology.deniedTools) {
+    projected.deniedTools = [...ontology.deniedTools];
+  }
+  if (ontology.knowledgeFoundations) {
+    projected.knowledgeFoundations = [...ontology.knowledgeFoundations];
+  }
+  if (ontology.contextHints) {
+    projected.contextHints = [...ontology.contextHints];
+  }
+  if (ontology.expectedOutput !== undefined) {
+    projected.expectedOutput = ontology.expectedOutput;
+  }
+  if (ontology.audit !== undefined) {
+    projected.audit = ontology.audit;
+  }
+  return projected;
+}
+
+/** Flatten a tree root depth-first into wire nodes carrying parent id + depth. */
+function flattenTreeNodes(root: WorkflowNodeDefinition): EnterpriseTreeNode[] {
+  const nodes: EnterpriseTreeNode[] = [];
+  const walk = (node: WorkflowNodeDefinition, parentId: string | null, depth: number): void => {
+    nodes.push({
+      id: node.id,
+      parentId,
+      depth,
+      title: node.title,
+      description: node.description,
+      ontology: mapTreeOntology(node.ontology),
+    });
+    for (const child of node.children ?? []) {
+      walk(child, node.id, depth + 1);
+    }
+  };
+  walk(root, null, 0);
+  return nodes;
+}
+
+function mapTreeMatch(match: WorkflowTreeMatch): NonNullable<EnterpriseTreeDetail["match"]> {
+  // Clone the shared registry arrays so payload mutation can't affect selection.
+  const projected: NonNullable<EnterpriseTreeDetail["match"]> = {};
+  if (match.keywords) {
+    projected.keywords = [...match.keywords];
+  }
+  if (match.triggers) {
+    projected.triggers = [...match.triggers];
+  }
+  if (match.priority !== undefined) {
+    projected.priority = match.priority;
+  }
+  return projected;
+}
+
+function buildTreeDetail(entry: WorkflowTreeRegistryEntry): EnterpriseTreeDetail {
+  const detail: EnterpriseTreeDetail = {
+    id: entry.tree.id,
+    version: entry.tree.version,
+    name: entry.tree.name,
+    description: entry.tree.description,
+    source: entry.source,
+    nodes: flattenTreeNodes(entry.tree.root),
+  };
+  if (entry.tree.match) {
+    detail.match = mapTreeMatch(entry.tree.match);
+  }
+  return detail;
+}
+
 export const enterpriseHandlers: GatewayRequestHandlers = {
   "enterprise.trees.list": ({ params, respond }) => {
     if (!validateEnterpriseTreesListParams(params)) {
@@ -136,6 +253,34 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       importErrors: snapshot.importErrors,
       ...(snapshot.storeError !== undefined ? { storeError: snapshot.storeError } : {}),
     });
+  },
+  "enterprise.trees.get": ({ params, respond }) => {
+    if (!validateEnterpriseTreesGetParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.trees.get params: ${formatValidationErrors(validateEnterpriseTreesGetParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    // Use the full snapshot (not just the resolved entry) so import/store load
+    // failures for this id are surfaced. Otherwise a corrupt imported override
+    // would return the stale built-in, and a failed imported-only tree would
+    // return null, both as a misleadingly successful lookup.
+    const snapshot = getWorkflowTreeRegistrySnapshot();
+    const entry = snapshot.entries.find((candidate) => candidate.tree.id === params.treeId);
+    const importError = snapshot.importErrors.find((issue) => issue.treeId === params.treeId);
+    const result: EnterpriseTreesGetResult = { tree: entry ? buildTreeDetail(entry) : null };
+    if (snapshot.storeError !== undefined) {
+      result.storeError = snapshot.storeError;
+    }
+    if (importError) {
+      result.importError = importError.message;
+    }
+    respond(true, result);
   },
   "enterprise.runs.list": ({ params, respond }) => {
     if (!validateEnterpriseRunsListParams(params)) {

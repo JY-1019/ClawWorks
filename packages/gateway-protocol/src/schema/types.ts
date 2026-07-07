@@ -276,6 +276,11 @@ export type EnterpriseRunEvent = SchemaType<"EnterpriseRunEvent">;
 export type EnterpriseRunDetail = SchemaType<"EnterpriseRunDetail">;
 export type EnterpriseRunsGetParams = SchemaType<"EnterpriseRunsGetParams">;
 export type EnterpriseRunsGetResult = SchemaType<"EnterpriseRunsGetResult">;
+export type EnterpriseTreeOntology = SchemaType<"EnterpriseTreeOntology">;
+export type EnterpriseTreeNode = SchemaType<"EnterpriseTreeNode">;
+export type EnterpriseTreeDetail = SchemaType<"EnterpriseTreeDetail">;
+export type EnterpriseTreesGetParams = SchemaType<"EnterpriseTreesGetParams">;
+export type EnterpriseTreesGetResult = SchemaType<"EnterpriseTreesGetResult">;
 
 /** Logs and approval payloads for chat, exec commands, plugins, and devices. */
 export type LogsTailParams = SchemaType<"LogsTailParams">;

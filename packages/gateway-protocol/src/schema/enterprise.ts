@@ -63,6 +63,115 @@ export const EnterpriseTreesListResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** One ontology entity (a domain concept the step reasons about). */
+export const EnterpriseOntologyEntitySchema = Type.Object(
+  { id: NonEmptyString, description: Type.Optional(Type.String()) },
+  { additionalProperties: false },
+);
+
+/** A directed relationship between two ontology entities (an ontology-graph edge). */
+export const EnterpriseOntologyRelationshipSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    from: NonEmptyString,
+    to: NonEmptyString,
+    description: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** An action a step may perform, optionally bound to concrete tool globs. */
+export const EnterpriseOntologyActionSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    description: Type.Optional(Type.String()),
+    tools: Type.Optional(Type.Array(Type.String())),
+  },
+  { additionalProperties: false },
+);
+
+/** A constraint the step must respect (prompt guidance). */
+export const EnterpriseOntologyConstraintSchema = Type.Object(
+  { id: NonEmptyString, description: Type.String() },
+  { additionalProperties: false },
+);
+
+/** Full ontology binding for a tree node (structure + execution scope). */
+export const EnterpriseTreeOntologySchema = Type.Object(
+  {
+    entities: Type.Optional(Type.Array(EnterpriseOntologyEntitySchema)),
+    relationships: Type.Optional(Type.Array(EnterpriseOntologyRelationshipSchema)),
+    actions: Type.Optional(Type.Array(EnterpriseOntologyActionSchema)),
+    constraints: Type.Optional(Type.Array(EnterpriseOntologyConstraintSchema)),
+    allowedTools: Type.Optional(Type.Array(Type.String())),
+    deniedTools: Type.Optional(Type.Array(Type.String())),
+    knowledgeFoundations: Type.Optional(Type.Array(Type.String())),
+    contextHints: Type.Optional(Type.Array(Type.String())),
+    expectedOutput: Type.Optional(Type.String()),
+    audit: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+/** One workflow-tree node, flattened depth-first with parent + depth for layout. */
+export const EnterpriseTreeNodeSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    parentId: Type.Union([Type.String(), Type.Null()]),
+    depth: Type.Integer({ minimum: 0 }),
+    title: Type.String(),
+    description: Type.Optional(Type.String()),
+    ontology: EnterpriseTreeOntologySchema,
+  },
+  { additionalProperties: false },
+);
+
+/** Tree selection hints (how a request binds to the tree). */
+export const EnterpriseTreeMatchSchema = Type.Object(
+  {
+    keywords: Type.Optional(Type.Array(Type.String())),
+    triggers: Type.Optional(Type.Array(Type.String())),
+    priority: Type.Optional(Type.Integer()),
+  },
+  { additionalProperties: false },
+);
+
+/** Full workflow-tree definition for the visualization/editor. */
+export const EnterpriseTreeDetailSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    version: Type.String(),
+    name: Type.String(),
+    description: Type.Optional(Type.String()),
+    source: EnterpriseTreeSourceSchema,
+    match: Type.Optional(EnterpriseTreeMatchSchema),
+    nodes: Type.Array(EnterpriseTreeNodeSchema),
+  },
+  { additionalProperties: false },
+);
+
+/** Tree detail lookup by tree id. */
+export const EnterpriseTreesGetParamsSchema = Type.Object(
+  { treeId: NonEmptyString },
+  { additionalProperties: false },
+);
+
+/**
+ * Tree detail response. `tree` is null when the id is not registered. When the
+ * requested tree's imported definition failed to load, `importError` carries the
+ * reason (a stale built-in may still be returned as `tree`); `storeError` is set
+ * when the whole tree store is unreadable. Callers must not treat a present
+ * `tree` as authoritative while `importError`/`storeError` is set.
+ */
+export const EnterpriseTreesGetResultSchema = Type.Object(
+  {
+    tree: Type.Union([EnterpriseTreeDetailSchema, Type.Null()]),
+    importError: Type.Optional(Type.String()),
+    storeError: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 /** One run execution, summarized for the run list. */
 export const EnterpriseRunSummarySchema = Type.Object(
   {

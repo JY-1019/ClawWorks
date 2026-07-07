@@ -216,6 +216,16 @@ import {
   EnterpriseTreesListResultSchema,
   type EnterpriseTreeSummary,
   EnterpriseTreeSummarySchema,
+  type EnterpriseTreeDetail,
+  EnterpriseTreeDetailSchema,
+  type EnterpriseTreeNode,
+  EnterpriseTreeNodeSchema,
+  type EnterpriseTreeOntology,
+  EnterpriseTreeOntologySchema,
+  type EnterpriseTreesGetParams,
+  EnterpriseTreesGetParamsSchema,
+  type EnterpriseTreesGetResult,
+  EnterpriseTreesGetResultSchema,
   type ExecApprovalsGetParams,
   ExecApprovalsGetParamsSchema,
   type ExecApprovalsNodeGetParams,
@@ -736,6 +746,9 @@ export const validateEnterpriseRunsListParams = lazyCompile<EnterpriseRunsListPa
 export const validateEnterpriseRunsGetParams = lazyCompile<EnterpriseRunsGetParams>(
   EnterpriseRunsGetParamsSchema,
 );
+export const validateEnterpriseTreesGetParams = lazyCompile<EnterpriseTreesGetParams>(
+  EnterpriseTreesGetParamsSchema,
+);
 export const validateConfigGetParams = lazyCompile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = lazyCompile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = lazyCompile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -1117,6 +1130,11 @@ export {
   EnterpriseRunDetailSchema,
   EnterpriseRunsGetParamsSchema,
   EnterpriseRunsGetResultSchema,
+  EnterpriseTreeOntologySchema,
+  EnterpriseTreeNodeSchema,
+  EnterpriseTreeDetailSchema,
+  EnterpriseTreesGetParamsSchema,
+  EnterpriseTreesGetResultSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -1445,6 +1463,11 @@ export type {
   EnterpriseRunDetail,
   EnterpriseRunsGetParams,
   EnterpriseRunsGetResult,
+  EnterpriseTreeOntology,
+  EnterpriseTreeNode,
+  EnterpriseTreeDetail,
+  EnterpriseTreesGetParams,
+  EnterpriseTreesGetResult,
   CronJob,
   CronListParams,
   CronStatusParams,
