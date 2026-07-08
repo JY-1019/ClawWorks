@@ -501,6 +501,13 @@
     {
       "count": 1,
       "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/ui/controllers/enterprise.ts",
+      "text": "Root step"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
       "name": "label",
       "path": "ui/src/ui/navigation.ts",
       "text": "agent"
