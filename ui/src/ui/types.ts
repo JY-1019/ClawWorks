@@ -582,8 +582,10 @@ export type {
   EnterpriseRunDetail,
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
+  EnterpriseTreeImportIssue,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
+  EnterpriseTreeVersionSummary,
 } from "../../../packages/gateway-protocol/src/index.js";
 
 export type CronRunStatus = "ok" | "error" | "skipped";

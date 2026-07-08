@@ -5,10 +5,14 @@ import type {
   EnterpriseRunDetail,
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
+  EnterpriseTreeImportIssue,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
+  EnterpriseTreeVersionSummary,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
+import type { EnterpriseTreeConfirm, EnterpriseTreeEditFormat } from "../controllers/enterprise.ts";
+import "../components/modal-dialog.ts";
 
 export type EnterpriseProps = {
   loading: boolean;
@@ -23,10 +27,33 @@ export type EnterpriseProps = {
   treeDetail: EnterpriseTreeDetail | null;
   treeLoading: boolean;
   treeIssue: string | null;
+  treeEditing: boolean;
+  treeEditContent: string;
+  treeEditFormat: EnterpriseTreeEditFormat;
+  treeSaving: boolean;
+  treeSaveIssues: EnterpriseTreeImportIssue[] | null;
+  treeSaveError: string | null;
+  treeConfirm: EnterpriseTreeConfirm | null;
+  treeVersions: EnterpriseTreeVersionSummary[];
+  treeVersionsLoading: boolean;
+  // Whether the session holds operator.admin: tree import/remove are admin-only,
+  // so mutation controls are hidden without it (reads stay available).
+  canEdit: boolean;
   error: string | null;
   onRefresh: () => void;
   onSelectRun: (executionId: string) => void;
   onSelectTree: (treeId: string) => void;
+  onBeginEdit: () => void;
+  onBeginNew: () => void;
+  onEditContent: (content: string) => void;
+  onEditFormat: (format: EnterpriseTreeEditFormat) => void;
+  onCancelEdit: () => void;
+  onRequestSave: () => void;
+  onRequestRemove: (treeId: string) => void;
+  onCancelConfirm: () => void;
+  onConfirm: () => void;
+  onExport: (treeId: string, format: EnterpriseTreeEditFormat) => void;
+  onLoadVersion: (treeId: string, revision: number) => void;
 };
 
 type TreeNode = EnterpriseTreeDetail["nodes"][number];
@@ -59,7 +86,17 @@ export function renderEnterprise(props: EnterpriseProps) {
         ? html`<div class="callout" style="margin-top: 12px;">
             <div>${t("enterprise.importErrors")}</div>
             ${props.importErrors.map(
-              (issue) => html`<div class="muted">${issue.treeId}: ${issue.message}</div>`,
+              (issue) => html`<div class="row" style="justify-content: space-between; gap: 8px;">
+                <div class="muted">${issue.treeId}: ${issue.message}</div>
+                ${props.canEdit
+                  ? html`<button
+                      class="btn danger"
+                      @click=${() => props.onRequestRemove(issue.treeId)}
+                    >
+                      ${t("enterprise.remove")}
+                    </button>`
+                  : nothing}
+              </div>`,
             )}
           </div>`
         : nothing}
@@ -77,7 +114,12 @@ export function renderEnterprise(props: EnterpriseProps) {
     ${renderDetailCard(props)}
 
     <section class="card" style="margin-top: 16px;">
-      <div class="card-title">${t("enterprise.treesTitle")}</div>
+      <div class="row" style="justify-content: space-between;">
+        <div class="card-title">${t("enterprise.treesTitle")}</div>
+        ${props.canEdit
+          ? html`<button class="btn" @click=${props.onBeginNew}>${t("enterprise.newTree")}</button>`
+          : nothing}
+      </div>
       <div class="list" style="margin-top: 12px;">
         ${props.trees.length === 0
           ? html`<div class="muted">${t("enterprise.noTrees")}</div>`
@@ -85,7 +127,7 @@ export function renderEnterprise(props: EnterpriseProps) {
       </div>
     </section>
 
-    ${renderTreeVisualization(props)}
+    ${renderTreeVisualization(props)} ${renderTreeConfirmModal(props)}
   `;
 }
 
@@ -266,6 +308,11 @@ function renderTree(
 }
 
 function renderTreeVisualization(props: EnterpriseProps): TemplateResult {
+  // The raw editor takes over the panel while editing (also for a new tree,
+  // which has no selection yet).
+  if (props.treeEditing) {
+    return renderTreeEditor(props);
+  }
   if (!props.selectedTreeId) {
     return html`
       <section class="card" style="margin-top: 16px;">
@@ -276,16 +323,213 @@ function renderTreeVisualization(props: EnterpriseProps): TemplateResult {
   const tree = props.treeDetail;
   return html`
     <section class="card" style="margin-top: 16px;">
-      <div class="card-title">${t("enterprise.treeTitle")}</div>
+      <div class="row" style="justify-content: space-between;">
+        <div class="card-title">${t("enterprise.treeTitle")}</div>
+        ${renderTreeActions(props)}
+      </div>
       ${props.treeIssue
         ? html`<div class="callout danger" style="margin-top: 8px;">${props.treeIssue}</div>`
         : nothing}
-      ${!tree
-        ? html`<div class="muted" style="margin-top: 8px;">
+      ${props.treeSaveError
+        ? html`<div class="callout danger" style="margin-top: 8px;">${props.treeSaveError}</div>`
+        : nothing}
+      ${tree
+        ? renderTreeDetail(tree)
+        : html`<div class="muted" style="margin-top: 8px;">
             ${props.treeLoading ? t("common.loading") : t("enterprise.treeUnavailable")}
-          </div>`
-        : renderTreeDetail(tree)}
+          </div>`}
+      ${renderVersionHistory(props)}
     </section>
+  `;
+}
+
+/** Actions for the selected tree: export is read-only; edit/remove need admin. */
+function renderTreeActions(props: EnterpriseProps): TemplateResult | typeof nothing {
+  const tree = props.treeDetail;
+  const treeId = props.selectedTreeId;
+  if (!treeId) {
+    return nothing;
+  }
+  // Removable = a persisted import row exists to delete: a healthy imported tree,
+  // or an id the registry reports as a corrupt import (whose row remove clears,
+  // even though trees.get returned a fallback built-in or null). Use the
+  // authoritative importErrors list, NOT treeIssue, which also holds transient
+  // trees.get request failures that must not expose a destructive Remove.
+  const hasCorruptImport = props.importErrors.some((issue) => issue.treeId === treeId);
+  const removable = props.canEdit && (tree?.source === "imported" || hasCorruptImport);
+  const buttons: TemplateResult[] = [];
+  if (tree && props.canEdit) {
+    buttons.push(
+      html`<button class="btn" @click=${props.onBeginEdit}>${t("enterprise.edit")}</button>`,
+    );
+  }
+  if (tree) {
+    buttons.push(
+      html`<button class="btn" @click=${() => props.onExport(treeId, "yaml")}>
+        ${t("enterprise.exportYaml")}
+      </button>`,
+      html`<button class="btn" @click=${() => props.onExport(treeId, "json")}>
+        ${t("enterprise.exportJson")}
+      </button>`,
+    );
+  }
+  if (removable) {
+    buttons.push(
+      html`<button class="btn danger" @click=${() => props.onRequestRemove(treeId)}>
+        ${t("enterprise.remove")}
+      </button>`,
+    );
+  }
+  return buttons.length === 0 ? nothing : html`<div class="row" style="gap: 8px;">${buttons}</div>`;
+}
+
+/** Raw YAML/JSON editor for creating or overwriting a tree definition. */
+function renderTreeEditor(props: EnterpriseProps): TemplateResult {
+  return html`
+    <section class="card" style="margin-top: 16px;">
+      <div class="row" style="justify-content: space-between;">
+        <div class="card-title">${t("enterprise.editorTitle")}</div>
+        <div class="chip-row">
+          ${(["yaml", "json"] as const).map(
+            (format) => html`<button
+              class="chip ${props.treeEditFormat === format ? "list-item-selected" : ""}"
+              ?disabled=${props.treeSaving}
+              @click=${() => props.onEditFormat(format)}
+            >
+              ${format.toUpperCase()}
+            </button>`,
+          )}
+        </div>
+      </div>
+      <div class="muted" style="margin-top: 4px;">${t("enterprise.editorHint")}</div>
+      <textarea
+        class="input"
+        style="margin-top: 8px; width: 100%; min-height: 320px; font-family: monospace; white-space: pre;"
+        .value=${props.treeEditContent}
+        ?disabled=${props.treeSaving}
+        @input=${(event: Event) => props.onEditContent((event.target as HTMLTextAreaElement).value)}
+      ></textarea>
+      ${props.treeSaveError
+        ? html`<div class="callout danger" style="margin-top: 8px;">${props.treeSaveError}</div>`
+        : nothing}
+      ${props.treeSaveIssues?.length
+        ? html`<div class="callout danger" style="margin-top: 8px;">
+            <div>${t("enterprise.saveInvalid")}</div>
+            ${props.treeSaveIssues.map(
+              (issue) => html`<div class="muted">
+                ${issue.path ? html`<strong>${issue.path}</strong>: ` : nothing}${issue.message}
+              </div>`,
+            )}
+          </div>`
+        : nothing}
+      <div class="row" style="gap: 8px; margin-top: 12px;">
+        <button class="btn primary" ?disabled=${props.treeSaving} @click=${props.onRequestSave}>
+          ${props.treeSaving ? t("enterprise.saving") : t("enterprise.save")}
+        </button>
+        <button class="btn" ?disabled=${props.treeSaving} @click=${props.onCancelEdit}>
+          ${t("common.cancel")}
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+/** Saved-revision list; selecting one loads it into the editor to restore. */
+function renderVersionHistory(props: EnterpriseProps): TemplateResult {
+  const treeId = props.selectedTreeId;
+  return html`
+    <div class="card-title" style="margin-top: 16px;">${t("enterprise.historyTitle")}</div>
+    ${props.treeVersions.length === 0
+      ? html`<div class="muted" style="margin-top: 8px;">
+          ${props.treeVersionsLoading ? t("common.loading") : t("enterprise.noHistory")}
+        </div>`
+      : html`<div class="list" style="margin-top: 8px;">
+          ${props.treeVersions.map((version) =>
+            renderVersionRow(version, treeId, props.canEdit ? props.onLoadVersion : null),
+          )}
+        </div>`}
+  `;
+}
+
+function renderVersionRow(
+  version: EnterpriseTreeVersionSummary,
+  treeId: string | null,
+  // Null when the session lacks admin: revisions are shown but not loadable
+  // into the editor (restoring is a mutation).
+  onLoadVersion: ((treeId: string, revision: number) => void) | null,
+): TemplateResult {
+  const body = html`
+    <div class="list-main">
+      <div class="list-title">
+        ${t("enterprise.revision", { revision: String(version.revision) })} — ${version.version}
+      </div>
+      <div class="chip-row">
+        <span class="chip">${version.sourceFormat}</span>
+        <span class="chip">${formatTime(version.savedAt)}</span>
+      </div>
+    </div>
+  `;
+  // A read-only row is plain (no listeners): passing lit's `nothing` sentinel to
+  // @click/@keydown is treated as a real listener and throws on interaction.
+  if (onLoadVersion === null || treeId === null) {
+    return html`<div class="list-item">${body}</div>`;
+  }
+  const load = () => onLoadVersion(treeId, version.revision);
+  return html`
+    <div
+      class="list-item list-item-clickable"
+      role="button"
+      tabindex="0"
+      @click=${load}
+      @keydown=${(event: KeyboardEvent) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          load();
+        }
+      }}
+    >
+      ${body}
+    </div>
+  `;
+}
+
+/** Save/Remove confirmation dialog reusing the shared modal component. */
+function renderTreeConfirmModal(props: EnterpriseProps): TemplateResult | typeof nothing {
+  const confirm = props.treeConfirm;
+  if (!confirm) {
+    return nothing;
+  }
+  const isRemove = confirm.kind === "remove";
+  const title = isRemove ? t("enterprise.confirmRemoveTitle") : t("enterprise.confirmSaveTitle");
+  const body = isRemove
+    ? t("enterprise.confirmRemoveBody", { treeId: confirm.treeId })
+    : t("enterprise.confirmSaveBody");
+  return html`
+    <openclaw-modal-dialog
+      label=${title}
+      description=${body}
+      @modal-cancel=${props.onCancelConfirm}
+    >
+      <div class="exec-approval-card">
+        <div class="exec-approval-header">
+          <div>
+            <div class="exec-approval-title">${title}</div>
+            <div class="exec-approval-sub">${body}</div>
+          </div>
+        </div>
+        ${isRemove
+          ? html`<div class="callout danger" style="margin-top: 12px;">
+              ${t("enterprise.confirmRemoveWarning")}
+            </div>`
+          : nothing}
+        <div class="exec-approval-actions">
+          <button class="btn ${isRemove ? "danger" : "primary"}" @click=${props.onConfirm}>
+            ${isRemove ? t("enterprise.remove") : t("enterprise.save")}
+          </button>
+          <button class="btn" @click=${props.onCancelConfirm}>${t("common.cancel")}</button>
+        </div>
+      </div>
+    </openclaw-modal-dialog>
   `;
 }
 

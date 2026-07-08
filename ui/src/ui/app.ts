@@ -150,8 +150,10 @@ import type {
   EnterpriseRunDetail,
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
+  EnterpriseTreeImportIssue,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
+  EnterpriseTreeVersionSummary,
   HealthSummary,
   LogEntry,
   LogLevel,
@@ -478,6 +480,20 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseTreeDetail: EnterpriseTreeDetail | null = null;
   @state() enterpriseTreeLoading = false;
   @state() enterpriseTreeIssue: string | null = null;
+  @state() enterpriseTreeEditing = false;
+  @state() enterpriseTreeEditTreeId: string | null = null;
+  @state() enterpriseTreeEditRevision: number | null = null;
+  @state() enterpriseTreeEditContent = "";
+  @state()
+  enterpriseTreeEditFormat: import("./controllers/enterprise.js").EnterpriseTreeEditFormat = "yaml";
+  @state() enterpriseTreeSaving = false;
+  @state() enterpriseTreeSaveIssues: EnterpriseTreeImportIssue[] | null = null;
+  @state() enterpriseTreeSaveError: string | null = null;
+  @state() enterpriseTreeConfirm:
+    | import("./controllers/enterprise.js").EnterpriseTreeConfirm
+    | null = null;
+  @state() enterpriseTreeVersions: EnterpriseTreeVersionSummary[] = [];
+  @state() enterpriseTreeVersionsLoading = false;
   @state() enterpriseError: string | null = null;
 
   @state() agentsLoading = false;

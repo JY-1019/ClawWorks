@@ -43,8 +43,10 @@ import type {
   EnterpriseRunDetail,
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
+  EnterpriseTreeImportIssue,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
+  EnterpriseTreeVersionSummary,
   ModelAuthStatusResult,
   ModelCatalogEntry,
   NostrProfile,
@@ -295,6 +297,17 @@ export type AppViewState = {
   enterpriseTreeDetail: EnterpriseTreeDetail | null;
   enterpriseTreeLoading: boolean;
   enterpriseTreeIssue: string | null;
+  enterpriseTreeEditing: boolean;
+  enterpriseTreeEditTreeId: string | null;
+  enterpriseTreeEditRevision: number | null;
+  enterpriseTreeEditContent: string;
+  enterpriseTreeEditFormat: import("./controllers/enterprise.js").EnterpriseTreeEditFormat;
+  enterpriseTreeSaving: boolean;
+  enterpriseTreeSaveIssues: EnterpriseTreeImportIssue[] | null;
+  enterpriseTreeSaveError: string | null;
+  enterpriseTreeConfirm: import("./controllers/enterprise.js").EnterpriseTreeConfirm | null;
+  enterpriseTreeVersions: EnterpriseTreeVersionSummary[];
+  enterpriseTreeVersionsLoading: boolean;
   enterpriseError: string | null;
   agentsLoading: boolean;
   agentsList: AgentsListResult | null;
