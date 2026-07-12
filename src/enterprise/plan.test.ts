@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { BUILTIN_ASSIST_TREE, BUILTIN_SYSTEM_TREE } from "./builtin-trees.js";
+import {
+  BUILTIN_ASSIST_TREE,
+  BUILTIN_SUPPORT_EXAMPLE_TREE,
+  BUILTIN_SYSTEM_TREE,
+  BUILTIN_WORKFLOW_TREES,
+} from "./builtin-trees.js";
 import {
   buildEnterprisePromptSection,
   buildEnterpriseRunPlan,
@@ -10,6 +15,7 @@ import {
   resolvePlanNodePath,
   selectWorkflowTree,
 } from "./plan.js";
+import { validateWorkflowTreeDefinition } from "./schema.js";
 import type { WorkflowTreeDefinition } from "./types.js";
 
 const REFUND_TREE: WorkflowTreeDefinition = {
@@ -113,6 +119,58 @@ describe("selectWorkflowTree", () => {
       trees: [tree],
     });
     expect(selection.tree.id).toBe("acme.empty-triggers");
+  });
+});
+
+describe("built-in support example tree", () => {
+  it("is a valid, guidance-bearing multi-leaf tree with per-leaf ontology", () => {
+    // Ships by default so the Enterprise UI has a rich tree to inspect and the route
+    // planner has something to narrow. Guard the schema + the demo shape.
+    expect(validateWorkflowTreeDefinition(BUILTIN_SUPPORT_EXAMPLE_TREE).ok).toBe(true);
+    expect(BUILTIN_WORKFLOW_TREES).toContain(BUILTIN_SUPPORT_EXAMPLE_TREE);
+
+    const plan = buildEnterpriseRunPlan({
+      runId: "example",
+      requestText: "clawworks support example: resolve ticket #4471",
+      trigger: "user",
+      mode: "enforce",
+      trees: BUILTIN_WORKFLOW_TREES,
+    });
+    expect(plan.treeId).toBe("clawworks.support");
+    // More than one leaf (so a route can narrow) and every leaf carries its own
+    // ontology guidance (so the planner engages and each node renders in the UI).
+    // A plan with no route planner keeps the whole subtree, so leaves are derived
+    // from the flattened nodes rather than from plan.route.
+    const parentIds = new Set(plan.nodes.map((node) => node.parentId));
+    const leaves = plan.nodes.filter((node) => !parentIds.has(node.nodeId));
+    expect(leaves.length).toBeGreaterThan(1);
+    expect(leaves.every((leaf) => ontologyHasGuidance(leaf.ontology))).toBe(true);
+    expect(planTracksSteps(plan)).toBe(true);
+  });
+
+  it("binds only on its distinctive opt-in phrase, never on normal traffic", () => {
+    const onDemo = selectWorkflowTree({
+      requestText: "clawworks support example: resolve ticket #12",
+      trigger: "user",
+      trees: BUILTIN_WORKFLOW_TREES,
+    });
+    expect(onDemo.tree.id).toBe("clawworks.support");
+    expect(onDemo.matchedBy).toBe("keywords");
+
+    // The example restricts tools per node, so it must NOT hijack real requests that
+    // merely mention support terms — those keep stock behavior on the assist tree.
+    for (const requestText of [
+      "write a python script to sort a list",
+      "write code for an order issue tracker",
+      "help me with a support ticket for my refund request",
+    ]) {
+      const selection = selectWorkflowTree({
+        requestText,
+        trigger: "user",
+        trees: BUILTIN_WORKFLOW_TREES,
+      });
+      expect(selection.tree.id).toBe("clawworks.assist");
+    }
   });
 });
 

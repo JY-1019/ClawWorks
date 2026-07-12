@@ -18,9 +18,14 @@ written to a SQLite trace you can inspect from the CLI, the gateway, or the
 Control UI. Default-allow tool calls are not traced unless a node opts in with
 `audit: true`, so stock runs stay quiet.
 
-Enterprise mode is on by default and stays backward compatible: built-in trees
-are guidance-free, so a stock install behaves like ordinary OpenClaw until you
-import trees or declare policies.
+Enterprise mode is on by default and stays backward compatible: the default
+built-in trees (`clawworks.assist`, `clawworks.system`) are guidance-free, so a
+stock install behaves like ordinary OpenClaw until you import trees or declare
+policies. One shipped built-in, `clawworks.support` ("Customer support
+(example)"), is a guidance-bearing demo you can inspect in the Control UI; it
+carries per-node ontology and tool scope but only binds when a request contains
+its distinctive opt-in phrase `clawworks support example`, so normal requests are
+never affected.
 
 ## Modes
 
