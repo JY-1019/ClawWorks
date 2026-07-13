@@ -798,9 +798,11 @@ export class OpenClawOntologyGraph extends LitElement {
                 (field) => html`<div class="prop">
                   <span class="prop-name">${field.id}</span>
                   <span class="prop-type">${field.type}</span>
-                  ${field.primaryKey ? html`<span class="pk">PK</span>` : nothing}
+                  ${field.primaryKey
+                    ? html`<span class="pk">${t("enterprise.propertyPrimaryKey")}</span>`
+                    : nothing}
                   ${field.required && !field.primaryKey
-                    ? html`<span class="req">required</span>`
+                    ? html`<span class="req">${t("enterprise.propertyRequired")}</span>`
                     : nothing}
                 </div>`,
               )}

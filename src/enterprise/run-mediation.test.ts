@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
@@ -41,9 +41,9 @@ function latestEventKinds(runId: string): string[] {
 }
 
 describe("beginEnterpriseRun", () => {
-  it("returns off and registers nothing when enterprise mode is off", () => {
+  it("returns off and registers nothing when enterprise mode is off", async () => {
     const runId = nextRunId();
-    const mediation = beginEnterpriseRun({
+    const mediation = await beginEnterpriseRun({
       runId,
       prompt: "hello",
       config: { enterprise: { mode: "off" } },
@@ -53,9 +53,9 @@ describe("beginEnterpriseRun", () => {
     expect(getEnterpriseRunRecord(runId)).toBeNull();
   });
 
-  it("mediates by default (no enterprise config) with the built-in tree and persists the trace", () => {
+  it("mediates by default (no enterprise config) with the built-in tree and persists the trace", async () => {
     const runId = nextRunId();
-    const mediation = beginEnterpriseRun({
+    const mediation = await beginEnterpriseRun({
       runId,
       prompt: "hello there",
       trigger: "user",
@@ -78,10 +78,10 @@ describe("beginEnterpriseRun", () => {
     expect(latestEventKinds(runId)).toEqual(["run.started"]);
   });
 
-  it("reuses the active execution while it is still running (nested begins)", () => {
+  it("reuses the active execution while it is still running (nested begins)", async () => {
     const runId = nextRunId();
-    const first = beginEnterpriseRun({ runId, prompt: "hello" });
-    const second = beginEnterpriseRun({ runId, prompt: "different text" });
+    const first = await beginEnterpriseRun({ runId, prompt: "hello" });
+    const second = await beginEnterpriseRun({ runId, prompt: "different text" });
     expect(first.kind).toBe("mediated");
     expect(second.kind).toBe("mediated");
     if (first.kind === "mediated" && second.kind === "mediated") {
@@ -91,11 +91,83 @@ describe("beginEnterpriseRun", () => {
     expect(latestEventKinds(runId)).toEqual(["run.started"]);
   });
 
-  it("creates a fresh execution per begin→end cycle (recurring runIds)", () => {
+  it("dedupes concurrent begins for one runId across the planner await", async () => {
+    // The planner is awaited BEFORE the run is registered, so without a pending
+    // guard two overlapping begins would both plan and both write an execution
+    // row — and only the last would ever be finalized. Needs a tree big enough
+    // that route planning actually runs (small trees skip the model call).
+    const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
+    const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
+    importWorkflowTreeContent({
+      content: JSON.stringify({
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.big",
+        version: "1.0.0",
+        name: "Big",
+        match: { keywords: ["bigtest"], triggers: ["user"] },
+        root: {
+          id: "big",
+          title: "Big",
+          children: [
+            { id: "big.a", title: "A", children: [{ id: "big.a.1", title: "A1" }] },
+            { id: "big.b", title: "B", children: [{ id: "big.b.1", title: "B1" }] },
+          ],
+        },
+      }),
+      format: "json",
+    });
+    invalidateWorkflowTreeRegistry();
+    try {
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const planner = vi.fn(async () => {
+        await gate;
+        return { routes: ["big.a"], rationale: "a" };
+      });
+      const runId = nextRunId();
+      const first = beginEnterpriseRun({ runId, prompt: "bigtest please", routePlanner: planner });
+      const second = beginEnterpriseRun({ runId, prompt: "bigtest please", routePlanner: planner });
+      release?.();
+      const [a, b] = await Promise.all([first, second]);
+
+      expect(planner).toHaveBeenCalledTimes(1);
+      expect(a).toBe(b);
+      expect(listEnterpriseRunExecutions(runId)).toHaveLength(1);
+      endEnterpriseRun({ runId, status: "completed" });
+    } finally {
+      removeImportedWorkflowTree("acme.big");
+      invalidateWorkflowTreeRegistry();
+    }
+  });
+
+  it("leaves no trace when the turn is cancelled during route planning", async () => {
+    // The planner awaits a provider. A cancel that lands in that window must not
+    // persist run.started/route.selected for a turn that never ran.
+    const controller = new AbortController();
+    const planner = vi.fn(async () => null);
     const runId = nextRunId();
-    beginEnterpriseRun({ runId, prompt: "first scheduled run" });
+    // The turn is cancelled while mediation is starting (the planner awaits a
+    // provider, so this is exactly the window that matters).
+    controller.abort();
+    const mediation = await beginEnterpriseRun({
+      runId,
+      prompt: "hello",
+      routePlanner: planner,
+      signal: controller.signal,
+    });
+    expect(mediation.kind).toBe("off");
+    expect(listEnterpriseRunExecutions(runId)).toHaveLength(0);
+    expect(getEnterpriseActiveRun(runId)).toBeUndefined();
+  });
+
+  it("creates a fresh execution per begin→end cycle (recurring runIds)", async () => {
+    const runId = nextRunId();
+    await beginEnterpriseRun({ runId, prompt: "first scheduled run" });
     endEnterpriseRun({ runId, status: "failed" });
-    beginEnterpriseRun({ runId, prompt: "second scheduled run" });
+    await beginEnterpriseRun({ runId, prompt: "second scheduled run" });
     endEnterpriseRun({ runId, status: "completed" });
 
     const executions = listEnterpriseRunExecutions(runId);
@@ -109,7 +181,7 @@ describe("beginEnterpriseRun", () => {
     }
   });
 
-  it("blocks run start in enforce mode when a run-level policy denies the tree", () => {
+  it("blocks run start in enforce mode when a run-level policy denies the tree", async () => {
     const runId = nextRunId();
     const config: OpenClawConfig = {
       enterprise: {
@@ -125,7 +197,7 @@ describe("beginEnterpriseRun", () => {
         },
       },
     };
-    const mediation = beginEnterpriseRun({ runId, prompt: "hello", config });
+    const mediation = await beginEnterpriseRun({ runId, prompt: "hello", config });
     expect(mediation.kind).toBe("blocked");
     if (mediation.kind === "blocked") {
       expect(mediation.reason).toBe("Default trees are not approved for this org.");
@@ -136,7 +208,7 @@ describe("beginEnterpriseRun", () => {
 
     // Same-runId retries re-evaluate deterministically into their own blocked
     // execution without corrupting the first trace.
-    const retried = beginEnterpriseRun({ runId, prompt: "hello", config });
+    const retried = await beginEnterpriseRun({ runId, prompt: "hello", config });
     expect(retried.kind).toBe("blocked");
     const executions = listEnterpriseRunExecutions(runId);
     expect(executions).toHaveLength(2);
@@ -146,7 +218,7 @@ describe("beginEnterpriseRun", () => {
     }
   });
 
-  it("records run-level audit policies as trace evidence without blocking", () => {
+  it("records run-level audit policies as trace evidence without blocking", async () => {
     const runId = nextRunId();
     const config: OpenClawConfig = {
       enterprise: {
@@ -155,7 +227,7 @@ describe("beginEnterpriseRun", () => {
         },
       },
     };
-    const mediation = beginEnterpriseRun({ runId, prompt: "hello", config });
+    const mediation = await beginEnterpriseRun({ runId, prompt: "hello", config });
     expect(mediation.kind).toBe("mediated");
     const record = getEnterpriseRunRecord(runId);
     const decision = listEnterpriseRunEvents(record?.executionId ?? "").find(
@@ -169,7 +241,7 @@ describe("beginEnterpriseRun", () => {
     });
   });
 
-  it("records but does not block run-level denials in observe mode", () => {
+  it("records but does not block run-level denials in observe mode", async () => {
     const runId = nextRunId();
     const config: OpenClawConfig = {
       enterprise: {
@@ -179,7 +251,7 @@ describe("beginEnterpriseRun", () => {
         },
       },
     };
-    const mediation = beginEnterpriseRun({ runId, prompt: "hello", config });
+    const mediation = await beginEnterpriseRun({ runId, prompt: "hello", config });
     expect(mediation.kind).toBe("mediated");
     expect(getEnterpriseActiveRun(runId)).toBeDefined();
     expect(latestEventKinds(runId)).toContain("governance.decision");
@@ -208,7 +280,7 @@ describe("beginEnterpriseRun", () => {
     invalidateWorkflowTreeRegistry();
     try {
       const runId = nextRunId();
-      const blocked = beginEnterpriseRun({ runId, prompt: "hello" });
+      const blocked = await beginEnterpriseRun({ runId, prompt: "hello" });
       expect(blocked.kind).toBe("blocked");
       if (blocked.kind === "blocked") {
         expect(blocked.reason).toContain('"acme.corrupt"');
@@ -217,7 +289,7 @@ describe("beginEnterpriseRun", () => {
 
       // Observe mode records the degradation but keeps running on built-ins.
       const observeRunId = nextRunId();
-      const observed = beginEnterpriseRun({
+      const observed = await beginEnterpriseRun({
         runId: observeRunId,
         prompt: "hello",
         config: { enterprise: { mode: "observe" } },
@@ -231,6 +303,59 @@ describe("beginEnterpriseRun", () => {
       deleteEnterpriseWorkflowTree("acme.corrupt");
       invalidateWorkflowTreeRegistry();
     }
+  });
+
+  it("never sends a denied run to the route planner (no model contact before the block)", async () => {
+    const denyPolicies = {
+      governance: {
+        policies: [
+          {
+            id: "deny.default-tree",
+            effect: "deny" as const,
+            trees: ["clawworks.*"],
+          },
+        ],
+      },
+    };
+    const planner = vi.fn(async () => ({ routes: ["x"], rationale: "should not run" }));
+    const runId = nextRunId();
+    const mediation = await beginEnterpriseRun({
+      runId,
+      prompt: "hello",
+      config: { enterprise: denyPolicies } as OpenClawConfig,
+      routePlanner: planner,
+    });
+    // The policy denies the run, so the request text must never reach a provider
+    // and the block must not wait behind a model round-trip.
+    expect(mediation.kind).toBe("blocked");
+    expect(planner).not.toHaveBeenCalled();
+  });
+
+  it("still plans a route in observe mode when a policy would deny (nothing is blocked)", async () => {
+    const planner = vi.fn(async () => ({ routes: [], rationale: "no narrowing" }));
+    const runId = nextRunId();
+    const mediation = await beginEnterpriseRun({
+      runId,
+      prompt: "hello",
+      config: {
+        enterprise: {
+          mode: "observe",
+          governance: {
+            policies: [
+              { id: "deny.default-tree", effect: "deny" as const, trees: ["clawworks.*"] },
+            ],
+          },
+        },
+      } as OpenClawConfig,
+      routePlanner: planner,
+    });
+    expect(mediation.kind).toBe("mediated");
+    // Observe never blocks, so route selection RAN (the plan carries a route
+    // decision). The default tree is too small to be worth a model call, so the
+    // planner itself is short-circuited — that is the size rule, not the deny.
+    expect(mediation.kind === "mediated" && mediation.plan.route).toBeDefined();
+    expect(mediation.kind === "mediated" && mediation.plan.route?.source).toBe("whole-tree");
+    endEnterpriseRun({ runId, status: "completed" });
   });
 
   it("selects imported trees over built-ins when their keywords match", async () => {
@@ -251,7 +376,7 @@ describe("beginEnterpriseRun", () => {
     expect(imported.ok).toBe(true);
     try {
       const runId = nextRunId();
-      const mediation = beginEnterpriseRun({ runId, prompt: "please fix my invoice" });
+      const mediation = await beginEnterpriseRun({ runId, prompt: "please fix my invoice" });
       expect(mediation.kind).toBe("mediated");
       if (mediation.kind === "mediated") {
         expect(mediation.plan.treeId).toBe("acme.billing");
@@ -266,7 +391,7 @@ describe("beginEnterpriseRun", () => {
     }
   });
 
-  it("wires the gate sink so tool decisions land in the event log", () => {
+  it("wires the gate sink so tool decisions land in the event log", async () => {
     const runId = nextRunId();
     const config: OpenClawConfig = {
       enterprise: {
@@ -275,7 +400,7 @@ describe("beginEnterpriseRun", () => {
         },
       },
     };
-    beginEnterpriseRun({ runId, prompt: "hello", config });
+    await beginEnterpriseRun({ runId, prompt: "hello", config });
     const verdict = evaluateEnterpriseToolCall({ runId, toolName: "exec", toolCallId: "c1" });
     expect(verdict?.blocked).toBe(true);
     const record = getEnterpriseRunRecord(runId);
@@ -294,9 +419,9 @@ describe("beginEnterpriseRun", () => {
 });
 
 describe("endEnterpriseRun", () => {
-  it("finalizes the trace, stops gating, and ignores duplicate ends", () => {
+  it("finalizes the trace, stops gating, and ignores duplicate ends", async () => {
     const runId = nextRunId();
-    beginEnterpriseRun({ runId, prompt: "hello" });
+    await beginEnterpriseRun({ runId, prompt: "hello" });
     endEnterpriseRun({ runId, status: "completed" });
     endEnterpriseRun({ runId, status: "failed" });
 
@@ -342,9 +467,9 @@ describe("enterprise step tracing", () => {
   }
 
   it("records the hook-driven step timeline (open + advance) in trace order", async () => {
-    await withFlowTree(() => {
+    await withFlowTree(async () => {
       const runId = nextRunId();
-      const mediation = beginEnterpriseRun({ runId, prompt: "run the flowtest now" });
+      const mediation = await beginEnterpriseRun({ runId, prompt: "run the flowtest now" });
       expect(mediation.kind).toBe("mediated");
       // Simulate the embedded step-loop hook across two turns: enter the first
       // leaf, record the turn, then advance to the next leaf.
@@ -366,9 +491,9 @@ describe("enterprise step tracing", () => {
   });
 
   it("re-persists the plan so the trace reports the advanced active node", async () => {
-    await withFlowTree(() => {
+    await withFlowTree(async () => {
       const runId = nextRunId();
-      beginEnterpriseRun({ runId, prompt: "run the flowtest now" });
+      await beginEnterpriseRun({ runId, prompt: "run the flowtest now" });
       // Run-start snapshot points at the root scope.
       expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow");
       setEnterpriseStepForTurn(runId);
@@ -383,11 +508,11 @@ describe("enterprise step tracing", () => {
   });
 
   it("keeps mediation timeline-free for runtimes that never advance (CLI/ACP)", async () => {
-    await withFlowTree(() => {
+    await withFlowTree(async () => {
       const runId = nextRunId();
       // No step-loop hook runs, so no node events should be emitted and the run
       // stays on the root scope rather than claiming a leaf it never reached.
-      beginEnterpriseRun({ runId, prompt: "run the flowtest now" });
+      await beginEnterpriseRun({ runId, prompt: "run the flowtest now" });
       endEnterpriseRun({ runId, status: "completed" });
 
       const record = getEnterpriseRunRecord(runId);

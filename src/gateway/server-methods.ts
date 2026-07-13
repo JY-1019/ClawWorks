@@ -347,6 +347,8 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
       "enterprise.trees.history.get",
       "enterprise.runs.list",
       "enterprise.runs.get",
+      "enterprise.mode.get",
+      "enterprise.mode.set",
     ],
     loadHandlers: loadEnterpriseHandlers,
   }),

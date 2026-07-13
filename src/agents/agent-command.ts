@@ -1003,13 +1003,20 @@ async function agentCommandInternal(
         // ACP runs bypass runEmbeddedAgent/runCliAgent, so enterprise
         // run-level governance and tracing bind here. ACP owns its prompt
         // channel, so the step digest is not injected for this runtime.
-        const enterpriseMediation = applyEnterpriseMediation({
+        const enterpriseMediation = await applyEnterpriseMediation({
           runId,
           prompt: body,
           sessionKey,
           agentId: acpAgent,
           config: cfg,
           ...(normalizedSpawned.spawnedBy ? { spawnedBy: normalizedSpawned.spawnedBy } : {}),
+          // Mediation now awaits route planning before the ACP turn starts, so a
+          // cancellation during planning must reach the planner — otherwise it
+          // runs to its timeout and traces a route for a turn nobody wants.
+          ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+          // ACP dispatches the prompt to its own backend. Route planning must not
+          // send it to OpenClaw's default model on the way.
+          externalDispatch: true,
         });
         if (enterpriseMediation.blockedResult) {
           throw new Error(

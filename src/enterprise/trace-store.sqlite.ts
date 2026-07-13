@@ -83,6 +83,7 @@ const RUN_STATUSES: readonly EnterpriseRunStatus[] = [
 
 const RUN_EVENT_KINDS: readonly EnterpriseRunEventKind[] = [
   "run.started",
+  "route.selected",
   "run.ended",
   "governance.decision",
   "node.entered",
@@ -303,7 +304,7 @@ export function listEnterpriseRunExecutions(
 
 /** List recent execution traces, newest first. */
 export function listEnterpriseRunRecords(
-  params: { limit?: number } = {},
+  params: { limit?: number; sessionKey?: string } = {},
   options: EnterpriseTraceStoreOptions = {},
 ): EnterpriseRunRecord[] {
   if (!enterpriseStateDatabaseExists(options)) {
@@ -312,15 +313,18 @@ export function listEnterpriseRunRecords(
   const limit = Math.max(1, Math.min(params.limit ?? 50, 500));
   const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
   const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
-  const rows = executeSqliteQuerySync(
-    database.db,
-    stateDb
-      .selectFrom("enterprise_runs")
-      .selectAll()
-      .orderBy("created_at", "desc")
-      .orderBy("execution_id", "desc")
-      .limit(limit),
-  ).rows as EnterpriseRunRow[];
+  // The session filter must be applied in SQL, BEFORE the limit. Filtering the
+  // limited page in the client would hide a thread's newest run whenever enough
+  // other sessions ran more recently.
+  let query = stateDb
+    .selectFrom("enterprise_runs")
+    .selectAll()
+    .orderBy("created_at", "desc")
+    .orderBy("execution_id", "desc");
+  if (params.sessionKey) {
+    query = query.where("session_key", "=", params.sessionKey);
+  }
+  const rows = executeSqliteQuerySync(database.db, query.limit(limit)).rows as EnterpriseRunRow[];
   return rows.map(rowToRunRecord);
 }
 

@@ -203,6 +203,8 @@ export type ChatProps = {
   onChatScroll?: (event: Event) => void;
   basePath?: string;
   composerControls?: TemplateResult | typeof nothing | ReturnType<typeof guard>;
+  /** Route the last governed run in this thread took (enterprise mode). */
+  enterpriseRoute?: TemplateResult | typeof nothing;
   sessionWorkspace?: {
     collapsed: boolean;
     sessionKey: string;
@@ -2683,6 +2685,9 @@ export function renderChat(props: ChatProps) {
           ${renderChatRunStatusIndicator(composerRunStatus)}
         </div>
 
+        ${props.enterpriseRoute && props.enterpriseRoute !== nothing
+          ? html`<div class="agent-chat__enterprise-route">${props.enterpriseRoute}</div>`
+          : nothing}
         ${composerControls && composerControls !== nothing
           ? html`<div class="agent-chat__composer-controls">${composerControls}</div>`
           : nothing}

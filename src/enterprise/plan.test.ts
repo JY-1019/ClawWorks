@@ -153,6 +153,123 @@ describe("buildEnterpriseRunPlan", () => {
   });
 });
 
+describe("buildEnterpriseRunPlan route pruning", () => {
+  it("plans only the selected route and keeps its ancestors (the governance scope chain)", () => {
+    const tree: WorkflowTreeDefinition = {
+      ...REFUND_TREE,
+      root: {
+        id: "refunds",
+        title: "Refunds",
+        ontology: { deniedTools: ["exec"] },
+        children: [
+          {
+            id: "refunds.intake",
+            title: "Intake",
+            children: [{ id: "refunds.intake.triage", title: "Triage" }],
+          },
+          {
+            id: "refunds.payout",
+            title: "Payout",
+            children: [{ id: "refunds.payout.issue", title: "Issue payment" }],
+          },
+        ],
+      },
+    };
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-route",
+      requestText: "refund",
+      trigger: "user",
+      mode: "enforce",
+      trees: [tree],
+      route: {
+        routes: ["refunds.payout"],
+        nodeIds: new Set(["refunds", "refunds.payout", "refunds.payout.issue"]),
+        rationale: "the request is about paying out",
+        source: "planner",
+        invalidRoutes: [],
+      },
+    });
+    expect(plan.nodes.map((node) => node.nodeId)).toEqual([
+      "refunds",
+      "refunds.payout",
+      "refunds.payout.issue",
+    ]);
+    // The root is kept even though it was not the cut point: governance merges
+    // every ancestor's ontology down the path, so dropping it would drop the
+    // tool ceiling it declares.
+    expect(plan.nodes[0].ontology.deniedTools).toEqual(["exec"]);
+    expect(plan.activeNodeId).toBe("refunds");
+    expect(plan.route).toMatchObject({
+      routes: ["refunds.payout"],
+      source: "planner",
+      selectedNodes: 3,
+      totalNodes: 5,
+    });
+  });
+
+  it("redacts secrets out of the planner's rationale before it is persisted", () => {
+    // The rationale is model text echoing the request. It lands in plan_json, the
+    // route.selected trace event, and the chat card — so it must be redacted like
+    // requestSummary, or the trace becomes a new secret sink.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-redact",
+      requestText: "refund",
+      trigger: "user",
+      mode: "enforce",
+      trees: [REFUND_TREE],
+      route: {
+        routes: [],
+        nodeIds: null,
+        rationale: "the user pasted sk-ant-api03-SUPERSECRETVALUE0000000000 into the prompt",
+        source: "whole-tree",
+        invalidRoutes: [],
+      },
+    });
+    expect(plan.route?.rationale).not.toContain("SUPERSECRETVALUE");
+  });
+
+  it("plans the whole tree when the route selection is whole-tree", () => {
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-whole",
+      requestText: "refund",
+      trigger: "user",
+      mode: "enforce",
+      trees: [REFUND_TREE],
+      route: {
+        routes: [],
+        nodeIds: null,
+        rationale: "planner unavailable",
+        source: "whole-tree",
+        invalidRoutes: [],
+      },
+    });
+    expect(plan.route?.source).toBe("whole-tree");
+    expect(plan.route?.selectedNodes).toBe(plan.route?.totalNodes);
+  });
+
+  it("ignores a route resolved against a different tree rather than planning nothing", () => {
+    // Defensive: a stale/foreign node set must not produce an empty (ungoverned)
+    // plan. Planning everything is the safe read.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-foreign",
+      requestText: "refund",
+      trigger: "user",
+      mode: "enforce",
+      trees: [REFUND_TREE],
+      route: {
+        routes: ["other.tree.node"],
+        nodeIds: new Set(["other.tree.node"]),
+        rationale: "stale",
+        source: "planner",
+        invalidRoutes: [],
+      },
+    });
+    expect(plan.nodes.length).toBeGreaterThan(0);
+    expect(plan.route?.source).toBe("whole-tree");
+    expect(plan.route?.routes).toEqual([]);
+  });
+});
+
 describe("buildEnterprisePromptSection", () => {
   it("returns an empty string for guidance-free built-in trees (prompt-neutral default)", () => {
     const plan = buildEnterpriseRunPlan({

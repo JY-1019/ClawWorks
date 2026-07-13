@@ -207,6 +207,8 @@ export const EnterpriseTreeDetailSchema = Type.Object(
   {
     id: NonEmptyString,
     version: Type.String(),
+    /** Content hash of THIS definition; lets a client prove it is the one a run used. */
+    hash: Type.Optional(Type.String()),
     name: Type.String(),
     description: Type.Optional(Type.String()),
     source: EnterpriseTreeSourceSchema,
@@ -349,6 +351,10 @@ export const EnterpriseRunSummarySchema = Type.Object(
   {
     executionId: NonEmptyString,
     runId: NonEmptyString,
+    // Chat filters the run list by session to show only THIS thread's route.
+    // Optional on the wire: an older gateway omits it entirely, and a required
+    // field would make its responses undecodable for generated clients.
+    sessionKey: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     treeId: Type.String(),
     treeVersion: Type.String(),
     mode: Type.String(),
@@ -366,6 +372,8 @@ export const EnterpriseRunSummarySchema = Type.Object(
 export const EnterpriseRunsListParamsSchema = Type.Object(
   {
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+    /** Only runs bound to this session (chat shows one thread's route). */
+    sessionKey: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
@@ -407,6 +415,7 @@ export const EnterprisePlanNodeSchema = Type.Object(
 /** Closed trace event kinds (mirror EnterpriseRunEventKind). */
 export const EnterpriseRunEventKindSchema = Type.Union([
   Type.Literal("run.started"),
+  Type.Literal("route.selected"),
   Type.Literal("run.ended"),
   Type.Literal("governance.decision"),
   Type.Literal("node.entered"),
@@ -426,6 +435,19 @@ export const EnterpriseRunEventSchema = Type.Object(
 );
 
 /** Full run detail: plan nodes + event timeline for the inspector. */
+/** Which part of the tree the run planned, and why. */
+export const EnterpriseRunRouteSchema = Type.Object(
+  {
+    routes: Type.Array(Type.String()),
+    rationale: Type.String(),
+    source: Type.Union([Type.Literal("planner"), Type.Literal("whole-tree")]),
+    selectedNodes: Type.Integer({ minimum: 0 }),
+    totalNodes: Type.Integer({ minimum: 0 }),
+    invalidRoutes: Type.Optional(Type.Array(Type.String())),
+  },
+  { additionalProperties: false },
+);
+
 export const EnterpriseRunDetailSchema = Type.Object(
   {
     executionId: NonEmptyString,
@@ -435,11 +457,14 @@ export const EnterpriseRunDetailSchema = Type.Object(
     treeId: Type.String(),
     treeVersion: Type.String(),
     treeName: Type.String(),
+    /** Content hash of the tree definition the run planned against. */
+    treeHash: Type.Optional(Type.String()),
     mode: Type.String(),
     status: EnterpriseRunStatusSchema,
     matchedBy: Type.String(),
     requestSummary: Type.String(),
     activeNodeId: Type.String(),
+    route: Type.Optional(EnterpriseRunRouteSchema),
     nodes: Type.Array(EnterprisePlanNodeSchema),
     events: Type.Array(EnterpriseRunEventSchema),
     executionCount: Type.Integer({ minimum: 0 }),
@@ -463,5 +488,29 @@ export const EnterpriseRunsGetResultSchema = Type.Object(
   {
     run: Type.Union([EnterpriseRunDetailSchema, Type.Null()]),
   },
+  { additionalProperties: false },
+);
+
+/** Enterprise execution mode, switchable from the chat surface. */
+export const EnterpriseModeSchema = Type.Union([
+  Type.Literal("enforce"),
+  Type.Literal("observe"),
+  Type.Literal("off"),
+]);
+
+export const EnterpriseModeGetParamsSchema = Type.Object({}, { additionalProperties: false });
+
+export const EnterpriseModeGetResultSchema = Type.Object(
+  { mode: EnterpriseModeSchema },
+  { additionalProperties: false },
+);
+
+export const EnterpriseModeSetParamsSchema = Type.Object(
+  { mode: EnterpriseModeSchema },
+  { additionalProperties: false },
+);
+
+export const EnterpriseModeSetResultSchema = Type.Object(
+  { mode: EnterpriseModeSchema },
   { additionalProperties: false },
 );

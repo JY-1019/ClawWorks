@@ -38,6 +38,13 @@ export type EnterpriseState = {
   enterpriseSelectedExecutionId: string | null;
   enterpriseDetail: EnterpriseRunDetail | null;
   enterpriseDetailLoading: boolean;
+  /**
+   * The tree the SELECTED RUN bound to. Held separately from the registry
+   * selection (enterpriseTreeDetail) so opening a run cannot clobber the tree
+   * the operator is browsing, and so the run inspector can draw the full tree
+   * with the run's route lit against the branches it did not take.
+   */
+  enterpriseRunTree: EnterpriseTreeDetail | null;
   enterpriseSelectedTreeId: string | null;
   enterpriseTreeDetail: EnterpriseTreeDetail | null;
   enterpriseTreeLoading: boolean;
@@ -112,6 +119,7 @@ export async function loadEnterpriseRunDetail(state: EnterpriseState, executionI
   const requestSeq = ++detailRequestSeq;
   state.enterpriseSelectedExecutionId = executionId;
   state.enterpriseDetail = null;
+  state.enterpriseRunTree = null;
   state.enterpriseDetailLoading = true;
   state.enterpriseError = null;
   try {
@@ -123,6 +131,16 @@ export async function loadEnterpriseRunDetail(state: EnterpriseState, executionI
       return;
     }
     state.enterpriseDetail = res.run;
+    // The tree picture is secondary to the run detail, so it loads alongside
+    // rather than inside it: the steps and governance trace must render even if
+    // the tree fetch is slow or fails.
+    if (res.run?.treeId) {
+      void loadEnterpriseRunTree(
+        state,
+        { treeId: res.run.treeId, treeHash: res.run.treeHash },
+        requestSeq,
+      );
+    }
   } catch (err) {
     if (requestSeq !== detailRequestSeq) {
       return;
@@ -133,6 +151,46 @@ export async function loadEnterpriseRunDetail(state: EnterpriseState, executionI
     // would hide the newer request's in-flight state.
     if (requestSeq === detailRequestSeq) {
       state.enterpriseDetailLoading = false;
+    }
+  }
+}
+
+/**
+ * Load the tree the selected run bound to. Guarded by the run-detail token: if a
+ * newer run is opened while this is in flight, its response is dropped rather
+ * than painting the previous run's tree under the new run.
+ */
+async function loadEnterpriseRunTree(
+  state: EnterpriseState,
+  run: { treeId: string; treeHash?: string },
+  runSeq: number,
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  // Without the run's hash (a trace written before hashes existed) we cannot
+  // prove the live tree is the one it governed, so the picture is withheld.
+  if (!run.treeHash) {
+    state.enterpriseRunTree = null;
+    return;
+  }
+  try {
+    const res = await state.client.request<EnterpriseTreesGetResult>("enterprise.trees.get", {
+      treeId: run.treeId,
+    });
+    if (runSeq !== detailRequestSeq) {
+      return;
+    }
+    const live = res?.tree ?? null;
+    // Identity by CONTENT, not by version or timestamps. `version` is
+    // author-controlled and re-importable unchanged, and removing an imported
+    // override silently reveals a different built-in — both would pass a version
+    // check while the nodes on screen are branches the run never governed. The
+    // plan's own step list always renders; only the tree picture is withheld.
+    state.enterpriseRunTree = live && live.hash === run.treeHash ? live : null;
+  } catch {
+    if (runSeq === detailRequestSeq) {
+      state.enterpriseRunTree = null;
     }
   }
 }
@@ -667,6 +725,7 @@ function applyError(state: EnterpriseState, err: unknown) {
     state.enterpriseStoreError = null;
     state.enterpriseSelectedExecutionId = null;
     state.enterpriseDetail = null;
+    state.enterpriseRunTree = null;
     state.enterpriseDetailLoading = false;
     state.enterpriseSelectedTreeId = null;
     state.enterpriseTreeDetail = null;

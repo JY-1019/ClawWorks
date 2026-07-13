@@ -13,7 +13,11 @@ import { getEnterpriseActiveRun } from "../enterprise/runtime.js";
 import { getEnterpriseRunRecord } from "../enterprise/trace-store.sqlite.js";
 import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import type { RunEmbeddedAgentParams } from "./embedded-agent-runner/run/params.js";
-import { applyEnterpriseMediation, finishEnterpriseMediation } from "./enterprise-mediation.js";
+import {
+  applyEnterpriseMediation,
+  finishEnterpriseMediation,
+  resolveRouteModelRefForTest,
+} from "./enterprise-mediation.js";
 
 let runCounter = 0;
 function makeParams(overrides: Partial<RunEmbeddedAgentParams> = {}): RunEmbeddedAgentParams {
@@ -38,37 +42,37 @@ afterAll(() => {
 });
 
 describe("applyEnterpriseMediation", () => {
-  it("mediates default runs without touching the system prompt (guidance-free tree)", () => {
+  it("mediates default runs without touching the system prompt (guidance-free tree)", async () => {
     const params = makeParams({ extraSystemPrompt: "existing" });
-    const outcome = applyEnterpriseMediation(params);
+    const outcome = await applyEnterpriseMediation(params);
     expect(outcome.mediated).toBe(true);
     expect(outcome.blockedResult).toBeUndefined();
     expect(outcome.params.extraSystemPrompt).toBe("existing");
     expect(getEnterpriseActiveRun(params.runId)).toBeDefined();
   });
 
-  it("skips internal model probes and promptMode none raw runs", () => {
+  it("skips internal model probes and promptMode none raw runs", async () => {
     const probe = makeParams({ modelRun: true });
-    expect(applyEnterpriseMediation(probe).mediated).toBe(false);
+    expect((await applyEnterpriseMediation(probe)).mediated).toBe(false);
     expect(getEnterpriseActiveRun(probe.runId)).toBeUndefined();
 
     const rawRun = makeParams({ promptMode: "none" });
-    expect(applyEnterpriseMediation(rawRun).mediated).toBe(false);
+    expect((await applyEnterpriseMediation(rawRun)).mediated).toBe(false);
     expect(getEnterpriseActiveRun(rawRun.runId)).toBeUndefined();
   });
 
-  it("skips mediation when enterprise mode is off", () => {
+  it("skips mediation when enterprise mode is off", async () => {
     const params = makeParams({ config: { enterprise: { mode: "off" } } });
-    const outcome = applyEnterpriseMediation(params);
+    const outcome = await applyEnterpriseMediation(params);
     expect(outcome.mediated).toBe(false);
     expect(outcome.params).toBe(params);
   });
 
-  it("falls back to the runtime config snapshot when params omit config", () => {
+  it("falls back to the runtime config snapshot when params omit config", async () => {
     // Explicit-model callers omit params.config; configured governance
     // (here an opt-out) must still apply via the pinned snapshot.
     setRuntimeConfigSnapshot({ enterprise: { mode: "off" } });
-    const offOutcome = applyEnterpriseMediation(makeParams());
+    const offOutcome = await applyEnterpriseMediation(makeParams());
     expect(offOutcome.mediated).toBe(false);
 
     setRuntimeConfigSnapshot({
@@ -78,11 +82,11 @@ describe("applyEnterpriseMediation", () => {
         },
       },
     });
-    const deniedOutcome = applyEnterpriseMediation(makeParams());
+    const deniedOutcome = await applyEnterpriseMediation(makeParams());
     expect(deniedOutcome.blockedResult?.meta.error?.kind).toBe("hook_block");
   });
 
-  it("returns a blocked hook_block result when run-start governance denies", () => {
+  it("returns a blocked hook_block result when run-start governance denies", async () => {
     const config: OpenClawConfig = {
       enterprise: {
         governance: {
@@ -97,7 +101,7 @@ describe("applyEnterpriseMediation", () => {
       },
     };
     const params = makeParams({ config });
-    const outcome = applyEnterpriseMediation(params);
+    const outcome = await applyEnterpriseMediation(params);
     expect(outcome.mediated).toBe(false);
     expect(outcome.blockedResult?.meta.error?.kind).toBe("hook_block");
     expect(outcome.blockedResult?.payloads?.[0]).toMatchObject({
@@ -108,38 +112,105 @@ describe("applyEnterpriseMediation", () => {
   });
 });
 
+describe("route planning model selection", () => {
+  it("routes with the run's own provider/model, never the agent default", async () => {
+    // A user on a local/private model must not have the request shipped to a
+    // cloud default provider just to pick a route.
+    const params = makeParams({ provider: "ollama", model: "llama3" });
+    const outcome = await applyEnterpriseMediation(params);
+    expect(outcome.mediated).toBe(true);
+    // The ref handed to the planner is the run's dispatch choice, qualified.
+    expect(resolveRouteModelRefForTest(params)).toEqual({ kind: "ref", ref: "ollama/llama3" });
+  });
+
+  it("passes an already-qualified model ref through unchanged", () => {
+    expect(
+      resolveRouteModelRefForTest(makeParams({ provider: "anthropic", model: "anthropic/opus" })),
+    ).toEqual({ kind: "ref", ref: "anthropic/opus" });
+  });
+
+  it("keeps a gateway provider that routes slash-bearing model ids", () => {
+    // openrouter serves "anthropic/claude-sonnet-4-6". Treating the slash as
+    // "already qualified" would drop openrouter and send the prompt to anthropic.
+    expect(
+      resolveRouteModelRefForTest(
+        makeParams({ provider: "openrouter", model: "anthropic/claude-sonnet-4-6" }),
+      ),
+    ).toEqual({ kind: "ref", ref: "openrouter/anthropic/claude-sonnet-4-6" });
+  });
+
+  it("uses the bare model when the run pinned no provider", () => {
+    expect(resolveRouteModelRefForTest(makeParams({ model: "llama3" }))).toEqual({
+      kind: "ref",
+      ref: "llama3",
+    });
+  });
+
+  it("SKIPS planning for a provider-only run (its default model has no ref)", () => {
+    // A CLI run pinned to a local provider with that provider's default model:
+    // a bare default would resolve against the AGENT default, possibly a cloud
+    // provider this run deliberately avoided. Planning is skipped instead.
+    expect(resolveRouteModelRefForTest(makeParams({ provider: "ollama" }))).toEqual({
+      kind: "skip",
+    });
+  });
+
+  it("SKIPS planning for an ACP run (its prompt goes to a backend we do not pick)", () => {
+    // ACP dispatches to its own backend. Routing would ship the prompt to
+    // OpenClaw's default completion model — an unrelated cloud model for a
+    // possibly-local ACP session.
+    expect(resolveRouteModelRefForTest(makeParams({ externalDispatch: true }))).toEqual({
+      kind: "skip",
+    });
+  });
+
+  it("SKIPS planning when a hook can still swap the provider or claim the turn", () => {
+    // The hook runs AFTER mediation, so planning here would use the pre-hook
+    // model — possibly the very cloud default the hook exists to avoid.
+    expect(
+      resolveRouteModelRefForTest(makeParams({ provider: "anthropic", model: "opus" }), {
+        hasBlockingHook: () => true,
+      }),
+    ).toEqual({ kind: "skip" });
+  });
+
+  it("uses the agent default when the run pinned nothing (that IS its choice)", () => {
+    expect(resolveRouteModelRefForTest(makeParams({}))).toEqual({ kind: "agent-default" });
+  });
+});
+
 describe("finishEnterpriseMediation", () => {
-  it("maps clean results to completed", () => {
+  it("maps clean results to completed", async () => {
     const params = makeParams();
-    applyEnterpriseMediation(params);
+    await applyEnterpriseMediation(params);
     finishEnterpriseMediation(params.runId, { result: { meta: { durationMs: 5 } } });
     expect(getEnterpriseRunRecord(params.runId)?.status).toBe("completed");
   });
 
-  it("maps aborted results and abort errors to aborted", () => {
+  it("maps aborted results and abort errors to aborted", async () => {
     const first = makeParams();
-    applyEnterpriseMediation(first);
+    await applyEnterpriseMediation(first);
     finishEnterpriseMediation(first.runId, { result: { meta: { durationMs: 5, aborted: true } } });
     expect(getEnterpriseRunRecord(first.runId)?.status).toBe("aborted");
 
     const second = makeParams();
-    applyEnterpriseMediation(second);
+    await applyEnterpriseMediation(second);
     const abortError = new Error("stop");
     abortError.name = "AbortError";
     finishEnterpriseMediation(second.runId, { error: abortError });
     expect(getEnterpriseRunRecord(second.runId)?.status).toBe("aborted");
   });
 
-  it("maps timeout metadata to timed_out via the canonical terminal outcome", () => {
+  it("maps timeout metadata to timed_out via the canonical terminal outcome", async () => {
     const hardTimeout = makeParams();
-    applyEnterpriseMediation(hardTimeout);
+    await applyEnterpriseMediation(hardTimeout);
     finishEnterpriseMediation(hardTimeout.runId, {
       result: { meta: { durationMs: 5, timeoutPhase: "provider" } },
     });
     expect(getEnterpriseRunRecord(hardTimeout.runId)?.status).toBe("timed_out");
 
     const softTimeout = makeParams();
-    applyEnterpriseMediation(softTimeout);
+    await applyEnterpriseMediation(softTimeout);
     finishEnterpriseMediation(softTimeout.runId, {
       result: { meta: { durationMs: 5, timeoutPhase: "queue" } },
     });
@@ -147,23 +218,23 @@ describe("finishEnterpriseMediation", () => {
 
     // Timeout attribution beats the aborted flag (canonical precedence).
     const abortedTimeout = makeParams();
-    applyEnterpriseMediation(abortedTimeout);
+    await applyEnterpriseMediation(abortedTimeout);
     finishEnterpriseMediation(abortedTimeout.runId, {
       result: { meta: { durationMs: 5, aborted: true, timeoutPhase: "provider" } },
     });
     expect(getEnterpriseRunRecord(abortedTimeout.runId)?.status).toBe("timed_out");
   });
 
-  it("maps run errors to failed and hook blocks to blocked", () => {
+  it("maps run errors to failed and hook blocks to blocked", async () => {
     const first = makeParams();
-    applyEnterpriseMediation(first);
+    await applyEnterpriseMediation(first);
     finishEnterpriseMediation(first.runId, {
       result: { meta: { durationMs: 5, error: { kind: "retry_limit", message: "boom" } } },
     });
     expect(getEnterpriseRunRecord(first.runId)?.status).toBe("failed");
 
     const second = makeParams();
-    applyEnterpriseMediation(second);
+    await applyEnterpriseMediation(second);
     finishEnterpriseMediation(second.runId, {
       result: { meta: { durationMs: 5, error: { kind: "hook_block", message: "denied" } } },
     });

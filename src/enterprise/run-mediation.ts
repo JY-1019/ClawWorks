@@ -16,7 +16,13 @@ import {
   buildEnterprisePromptSection,
   buildEnterpriseRunPlan,
   classifyWorkflowTrigger,
+  selectWorkflowTree,
 } from "./plan.js";
+import {
+  selectWorkflowRoute,
+  type EnterpriseRouteSelection,
+  type RoutePlanner,
+} from "./route-planner.js";
 import {
   registerEnterpriseActiveRun,
   resolveEnterpriseMode,
@@ -43,6 +49,13 @@ type MediatedRunState = EnterpriseActiveRun & {
 // HookContext runId). Entries are removed when the execution ends.
 const mediatedRuns = new Map<string, MediatedRunState>();
 
+// Begins that are still awaiting route planning. mediatedRuns is only populated
+// AFTER the planner resolves, so without this a second begin for the same runId
+// (a nested begin from one runner invocation) would sail past the existing-run
+// guard, plan a second time, and create a duplicate execution row that nothing
+// ever finalizes.
+const pendingBegins = new Map<string, Promise<EnterpriseRunMediation>>();
+
 export type EnterpriseRunMediation =
   | { kind: "off" }
   | { kind: "blocked"; reason: string }
@@ -56,10 +69,32 @@ export type BeginEnterpriseRunParams = {
   sessionKey?: string;
   agentId?: string;
   config?: OpenClawConfig;
+  /** Picks the route through the selected tree. Omit to plan the whole subtree. */
+  routePlanner?: RoutePlanner;
+  /** Cancels the planning call when the agent run is aborted. */
+  signal?: AbortSignal;
 };
 
 /** Begin enterprise mediation for one agent execution. */
-export function beginEnterpriseRun(params: BeginEnterpriseRunParams): EnterpriseRunMediation {
+export async function beginEnterpriseRun(
+  params: BeginEnterpriseRunParams,
+): Promise<EnterpriseRunMediation> {
+  const inFlight = pendingBegins.get(params.runId);
+  if (inFlight) {
+    return await inFlight;
+  }
+  const begin = beginEnterpriseRunInternal(params);
+  pendingBegins.set(params.runId, begin);
+  try {
+    return await begin;
+  } finally {
+    pendingBegins.delete(params.runId);
+  }
+}
+
+async function beginEnterpriseRunInternal(
+  params: BeginEnterpriseRunParams,
+): Promise<EnterpriseRunMediation> {
   const mode = resolveEnterpriseMode(params.config);
   if (mode === "off") {
     return { kind: "off" };
@@ -97,18 +132,58 @@ export function beginEnterpriseRun(params: BeginEnterpriseRunParams): Enterprise
     log.warn(`enterprise observe mode continuing on built-in trees: ${treeLoadFailure}`);
   }
 
-  const plan = buildEnterpriseRunPlan({
-    runId: params.runId,
-    requestText: params.prompt,
-    trigger: classifyWorkflowTrigger({
-      ...(params.trigger !== undefined ? { trigger: params.trigger } : {}),
-      ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
-    }),
-    mode,
-    trees: registry.entries.map((entry) => entry.tree),
+  const trees = registry.entries.map((entry) => entry.tree);
+  const trigger = classifyWorkflowTrigger({
+    ...(params.trigger !== undefined ? { trigger: params.trigger } : {}),
+    ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
   });
+  // Route selection needs the tree first, so resolve it here and hand the same
+  // selection to the plan builder (which re-derives it deterministically).
+  const selection = selectWorkflowTree({ requestText: params.prompt, trigger, trees });
   const policies = resolveGovernancePolicies(params.config);
-  const startDecision = evaluateRunStartGovernance({ plan, policies });
+
+  const buildPlan = (route?: EnterpriseRouteSelection) =>
+    buildEnterpriseRunPlan({
+      runId: params.runId,
+      requestText: params.prompt,
+      trigger,
+      mode,
+      trees,
+      ...(route ? { route } : {}),
+    });
+
+  // Evaluate run-start governance BEFORE any model contact. Route planning sends
+  // the request text to a provider, so a run a policy denies must be blocked
+  // first — otherwise a denied prompt still leaves the machine, and the block is
+  // delayed behind a model round-trip. Governance is evaluated on the unrouted
+  // plan; run-level policies select on tree/node, which pruning cannot add to.
+  const unroutedPlan = buildPlan();
+  const startDecision = evaluateRunStartGovernance({ plan: unroutedPlan, policies });
+  const runStartDenied =
+    startDecision.effect === "deny" || startDecision.effect === "require_approval";
+  const skipPlanning = runStartDenied && mode === "enforce";
+
+  // Only run (and trace) route selection when a planner is actually wired. With
+  // no planner there is no decision to record, and emitting a route event would
+  // make every stock run write trace rows it never wrote before.
+  const route =
+    params.routePlanner && !skipPlanning
+      ? await selectWorkflowRoute({
+          tree: selection.tree,
+          requestText: params.prompt,
+          planner: params.routePlanner,
+          ...(params.signal ? { signal: params.signal } : {}),
+        })
+      : undefined;
+  const plan = route ? buildPlan(route) : unroutedPlan;
+
+  // Route planning can await a provider. If the turn was cancelled while it was
+  // in flight, the runner is already tearing the run down — persisting
+  // run.started/route.selected now would leave a trace claiming a route for a
+  // turn that never ran. Nothing is registered, so nothing needs finalizing.
+  if (params.signal?.aborted) {
+    return { kind: "off" };
+  }
 
   let seq = 0;
   const run: MediatedRunState = {
@@ -146,13 +221,30 @@ export function beginEnterpriseRun(params: BeginEnterpriseRunParams): Enterprise
       mode: plan.mode,
     });
   });
+  // The route decision is the run's headline: which branch of the tree it took,
+  // why, and how much of the tree that covers. Coverage is what makes a wrong
+  // route visible (a correct route is a small fraction; a confused one is most
+  // of the tree), so it belongs in the trace even when nothing was pruned.
+  const routePlan = plan.route;
+  if (routePlan) {
+    persistTrace(() => {
+      appendEvent(run, "route.selected", null, {
+        source: routePlan.source,
+        routes: routePlan.routes.join(", "),
+        rationale: routePlan.rationale,
+        selectedNodes: routePlan.selectedNodes,
+        totalNodes: routePlan.totalNodes,
+        ...(routePlan.invalidRoutes?.length
+          ? { invalidRoutes: routePlan.invalidRoutes.join(", ") }
+          : {}),
+      });
+    });
+  }
 
   // Run-level approvals have no interactive channel at run start (the config
   // schema rejects them; this guards programmatic policies), so they compose
   // as deny-equivalent in enforce mode rather than silently passing.
-  const runStartDenied =
-    startDecision.effect === "deny" || startDecision.effect === "require_approval";
-  const runStartBlocked = runStartDenied && mode === "enforce";
+  const runStartBlocked = skipPlanning;
   if (startDecision.source !== "default") {
     // Policy-sourced run decisions (deny, audit, explicit allow) are trace
     // evidence operators configured; only default allows stay silent.
@@ -218,6 +310,7 @@ export function clearEnterpriseRunMediationForTest(): void {
     unregisterEnterpriseActiveRun(runId);
   }
   mediatedRuns.clear();
+  pendingBegins.clear();
 }
 
 function appendEvent(

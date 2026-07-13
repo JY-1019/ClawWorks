@@ -56,7 +56,7 @@ afterAll(() => {
 });
 
 describe("enterprise mediation to gateway round-trip", () => {
-  it("surfaces a mediation-produced governed trace through the gateway read methods", () => {
+  it("surfaces a mediation-produced governed trace through the gateway read methods", async () => {
     // A run-level audit policy records a governance decision without blocking.
     const config: OpenClawConfig = {
       enterprise: {
@@ -66,7 +66,7 @@ describe("enterprise mediation to gateway round-trip", () => {
       },
     };
 
-    const mediation = beginEnterpriseRun({
+    const mediation = await beginEnterpriseRun({
       runId: "int-run-1",
       prompt: "please help me finish a task",
       trigger: "user",

@@ -220,6 +220,23 @@ export type EnterprisePlanNode = {
   ontology: OntologyBinding;
 };
 
+/**
+ * Which part of the tree this run actually plans. `routes` are the cut points a
+ * planner chose; the plan holds their subtrees plus the ancestors above them.
+ * Coverage is the score that makes route selection measurable: a correct route
+ * is a small fraction of the tree, a confused one is most of it.
+ */
+export type EnterpriseRoutePlan = {
+  routes: EnterpriseId[];
+  rationale: string;
+  source: "planner" | "whole-tree";
+  /** Nodes planned out of the tree's total. */
+  selectedNodes: number;
+  totalNodes: number;
+  /** Routes the planner named that do not exist in the tree (hallucinations). */
+  invalidRoutes?: string[];
+};
+
 /** Prepared execution plan for one enterprise-mode run. */
 export type EnterpriseRunPlan = {
   runId: string;
@@ -228,10 +245,26 @@ export type EnterpriseRunPlan = {
   treeName: string;
   /** How the tree was chosen for this request. */
   matchedBy: "keywords" | "trigger" | "default";
+  /**
+   * Content hash of the tree DEFINITION this run planned against.
+   *
+   * `version` cannot answer "is the live tree still the one this run governed":
+   * it is author-controlled, a tree can be re-imported unchanged at the same
+   * version, and removing an imported override silently reveals a different
+   * built-in. A hash answers it exactly, which is what the inspector needs
+   * before it draws a run's route on a tree's branches.
+   *
+   * Optional: plans persisted before hashes existed have none, and the inspector
+   * treats a missing hash as "cannot prove identity" (it withholds the picture)
+   * rather than failing to load the run.
+   */
+  treeHash?: string;
   /** Truncated, secret-redacted request text for trace inspection. */
   requestSummary: string;
-  /** Depth-first flattened subtree nodes. */
+  /** Depth-first flattened nodes: the selected route, or the whole subtree. */
   nodes: EnterprisePlanNode[];
+  /** How the route through the tree was chosen. */
+  route?: EnterpriseRoutePlan;
   /**
    * Node whose step the run is currently executing. Starts at the subtree root
    * and advances through the depth-first leaf sequence as turns progress.
@@ -288,6 +321,7 @@ export type KnowledgeFoundationAdapter = {
  */
 export type EnterpriseRunEventKind =
   | "run.started"
+  | "route.selected"
   | "run.ended"
   | "governance.decision"
   | "node.entered"

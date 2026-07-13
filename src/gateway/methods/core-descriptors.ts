@@ -109,6 +109,13 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "enterprise.trees.history.get", scope: "operator.read" },
   { name: "enterprise.runs.list", scope: "operator.read" },
   { name: "enterprise.runs.get", scope: "operator.read" },
+  { name: "enterprise.mode.get", scope: "operator.read" },
+  // Switching the mode turns governance enforcement on or off for every run, so
+  // it is admin like trees.import — a chat/tool operator.write token must not be
+  // able to disable enforcement. It rewrites openclaw.json and reloads the
+  // gateway, so it also takes the shared control-plane write budget: a selector
+  // in chat is one click away from spamming config writes.
+  { name: "enterprise.mode.set", scope: "operator.admin", controlPlaneWrite: true },
   { name: "environments.list", scope: "operator.read" },
   { name: "environments.status", scope: "operator.read" },
   { name: "agents.list", scope: "operator.read" },

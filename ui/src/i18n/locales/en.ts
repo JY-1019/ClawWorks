@@ -184,6 +184,31 @@ export const en: TranslationMap = {
     constraint: "Constraint: {text}",
     noOntology: "This tree declares no ontology entities or relationships.",
     graphHint: "Drag a node · scroll to zoom",
+    routeTitle: "Route taken",
+    propertyPrimaryKey: "PK",
+    propertyRequired: "required",
+    mode: {
+      label: "Enterprise",
+      hint: "Governed workflow mode for this assistant",
+      enforce: {
+        label: "Enforce",
+        hint: "Governance blocks out-of-scope tools",
+      },
+      observe: {
+        label: "Observe",
+        hint: "Records decisions, blocks nothing",
+      },
+      off: {
+        label: "Off",
+        hint: "No workflow mediation",
+      },
+    },
+    routeCoverage: "{coverage} nodes planned",
+    routeInvalid: "The planner named routes that do not exist in this tree: {routes}",
+    routeSource: {
+      planner: "planner",
+      wholeTree: "whole tree",
+    },
     resetView: "Reset view",
     noRelationships: "No declared relationships.",
     selectStep: "Select a step to inspect its ontology scope.",

@@ -1247,6 +1247,12 @@ CREATE INDEX IF NOT EXISTS idx_enterprise_runs_run
 CREATE INDEX IF NOT EXISTS idx_enterprise_runs_created
   ON enterprise_runs(created_at DESC, execution_id);
 
+-- Chat asks for one session's newest run after every turn. Without this the
+-- session filter degrades to a full scan of the run table on installs with many
+-- runs, and a thread with no recent run pays for it on every refresh.
+CREATE INDEX IF NOT EXISTS idx_enterprise_runs_session
+  ON enterprise_runs(session_key, created_at DESC, execution_id);
+
 CREATE TABLE IF NOT EXISTS enterprise_run_events (
   execution_id TEXT NOT NULL,
   seq INTEGER NOT NULL,

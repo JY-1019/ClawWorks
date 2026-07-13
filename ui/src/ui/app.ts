@@ -107,6 +107,14 @@ import type {
   WikiMemoryPalace,
 } from "./controllers/dreaming.ts";
 import {
+  clearEnterpriseChatRoute,
+  loadEnterpriseChatMode,
+  loadEnterpriseChatRoute,
+  markEnterpriseChatTurnStart,
+  setEnterpriseChatMode,
+  type EnterpriseMode,
+} from "./controllers/enterprise-chat.ts";
+import {
   dismissExecApprovalPrompt,
   isStaleApprovalResolutionError,
   refreshPendingApprovalQueue,
@@ -475,6 +483,16 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseStoreError: string | null = null;
   @state() enterpriseSelectedExecutionId: string | null = null;
   @state() enterpriseDetail: EnterpriseRunDetail | null = null;
+  @state() enterpriseRunTree: EnterpriseTreeDetail | null = null;
+  @state() enterpriseChatMode: EnterpriseMode | null = null;
+  @state() enterpriseChatModeBusy = false;
+  @state() enterpriseChatModeError: string | null = null;
+  @state() enterpriseChatRun: EnterpriseRunDetail | null = null;
+  @state() enterpriseChatRunBefore: string | null = null;
+
+  setEnterpriseChatMode = async (mode: EnterpriseMode) => {
+    await setEnterpriseChatMode(this, mode);
+  };
   @state() enterpriseDetailLoading = false;
   @state() enterpriseSelectedTreeId: string | null = null;
   @state() enterpriseTreeDetail: EnterpriseTreeDetail | null = null;
@@ -937,6 +955,37 @@ export class OpenClawApp extends LitElement {
   protected override updated(changed: Map<PropertyKey, unknown>) {
     handleUpdated(this as unknown as Parameters<typeof handleUpdated>[0], changed);
     refreshActiveFloatingTooltip(this);
+    // The mode the gateway enforces is only knowable once connected. Load the
+    // session's route at the same time: it baselines which run is already known,
+    // so the first ungoverned turn after a reconnect cannot show a stale route.
+    if (changed.has("connected") && this.connected) {
+      void loadEnterpriseChatMode(this);
+      if (this.sessionKey) {
+        void loadEnterpriseChatRoute(this, this.sessionKey);
+      }
+    }
+    // A route belongs to one thread: switching sessions must not leave the
+    // previous thread's route card sitting under the new conversation.
+    if (changed.has("sessionKey")) {
+      clearEnterpriseChatRoute(this);
+      if (this.connected && this.sessionKey) {
+        void loadEnterpriseChatRoute(this, this.sessionKey);
+      }
+    }
+    // The route card follows the RUN lifecycle, not the send ACK. chat.send acks
+    // with started/in_flight long before the agent dispatches — and mediation now
+    // waits for lane admission — so refreshing on `chatSending` would look for a
+    // trace that does not exist yet and then never look again.
+    if (changed.has("chatRunId")) {
+      if (this.chatRunId) {
+        // A run started: freeze which route was already on screen, so a turn that
+        // traces nothing cannot leave the previous route under the new answer.
+        markEnterpriseChatTurnStart(this);
+      } else if (this.connected && this.sessionKey) {
+        // The run reached a terminal state: its trace exists now.
+        void loadEnterpriseChatRoute(this, this.sessionKey);
+      }
+    }
     // Some render callbacks assign tab directly while preparing nested panel state.
     if (changed.has("tab") && this.tab !== "chat" && this.chatMobileControlsOpen) {
       this.setChatMobileControlsOpen(false);

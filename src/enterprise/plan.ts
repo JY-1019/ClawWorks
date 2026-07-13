@@ -3,9 +3,12 @@
  * slice-1 request-decomposition placeholder: trees advertise keyword/trigger
  * match hints and the highest-scoring tree wins deterministically.
  */
+import { createHash } from "node:crypto";
 import { redactSecrets } from "../logging/redact.js";
 import { BUILTIN_ASSIST_TREE } from "./builtin-trees.js";
+import { countTreeNodes, type EnterpriseRouteSelection } from "./route-planner.js";
 import type {
+  EnterpriseRoutePlan,
   EnterpriseMode,
   EnterprisePlanNode,
   EnterpriseRunPlan,
@@ -103,9 +106,20 @@ export function selectWorkflowTree(params: {
   return { tree: fallback, matchedBy: "default" };
 }
 
-function flattenPlanNodes(root: WorkflowNodeDefinition): EnterprisePlanNode[] {
+/**
+ * Flatten the subtree depth-first. When `keep` is given, only those nodes are
+ * planned — the route. `keep` always contains a selected node's ancestors, so a
+ * skipped node can never have a kept descendant and pruning its branch is safe.
+ */
+function flattenPlanNodes(
+  root: WorkflowNodeDefinition,
+  keep?: ReadonlySet<string>,
+): EnterprisePlanNode[] {
   const nodes: EnterprisePlanNode[] = [];
   const visit = (node: WorkflowNodeDefinition, parentId: string | null) => {
+    if (keep && !keep.has(node.id)) {
+      return;
+    }
     nodes.push({
       nodeId: node.id,
       parentId,
@@ -122,12 +136,47 @@ function flattenPlanNodes(root: WorkflowNodeDefinition): EnterprisePlanNode[] {
   return nodes;
 }
 
+const MODEL_TEXT_MAX_CHARS = 300;
+
+/**
+ * Redact + bound text the MODEL produced about the request (route rationales,
+ * hallucinated route strings). It is persisted to the trace and rendered in the
+ * UI, so it gets the same redaction as the request summary — a rationale that
+ * quotes the prompt back would otherwise smuggle a secret into the trace.
+ */
+function summarizeModelText(text: string): string {
+  const redacted = redactSecrets(text).replace(/\s+/g, " ").trim();
+  if (redacted.length <= MODEL_TEXT_MAX_CHARS) {
+    return redacted;
+  }
+  return `${redacted.slice(0, MODEL_TEXT_MAX_CHARS - 1)}…`;
+}
+
 function summarizeRequestText(requestText: string): string {
   const redacted = redactSecrets(requestText).replace(/\s+/g, " ").trim();
   if (redacted.length <= REQUEST_SUMMARY_MAX_CHARS) {
     return redacted;
   }
   return `${redacted.slice(0, REQUEST_SUMMARY_MAX_CHARS - 1)}…`;
+}
+
+/**
+ * Stable content hash of a tree definition. Keys are sorted so an equivalent
+ * definition always hashes the same regardless of authoring order.
+ */
+export function hashWorkflowTree(tree: WorkflowTreeDefinition): string {
+  const canonical = JSON.stringify(tree, (_key, value: unknown) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.keys(record)
+          .toSorted()
+          .map((key) => [key, record[key]]),
+      );
+    }
+    return value;
+  });
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /** Build the prepared execution plan for one enterprise-mode run. */
@@ -137,6 +186,8 @@ export function buildEnterpriseRunPlan(params: {
   trigger: WorkflowTreeTrigger;
   mode: Exclude<EnterpriseMode, "off">;
   trees: readonly WorkflowTreeDefinition[];
+  /** Route through the chosen tree. Omit to plan the whole subtree. */
+  route?: EnterpriseRouteSelection;
   now?: number;
 }): EnterpriseRunPlan {
   const selection = selectWorkflowTree({
@@ -144,15 +195,42 @@ export function buildEnterpriseRunPlan(params: {
     trigger: params.trigger,
     trees: params.trees,
   });
-  const nodes = flattenPlanNodes(selection.tree.root);
+  const totalNodes = countTreeNodes(selection.tree);
+  // A route resolved against a DIFFERENT tree cannot prune this one; ignoring it
+  // is the safe read (plan everything) rather than planning an empty run.
+  const routeNodeIds =
+    params.route?.nodeIds && params.route.nodeIds.has(selection.tree.root.id)
+      ? params.route.nodeIds
+      : undefined;
+  const nodes = flattenPlanNodes(selection.tree.root, routeNodeIds);
+  const route: EnterpriseRoutePlan | undefined = params.route
+    ? {
+        // Route ids are safe: they were resolved against the tree, so they can
+        // only be node ids the definition already contains.
+        routes: routeNodeIds ? [...params.route.routes] : [],
+        // The rationale and any hallucinated route strings are MODEL TEXT echoing
+        // the request, so they get the same treatment as requestSummary. Without
+        // this the trace, the plan row, and the chat card become a new sink for
+        // whatever secret the user pasted into the prompt.
+        rationale: summarizeModelText(params.route.rationale),
+        source: routeNodeIds ? params.route.source : "whole-tree",
+        selectedNodes: nodes.length,
+        totalNodes,
+        ...(params.route.invalidRoutes.length > 0
+          ? { invalidRoutes: params.route.invalidRoutes.map(summarizeModelText) }
+          : {}),
+      }
+    : undefined;
   return {
     runId: params.runId,
     treeId: selection.tree.id,
     treeVersion: selection.tree.version,
     treeName: selection.tree.name,
     matchedBy: selection.matchedBy,
+    treeHash: hashWorkflowTree(selection.tree),
     requestSummary: summarizeRequestText(params.requestText),
     nodes,
+    ...(route ? { route } : {}),
     // Runs start at the subtree root, the general scope every mediated runtime
     // enforces. Only runtimes that install the step-loop hook (embedded) enter
     // the first leaf and advance through the leaf steps; CLI/ACP stay on the

@@ -28,9 +28,16 @@ import {
   validateEnterpriseTreesHistoryGetParams,
   validateEnterpriseTreesHistoryListParams,
   validateEnterpriseTreesImportParams,
+  validateEnterpriseModeGetParams,
+  validateEnterpriseModeSetParams,
   validateEnterpriseTreesListParams,
   validateEnterpriseTreesRemoveParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { readConfigFileSnapshotForWrite } from "../../config/io.js";
+import { getRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { hashWorkflowTree } from "../../enterprise/plan.js";
+import { resolveEnterpriseMode } from "../../enterprise/runtime.js";
 import {
   type EnterpriseRunEventRecord,
   type EnterpriseRunRecord,
@@ -59,6 +66,8 @@ import type {
   WorkflowNodeDefinition,
   WorkflowTreeMatch,
 } from "../../enterprise/types.js";
+import { resolveSessionStoreKey } from "../session-store-key.js";
+import { commitGatewayConfigWrite } from "./config-write-flow.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 type PlanNodeRecord = EnterpriseRunRecord["plan"]["nodes"][number];
@@ -92,6 +101,7 @@ function mapRunSummary(record: EnterpriseRunRecord): EnterpriseRunSummary {
   return {
     executionId: record.executionId,
     runId: record.runId,
+    sessionKey: record.sessionKey,
     treeId: record.treeId,
     treeVersion: record.treeVersion,
     mode: record.mode,
@@ -127,11 +137,16 @@ function mapRunDetail(
     treeId: record.treeId,
     treeVersion: record.treeVersion,
     treeName: record.plan.treeName,
+    ...(record.plan.treeHash ? { treeHash: record.plan.treeHash } : {}),
     mode: record.mode,
     status: record.status,
     matchedBy: record.plan.matchedBy,
     requestSummary: record.requestSummary,
     activeNodeId: record.plan.activeNodeId,
+    // The route is the run's headline (which branch it took, and how much of the
+    // tree that covers), so the inspector gets it verbatim rather than by
+    // re-deriving it from the plan node list.
+    ...(record.plan.route ? { route: structuredClone(record.plan.route) } : {}),
     nodes: record.plan.nodes.map(mapPlanNode),
     events: events.map(mapEvent),
     executionCount,
@@ -244,6 +259,10 @@ function buildTreeDetail(entry: WorkflowTreeRegistryEntry): EnterpriseTreeDetail
   const detail: EnterpriseTreeDetail = {
     id: entry.tree.id,
     version: entry.tree.version,
+    // The hash lets a client prove this IS the definition a given run planned
+    // against — something `version` cannot do, since it is author-controlled and
+    // an imported override can be removed to reveal a different built-in.
+    hash: hashWorkflowTree(entry.tree),
     name: entry.tree.name,
     description: entry.tree.description,
     source: entry.source,
@@ -429,7 +448,19 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const records = listEnterpriseRunRecords(params.limit ? { limit: params.limit } : {});
+    // The stored session_key is the RESOLVED store key (chat canonicalizes UI
+    // aliases like "main" into "agent:main:main" before a run is traced), so the
+    // filter has to canonicalize the requested key the same way or the most
+    // common session would match nothing.
+    const cfg = getRuntimeConfigSnapshot();
+    const sessionKey =
+      params.sessionKey && cfg
+        ? resolveSessionStoreKey({ cfg, sessionKey: params.sessionKey })
+        : params.sessionKey;
+    const records = listEnterpriseRunRecords({
+      ...(params.limit ? { limit: params.limit } : {}),
+      ...(sessionKey ? { sessionKey } : {}),
+    });
     respond(true, { runs: records.map(mapRunSummary) });
   },
   "enterprise.runs.get": ({ params, respond }) => {
@@ -455,5 +486,65 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
     // Sibling execution count for the same runId gives the inspector "run N of M".
     const executionCount = listEnterpriseRunExecutions(record.runId).length;
     respond(true, { run: mapRunDetail(record, events, executionCount) });
+  },
+  "enterprise.mode.get": ({ params, respond }) => {
+    if (!validateEnterpriseModeGetParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.mode.get params: ${formatValidationErrors(validateEnterpriseModeGetParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    // Read the RESOLVED mode (defaults applied), which is what runs actually
+    // enforce — not the raw config value, which may be absent.
+    respond(true, { mode: resolveEnterpriseMode(getRuntimeConfigSnapshot() ?? undefined) });
+  },
+  "enterprise.mode.set": async ({ params, respond, context }) => {
+    if (!validateEnterpriseModeSetParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.mode.set params: ${formatValidationErrors(validateEnterpriseModeSetParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const mode = params.mode;
+    try {
+      const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
+      // Write against `resolved` (the authored config), NOT the runtime config:
+      // writing the runtime shape would bake every applied default into the file.
+      const nextConfig = {
+        ...snapshot.resolved,
+        enterprise: { ...snapshot.resolved.enterprise, mode },
+      } as OpenClawConfig;
+      const write = await commitGatewayConfigWrite({
+        snapshot,
+        // Pin the snapshot this write was derived from. nextConfig is a full copy
+        // of the file as it looked when we read it, so without this a config edit
+        // landing in between would be silently reverted by a mode toggle. With it
+        // the commit fails as a conflict instead, and the chat selector reverts.
+        writeOptions: { ...writeOptions, baseSnapshot: snapshot },
+        nextConfig,
+        ...(context ? { context } : {}),
+      });
+      write.queueFollowUp();
+      respond(true, { mode });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          `could not persist enterprise mode: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    }
   },
 };

@@ -9,9 +9,10 @@ import {
   scopedAgentParamsForSession,
   scopedAgentListParamsForSession,
 } from "./app-chat.ts";
-import { syncUrlWithSessionKey } from "./app-settings.ts";
+import { hasOperatorAdminAccess, syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { persistChatComposerState, restoreChatComposerState } from "./chat/composer-persistence.ts";
+import { renderEnterpriseModeSelect } from "./chat/enterprise-controls.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
   renderChatSessionSelect as renderChatSessionSelectBase,
@@ -413,6 +414,18 @@ export function renderChatControls(state: AppViewState) {
     >
       ${renderChatModelSelect(state)}
     </div>
+    ${renderEnterpriseModeSelect({
+      mode: state.enterpriseChatMode,
+      busy: state.enterpriseChatModeBusy,
+      // mode.get needs operator.read but mode.set needs operator.admin. A
+      // read-only operator could otherwise click a mode that always fails and
+      // silently reverts, so the control is shown (the mode is real information)
+      // but not operable.
+      disabled:
+        !state.connected || state.onboarding || !hasOperatorAdminAccess(state.hello?.auth ?? null),
+      error: state.enterpriseChatModeError,
+      onSelect: (mode) => void state.setEnterpriseChatMode(mode),
+    })}
     ${renderChatQuotaPill(state)}
     <div class="chat-settings-popover-wrapper">
       <button

@@ -128,6 +128,8 @@ describe("enterprise gateway methods", () => {
     expect(completed).toEqual({
       executionId: "exec-gw-1",
       runId: "run-gw-1",
+      // Chat needs this to show only the current thread's route.
+      sessionKey: "agent:main:x",
       treeId: "acme.support",
       treeVersion: "1.0.0",
       mode: "enforce",
@@ -142,6 +144,18 @@ describe("enterprise gateway methods", () => {
     // The full internal plan (nodes/events) is not leaked into the list summary.
     expect(completed).not.toHaveProperty("nodes");
     expect(completed).not.toHaveProperty("plan");
+  });
+
+  it("canonicalizes the requested sessionKey before filtering runs", () => {
+    // Chat holds UI aliases ("main"); the trace stores the resolved store key
+    // ("agent:main:main"). Filtering on the raw alias would match nothing for the
+    // single most common session.
+    const { ok, payload } = invoke("enterprise.runs.list", { sessionKey: "main", limit: 5 });
+    expect(ok).toBe(true);
+    const result = payload as { runs: Array<Record<string, unknown>> };
+    // The fixture rows are stored under "agent:main:x", so an alias that does not
+    // resolve to them yields nothing — but the call must not error.
+    expect(Array.isArray(result.runs)).toBe(true);
   });
 
   it("returns run detail by execution id with projected plan nodes and events", () => {

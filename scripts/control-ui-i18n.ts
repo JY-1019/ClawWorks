@@ -1427,6 +1427,23 @@ function extractTranslationResult(message: AssistantMessage): string {
   return text;
 }
 
+/**
+ * Models answer with the JSON object wrapped in a ```json code fence even when
+ * told not to. Parsing the raw reply then throws on the backtick and the whole
+ * translation batch fails, which blocks every new i18n key. Strip the fence
+ * before parsing, and fall back to the outermost object if prose surrounds it.
+ */
+function stripJsonFence(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(trimmed);
+  const body = fenced?.[1]?.trim() ?? trimmed;
+  // Always slice to the outermost braces: a reply may START with the object and
+  // still trail prose ('{"k":"v"}\nDone'), which JSON.parse rejects.
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  return start >= 0 && end > start ? body.slice(start, end + 1) : body;
+}
+
 async function translateBatch(
   clientAccess: ClientAccess,
   items: readonly TranslationBatchItem[],
@@ -1444,7 +1461,7 @@ async function translateBatch(
       const raw = await (
         await clientAccess.getClient()
       ).prompt(buildBatchPrompt(items), attemptLabel);
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const parsed = JSON.parse(stripJsonFence(raw)) as Record<string, unknown>;
       const translated = new Map<string, string>();
       for (const item of items) {
         const value = parsed[item.key];

@@ -222,6 +222,16 @@ import {
   EnterpriseTreeNodeSchema,
   type EnterpriseTreeOntology,
   EnterpriseTreeOntologySchema,
+  type EnterpriseRunRoute,
+  EnterpriseRunRouteSchema,
+  type EnterpriseModeGetParams,
+  EnterpriseModeGetParamsSchema,
+  type EnterpriseModeGetResult,
+  EnterpriseModeGetResultSchema,
+  type EnterpriseModeSetParams,
+  EnterpriseModeSetParamsSchema,
+  type EnterpriseModeSetResult,
+  EnterpriseModeSetResultSchema,
   type EnterpriseTreesGetParams,
   EnterpriseTreesGetParamsSchema,
   type EnterpriseTreesGetResult,
@@ -773,6 +783,12 @@ export const validateEnterpriseRunsGetParams = lazyCompile<EnterpriseRunsGetPara
 export const validateEnterpriseTreesGetParams = lazyCompile<EnterpriseTreesGetParams>(
   EnterpriseTreesGetParamsSchema,
 );
+export const validateEnterpriseModeGetParams = lazyCompile<EnterpriseModeGetParams>(
+  EnterpriseModeGetParamsSchema,
+);
+export const validateEnterpriseModeSetParams = lazyCompile<EnterpriseModeSetParams>(
+  EnterpriseModeSetParamsSchema,
+);
 export const validateEnterpriseTreesImportParams = lazyCompile<EnterpriseTreesImportParams>(
   EnterpriseTreesImportParamsSchema,
 );
@@ -1173,6 +1189,11 @@ export {
   EnterpriseTreeDetailSchema,
   EnterpriseTreesGetParamsSchema,
   EnterpriseTreesGetResultSchema,
+  EnterpriseRunRouteSchema,
+  EnterpriseModeGetParamsSchema,
+  EnterpriseModeGetResultSchema,
+  EnterpriseModeSetParamsSchema,
+  EnterpriseModeSetResultSchema,
   EnterpriseTreeImportIssueSchema,
   EnterpriseTreesImportParamsSchema,
   EnterpriseTreesImportResultSchema,
@@ -1320,6 +1341,11 @@ export {
 
 // Type exports mirror the schema exports for downstream TypeScript consumers.
 export type {
+  EnterpriseRunRoute,
+  EnterpriseModeGetParams,
+  EnterpriseModeGetResult,
+  EnterpriseModeSetParams,
+  EnterpriseModeSetResult,
   GatewayFrame,
   ConnectParams,
   HelloOk,

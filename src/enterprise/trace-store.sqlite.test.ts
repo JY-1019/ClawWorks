@@ -119,6 +119,35 @@ describe("enterprise trace store", () => {
     expect(latest?.status).toBe("running");
   });
 
+  it("filters by sessionKey in SQL, before the limit", () => {
+    // Chat asks for one run for one thread. If the filter ran after the limit,
+    // a thread whose newest run is older than the page would look ungoverned.
+    for (let i = 0; i < 5; i++) {
+      persistEnterpriseRunStart(
+        {
+          executionId: `exec-other-${i}`,
+          plan: makePlan(`run-other-${i}`),
+          sessionKey: "agent:main:other",
+          now: 1000 + i,
+        },
+        storeOptions,
+      );
+    }
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-mine",
+        plan: makePlan("run-mine"),
+        sessionKey: "agent:main:me",
+        now: 500, // older than every other-session run
+      },
+      storeOptions,
+    );
+
+    // A limit of 1 without the filter would return an other-session run.
+    const mine = listEnterpriseRunRecords({ limit: 1, sessionKey: "agent:main:me" }, storeOptions);
+    expect(mine.map((record) => record.executionId)).toEqual(["exec-mine"]);
+  });
+
   it("lists executions newest-first with a bounded limit", () => {
     const older = { ...makePlan("run-trace-3"), createdAt: 500 };
     const newer = { ...makePlan("run-trace-4"), createdAt: 600 };

@@ -6476,6 +6476,7 @@ public struct EnterpriseTreesListResult: Codable, Sendable {
 public struct EnterpriseRunSummary: Codable, Sendable {
     public let executionid: String
     public let runid: String
+    public let sessionkey: AnyCodable?
     public let treeid: String
     public let treeversion: String
     public let mode: String
@@ -6489,6 +6490,7 @@ public struct EnterpriseRunSummary: Codable, Sendable {
     public init(
         executionid: String,
         runid: String,
+        sessionkey: AnyCodable? = nil,
         treeid: String,
         treeversion: String,
         mode: String,
@@ -6501,6 +6503,7 @@ public struct EnterpriseRunSummary: Codable, Sendable {
     {
         self.executionid = executionid
         self.runid = runid
+        self.sessionkey = sessionkey
         self.treeid = treeid
         self.treeversion = treeversion
         self.mode = mode
@@ -6515,6 +6518,7 @@ public struct EnterpriseRunSummary: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case executionid = "executionId"
         case runid = "runId"
+        case sessionkey = "sessionKey"
         case treeid = "treeId"
         case treeversion = "treeVersion"
         case mode
@@ -6529,15 +6533,19 @@ public struct EnterpriseRunSummary: Codable, Sendable {
 
 public struct EnterpriseRunsListParams: Codable, Sendable {
     public let limit: Int?
+    public let sessionkey: String?
 
     public init(
-        limit: Int?)
+        limit: Int?,
+        sessionkey: String? = nil)
     {
         self.limit = limit
+        self.sessionkey = sessionkey
     }
 
     private enum CodingKeys: String, CodingKey {
         case limit
+        case sessionkey = "sessionKey"
     }
 }
 
@@ -6627,11 +6635,13 @@ public struct EnterpriseRunDetail: Codable, Sendable {
     public let treeid: String
     public let treeversion: String
     public let treename: String
+    public let treehash: String?
     public let mode: String
     public let status: AnyCodable
     public let matchedby: String
     public let requestsummary: String
     public let activenodeid: String
+    public let route: EnterpriseRunRoute?
     public let nodes: [EnterprisePlanNode]
     public let events: [EnterpriseRunEvent]
     public let executioncount: Int
@@ -6647,11 +6657,13 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         treeid: String,
         treeversion: String,
         treename: String,
+        treehash: String? = nil,
         mode: String,
         status: AnyCodable,
         matchedby: String,
         requestsummary: String,
         activenodeid: String,
+        route: EnterpriseRunRoute? = nil,
         nodes: [EnterprisePlanNode],
         events: [EnterpriseRunEvent],
         executioncount: Int,
@@ -6666,11 +6678,13 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         self.treeid = treeid
         self.treeversion = treeversion
         self.treename = treename
+        self.treehash = treehash
         self.mode = mode
         self.status = status
         self.matchedby = matchedby
         self.requestsummary = requestsummary
         self.activenodeid = activenodeid
+        self.route = route
         self.nodes = nodes
         self.events = events
         self.executioncount = executioncount
@@ -6687,17 +6701,97 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         case treeid = "treeId"
         case treeversion = "treeVersion"
         case treename = "treeName"
+        case treehash = "treeHash"
         case mode
         case status
         case matchedby = "matchedBy"
         case requestsummary = "requestSummary"
         case activenodeid = "activeNodeId"
+        case route
         case nodes
         case events
         case executioncount = "executionCount"
         case createdat = "createdAt"
         case updatedat = "updatedAt"
         case endedat = "endedAt"
+    }
+}
+
+public struct EnterpriseRunRoute: Codable, Sendable {
+    public let routes: [String]
+    public let rationale: String
+    public let source: AnyCodable
+    public let selectednodes: Int
+    public let totalnodes: Int
+    public let invalidroutes: [String]?
+
+    public init(
+        routes: [String],
+        rationale: String,
+        source: AnyCodable,
+        selectednodes: Int,
+        totalnodes: Int,
+        invalidroutes: [String]?)
+    {
+        self.routes = routes
+        self.rationale = rationale
+        self.source = source
+        self.selectednodes = selectednodes
+        self.totalnodes = totalnodes
+        self.invalidroutes = invalidroutes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case routes
+        case rationale
+        case source
+        case selectednodes = "selectedNodes"
+        case totalnodes = "totalNodes"
+        case invalidroutes = "invalidRoutes"
+    }
+}
+
+public struct EnterpriseModeGetParams: Codable, Sendable {}
+
+public struct EnterpriseModeGetResult: Codable, Sendable {
+    public let mode: AnyCodable
+
+    public init(
+        mode: AnyCodable)
+    {
+        self.mode = mode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+    }
+}
+
+public struct EnterpriseModeSetParams: Codable, Sendable {
+    public let mode: AnyCodable
+
+    public init(
+        mode: AnyCodable)
+    {
+        self.mode = mode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+    }
+}
+
+public struct EnterpriseModeSetResult: Codable, Sendable {
+    public let mode: AnyCodable
+
+    public init(
+        mode: AnyCodable)
+    {
+        self.mode = mode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
     }
 }
 
@@ -6816,6 +6910,7 @@ public struct EnterpriseTreeNode: Codable, Sendable {
 public struct EnterpriseTreeDetail: Codable, Sendable {
     public let id: String
     public let version: String
+    public let hash: String?
     public let name: String
     public let description: String?
     public let source: AnyCodable
@@ -6825,6 +6920,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
     public init(
         id: String,
         version: String,
+        hash: String? = nil,
         name: String,
         description: String?,
         source: AnyCodable,
@@ -6833,6 +6929,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
     {
         self.id = id
         self.version = version
+        self.hash = hash
         self.name = name
         self.description = description
         self.source = source
@@ -6843,6 +6940,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id
         case version
+        case hash
         case name
         case description
         case source

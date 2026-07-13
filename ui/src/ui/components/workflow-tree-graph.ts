@@ -162,6 +162,12 @@ function scopeBadges(ontology: WorkflowTreeOntology): { text: string; tone: stri
 
 export class OpenClawWorkflowTreeGraph extends LitElement {
   @property({ attribute: false }) nodes: WorkflowTreeNode[] = [];
+  /**
+   * Node ids the run actually planned. When set, the tree renders as the whole
+   * tree with this route lit and everything else dimmed — the point is to show
+   * WHAT WAS NOT TAKEN, which a plan-only view cannot show.
+   */
+  @property({ attribute: false }) routeNodeIds: string[] | null = null;
 
   @state() private selectedId: string | null = null;
 
@@ -283,6 +289,11 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     }
   `;
 
+  /** null means "no route filter": every node renders lit (the registry view). */
+  private get routeSet(): Set<string> | null {
+    return this.routeNodeIds ? new Set(this.routeNodeIds) : null;
+  }
+
   override willUpdate(changed: Map<string, unknown>) {
     if (changed.has("nodes") && this.selectedId) {
       const stillThere = this.nodes.some((node) => node.id === this.selectedId);
@@ -337,12 +348,22 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     const y2 = node.y;
     const midY = (y1 + y2) / 2;
     const onPath = this.selectedId === node.id || this.selectedId === parent.id;
+    // An edge belongs to the route only when both endpoints do; a half-lit edge
+    // would imply the run traversed into a branch it never planned.
+    const onRoute =
+      this.routeSet === null || (this.routeSet.has(node.id) && this.routeSet.has(parent.id));
+    const stroke = onPath
+      ? "var(--accent)"
+      : onRoute && this.routeSet
+        ? "var(--accent-2, var(--accent))"
+        : "var(--border-hover)";
     return svg`
       <path
         d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}"
         fill="none"
-        stroke=${onPath ? "var(--accent)" : "var(--border-hover)"}
-        stroke-width=${onPath ? 2 : 1.5}
+        stroke=${stroke}
+        stroke-width=${onPath || (onRoute && this.routeSet) ? 2 : 1.5}
+        opacity=${onRoute ? 1 : 0.25}
       />
     `;
   }
@@ -351,9 +372,11 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     const selected = this.selectedId === node.id;
     const isRoot = node.parentId === null;
     const badges = scopeBadges(node.ontology);
+    const onRoute = this.routeSet?.has(node.id) ?? true;
     return svg`
       <g
         class="node-box"
+        opacity=${onRoute ? 1 : 0.28}
         role="treeitem"
         tabindex="0"
         aria-level=${node.depth + 1}

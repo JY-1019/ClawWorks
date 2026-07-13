@@ -43,6 +43,13 @@ const STRICT_LITERAL_STRUCTS = new Set([
 
 const DEFAULTED_OPTIONAL_INIT_PARAM_ENTRIES: readonly [string, readonly string[]][] = [
   ["SendParams", ["buffer", "filename", "contentType"]],
+  // Added after these types shipped: without a default, each memberwise
+  // initializer would gain a required argument and break existing Swift callers
+  // even though the protocol changes themselves are additive.
+  ["EnterpriseRunsListParams", ["sessionKey"]],
+  ["EnterpriseRunSummary", ["sessionKey"]],
+  ["EnterpriseRunDetail", ["route", "treeHash"]],
+  ["EnterpriseTreeDetail", ["hash"]],
   ["SessionOperationEvent", ["agentId"]],
   ["SessionsCompactionListParams", ["agentId"]],
   ["SessionsCompactionGetParams", ["agentId"]],

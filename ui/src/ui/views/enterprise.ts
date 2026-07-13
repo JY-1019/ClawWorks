@@ -26,6 +26,8 @@ export type EnterpriseProps = {
   selectedExecutionId: string | null;
   detail: EnterpriseRunDetail | null;
   detailLoading: boolean;
+  /** Full tree the selected run bound to, so its route can be shown in context. */
+  runTree: EnterpriseTreeDetail | null;
   selectedTreeId: string | null;
   treeDetail: EnterpriseTreeDetail | null;
   treeLoading: boolean;
@@ -200,6 +202,8 @@ function renderDetailCard(props: EnterpriseProps): TemplateResult {
         >
       </div>
 
+      ${renderRoute(detail, props.runTree)}
+
       <div class="card-title" style="margin-top: 16px;">${t("enterprise.stepsTitle")}</div>
       <div class="list" style="margin-top: 8px;">
         ${detail.nodes.map((node) => renderStep(node, detail.activeNodeId))}
@@ -212,6 +216,49 @@ function renderDetailCard(props: EnterpriseProps): TemplateResult {
           : detail.events.map((event) => renderEvent(event))}
       </div>
     </section>
+  `;
+}
+
+/**
+ * The route the run took. Drawn as the WHOLE tree with the planned nodes lit and
+ * everything else dimmed: the branches the run did not take are the information
+ * — a plan-only view would just show a small tree and hide what was skipped.
+ */
+function renderRoute(
+  detail: EnterpriseRunDetail,
+  runTree: EnterpriseTreeDetail | null,
+): TemplateResult | typeof nothing {
+  const route = detail.route;
+  const plannedIds = detail.nodes.map((node) => node.nodeId);
+  if (!route && !runTree) {
+    return nothing;
+  }
+  const coverage = route ? `${route.selectedNodes}/${route.totalNodes}` : null;
+  return html`
+    <div class="card-title" style="margin-top: 16px;">${t("enterprise.routeTitle")}</div>
+    ${route
+      ? html`<div class="chip-row" style="margin-top: 8px;">
+            <span class="chip">
+              ${route.source === "planner"
+                ? t("enterprise.routeSource.planner")
+                : t("enterprise.routeSource.wholeTree")}
+            </span>
+            <span class="chip">${t("enterprise.routeCoverage", { coverage: coverage ?? "" })}</span>
+            ${route.routes.map((id) => html`<span class="chip">${id}</span>`)}
+          </div>
+          <div class="muted" style="margin-top: 6px; font-size: 12px;">${route.rationale}</div>
+          ${route.invalidRoutes?.length
+            ? html`<div class="callout danger" style="margin-top: 8px;">
+                ${t("enterprise.routeInvalid", { routes: route.invalidRoutes.join(", ") })}
+              </div>`
+            : nothing}`
+      : nothing}
+    ${runTree
+      ? html`<openclaw-workflow-tree-graph
+          .nodes=${runTree.nodes}
+          .routeNodeIds=${plannedIds}
+        ></openclaw-workflow-tree-graph>`
+      : nothing}
   `;
 }
 

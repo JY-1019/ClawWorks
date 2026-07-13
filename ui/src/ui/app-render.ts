@@ -29,6 +29,7 @@ import {
 } from "./app-render.helpers.ts";
 import { hasOperatorAdminAccess, hasOperatorWriteAccess, warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import { renderEnterpriseRouteCard } from "./chat/enterprise-controls.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
   renderChatSessionSelect,
@@ -1038,6 +1039,14 @@ function renderGuardedChatControls(state: AppViewState) {
       state.sessionsResult,
       state.sessionsShowArchived,
       state.agentsList,
+      // Without these the guarded template is reused after loadEnterpriseChatMode
+      // resolves, so the selector would stay absent/stale until an unrelated
+      // chat-control dependency happened to change.
+      state.enterpriseChatMode,
+      state.enterpriseChatModeBusy,
+      // A cleared error must repaint the selector; without this the stale banner
+      // survives until an unrelated chat-control dependency happens to change.
+      state.enterpriseChatModeError,
       state.chatModelOverrides,
       state.chatModelSwitchPromises,
       state.chatModelsLoading,
@@ -2866,6 +2875,7 @@ export function renderApp(state: AppViewState) {
                 storeError: state.enterpriseStoreError,
                 selectedExecutionId: state.enterpriseSelectedExecutionId,
                 detail: state.enterpriseDetail,
+                runTree: state.enterpriseRunTree,
                 detailLoading: state.enterpriseDetailLoading,
                 selectedTreeId: state.enterpriseSelectedTreeId,
                 treeDetail: state.enterpriseTreeDetail,
@@ -3854,6 +3864,7 @@ export function renderApp(state: AppViewState) {
                   onDismissRealtimeTalkError: () => dismissRealtimeTalkError(state),
                   sessions: state.sessionsResult,
                   composerControls: renderGuardedChatControls(state),
+                  enterpriseRoute: renderEnterpriseRouteCard(state.enterpriseChatRun),
                   sessionWorkspace: {
                     collapsed: chatWorkspaceFiles.collapsed,
                     sessionKey: state.sessionKey,

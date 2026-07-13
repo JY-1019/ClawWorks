@@ -390,12 +390,20 @@ async function finalizeCliContextEngineTurn(params: {
 }
 
 /** Prepares and runs one CLI-backed agent turn. */
-export function runCliAgent(paramsInput: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
+export async function runCliAgent(paramsInput: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
   // Enterprise mediation covers CLI-backed runtimes too: run-level governance
-  // and traces apply to every agent runtime, not only the embedded loop.
-  const mediation = applyEnterpriseMediation(paramsInput);
+  // and traces apply to every agent runtime, not only the embedded loop. It is
+  // awaited because route selection may consult a model before the run starts.
+  const mediation = await applyEnterpriseMediation(paramsInput);
   if (mediation.blockedResult) {
-    return Promise.resolve(mediation.blockedResult);
+    return mediation.blockedResult;
+  }
+  // Mediation can await a model call (route planning). A Stop that lands in that
+  // window leaves mediation unregistered, so continuing here would launch the CLI
+  // backend for a cancelled turn — and do it UNMEDIATED.
+  if (paramsInput.abortSignal?.aborted) {
+    const reason = paramsInput.abortSignal.reason;
+    throw reason instanceof Error ? reason : new Error("aborted");
   }
   const params = mediation.params;
   const lifecycleGeneration =

@@ -34,6 +34,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseStoreError: null,
     enterpriseSelectedExecutionId: null,
     enterpriseDetail: null,
+    enterpriseRunTree: null,
     enterpriseDetailLoading: false,
     enterpriseSelectedTreeId: null,
     enterpriseTreeDetail: null,
@@ -77,6 +78,7 @@ function runSummary(executionId: string, runId: string) {
   return {
     executionId,
     runId,
+    sessionKey: "agent:main:test",
     treeId: "acme.support",
     treeVersion: "1.0.0",
     mode: "enforce",
@@ -256,6 +258,56 @@ describe("loadEnterprise", () => {
     expect(state.enterpriseSelectedTreeId).toBeNull();
     expect(state.enterpriseTreeDetail).toBeNull();
     expect(state.enterpriseTreeIssue).toBeNull();
+  });
+});
+
+describe("loadEnterpriseRunDetail run tree", () => {
+  const mocks = (params: { runHash?: string; liveHash?: string }) => async (method: string) => {
+    if (method === "enterprise.runs.get") {
+      return {
+        run: {
+          ...runDetail("exec-1", "run-1", "support"),
+          ...(params.runHash ? { treeHash: params.runHash } : {}),
+        },
+      };
+    }
+    if (method === "enterprise.trees.get") {
+      return {
+        tree: {
+          id: "acme.support",
+          version: "1.0.0",
+          hash: params.liveHash,
+          name: "S",
+          source: "imported",
+          nodes: [],
+        },
+      };
+    }
+    throw new Error(`unexpected ${method}`);
+  };
+
+  it("shows the tree when its CONTENT is the definition the run planned against", async () => {
+    const { state, request } = createState();
+    request.mockImplementation(mocks({ runHash: "abc", liveHash: "abc" }));
+    await loadEnterpriseRunDetail(state, "exec-1");
+    await vi.waitFor(() => expect(state.enterpriseRunTree).not.toBeNull());
+  });
+
+  it("withholds the tree when the live definition differs, even at the same version", async () => {
+    // A re-import at the same version, or removing an imported override to reveal
+    // a different built-in: the version matches but the nodes are not the run's.
+    const { state, request } = createState();
+    request.mockImplementation(mocks({ runHash: "abc", liveHash: "xyz" }));
+    await loadEnterpriseRunDetail(state, "exec-1");
+    expect(state.enterpriseDetail).not.toBeNull();
+    expect(state.enterpriseRunTree).toBeNull();
+  });
+
+  it("withholds the tree for a run traced before hashes existed", async () => {
+    const { state, request } = createState();
+    request.mockImplementation(mocks({ liveHash: "abc" }));
+    await loadEnterpriseRunDetail(state, "exec-1");
+    expect(state.enterpriseRunTree).toBeNull();
   });
 });
 

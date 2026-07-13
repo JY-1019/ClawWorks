@@ -659,14 +659,6 @@ async function runEmbeddedAgentInternal(
     sessionKey: normalizeOptionalString(effectiveSessionKey ?? runSessionTarget.sessionKey),
     sessionFile: runSessionTarget.sessionFile,
   };
-  // Enterprise mediation binds the run to a workflow subtree (idempotent per
-  // runId across fallback retries). It runs after session identity resolution
-  // so the persisted trace carries the resolved sessionKey/agentId.
-  const enterpriseMediation = applyEnterpriseMediation(params);
-  if (enterpriseMediation.blockedResult) {
-    return enterpriseMediation.blockedResult;
-  }
-  params = enterpriseMediation.params;
   const sessionLane = resolveSessionLane(params.sessionKey?.trim() || params.sessionId);
   const globalLane = resolveGlobalLane(params.lane);
   // Outer fallback attempts defer session suspension only while another
@@ -814,6 +806,18 @@ async function runEmbeddedAgentInternal(
     await waitForDeferredTurnMaintenanceForSession(params.sessionKey);
     throwIfAborted();
     return enqueueGlobal(async () => {
+      throwIfAborted();
+      // Enterprise mediation binds the run to a workflow subtree (idempotent per
+      // runId across fallback retries). It runs HERE, after lane admission, not
+      // before: route planning can call a model, and a turn still queued behind
+      // another must not do paid, out-of-order planning for work that may never
+      // start. Session identity is already resolved, so the trace still carries
+      // the right sessionKey/agentId.
+      const enterpriseMediation = await applyEnterpriseMediation(params);
+      if (enterpriseMediation.blockedResult) {
+        return enterpriseMediation.blockedResult;
+      }
+      params = enterpriseMediation.params;
       throwIfAborted();
       const started = Date.now();
       const fastModeStarted = params.fastModeStartedAtMs ?? started;
