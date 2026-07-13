@@ -150,7 +150,9 @@ function mapTreeOntology(ontology: OntologyBinding | undefined): EnterpriseTreeO
   if (ontology.entities?.length) {
     projected.entities = ontology.entities.map((entity) => ({
       id: entity.id,
+      title: entity.title,
       description: entity.description,
+      properties: entity.properties ? structuredClone(entity.properties) : undefined,
     }));
   }
   if (ontology.relationships?.length) {
@@ -158,6 +160,8 @@ function mapTreeOntology(ontology: OntologyBinding | undefined): EnterpriseTreeO
       id: relationship.id,
       from: relationship.from,
       to: relationship.to,
+      cardinality: relationship.cardinality,
+      inverse: relationship.inverse,
       description: relationship.description,
     }));
   }
@@ -166,8 +170,12 @@ function mapTreeOntology(ontology: OntologyBinding | undefined): EnterpriseTreeO
     // so the read-only payload must not hand out its mutable arrays.
     projected.actions = ontology.actions.map((action) => ({
       id: action.id,
+      title: action.title,
       description: action.description,
       tools: action.tools ? [...action.tools] : undefined,
+      parameters: action.parameters ? structuredClone(action.parameters) : undefined,
+      preconditions: action.preconditions ? [...action.preconditions] : undefined,
+      effects: action.effects ? structuredClone(action.effects) : undefined,
     }));
   }
   if (ontology.constraints?.length) {
@@ -321,7 +329,7 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
     const outcome = importWorkflowTreeContent({ content: params.content, format: params.format });
     const result: EnterpriseTreesImportResult = outcome.ok
       ? { ok: true, treeId: outcome.tree.id, replaced: outcome.replaced }
-      : { ok: false, issues: outcome.issues.map((issue) => ({ ...issue })) };
+      : { ok: false, issues: structuredClone(outcome.issues) };
     respond(true, result);
   },
   "enterprise.trees.export": ({ params, respond }) => {

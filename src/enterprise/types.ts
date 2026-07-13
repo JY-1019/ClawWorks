@@ -9,26 +9,82 @@ export type EnterpriseMode = "enforce" | "observe" | "off";
 /** Stable dotted identifier used for trees, nodes, and ontology objects. */
 export type EnterpriseId = string;
 
-/** Ontology entity relevant to a workflow step. */
-export type OntologyEntity = {
+/**
+ * Value types an ontology property or action parameter can carry. A closed set:
+ * the model-facing digest and the UI both render by type, and an open string
+ * would let a typo silently become a new "type".
+ */
+export type OntologyValueType = "string" | "number" | "boolean" | "date" | "id";
+
+/** One typed field on an object type. */
+export type OntologyProperty = {
   id: EnterpriseId;
+  type: OntologyValueType;
+  /** Marks the field that identifies an instance of the object type. */
+  primaryKey?: boolean;
+  required?: boolean;
   description?: string;
 };
 
-/** Directed relationship between two ontology entities. */
+/**
+ * Ontology object type (entity) relevant to a workflow step: the domain concept
+ * plus the typed properties an instance carries.
+ */
+export type OntologyEntity = {
+  id: EnterpriseId;
+  /** Human-readable name; falls back to the id when omitted. */
+  title?: string;
+  description?: string;
+  properties?: OntologyProperty[];
+};
+
+/** How many instances each side of a link type may bind to. */
+export type OntologyCardinality = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
+
+/** Directed link type between two ontology object types. */
 export type OntologyRelationship = {
   id: EnterpriseId;
   from: EnterpriseId;
   to: EnterpriseId;
+  /** Defaults to many-to-many when omitted (the least-constrained reading). */
+  cardinality?: OntologyCardinality;
+  /** Name of the reverse traversal, when the link reads differently backwards. */
+  inverse?: string;
   description?: string;
 };
 
-/** Action a step may perform, optionally bound to concrete tool names. */
+/** One declared input to an action type. */
+export type OntologyActionParameter = {
+  id: EnterpriseId;
+  type: OntologyValueType;
+  required?: boolean;
+  description?: string;
+};
+
+/** What an action does to an object type when it runs. */
+export type OntologyActionEffect = {
+  /** Object type id this action touches. */
+  entity: EnterpriseId;
+  kind: "read" | "create" | "update" | "delete";
+  description?: string;
+};
+
+/**
+ * Ontology action type: a named operation a step may perform, bound to concrete
+ * tools and declaring what it reads/writes. Governance can scope policies at
+ * this level (`actions` selector), so the effects are the contract that makes a
+ * write-scoped policy meaningful rather than a naming convention.
+ */
 export type OntologyAction = {
   id: EnterpriseId;
+  title?: string;
   description?: string;
   /** Tool name globs this action is expected to use. */
   tools?: string[];
+  parameters?: OntologyActionParameter[];
+  /** Natural-language preconditions surfaced to the model before it acts. */
+  preconditions?: string[];
+  effects?: OntologyActionEffect[];
 };
 
 /** Constraint the step must respect; blocking constraints join governance denials. */

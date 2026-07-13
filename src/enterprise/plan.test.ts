@@ -262,6 +262,50 @@ describe("buildEnterprisePromptSection", () => {
     );
   });
 
+  it("renders action preconditions and write effects (the model must see them before it acts)", () => {
+    const tree: WorkflowTreeDefinition = {
+      ...REFUND_TREE,
+      root: {
+        id: "refunds",
+        title: "Handle a refund request",
+        ontology: {
+          entities: [{ id: "payment" }, { id: "claim" }],
+          actions: [
+            {
+              id: "issue-payment",
+              description: "Settle an approved claim",
+              tools: ["memory_search"],
+              parameters: [
+                { id: "claim-id", type: "id", required: true },
+                { id: "amount", type: "number" },
+              ],
+              preconditions: ["The claim must already be approved."],
+              effects: [
+                { entity: "payment", kind: "create" },
+                { entity: "claim", kind: "update" },
+                { entity: "claim", kind: "read" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-effects",
+      requestText: "refund",
+      trigger: "user",
+      mode: "enforce",
+      trees: [tree],
+    });
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).toContain("requires: The claim must already be approved.");
+    // The model cannot call the action without knowing what it must gather.
+    expect(section).toContain("params: claim-id (id, required), amount (number)");
+    // Writes are called out; a read-only effect is not a warning and is omitted.
+    expect(section).toContain("writes: create payment, update claim");
+    expect(section).not.toContain("read claim");
+  });
+
   it("renders action guidance when actions are the only ontology content", () => {
     const tree: WorkflowTreeDefinition = {
       ...REFUND_TREE,

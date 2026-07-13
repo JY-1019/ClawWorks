@@ -1,0 +1,821 @@
+# ClawWorks large-scale example: enterprise financial-operations workflow tree.
+#
+# Import it from a source checkout with:
+#   pnpm openclaw enterprise trees import examples/enterprise/financial-operations.clawworks.yaml
+#
+# WHY THIS TREE IS BIG
+# --------------------
+# This is the route-finding fixture. One tree, 40 nodes, depth 5.
+#
+# CURRENT BEHAVIOR (read this before drawing conclusions from a run): the runtime
+# still plans the WHOLE selected subtree — buildEnterpriseRunPlan flattens the
+# tree root and the step loop advances through every leaf. Subtree route
+# selection is not implemented yet. So today this tree exercises the ontology,
+# the governance scopes, and the Enterprise-tab visualization at realistic scale;
+# it does NOT yet prove that a narrow route was chosen.
+#
+# It is shaped for that upcoming route planner: the point of a 40-node tree is
+# that picking the right subtree is a real problem, so it is seeded with
+# deliberately confusable siblings and cross-domain traps:
+#
+#   finops.risk.monitoring.alert-triage   vs  finops.claims.intake.triage
+#   finops.risk.underwriting.decision     vs  finops.claims.adjudication.decision
+#   finops.risk.monitoring.investigation  vs  finops.claims.adjudication.fraud-review
+#   finops.customer.servicing.dispute     vs  finops.claims.intake
+#   finops.risk.monitoring.sar-filing     vs  finops.reporting.regulatory
+#   finops.customer.onboarding.risk-rating vs finops.risk.underwriting.scoring
+#
+# A correct route is narrow (a handful of the 40 nodes). A confused planner
+# hedges upward and drags in a whole domain — that is the failure mode to watch.
+#
+# THE ONTOLOGY
+# ------------
+# The root declares the ontology once: object types with typed properties (one
+# primaryKey each) and link types with cardinality. Every step below operates ON
+# that ontology — leaf nodes declare action types whose `effects` name exactly
+# which object type they read, create, update, or delete, and bind those actions
+# to concrete tools. Governance can then scope a policy at the action level and
+# it means something enforceable, not just a naming convention.
+schema: clawworks.workflow-tree
+schemaVersion: 1
+id: acme.financial-operations
+version: 1.0.0
+name: Financial operations
+description: >-
+  Customer lifecycle, financial-crime risk, claims handling, and regulatory
+  reporting for a retail financial-services operation, under governance.
+match:
+  # Keep keywords specific: short common fragments would hijack unrelated
+  # requests. Route selection inside the tree is the planner's job, not these
+  # keywords — these only decide that THIS tree is the right tree.
+  keywords: [claim, kyc, onboarding, aml, underwriting, chargeback, payout, sar]
+  triggers: [user, system]
+  priority: 30
+
+root:
+  id: finops
+  title: Financial operations
+  description: >-
+    Root scope for regulated financial operations. Every step inherits this
+    ontology and this tool floor.
+  ontology:
+    # ---- Object types (properties are typed; exactly one primaryKey each) ----
+    entities:
+      - id: customer
+        title: Customer
+        description: A natural or legal person holding a relationship with the firm.
+        properties:
+          - { id: customer-id, type: id, primaryKey: true, required: true }
+          - { id: legal-name, type: string, required: true }
+          - { id: jurisdiction, type: string, required: true }
+          - { id: risk-rating, type: string, description: low | medium | high }
+          - { id: onboarded-at, type: date }
+      - id: account
+        title: Account
+        description: A deposit, credit, or investment account owned by a customer.
+        properties:
+          - { id: account-id, type: id, primaryKey: true, required: true }
+          - { id: product-type, type: string, required: true }
+          - { id: balance, type: number }
+          - { id: status, type: string, description: open | frozen | closed }
+      - id: transaction
+        title: Transaction
+        description: A single money movement booked against an account.
+        properties:
+          - { id: transaction-id, type: id, primaryKey: true, required: true }
+          - { id: amount, type: number, required: true }
+          - { id: currency, type: string, required: true }
+          - { id: counterparty, type: string }
+          - { id: booked-at, type: date, required: true }
+      - id: alert
+        title: Alert
+        description: A monitoring rule or model firing on suspicious activity.
+        properties:
+          - { id: alert-id, type: id, primaryKey: true, required: true }
+          - { id: typology, type: string, description: structuring | layering | sanctions | fraud }
+          - { id: score, type: number }
+          - { id: status, type: string, description: open | escalated | dismissed }
+      - id: investigation-case
+        title: Investigation case
+        description: A financial-crime case opened from one or more alerts.
+        properties:
+          - { id: case-id, type: id, primaryKey: true, required: true }
+          - { id: disposition, type: string, description: pending | closed-no-action | escalated }
+          - { id: opened-at, type: date }
+      - id: sar
+        title: Suspicious activity report
+        description: The regulatory filing produced when a case is escalated.
+        properties:
+          - { id: sar-id, type: id, primaryKey: true, required: true }
+          - { id: filed-at, type: date }
+          - { id: regulator, type: string }
+      - id: policy
+        title: Policy
+        description: An insurance or credit policy the customer holds.
+        properties:
+          - { id: policy-id, type: id, primaryKey: true, required: true }
+          - { id: coverage-limit, type: number, required: true }
+          - { id: effective-from, type: date }
+          - { id: effective-to, type: date }
+      - id: claim
+        title: Claim
+        description: A customer's demand against a policy.
+        properties:
+          - { id: claim-id, type: id, primaryKey: true, required: true }
+          - { id: claimed-amount, type: number, required: true }
+          - { id: status, type: string, description: intake | adjudicating | approved | denied | settled }
+          - { id: fraud-score, type: number }
+      - id: payment
+        title: Payment
+        description: An outbound settlement of an approved claim.
+        properties:
+          - { id: payment-id, type: id, primaryKey: true, required: true }
+          - { id: amount, type: number, required: true }
+          - { id: settled-at, type: date }
+      - id: document
+        title: Document
+        description: Evidence supplied by a customer or produced by an investigation.
+        properties:
+          - { id: document-id, type: id, primaryKey: true, required: true }
+          - { id: kind, type: string, description: id-proof | invoice | photo | statement }
+          - { id: verified, type: boolean }
+      - id: credit-report
+        title: Credit report
+        description: A bureau report pulled during underwriting.
+        properties:
+          - { id: report-id, type: id, primaryKey: true, required: true }
+          - { id: bureau, type: string, required: true }
+          - { id: score, type: number }
+      - id: regulatory-report
+        title: Regulatory report
+        description: A periodic filing submitted to a supervisor.
+        properties:
+          - { id: report-id, type: id, primaryKey: true, required: true }
+          - { id: period, type: string, required: true }
+          - { id: submitted, type: boolean }
+
+    # ---- Link types (cardinality is part of the contract) ----
+    relationships:
+      - id: customer-holds-account
+        from: customer
+        to: account
+        cardinality: one-to-many
+        inverse: account-owned-by
+        description: A customer holds many accounts; an account has one owner.
+      - id: account-books-transaction
+        from: account
+        to: transaction
+        cardinality: one-to-many
+        inverse: transaction-booked-on
+      - id: alert-flags-transaction
+        from: alert
+        to: transaction
+        cardinality: many-to-many
+        inverse: transaction-flagged-by
+        description: One alert can span several transactions and vice versa.
+      - id: case-investigates-alert
+        from: investigation-case
+        to: alert
+        cardinality: one-to-many
+        inverse: alert-escalated-into
+      - id: case-files-sar
+        from: investigation-case
+        to: sar
+        cardinality: one-to-one
+        inverse: sar-filed-from
+      - id: customer-holds-policy
+        from: customer
+        to: policy
+        cardinality: one-to-many
+        inverse: policy-held-by
+      - id: claim-against-policy
+        from: claim
+        to: policy
+        cardinality: many-to-one
+        inverse: policy-covers-claim
+      - id: payment-settles-claim
+        from: payment
+        to: claim
+        cardinality: one-to-one
+        inverse: claim-settled-by
+      - id: claim-evidenced-by-document
+        from: claim
+        to: document
+        cardinality: one-to-many
+        inverse: document-supports-claim
+      - id: customer-evidenced-by-document
+        from: customer
+        to: document
+        cardinality: one-to-many
+        inverse: document-identifies-customer
+      - id: customer-assessed-by-credit-report
+        from: customer
+        to: credit-report
+        cardinality: one-to-many
+        inverse: credit-report-assesses-customer
+      - id: regulatory-report-covers-sar
+        from: regulatory-report
+        to: sar
+        cardinality: one-to-many
+        inverse: sar-included-in
+
+    # Root tool floor: nothing under this tree runs shell or process tools, in any
+    # step. Deny wins over any descendant's allow, so this is a hard ceiling.
+    deniedTools: [exec, process, browser]
+    contextHints:
+      - Cite the object type and primary key of anything you assert (e.g. claim-id CLM-1042).
+      - Never state a regulatory outcome as final; name the step that decides it.
+    audit: true
+
+  children:
+    # =====================================================================
+    # 1. CUSTOMER
+    # =====================================================================
+    - id: finops.customer
+      title: Customer lifecycle
+      description: Onboarding a customer and servicing the relationship afterwards.
+      children:
+        - id: finops.customer.onboarding
+          title: Customer onboarding
+          description: >-
+            Take a prospect to an open account: prove identity, screen them,
+            rate their risk, then open the account.
+          children:
+            - id: finops.customer.onboarding.identity
+              title: Identity verification
+              description: Establish that the customer is who they claim to be (KYC).
+              children:
+                - id: finops.customer.onboarding.identity.document-check
+                  title: Identity document check
+                  description: Read and verify the customer's identity documents.
+                  children:
+                    - id: finops.customer.onboarding.identity.document-check.extract
+                      title: Extract document fields
+                      description: >-
+                        Read the identity document and extract the structured
+                        fields. Read-only: this step never marks a document
+                        verified, it only proposes what it read.
+                      ontology:
+                        actions:
+                          - id: extract-document-fields
+                            title: Extract document fields
+                            description: Parse an identity document into structured fields.
+                            tools: [knowledge_search, memory_search]
+                            parameters:
+                              - { id: document-id, type: id, required: true }
+                            preconditions:
+                              - The document must already be attached to the customer.
+                            effects:
+                              - { entity: document, kind: read }
+                        allowedTools: [knowledge_search, memory_search]
+                        knowledgeFoundations: [acme.kyc-policy]
+                        expectedOutput: The fields read from the document, each with a confidence note.
+                    - id: finops.customer.onboarding.identity.document-check.verify
+                      title: Verify document authenticity
+                      description: >-
+                        Decide whether the extracted document is authentic and
+                        mark it verified. This is the write step of the pair.
+                      ontology:
+                        actions:
+                          - id: verify-document
+                            title: Verify document
+                            description: Mark an identity document as verified or rejected.
+                            tools: [knowledge_search]
+                            parameters:
+                              - { id: document-id, type: id, required: true }
+                              - { id: verified, type: boolean, required: true }
+                              - { id: rationale, type: string, required: true }
+                            preconditions:
+                              - Fields must have been extracted first.
+                              - A rejection must name the specific failed check.
+                            effects:
+                              - { entity: document, kind: update, description: Sets document.verified. }
+                              - { entity: customer, kind: read }
+                        allowedTools: [knowledge_search]
+                        knowledgeFoundations: [acme.kyc-policy]
+                        constraints:
+                          - id: no-auto-approve-on-low-confidence
+                            description: Never mark a document verified when extraction confidence was low; escalate instead.
+                        audit: true
+                        expectedOutput: A verified/rejected decision with the check that decided it.
+                - id: finops.customer.onboarding.identity.sanctions-screening
+                  title: Sanctions and PEP screening
+                  description: >-
+                    Screen the customer against sanctions and politically-exposed-person
+                    lists. A hit here blocks onboarding; it does not open an AML case
+                    (that is risk.monitoring's job).
+                  ontology:
+                    actions:
+                      - id: screen-sanctions
+                        title: Screen against sanctions lists
+                        tools: [knowledge_search]
+                        parameters:
+                          - { id: customer-id, type: id, required: true }
+                        preconditions:
+                          - Identity must be verified before screening is meaningful.
+                        effects:
+                          - { entity: customer, kind: read }
+                    allowedTools: [knowledge_search]
+                    knowledgeFoundations: [acme.sanctions-lists]
+                    audit: true
+                    expectedOutput: Clear/hit, and for a hit the matched list and name.
+            - id: finops.customer.onboarding.risk-rating
+              title: Customer risk rating
+              description: >-
+                Assign the customer's AML risk rating (low/medium/high) at
+                onboarding. CONFUSABLE WITH risk.underwriting.scoring, which
+                scores CREDIT risk, not financial-crime risk.
+              ontology:
+                actions:
+                  - id: rate-customer-risk
+                    title: Rate customer risk
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: customer-id, type: id, required: true }
+                      - { id: rating, type: string, required: true }
+                    effects:
+                      - { entity: customer, kind: update, description: Sets customer.risk-rating. }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.kyc-policy]
+                expectedOutput: A rating with the factors that drove it.
+            - id: finops.customer.onboarding.account-opening
+              title: Account opening
+              description: Open the account once identity, screening, and rating pass.
+              ontology:
+                actions:
+                  - id: open-account
+                    title: Open account
+                    tools: [memory_search]
+                    parameters:
+                      - { id: customer-id, type: id, required: true }
+                      - { id: product-type, type: string, required: true }
+                    preconditions:
+                      - Identity verified, sanctions clear, and a risk rating assigned.
+                    effects:
+                      - { entity: account, kind: create }
+                      - { entity: customer, kind: update }
+                allowedTools: [memory_search]
+                constraints:
+                  - id: no-open-on-sanctions-hit
+                    description: An account must never be opened while a sanctions hit is unresolved.
+                audit: true
+                expectedOutput: The opened account id and product type, or the blocking reason.
+        - id: finops.customer.servicing
+          title: Customer servicing
+          description: Day-to-day changes to an existing relationship.
+          children:
+            - id: finops.customer.servicing.profile-update
+              title: Profile update
+              description: Update customer contact or profile details.
+              ontology:
+                actions:
+                  - id: update-customer-profile
+                    tools: [memory_search]
+                    parameters:
+                      - { id: customer-id, type: id, required: true }
+                    effects:
+                      - { entity: customer, kind: update }
+                allowedTools: [memory_search]
+                expectedOutput: What changed on the customer record.
+            - id: finops.customer.servicing.dispute
+              title: Transaction dispute intake
+              description: >-
+                Take a customer's dispute about a card/transaction (a chargeback).
+                CONFUSABLE WITH claims.intake, which handles a claim against an
+                insurance POLICY. A dispute is about a TRANSACTION.
+              ontology:
+                actions:
+                  - id: raise-transaction-dispute
+                    title: Raise transaction dispute
+                    tools: [memory_search, knowledge_search]
+                    parameters:
+                      - { id: transaction-id, type: id, required: true }
+                      - { id: reason, type: string, required: true }
+                    effects:
+                      - { entity: transaction, kind: read }
+                      - { entity: document, kind: create, description: Records the dispute statement. }
+                allowedTools: [memory_search, knowledge_search]
+                knowledgeFoundations: [acme.dispute-rules]
+                expectedOutput: The disputed transaction, the reason code, and the next step.
+            - id: finops.customer.servicing.closure
+              title: Account closure
+              description: Close an account and settle the residual balance.
+              ontology:
+                actions:
+                  - id: close-account
+                    title: Close account
+                    tools: [memory_search]
+                    parameters:
+                      - { id: account-id, type: id, required: true }
+                    preconditions:
+                      - No open dispute or investigation may reference the account.
+                    effects:
+                      - { entity: account, kind: update, description: Sets account.status to closed. }
+                allowedTools: [memory_search]
+                audit: true
+                expectedOutput: Closure confirmation or the blocker that prevents it.
+
+    # =====================================================================
+    # 2. RISK (financial crime + credit)
+    # =====================================================================
+    - id: finops.risk
+      title: Risk
+      description: Financial-crime monitoring and credit underwriting.
+      children:
+        - id: finops.risk.monitoring
+          title: Transaction monitoring
+          description: >-
+            Anti-money-laundering surveillance over booked transactions: triage
+            alerts, investigate what survives, file a SAR when warranted.
+          children:
+            - id: finops.risk.monitoring.alert-triage
+              title: Alert triage
+              description: >-
+                Decide which monitoring alerts are worth investigating.
+                CONFUSABLE WITH claims.intake.triage, which triages CLAIMS.
+                This one triages AML ALERTS on transactions.
+              ontology:
+                actions:
+                  - id: triage-alert
+                    title: Triage alert
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: alert-id, type: id, required: true }
+                      - { id: disposition, type: string, required: true }
+                    preconditions:
+                      - Read the alert's flagged transactions before dispositioning it.
+                    effects:
+                      - { entity: alert, kind: update, description: Sets alert.status. }
+                      - { entity: transaction, kind: read }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.aml-typologies]
+                audit: true
+                expectedOutput: Escalate or dismiss, with the typology that decided it.
+            - id: finops.risk.monitoring.investigation
+              title: Financial-crime investigation
+              description: >-
+                Work an escalated alert into a case. CONFUSABLE WITH
+                claims.adjudication.fraud-review, which reviews fraud on an
+                insurance CLAIM, not money-laundering on transactions.
+              children:
+                - id: finops.risk.monitoring.investigation.link-analysis
+                  title: Counterparty link analysis
+                  description: >-
+                    Traverse the ontology graph from the alert out to
+                    counterparties, accounts, and other customers.
+                  ontology:
+                    actions:
+                      - id: traverse-counterparty-links
+                        title: Traverse counterparty links
+                        description: Walk account → transaction → counterparty links to find the network.
+                        tools: [knowledge_search, memory_search]
+                        parameters:
+                          - { id: case-id, type: id, required: true }
+                        effects:
+                          - { entity: transaction, kind: read }
+                          - { entity: account, kind: read }
+                          - { entity: customer, kind: read }
+                    allowedTools: [knowledge_search, memory_search]
+                    knowledgeFoundations: [acme.aml-typologies]
+                    expectedOutput: The counterparty network, named by object type and primary key.
+                - id: finops.risk.monitoring.investigation.evidence-review
+                  title: Evidence review
+                  description: >-
+                    Weigh the collected evidence and set the case disposition.
+                    CONFUSABLE WITH claims.adjudication.evidence-assessment.
+                  ontology:
+                    actions:
+                      - id: disposition-case
+                        title: Disposition case
+                        tools: [knowledge_search]
+                        parameters:
+                          - { id: case-id, type: id, required: true }
+                          - { id: disposition, type: string, required: true }
+                        effects:
+                          - { entity: investigation-case, kind: update }
+                    allowedTools: [knowledge_search]
+                    knowledgeFoundations: [acme.aml-typologies]
+                    audit: true
+                    expectedOutput: The case disposition and the evidence that supports it.
+            - id: finops.risk.monitoring.sar-filing
+              title: SAR filing
+              description: >-
+                File a suspicious activity report for an escalated case.
+                CONFUSABLE WITH reporting.regulatory, which files PERIODIC
+                supervisory reports. A SAR is case-driven, not periodic.
+              ontology:
+                actions:
+                  - id: file-sar
+                    title: File suspicious activity report
+                    tools: [knowledge_search]
+                    parameters:
+                      - { id: case-id, type: id, required: true }
+                      - { id: regulator, type: string, required: true }
+                    preconditions:
+                      - The case must already be dispositioned as escalated.
+                      - Never tip off the customer that a SAR is being filed.
+                    effects:
+                      - { entity: sar, kind: create }
+                      - { entity: investigation-case, kind: update }
+                allowedTools: [knowledge_search]
+                knowledgeFoundations: [acme.aml-typologies, acme.regulatory-calendar]
+                constraints:
+                  - id: no-tipping-off
+                    description: Never disclose to the customer, in any channel, that a SAR exists or is planned.
+                audit: true
+                expectedOutput: The filed SAR id and regulator, or why filing is blocked.
+        - id: finops.risk.underwriting
+          title: Credit underwriting
+          description: Decide whether to extend credit, and on what terms.
+          children:
+            - id: finops.risk.underwriting.data-pull
+              title: Bureau data pull
+              description: Pull the credit bureau report for the applicant.
+              ontology:
+                actions:
+                  - id: pull-credit-report
+                    title: Pull credit report
+                    tools: [knowledge_search]
+                    parameters:
+                      - { id: customer-id, type: id, required: true }
+                      - { id: bureau, type: string, required: true }
+                    effects:
+                      - { entity: credit-report, kind: create }
+                      - { entity: customer, kind: read }
+                allowedTools: [knowledge_search]
+                knowledgeFoundations: [acme.credit-policy]
+                expectedOutput: The pulled report id, bureau, and score.
+            - id: finops.risk.underwriting.scoring
+              title: Credit scoring
+              description: >-
+                Score CREDIT risk from the bureau report and account history.
+                CONFUSABLE WITH customer.onboarding.risk-rating, which rates
+                FINANCIAL-CRIME risk.
+              ontology:
+                actions:
+                  - id: score-credit-risk
+                    title: Score credit risk
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: customer-id, type: id, required: true }
+                    preconditions:
+                      - A credit report must have been pulled for this customer.
+                    effects:
+                      - { entity: credit-report, kind: read }
+                      - { entity: customer, kind: read }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.credit-policy]
+                expectedOutput: The credit score and the drivers behind it.
+            - id: finops.risk.underwriting.decision
+              title: Credit decision
+              description: >-
+                Approve or decline the credit application.
+                CONFUSABLE WITH claims.adjudication.decision, which approves or
+                denies a CLAIM.
+              ontology:
+                actions:
+                  - id: decide-credit-application
+                    title: Decide credit application
+                    tools: [knowledge_search]
+                    parameters:
+                      - { id: customer-id, type: id, required: true }
+                      - { id: approved, type: boolean, required: true }
+                    preconditions:
+                      - A credit score must exist before a decision is taken.
+                      - A decline must cite the specific policy rule that failed.
+                    effects:
+                      - { entity: customer, kind: update }
+                      - { entity: account, kind: create, description: "On approval, opens the credit line." }
+                allowedTools: [knowledge_search]
+                knowledgeFoundations: [acme.credit-policy]
+                audit: true
+                expectedOutput: Approve/decline, the limit, and the deciding rule.
+
+    # =====================================================================
+    # 3. CLAIMS
+    # =====================================================================
+    - id: finops.claims
+      title: Claims
+      description: Handling a claim against a policy, end to end.
+      children:
+        - id: finops.claims.intake
+          title: Claim intake
+          description: Receive the claim and establish that the policy covers it.
+          children:
+            - id: finops.claims.intake.triage
+              title: Claim triage
+              description: >-
+                Classify the incoming claim and route it.
+                CONFUSABLE WITH risk.monitoring.alert-triage, which triages AML
+                ALERTS. This one triages CLAIMS against a policy.
+              ontology:
+                actions:
+                  - id: triage-claim
+                    title: Triage claim
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                    effects:
+                      - { entity: claim, kind: update, description: Sets claim.status to adjudicating. }
+                      - { entity: policy, kind: read }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.claims-handbook]
+                expectedOutput: The claim's class and where it is routed next.
+            - id: finops.claims.intake.coverage-check
+              title: Coverage check
+              description: Confirm the policy was in force and covers the claimed loss.
+              ontology:
+                actions:
+                  - id: check-coverage
+                    title: Check coverage
+                    tools: [knowledge_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                    preconditions:
+                      - Compare the loss date against policy effective-from/effective-to.
+                    effects:
+                      - { entity: policy, kind: read }
+                      - { entity: claim, kind: read }
+                allowedTools: [knowledge_search]
+                knowledgeFoundations: [acme.claims-handbook]
+                expectedOutput: Covered/not covered, with the policy clause and limit.
+        - id: finops.claims.adjudication
+          title: Claim adjudication
+          description: Weigh the evidence, check for fraud, and decide the claim.
+          children:
+            - id: finops.claims.adjudication.evidence-assessment
+              title: Evidence assessment
+              description: >-
+                Assess the documents supplied with the claim.
+                CONFUSABLE WITH risk.monitoring.investigation.evidence-review,
+                which weighs evidence in an AML CASE.
+              ontology:
+                actions:
+                  - id: assess-claim-evidence
+                    title: Assess claim evidence
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                    effects:
+                      - { entity: document, kind: read }
+                      - { entity: claim, kind: read }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.claims-handbook]
+                expectedOutput: Which documents support the claim and which gaps remain.
+            - id: finops.claims.adjudication.fraud-review
+              title: Claim fraud review
+              description: >-
+                Score the claim for fraud indicators.
+                CONFUSABLE WITH risk.monitoring.investigation, which pursues
+                MONEY LAUNDERING across transactions, not claim fraud.
+              ontology:
+                actions:
+                  - id: score-claim-fraud
+                    title: Score claim fraud
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                    effects:
+                      - { entity: claim, kind: update, description: Sets claim.fraud-score. }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.fraud-indicators]
+                audit: true
+                expectedOutput: A fraud score and the indicators that produced it.
+            - id: finops.claims.adjudication.decision
+              title: Claim decision
+              description: >-
+                Approve or deny the claim.
+                CONFUSABLE WITH risk.underwriting.decision, which decides a
+                CREDIT application.
+              ontology:
+                actions:
+                  - id: decide-claim
+                    title: Decide claim
+                    tools: [knowledge_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                      - { id: approved, type: boolean, required: true }
+                      - { id: approved-amount, type: number }
+                    preconditions:
+                      - Coverage must have been checked and evidence assessed.
+                      - The approved amount may never exceed the policy coverage-limit.
+                    effects:
+                      - { entity: claim, kind: update, description: Sets claim.status to approved or denied. }
+                      - { entity: policy, kind: read }
+                allowedTools: [knowledge_search]
+                knowledgeFoundations: [acme.claims-handbook]
+                constraints:
+                  - id: approved-amount-within-limit
+                    description: An approved amount above the policy coverage-limit is invalid; cap it and say so.
+                audit: true
+                expectedOutput: Approve/deny, the approved amount, and the deciding clause.
+        - id: finops.claims.settlement
+          title: Claim settlement
+          description: Move money on an approved claim, and recover where possible.
+          children:
+            - id: finops.claims.settlement.payment
+              title: Issue claim payment
+              description: >-
+                Pay an approved claim. This is the money-movement step: it is the
+                one the governance policy should gate behind human approval.
+              ontology:
+                actions:
+                  - id: issue-claim-payment
+                    title: Issue claim payment
+                    description: Create an outbound payment settling an approved claim.
+                    tools: [memory_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                      - { id: amount, type: number, required: true }
+                    preconditions:
+                      - The claim must already be approved.
+                      - The amount must equal the approved amount, never more.
+                    effects:
+                      - { entity: payment, kind: create }
+                      - { entity: claim, kind: update, description: Sets claim.status to settled. }
+                allowedTools: [memory_search]
+                constraints:
+                  - id: no-payment-without-approval
+                    description: Never issue a payment for a claim that is not in the approved state.
+                audit: true
+                expectedOutput: The payment id and settled amount, or the blocker.
+            - id: finops.claims.settlement.recovery
+              title: Subrogation and recovery
+              description: Pursue recovery from a liable third party after settlement.
+              ontology:
+                actions:
+                  - id: open-recovery
+                    title: Open recovery
+                    tools: [knowledge_search, memory_search]
+                    parameters:
+                      - { id: claim-id, type: id, required: true }
+                    effects:
+                      - { entity: claim, kind: read }
+                      - { entity: document, kind: create }
+                allowedTools: [knowledge_search, memory_search]
+                knowledgeFoundations: [acme.claims-handbook]
+                expectedOutput: The recovery basis and the counterparty pursued.
+
+    # =====================================================================
+    # 4. REPORTING
+    # =====================================================================
+    - id: finops.reporting
+      title: Reporting
+      description: Periodic supervisory reporting, management reporting, and audit.
+      children:
+        - id: finops.reporting.regulatory
+          title: Regulatory reporting
+          description: >-
+            Produce and submit PERIODIC supervisory filings.
+            CONFUSABLE WITH risk.monitoring.sar-filing, which files a SAR for a
+            single escalated case. This step is calendar-driven, not case-driven.
+          ontology:
+            actions:
+              - id: submit-regulatory-report
+                title: Submit regulatory report
+                tools: [knowledge_search]
+                parameters:
+                  - { id: period, type: string, required: true }
+                  - { id: regulator, type: string, required: true }
+                preconditions:
+                  - Every SAR filed in the period must be included before submission.
+                effects:
+                  - { entity: regulatory-report, kind: create }
+                  - { entity: sar, kind: read }
+            allowedTools: [knowledge_search]
+            knowledgeFoundations: [acme.regulatory-calendar]
+            audit: true
+            expectedOutput: The report id, period, and submission status.
+        - id: finops.reporting.management
+          title: Management reporting
+          description: Internal operational metrics for the business, not the regulator.
+          ontology:
+            actions:
+              - id: build-management-report
+                title: Build management report
+                tools: [knowledge_search, memory_search]
+                parameters:
+                  - { id: period, type: string, required: true }
+                effects:
+                  - { entity: regulatory-report, kind: read }
+                  - { entity: claim, kind: read }
+                  - { entity: alert, kind: read }
+            allowedTools: [knowledge_search, memory_search]
+            expectedOutput: The requested operational metrics for the period.
+        - id: finops.reporting.audit-trail
+          title: Audit trail export
+          description: Export the decision trail for an internal or external audit.
+          ontology:
+            actions:
+              - id: export-audit-trail
+                title: Export audit trail
+                tools: [knowledge_search, memory_search]
+                parameters:
+                  - { id: period, type: string, required: true }
+                effects:
+                  - { entity: investigation-case, kind: read }
+                  - { entity: claim, kind: read }
+                  - { entity: sar, kind: read }
+            allowedTools: [knowledge_search, memory_search]
+            audit: true
+            expectedOutput: The exported decision trail for the requested period.

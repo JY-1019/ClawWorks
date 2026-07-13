@@ -10,9 +10,29 @@ import { property, state } from "lit/decorators.js";
 import { t } from "../../i18n/index.ts";
 
 export type WorkflowTreeOntology = {
-  entities?: { id: string; description?: string }[];
-  relationships?: { id: string; from: string; to: string; description?: string }[];
-  actions?: { id: string; description?: string; tools?: string[] }[];
+  entities?: {
+    id: string;
+    title?: string;
+    description?: string;
+    properties?: { id: string; type: string; primaryKey?: boolean; required?: boolean }[];
+  }[];
+  relationships?: {
+    id: string;
+    from: string;
+    to: string;
+    cardinality?: string;
+    inverse?: string;
+    description?: string;
+  }[];
+  actions?: {
+    id: string;
+    title?: string;
+    description?: string;
+    tools?: string[];
+    parameters?: { id: string; type: string; required?: boolean }[];
+    preconditions?: string[];
+    effects?: { entity: string; kind: string; description?: string }[];
+  }[];
   constraints?: { id?: string; description: string }[];
   allowedTools?: string[];
   deniedTools?: string[];
@@ -217,6 +237,45 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
       color: var(--muted);
     }
 
+    .action {
+      margin-top: 8px;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .action-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-strong);
+    }
+
+    .action-tools {
+      padding: 0 6px;
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--muted);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+    }
+
+    .action-sub {
+      margin-top: 3px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* The write scope is the governance-relevant part; it must not read as
+       just another muted line. */
+    .action-write {
+      margin-top: 3px;
+      font-size: 11px;
+      color: var(--warn);
+    }
+
     .hint {
       margin-top: 6px;
       font-size: 11px;
@@ -373,10 +432,40 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     if (ontology.knowledgeFoundations?.length) {
       rows.push(row(t("enterprise.knowledge", { ids: ontology.knowledgeFoundations.join(", ") })));
     }
-    if (ontology.actions?.length) {
-      rows.push(
-        row(t("enterprise.actions", { ids: ontology.actions.map((a) => a.id).join(", ") })),
-      );
+    // Actions get a block each, not a comma-joined id list: the parameters,
+    // preconditions, and write effects ARE the action type, and an operator
+    // reviewing a governed step needs to see what it is allowed to write.
+    for (const action of ontology.actions ?? []) {
+      const parameters = (action.parameters ?? [])
+        .map((parameter) => `${parameter.id}: ${parameter.type}${parameter.required ? "*" : ""}`)
+        .join(", ");
+      const writes = (action.effects ?? [])
+        .filter((effect) => effect.kind !== "read")
+        .map((effect) => `${effect.kind} ${effect.entity}`)
+        .join(", ");
+      const reads = (action.effects ?? [])
+        .filter((effect) => effect.kind === "read")
+        .map((effect) => effect.entity)
+        .join(", ");
+      rows.push(html`
+        <div class="action">
+          <div class="action-title">
+            ${action.title ?? action.id}
+            ${action.tools?.length
+              ? html`<span class="action-tools">${action.tools.join(", ")}</span>`
+              : nothing}
+          </div>
+          ${action.description
+            ? html`<div class="action-sub">${action.description}</div>`
+            : nothing}
+          ${parameters ? html`<div class="action-sub">params — ${parameters}</div>` : nothing}
+          ${reads ? html`<div class="action-sub">reads — ${reads}</div>` : nothing}
+          ${writes ? html`<div class="action-write">writes — ${writes}</div>` : nothing}
+          ${(action.preconditions ?? []).map(
+            (precondition) => html`<div class="action-sub">requires — ${precondition}</div>`,
+          )}
+        </div>
+      `);
     }
     if (ontology.contextHints?.length) {
       rows.push(row(t("enterprise.contextHints", { hints: ontology.contextHints.join(" · ") })));

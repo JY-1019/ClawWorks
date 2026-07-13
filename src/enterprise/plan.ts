@@ -235,13 +235,32 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
   if (ontology.actions?.length) {
     lines.push(`${indent}Actions:`);
     for (const action of ontology.actions.slice(0, DIGEST_MAX_HINT_LINES)) {
+      // Effects are the action's write scope. The model has to know it is about
+      // to create/update an object type before it calls the tool, not after
+      // governance blocks it. Reads are omitted: they carry no such warning.
+      const writes = (action.effects ?? [])
+        .filter((effect) => effect.kind !== "read")
+        .map((effect) => `${effect.kind} ${effect.entity}`);
+      // Parameters are what the model must actually gather before it can call
+      // the action, so the declaration is only useful if it reaches the prompt.
+      const parameters = (action.parameters ?? []).map(
+        (parameter) =>
+          `${parameter.id} (${parameter.type}${parameter.required ? ", required" : ""})`,
+      );
       const detail = [
         action.description,
         action.tools?.length ? `tools: ${action.tools.toSorted().join(", ")}` : undefined,
+        parameters.length ? `params: ${parameters.join(", ")}` : undefined,
+        writes.length ? `writes: ${writes.join(", ")}` : undefined,
       ]
         .filter(Boolean)
         .join(" — ");
       lines.push(`${indent}- ${action.id}${detail ? `: ${detail}` : ""}`);
+      // Preconditions gate the action, so they must reach the model before it
+      // acts. Accepting the field without rendering it would make it decorative.
+      for (const precondition of action.preconditions?.slice(0, DIGEST_MAX_HINT_LINES) ?? []) {
+        lines.push(`${indent}  requires: ${precondition}`);
+      }
     }
   }
   if (ontology.constraints?.length) {

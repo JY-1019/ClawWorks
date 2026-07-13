@@ -63,29 +63,95 @@ export const EnterpriseTreesListResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** One ontology entity (a domain concept the step reasons about). */
-export const EnterpriseOntologyEntitySchema = Type.Object(
-  { id: NonEmptyString, description: Type.Optional(Type.String()) },
-  { additionalProperties: false },
-);
+/** Value types an ontology property or action parameter carries. */
+export const EnterpriseOntologyValueTypeSchema = Type.Union([
+  Type.Literal("string"),
+  Type.Literal("number"),
+  Type.Literal("boolean"),
+  Type.Literal("date"),
+  Type.Literal("id"),
+]);
 
-/** A directed relationship between two ontology entities (an ontology-graph edge). */
-export const EnterpriseOntologyRelationshipSchema = Type.Object(
+/** One typed field on an ontology object type. */
+export const EnterpriseOntologyPropertySchema = Type.Object(
   {
     id: NonEmptyString,
-    from: NonEmptyString,
-    to: NonEmptyString,
+    type: EnterpriseOntologyValueTypeSchema,
+    primaryKey: Type.Optional(Type.Boolean()),
+    required: Type.Optional(Type.Boolean()),
     description: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
 
-/** An action a step may perform, optionally bound to concrete tool globs. */
+/** One ontology object type (a domain concept the step reasons about). */
+export const EnterpriseOntologyEntitySchema = Type.Object(
+  {
+    id: NonEmptyString,
+    title: Type.Optional(Type.String()),
+    description: Type.Optional(Type.String()),
+    properties: Type.Optional(Type.Array(EnterpriseOntologyPropertySchema)),
+  },
+  { additionalProperties: false },
+);
+
+/** How many instances each side of a link type may bind to. */
+export const EnterpriseOntologyCardinalitySchema = Type.Union([
+  Type.Literal("one-to-one"),
+  Type.Literal("one-to-many"),
+  Type.Literal("many-to-one"),
+  Type.Literal("many-to-many"),
+]);
+
+/** A directed link type between two object types (an ontology-graph edge). */
+export const EnterpriseOntologyRelationshipSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    from: NonEmptyString,
+    to: NonEmptyString,
+    cardinality: Type.Optional(EnterpriseOntologyCardinalitySchema),
+    inverse: Type.Optional(Type.String()),
+    description: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** One declared input to an action type. */
+export const EnterpriseOntologyActionParameterSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    type: EnterpriseOntologyValueTypeSchema,
+    required: Type.Optional(Type.Boolean()),
+    description: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** What an action does to an object type when it runs. */
+export const EnterpriseOntologyActionEffectSchema = Type.Object(
+  {
+    entity: NonEmptyString,
+    kind: Type.Union([
+      Type.Literal("read"),
+      Type.Literal("create"),
+      Type.Literal("update"),
+      Type.Literal("delete"),
+    ]),
+    description: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** An action type a step may perform: bound tools plus what it reads/writes. */
 export const EnterpriseOntologyActionSchema = Type.Object(
   {
     id: NonEmptyString,
+    title: Type.Optional(Type.String()),
     description: Type.Optional(Type.String()),
     tools: Type.Optional(Type.Array(Type.String())),
+    parameters: Type.Optional(Type.Array(EnterpriseOntologyActionParameterSchema)),
+    preconditions: Type.Optional(Type.Array(Type.String())),
+    effects: Type.Optional(Type.Array(EnterpriseOntologyActionEffectSchema)),
   },
   { additionalProperties: false },
 );

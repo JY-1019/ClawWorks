@@ -27,18 +27,84 @@ export const EnterpriseIdSchema = z
     'must be a dotted lowercase id (e.g. "assist.respond"): segments of [a-z0-9-] separated by dots',
   );
 
-const OntologyEntitySchema = z
+export const OntologyValueTypeSchema = z.enum(["string", "number", "boolean", "date", "id"]);
+
+const OntologyPropertySchema = z
   .object({
     id: EnterpriseIdSchema,
+    type: OntologyValueTypeSchema,
+    primaryKey: z.boolean().optional(),
+    required: z.boolean().optional(),
     description: z.string().optional(),
   })
   .strict();
+
+const OntologyEntitySchema = z
+  .object({
+    id: EnterpriseIdSchema,
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    properties: z.array(OntologyPropertySchema).optional(),
+  })
+  .strict()
+  .superRefine((entity, ctx) => {
+    // A second primary key makes instance identity ambiguous, and duplicate
+    // property ids would silently shadow each other in the digest and the UI.
+    const seen = new Set<string>();
+    let primaryKeys = 0;
+    entity.properties?.forEach((property, index) => {
+      if (seen.has(property.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["properties", index, "id"],
+          message: `duplicate property id "${property.id}"`,
+        });
+      }
+      seen.add(property.id);
+      if (property.primaryKey) {
+        primaryKeys += 1;
+      }
+    });
+    if (primaryKeys > 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["properties"],
+        message: "an object type may declare at most one primaryKey property",
+      });
+    }
+  });
+
+export const OntologyCardinalitySchema = z.enum([
+  "one-to-one",
+  "one-to-many",
+  "many-to-one",
+  "many-to-many",
+]);
 
 const OntologyRelationshipSchema = z
   .object({
     id: EnterpriseIdSchema,
     from: EnterpriseIdSchema,
     to: EnterpriseIdSchema,
+    cardinality: OntologyCardinalitySchema.optional(),
+    inverse: NonBlankStringSchema.optional(),
+    description: z.string().optional(),
+  })
+  .strict();
+
+const OntologyActionParameterSchema = z
+  .object({
+    id: EnterpriseIdSchema,
+    type: OntologyValueTypeSchema,
+    required: z.boolean().optional(),
+    description: z.string().optional(),
+  })
+  .strict();
+
+const OntologyActionEffectSchema = z
+  .object({
+    entity: EnterpriseIdSchema,
+    kind: z.enum(["read", "create", "update", "delete"]),
     description: z.string().optional(),
   })
   .strict();
@@ -46,12 +112,16 @@ const OntologyRelationshipSchema = z
 const OntologyActionSchema = z
   .object({
     id: EnterpriseIdSchema,
+    title: z.string().min(1).optional(),
     description: z.string().optional(),
     // Omit `tools` to mean "this action covers every tool". An empty array is
     // accepted for load compatibility (it never widens: the governance
     // matcher treats an empty action tool list as covering no tool). Blank
     // entries are still rejected.
     tools: z.array(NonBlankStringSchema).optional(),
+    parameters: z.array(OntologyActionParameterSchema).optional(),
+    preconditions: z.array(NonBlankStringSchema).optional(),
+    effects: z.array(OntologyActionEffectSchema).optional(),
   })
   .strict();
 
@@ -126,6 +196,27 @@ export const WorkflowTreeDefinitionSchema = z
     // Duplicate node ids silently corrupt plan node attribution and per-node
     // trace grouping, so they are a validation error rather than last-wins.
     const seen = new Set<string>();
+    // Object types are declared per node but scoped tree-wide: a deep step may
+    // act on a type its ancestor introduced, so collect them all before
+    // resolving references.
+    //
+    // Only action `effects` are checked. Link endpoints are deliberately NOT:
+    // trees already imported before this field existed may name an endpoint
+    // that was never repeated under `entities` (the UI synthesizes those as
+    // implicit object types), and hard-failing them here would make an existing
+    // stored tree unloadable — which fails closed in enforce mode. `effects` is
+    // a new field, so no stored definition can carry a dangling one, and its
+    // reference has to resolve for an action's write scope to be enforceable.
+    const declaredEntities = new Set<string>();
+    /** Merged shape of each tree-scoped object type, to catch conflicting redeclarations. */
+    const entityShapes = new Map<
+      string,
+      { primaryKey?: string; propertyTypes: Map<string, string> }
+    >();
+    /** Merged shape of each tree-scoped link type, keyed by "from to id". */
+    const relationshipShapes = new Map<string, { cardinality?: string; inverse?: string }>();
+    const nodes: { node: WorkflowNodeShape; path: (string | number)[] }[] = [];
+
     const visit = (node: WorkflowNodeShape, path: (string | number)[]) => {
       if (seen.has(node.id)) {
         ctx.addIssue({
@@ -135,11 +226,89 @@ export const WorkflowTreeDefinitionSchema = z
         });
       }
       seen.add(node.id);
+      nodes.push({ node, path });
+      node.ontology?.entities?.forEach((entity, entityIndex) => {
+        declaredEntities.add(entity.id);
+        // An object type is tree-scoped: redeclaring it on another node adds to
+        // the same type rather than making a new one (the graph merges them).
+        // So identity and field types must agree ACROSS declarations, not only
+        // within one — otherwise a child could redeclare `customer` with a
+        // different primaryKey and the merge would pick one arbitrarily.
+        const entityPath = [...path, "ontology", "entities", entityIndex];
+        const shape = entityShapes.get(entity.id) ?? { propertyTypes: new Map<string, string>() };
+        for (const property of entity.properties ?? []) {
+          const knownType = shape.propertyTypes.get(property.id);
+          if (knownType && knownType !== property.type) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...entityPath, "properties"],
+              message: `object type "${entity.id}" declares property "${property.id}" as both "${knownType}" and "${property.type}"`,
+            });
+          }
+          shape.propertyTypes.set(property.id, property.type);
+          if (property.primaryKey) {
+            if (shape.primaryKey && shape.primaryKey !== property.id) {
+              ctx.addIssue({
+                code: "custom",
+                path: [...entityPath, "properties"],
+                message: `object type "${entity.id}" declares two primary keys across the tree ("${shape.primaryKey}" and "${property.id}"); its identity would be ambiguous`,
+              });
+            }
+            shape.primaryKey = property.id;
+          }
+        }
+        entityShapes.set(entity.id, shape);
+      });
+      // Link types are tree-scoped too, and the graph dedupes them by
+      // [from, to, id] keeping the first. So a child re-declaring the same link
+      // with a different cardinality or inverse would be silently ignored and
+      // the UI would show metadata that contradicts the definition.
+      node.ontology?.relationships?.forEach((relationship, relationshipIndex) => {
+        // Same key the graph dedupes on, so validation and rendering agree.
+        const key = JSON.stringify([relationship.from, relationship.to, relationship.id]);
+        const known = relationshipShapes.get(key);
+        if (!known) {
+          relationshipShapes.set(key, {
+            cardinality: relationship.cardinality,
+            inverse: relationship.inverse,
+          });
+          return;
+        }
+        const relationshipPath = [...path, "ontology", "relationships", relationshipIndex];
+        for (const field of ["cardinality", "inverse"] as const) {
+          const before = known[field];
+          const now = relationship[field];
+          if (before !== undefined && now !== undefined && before !== now) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...relationshipPath, field],
+              message: `link "${relationship.id}" declares ${field} as both "${before}" and "${now}"`,
+            });
+          }
+          if (before === undefined && now !== undefined) {
+            known[field] = now;
+          }
+        }
+      });
       node.children?.forEach((child, index) => {
         visit(child, [...path, "children", index]);
       });
     };
     visit(tree.root, ["root"]);
+
+    for (const { node, path } of nodes) {
+      node.ontology?.actions?.forEach((action, index) => {
+        action.effects?.forEach((effect, effectIndex) => {
+          if (!declaredEntities.has(effect.entity)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...path, "ontology", "actions", index, "effects", effectIndex, "entity"],
+              message: `action "${action.id}" effect references undeclared object type "${effect.entity}"`,
+            });
+          }
+        });
+      });
+    }
   });
 
 export const GovernanceEffectSchema = z.enum(["allow", "deny", "audit", "require_approval"]);

@@ -9,17 +9,35 @@ import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
 import { property, query, state } from "lit/decorators.js";
 import { t } from "../../i18n/index.ts";
 
-export type OntologyEntity = { id: string; description?: string };
+export type OntologyProperty = {
+  id: string;
+  type: string;
+  primaryKey?: boolean;
+  required?: boolean;
+  description?: string;
+};
+
+export type OntologyEntity = {
+  id: string;
+  title?: string;
+  description?: string;
+  properties?: OntologyProperty[];
+};
+
 export type OntologyRelationship = {
   id: string;
   from: string;
   to: string;
+  cardinality?: string;
+  inverse?: string;
   description?: string;
 };
 
 type SimNode = {
   id: string;
+  title?: string;
   description?: string;
+  properties?: OntologyProperty[];
   degree: number;
   x: number;
   y: number;
@@ -185,6 +203,49 @@ export class OpenClawOntologyGraph extends LitElement {
       color: var(--accent-2, var(--accent));
     }
 
+    .card {
+      margin-left: 6px;
+      padding: 0 5px;
+      font-size: 10px;
+      color: var(--muted);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+    }
+
+    .props {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .prop {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 7px;
+      font-size: 11px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .prop-name {
+      color: var(--text);
+    }
+
+    .prop-type {
+      color: var(--muted);
+    }
+
+    .pk {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .req {
+      color: var(--warn);
+    }
+
     .empty {
       margin-top: 8px;
       color: var(--muted);
@@ -218,12 +279,28 @@ export class OpenClawOntologyGraph extends LitElement {
     // arrays inside its render, so a fresh array arrives on every unrelated app
     // re-render; re-seeding on identity would snap the operator's dragged layout
     // back to the ring (and re-target an in-flight drag) on every keystroke.
+    // The key must cover every field the graph or its inspector renders, not
+    // just the topology: an edited tree that only changes a title, a property
+    // type, or a cardinality has the same nodes and edges, and hashing topology
+    // alone would skip the rebuild and leave the inspector showing stale fields.
     const key = JSON.stringify([
-      this.entities.map((entity) => [entity.id, entity.description ?? ""]),
+      this.entities.map((entity) => [
+        entity.id,
+        entity.title ?? "",
+        entity.description ?? "",
+        (entity.properties ?? []).map((field) => [
+          field.id,
+          field.type,
+          field.primaryKey ?? false,
+          field.required ?? false,
+        ]),
+      ]),
       this.relationships.map((relationship) => [
         relationship.id,
         relationship.from,
         relationship.to,
+        relationship.cardinality ?? "",
+        relationship.inverse ?? "",
       ]),
     ]);
     if (key === this.graphKey) {
@@ -246,7 +323,9 @@ export class OpenClawOntologyGraph extends LitElement {
       const angle = (index / count) * Math.PI * 2;
       return {
         id: entity.id,
+        title: entity.title,
         description: entity.description,
+        properties: entity.properties,
         degree: degree.get(entity.id) ?? 0,
         x: Math.cos(angle) * seedRadius,
         y: Math.sin(angle) * seedRadius,
@@ -688,20 +767,47 @@ export class OpenClawOntologyGraph extends LitElement {
     const incoming = this.relationships.filter(
       (relationship) => relationship.to === id && relationship.from !== id,
     );
+    // Incoming links read backwards from the selected type, so show the declared
+    // inverse name when there is one: that is the whole point of declaring it.
+    const link = (
+      relationship: OntologyRelationship,
+      from: string,
+      to: string,
+      reverse = false,
+    ) => html`
+      <div class="inspector-row">
+        ${from}
+        <span class="rel">— ${relationship.id} →</span>
+        ${to}
+        ${relationship.cardinality
+          ? html`<span class="card">${relationship.cardinality}</span>`
+          : nothing}
+        ${reverse && relationship.inverse
+          ? html`<span class="card">inverse: ${relationship.inverse}</span>`
+          : nothing}
+      </div>
+    `;
     return html`
       <div class="inspector">
-        <div class="inspector-title">${node.id}</div>
+        <div class="inspector-title">${node.title ?? node.id}</div>
+        <div class="inspector-sub">${node.id}</div>
         ${node.description ? html`<div class="inspector-sub">${node.description}</div>` : nothing}
-        ${outgoing.map(
-          (relationship) => html`<div class="inspector-row">
-            ${node.id} <span class="rel">— ${relationship.id} →</span> ${relationship.to}
-          </div>`,
-        )}
-        ${incoming.map(
-          (relationship) => html`<div class="inspector-row">
-            ${relationship.from} <span class="rel">— ${relationship.id} →</span> ${node.id}
-          </div>`,
-        )}
+        ${node.properties?.length
+          ? html`<div class="props">
+              ${node.properties.map(
+                (field) => html`<div class="prop">
+                  <span class="prop-name">${field.id}</span>
+                  <span class="prop-type">${field.type}</span>
+                  ${field.primaryKey ? html`<span class="pk">PK</span>` : nothing}
+                  ${field.required && !field.primaryKey
+                    ? html`<span class="req">required</span>`
+                    : nothing}
+                </div>`,
+              )}
+            </div>`
+          : nothing}
+        ${outgoing.map((relationship) => link(relationship, node.id, relationship.to))}
+        ${incoming.map((relationship) => link(relationship, relationship.from, node.id, true))}
         ${outgoing.length === 0 && incoming.length === 0
           ? html`<div class="inspector-row">${t("enterprise.noRelationships")}</div>`
           : nothing}
