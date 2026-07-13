@@ -1,6 +1,6 @@
 // Control UI view renders the enterprise inspection screen: recent governed
 // runs, a per-execution step/trace inspector, and the workflow-tree registry.
-import { html, nothing, svg, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import type {
   EnterpriseRunDetail,
   EnterpriseRunSummary,
@@ -11,8 +11,11 @@ import type {
   EnterpriseTreeVersionSummary,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
-import type { EnterpriseTreeConfirm, EnterpriseTreeEditFormat } from "../controllers/enterprise.ts";
+import type { OntologyEntity, OntologyRelationship } from "../components/ontology-graph.ts";
 import "../components/modal-dialog.ts";
+import "../components/ontology-graph.ts";
+import "../components/workflow-tree-graph.ts";
+import type { EnterpriseTreeConfirm, EnterpriseTreeEditFormat } from "../controllers/enterprise.ts";
 
 export type EnterpriseProps = {
   loading: boolean;
@@ -55,8 +58,6 @@ export type EnterpriseProps = {
   onExport: (treeId: string, format: EnterpriseTreeEditFormat) => void;
   onLoadVersion: (treeId: string, revision: number) => void;
 };
-
-type TreeNode = EnterpriseTreeDetail["nodes"][number];
 
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
@@ -534,6 +535,7 @@ function renderTreeConfirmModal(props: EnterpriseProps): TemplateResult | typeof
 }
 
 function renderTreeDetail(tree: EnterpriseTreeDetail): TemplateResult {
+  const { entities, relationships } = collectOntologyGraph(tree);
   return html`
     <div class="card-sub">${tree.name} — ${tree.id}@${tree.version}</div>
     ${tree.description
@@ -541,83 +543,35 @@ function renderTreeDetail(tree: EnterpriseTreeDetail): TemplateResult {
       : nothing}
 
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.structureTitle")}</div>
-    <div class="list" style="margin-top: 8px;">
-      ${tree.nodes.map((node) => renderTreeStructureNode(node))}
-    </div>
+    <openclaw-workflow-tree-graph .nodes=${tree.nodes}></openclaw-workflow-tree-graph>
 
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.ontologyTitle")}</div>
-    ${renderOntologyGraph(tree)}
+    ${entities.length === 0
+      ? html`<div class="muted" style="margin-top: 8px;">${t("enterprise.noOntology")}</div>`
+      : html`<openclaw-ontology-graph
+          .entities=${entities}
+          .relationships=${relationships}
+        ></openclaw-ontology-graph>`}
   `;
 }
 
-/** One node in the tree structure, indented by depth to show the hierarchy. */
-function renderTreeStructureNode(node: TreeNode): TemplateResult {
-  const ontology = node.ontology;
-  const chips: TemplateResult[] = [];
-  if (ontology.allowedTools?.length) {
-    chips.push(
-      html`<span class="chip"
-        >${t("enterprise.allowedTools", { tools: ontology.allowedTools.join(", ") })}</span
-      >`,
-    );
-  }
-  if (ontology.deniedTools?.length) {
-    chips.push(
-      html`<span class="chip"
-        >${t("enterprise.deniedTools", { tools: ontology.deniedTools.join(", ") })}</span
-      >`,
-    );
-  }
-  if (ontology.knowledgeFoundations?.length) {
-    chips.push(
-      html`<span class="chip"
-        >${t("enterprise.knowledge", { ids: ontology.knowledgeFoundations.join(", ") })}</span
-      >`,
-    );
-  }
-  for (const action of ontology.actions ?? []) {
-    chips.push(html`<span class="chip">${t("enterprise.action", { id: action.id })}</span>`);
-  }
-  if (ontology.audit) {
-    chips.push(html`<span class="chip">${t("enterprise.audit")}</span>`);
-  }
-  return html`
-    <div class="list-item" style="padding-left: ${8 + node.depth * 20}px;">
-      <div class="list-main">
-        <div class="list-title">
-          ${node.depth > 0 ? html`<span class="muted">${"└ "}</span>` : nothing}${node.title}
-        </div>
-        ${node.description ? html`<div class="list-sub">${node.description}</div>` : nothing}
-        ${chips.length ? html`<div class="chip-row">${chips}</div>` : nothing}
-        ${(ontology.constraints ?? []).map(
-          (constraint) =>
-            html`<div class="muted" style="font-size: 12px;">
-              ${t("enterprise.constraint", { text: constraint.description })}
-            </div>`,
-        )}
-      </div>
-      <div class="list-meta"><div class="muted">${node.id}</div></div>
-    </div>
-  `;
-}
-
-type OntologyEntity = { id: string; description?: string };
-type OntologyRelationship = { id: string; from: string; to: string; description?: string };
-
-/** Union all nodes' entities + relationships into one ontology graph model. */
+/**
+ * Union every node's entities + relationships into one graph model. Parent and
+ * child nodes often re-declare the same relationship, so edges dedupe by
+ * endpoints+id; otherwise the graph would stack identical arcs.
+ */
 function collectOntologyGraph(tree: EnterpriseTreeDetail): {
   entities: OntologyEntity[];
   relationships: OntologyRelationship[];
 } {
   const descriptions = new Map<string, string | undefined>();
-  // Dedupe edges by endpoints+id: parent and child nodes often re-declare the
-  // same relationship, which would otherwise stack identical arcs.
   const relationshipByKey = new Map<string, OntologyRelationship>();
   for (const node of tree.nodes) {
     for (const entity of node.ontology.entities ?? []) {
-      if (!descriptions.has(entity.id)) {
-        descriptions.set(entity.id, entity.description);
-      }
+      // First non-empty description wins. A `has()` check would treat an entity
+      // first declared without a description as already described, dropping a
+      // richer re-declaration on a deeper step.
+      descriptions.set(entity.id, descriptions.get(entity.id) ?? entity.description);
     }
     for (const relationship of node.ontology.relationships ?? []) {
       const key = JSON.stringify([relationship.from, relationship.to, relationship.id]);
@@ -627,7 +581,7 @@ function collectOntologyGraph(tree: EnterpriseTreeDetail): {
     }
   }
   const relationships = [...relationshipByKey.values()];
-  // Relationship endpoints must exist as boxes even if never declared.
+  // Relationship endpoints must exist as nodes even if never declared as entities.
   for (const relationship of relationships) {
     if (!descriptions.has(relationship.from)) {
       descriptions.set(relationship.from, undefined);
@@ -638,107 +592,4 @@ function collectOntologyGraph(tree: EnterpriseTreeDetail): {
   }
   const entities = [...descriptions.entries()].map(([id, description]) => ({ id, description }));
   return { entities, relationships };
-}
-
-const ENTITY_BOX_WIDTH = 132;
-const ENTITY_BOX_HEIGHT = 40;
-const ENTITY_GAP_X = 32;
-const GRAPH_TOP = 72;
-const GRAPH_BOTTOM = 16;
-
-function renderOntologyGraph(tree: EnterpriseTreeDetail): TemplateResult {
-  const { entities, relationships } = collectOntologyGraph(tree);
-  if (entities.length === 0) {
-    return html`<div class="muted" style="margin-top: 8px;">${t("enterprise.noOntology")}</div>`;
-  }
-  const index = new Map(entities.map((entity, i) => [entity.id, i]));
-  const step = ENTITY_BOX_WIDTH + ENTITY_GAP_X;
-  const boxCenter = (i: number) => i * step + ENTITY_BOX_WIDTH / 2;
-  const width = entities.length * step - ENTITY_GAP_X;
-  const height = GRAPH_TOP + ENTITY_BOX_HEIGHT + GRAPH_BOTTOM;
-
-  const boxes = entities.map((entity, i) => {
-    const x = i * step;
-    return svg`
-      <rect
-        x=${x}
-        y=${GRAPH_TOP}
-        width=${ENTITY_BOX_WIDTH}
-        height=${ENTITY_BOX_HEIGHT}
-        rx="6"
-        fill="var(--surface-2, rgba(127,127,127,0.12))"
-        stroke="var(--border, rgba(127,127,127,0.5))"
-      />
-      <text
-        x=${x + ENTITY_BOX_WIDTH / 2}
-        y=${GRAPH_TOP + ENTITY_BOX_HEIGHT / 2 + 4}
-        text-anchor="middle"
-        font-size="12"
-        fill="currentColor"
-      >${entity.id}</text>
-    `;
-  });
-
-  const arcs = relationships.flatMap((relationship) => {
-    const from = index.get(relationship.from);
-    const to = index.get(relationship.to);
-    if (from === undefined || to === undefined || from === to) {
-      return [];
-    }
-    const x1 = boxCenter(from);
-    const x2 = boxCenter(to);
-    const midX = (x1 + x2) / 2;
-    const ctrlY = GRAPH_TOP - Math.min(56, 20 + Math.abs(to - from) * 12);
-    return [
-      svg`
-        <path
-          d="M ${x1} ${GRAPH_TOP} Q ${midX} ${ctrlY} ${x2} ${GRAPH_TOP}"
-          fill="none"
-          stroke="var(--accent, #6a5acd)"
-          stroke-width="1.5"
-          marker-end="url(#clawworks-onto-arrow)"
-        />
-        <text x=${midX} y=${ctrlY - 3} text-anchor="middle" font-size="10" fill="var(--muted, #888)">
-          ${relationship.id}
-        </text>
-      `,
-    ];
-  });
-
-  return html`
-    <div style="overflow-x: auto; margin-top: 8px;">
-      <svg
-        width=${width}
-        height=${height}
-        style="display: block; min-width: ${width}px;"
-        role="img"
-      >
-        <defs>
-          <marker
-            id="clawworks-onto-arrow"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #6a5acd)" />
-          </marker>
-        </defs>
-        ${arcs} ${boxes}
-      </svg>
-    </div>
-    ${entities.some((entity) => entity.description)
-      ? html`<div class="list" style="margin-top: 8px;">
-          ${entities
-            .filter((entity) => entity.description)
-            .map(
-              (entity) => html`<div class="muted" style="font-size: 12px;">
-                <strong>${entity.id}</strong>: ${entity.description}
-              </div>`,
-            )}
-        </div>`
-      : nothing}
-  `;
 }
