@@ -188,6 +188,11 @@ export const it: TranslationMap = {
     noOntology: "Questo albero non dichiara entità o relazioni ontologiche.",
     graphHint: "Trascina un nodo · scorri per ingrandire",
     routeTitle: "Percorso seguito",
+    routeViewLabel: "Vista percorso",
+    routeViewRoute: "Solo percorso",
+    routeViewTree: "Albero completo",
+    routeViewTreeUnavailable:
+      "L'albero è cambiato dopo questa esecuzione, quindi non può essere mostrato.",
     propertyPrimaryKey: "PK",
     propertyRequired: "obbligatorio",
     mode: {

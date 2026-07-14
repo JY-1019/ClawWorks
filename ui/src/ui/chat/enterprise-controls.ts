@@ -5,10 +5,18 @@
 // "so which part of the workflow did it actually run?" — by showing the branch
 // the run took through the tree, and how much of the tree that covered.
 import { html, nothing, type TemplateResult } from "lit";
-import type { EnterpriseRunDetail } from "../../../../packages/gateway-protocol/src/index.js";
+import type {
+  EnterpriseRunDetail,
+  EnterpriseTreeDetail,
+} from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
 import { ENTERPRISE_MODES, type EnterpriseMode } from "../controllers/enterprise-chat.ts";
 import { icons } from "../icons.ts";
+
+// <openclaw-chat-route-card> is registered by the chat VIEW, not here: this module
+// is also imported for the mode selector alone (app-render.helpers.ts, which runs in
+// node-environment tests), and a side-effect import would drag two browser-only custom
+// elements onto that path.
 
 export type EnterpriseChatControlsProps = {
   mode: EnterpriseMode | null;
@@ -89,50 +97,16 @@ export function renderEnterpriseModeSelect(
 }
 
 /**
- * The route the last governed run in this thread took: the branch ids, the
- * coverage (how much of the tree was planned), and the steps in order.
- *
- * Coverage is the honest signal — a narrow route means the planner found the
- * right branch; a route covering most of the tree means it hedged, or fell back.
+ * The route the last governed run in this thread took. Rendered as a tree (the
+ * shape is the point), with a switch between the route alone and the whole tree
+ * with the untaken branches dimmed.
  */
 export function renderEnterpriseRouteCard(
   run: EnterpriseRunDetail | null,
+  tree: EnterpriseTreeDetail | null,
 ): TemplateResult | typeof nothing {
   if (!run) {
     return nothing;
   }
-  const route = run.route;
-  const steps = run.nodes;
-  return html`
-    <div class="chat-enterprise-route">
-      <div class="chat-enterprise-route__head">
-        <span class="chat-enterprise-route__title">${t("enterprise.routeTitle")}</span>
-        <span class="chat-enterprise-route__tree">${run.treeName}</span>
-        ${route
-          ? html`<span class="chat-enterprise-route__coverage">
-              ${t("enterprise.routeCoverage", {
-                coverage: `${route.selectedNodes}/${route.totalNodes}`,
-              })}
-            </span>`
-          : nothing}
-        <span class="chat-enterprise-route__mode">${run.mode}</span>
-      </div>
-      ${route?.routes.length
-        ? html`<div class="chat-enterprise-route__routes">
-            ${route.routes.map((id) => html`<code>${id}</code>`)}
-          </div>`
-        : nothing}
-      <ol class="chat-enterprise-route__steps">
-        ${steps.map(
-          (step) => html`
-            <li class=${step.nodeId === run.activeNodeId ? "is-active" : ""}>
-              <span class="chat-enterprise-route__step-title">${step.title}</span>
-              <code>${step.nodeId}</code>
-            </li>
-          `,
-        )}
-      </ol>
-      ${route ? html`<div class="chat-enterprise-route__why">${route.rationale}</div>` : nothing}
-    </div>
-  `;
+  return html` <openclaw-chat-route-card .run=${run} .tree=${tree}></openclaw-chat-route-card> `;
 }

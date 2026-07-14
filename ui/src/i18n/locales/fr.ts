@@ -190,6 +190,11 @@ export const fr: TranslationMap = {
     noOntology: "Cet arbre ne déclare aucune entité ni relation d'ontologie.",
     graphHint: "Glissez un nœud · défilez pour zoomer",
     routeTitle: "Route empruntée",
+    routeViewLabel: "Vue de la route",
+    routeViewRoute: "Route uniquement",
+    routeViewTree: "Arbre complet",
+    routeViewTreeUnavailable:
+      "L'arbre a changé depuis cette exécution et ne peut pas être affiché.",
     propertyPrimaryKey: "PK",
     propertyRequired: "requis",
     mode: {

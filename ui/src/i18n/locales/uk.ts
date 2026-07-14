@@ -189,6 +189,11 @@ export const uk: TranslationMap = {
     noOntology: "Це дерево не оголошує сутностей або зв'язків онтології.",
     graphHint: "Перетягніть вузол · прокрутіть для масштабування",
     routeTitle: "Обраний маршрут",
+    routeViewLabel: "Перегляд маршруту",
+    routeViewRoute: "Лише маршрут",
+    routeViewTree: "Усе дерево",
+    routeViewTreeUnavailable:
+      "Дерево змінилося з моменту цього запуску, тому його неможливо відобразити.",
     propertyPrimaryKey: "PK",
     propertyRequired: "обов'язкове",
     mode: {

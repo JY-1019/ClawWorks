@@ -4,6 +4,10 @@ import { guard } from "lit/directives/guard.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
+import type {
+  EnterpriseRunDetail,
+  EnterpriseTreeDetail,
+} from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
 import type { CompactionStatus, FallbackStatus } from "../app-tool-stream.ts";
 import {
@@ -22,6 +26,7 @@ import { renderWelcomeState, resolveAssistantDisplayAvatar } from "../chat/chat-
 import { copyToClipboard } from "../chat/clipboard.ts";
 import { renderContextNotice } from "../chat/context-notice.ts";
 import { DeletedMessages } from "../chat/deleted-messages.ts";
+import { renderEnterpriseRouteCard } from "../chat/enterprise-controls.ts";
 import { exportChatMarkdown } from "../chat/export.ts";
 import {
   getAssistantAttachmentAvailabilityRenderVersion,
@@ -69,6 +74,7 @@ import type { SessionWorkspaceListResult, SessionGoal, SessionsListResult } from
 import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
 import { resolveLocalUserName } from "../user-identity.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
+import "../chat/route-card.ts";
 import "../components/resizable-divider.ts";
 
 const COMPOSER_CHROME_INTERACTIVE_SELECTOR = [
@@ -203,8 +209,10 @@ export type ChatProps = {
   onChatScroll?: (event: Event) => void;
   basePath?: string;
   composerControls?: TemplateResult | typeof nothing | ReturnType<typeof guard>;
-  /** Route the last governed run in this thread took (enterprise mode). */
-  enterpriseRoute?: TemplateResult | typeof nothing;
+  /** The governed run behind the newest answer, if any (enterprise mode). */
+  enterpriseRun?: EnterpriseRunDetail | null;
+  /** That run's full tree, when its identity could be proven. */
+  enterpriseRunTree?: EnterpriseTreeDetail | null;
   sessionWorkspace?: {
     collapsed: boolean;
     sessionKey: string;
@@ -2026,6 +2034,65 @@ function renderSlashMenu(
   `;
 }
 
+/**
+ * Which assistant bubble owns the governed-route card.
+ *
+ * Decided from the data, not from render history: the run's `createdAt` and the
+ * group's timestamp both come from the gateway, so the answer a run produced is
+ * exactly the newest assistant group written AT OR AFTER the run started.
+ *
+ * That settles the two cases a heuristic gets wrong:
+ *   - a route that resolves before the reply lands binds nothing yet, and binds
+ *     correctly on the next render once the reply appears (no stale owner, no
+ *     permanently cached miss);
+ *   - a governed run that ends without a reply (abort, block) has no group at or
+ *     after its start, so it shows no card rather than claiming an older answer.
+ *
+ * No browser clock is involved on either side.
+ */
+export function resolveEnterpriseRouteGroupKey(params: {
+  runCreatedAt: number | null;
+  runStatus: string | null;
+  groups: readonly { key: string; role: string; timestamp: number; lastTimestamp: number }[];
+}): string | null {
+  const { runCreatedAt, runStatus, groups } = params;
+  if (runCreatedAt === null) {
+    return null;
+  }
+  // Only a COMPLETED run wrote a reply. That is the upper bound — not a
+  // timestamp: `endedAt` is stamped before the transcript is persisted (CLI
+  // runs), so a time bound would reject the run's own reply. And without SOME
+  // bound, an aborted/blocked run would grab whatever answer came next and claim
+  // it took a route it never took.
+  if (runStatus !== "completed") {
+    return null;
+  }
+  // The rendered history can be truncated. If the oldest MESSAGE on screen already
+  // starts after the run did, the run's own reply may have been trimmed away — and
+  // the first visible assistant group would then be some later answer. Only bind
+  // when we can see back past the run's start, which proves the reply (which came
+  // after it) is on screen too.
+  //
+  // Messages only: the truncation notice is not one. buildChatItems stamps it with
+  // the BROWSER clock, so it always looks newer than the run and would suppress the
+  // card on every long thread — the exact case it is meant to guard.
+  const oldestMessage = groups.find((group) => group.role === "user" || group.role === "assistant");
+  if (!oldestMessage || oldestMessage.timestamp > runCreatedAt) {
+    return null;
+  }
+  // The FIRST assistant group at or after the run started is the reply the run
+  // wrote; anything later belongs to a subsequent turn (possibly an ungoverned
+  // one, which must never wear a governed route).
+  //
+  // Matched on OVERLAP: consecutive assistant messages fold into one group whose
+  // `timestamp` is the OLDEST message, so a reply appended to an existing group
+  // would otherwise look older than the run and lose its card.
+  return (
+    groups.find((group) => group.role === "assistant" && group.lastTimestamp >= runCreatedAt)
+      ?.key ?? null
+  );
+}
+
 export function renderChat(props: ChatProps) {
   const canCompose = props.connected;
   const isBusy = props.sending || props.stream !== null;
@@ -2101,6 +2168,24 @@ export function renderChat(props: ChatProps) {
     searchQuery: vs.searchQuery,
     historyRenderLimit,
   });
+
+  // The governed-route card belongs to the answer it describes, so it renders in
+  // the NEWEST assistant bubble. Streaming/queued items are not groups yet, so a
+  // reply still in flight simply has no card until it lands.
+  //
+  // While a search is filtering the thread, the last VISIBLE assistant group is
+  // not necessarily the newest one — attaching the card there would claim an old
+  // answer took the latest route. No card is better than a wrong one.
+  const searchFiltering = vs.searchOpen && vs.searchQuery.trim().length > 0;
+  const routeGroupKey = searchFiltering
+    ? null
+    : resolveEnterpriseRouteGroupKey({
+        runCreatedAt: props.enterpriseRun?.createdAt ?? null,
+        runStatus: props.enterpriseRun?.status ?? null,
+        groups: chatItems.filter(
+          (item): item is Extract<typeof item, { kind: "group" }> => item.kind === "group",
+        ),
+      });
   syncToolCardExpansionState(props.sessionKey, chatItems, Boolean(props.autoExpandToolCalls));
   const expandedToolCards = getExpandedToolCards(props.sessionKey);
   const toggleToolCardExpanded = (toolCardId: string) => {
@@ -2176,6 +2261,12 @@ export function renderChat(props: ChatProps) {
         ${guard(
           [
             chatItems,
+            // Stable identity only. Passing the rendered card here would mint a
+            // fresh TemplateResult on every app render and defeat this guard,
+            // re-rendering the whole history on each composer keystroke.
+            routeGroupKey,
+            props.enterpriseRun?.executionId ?? null,
+            props.enterpriseRunTree?.hash ?? null,
             deletedChatItemsSignature(deleted, chatItems),
             stableBooleanMapSignature(expandedToolCards),
             getAssistantAttachmentAvailabilityRenderVersion(),
@@ -2258,6 +2349,17 @@ export function renderChat(props: ChatProps) {
                     return nothing;
                   }
                   return renderMessageGroup(item, {
+                    // The route describes the run that produced this answer, so it
+                    // rides in that bubble — not above the composer, where it read
+                    // as a control rather than as context for the reply.
+                    ...(item.key === routeGroupKey && props.enterpriseRun
+                      ? {
+                          enterpriseRoute: renderEnterpriseRouteCard(
+                            props.enterpriseRun,
+                            props.enterpriseRunTree ?? null,
+                          ),
+                        }
+                      : {}),
                     onOpenSidebar: props.onOpenSidebar,
                     sessionKey: props.sessionKey,
                     agentId: props.fullMessageAgentId,
@@ -2685,9 +2787,6 @@ export function renderChat(props: ChatProps) {
           ${renderChatRunStatusIndicator(composerRunStatus)}
         </div>
 
-        ${props.enterpriseRoute && props.enterpriseRoute !== nothing
-          ? html`<div class="agent-chat__enterprise-route">${props.enterpriseRoute}</div>`
-          : nothing}
         ${composerControls && composerControls !== nothing
           ? html`<div class="agent-chat__composer-controls">${composerControls}</div>`
           : nothing}

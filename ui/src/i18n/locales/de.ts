@@ -193,6 +193,11 @@ export const de: TranslationMap = {
     noOntology: "Dieser Baum deklariert keine Ontologie-Entitäten oder -Beziehungen.",
     graphHint: "Knoten ziehen · scrollen zum Zoomen",
     routeTitle: "Gewählte Route",
+    routeViewLabel: "Routenansicht",
+    routeViewRoute: "Nur Route",
+    routeViewTree: "Gesamter Baum",
+    routeViewTreeUnavailable:
+      "Der Baum hat sich seit diesem Durchlauf geändert und kann daher nicht angezeigt werden.",
     propertyPrimaryKey: "PK",
     propertyRequired: "erforderlich",
     mode: {

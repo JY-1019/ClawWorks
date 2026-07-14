@@ -189,6 +189,11 @@ export const es: TranslationMap = {
     noOntology: "Este árbol no declara entidades ni relaciones de ontología.",
     graphHint: "Arrastra un nodo · desplaza para hacer zoom",
     routeTitle: "Ruta tomada",
+    routeViewLabel: "Vista de ruta",
+    routeViewRoute: "Solo ruta",
+    routeViewTree: "Árbol completo",
+    routeViewTreeUnavailable:
+      "El árbol cambió desde esta ejecución, por lo que no se puede mostrar.",
     propertyPrimaryKey: "PK",
     propertyRequired: "obligatorio",
     mode: {

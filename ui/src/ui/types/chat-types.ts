@@ -23,7 +23,14 @@ export type MessageGroup = {
   role: string;
   senderLabel?: string | null;
   messages: Array<{ message: unknown; key: string; duplicateCount?: number }>;
+  /** Timestamp of the group's FIRST message. */
   timestamp: number;
+  /**
+   * Timestamp of the group's LAST message. Consecutive assistant messages fold
+   * into one group, so `timestamp` alone cannot say when the group ends — and a
+   * reply appended to an existing group would look older than it is.
+   */
+  lastTimestamp: number;
   isStreaming: boolean;
 };
 

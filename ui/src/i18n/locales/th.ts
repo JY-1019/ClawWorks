@@ -185,6 +185,10 @@ export const th: TranslationMap = {
     noOntology: "ต้นไม้นี้ไม่มีเอนทิตีหรือความสัมพันธ์ของออนโทโลยี",
     graphHint: "ลากโหนด · เลื่อนเพื่อซูม",
     routeTitle: "เส้นทางที่ใช้",
+    routeViewLabel: "มุมมองเส้นทาง",
+    routeViewRoute: "เฉพาะเส้นทาง",
+    routeViewTree: "ทั้งต้นไม้",
+    routeViewTreeUnavailable: "ต้นไม้มีการเปลี่ยนแปลงตั้งแต่การรันครั้งนี้ จึงไม่สามารถแสดงได้",
     propertyPrimaryKey: "PK",
     propertyRequired: "จำเป็น",
     mode: {

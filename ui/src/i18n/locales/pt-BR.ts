@@ -188,6 +188,10 @@ export const pt_BR: TranslationMap = {
     noOntology: "Esta árvore não declara entidades ou relacionamentos de ontologia.",
     graphHint: "Arraste um nó · role para ampliar",
     routeTitle: "Rota percorrida",
+    routeViewLabel: "Visualização de rota",
+    routeViewRoute: "Somente rota",
+    routeViewTree: "Árvore completa",
+    routeViewTreeUnavailable: "A árvore mudou desde esta execução, então não pode ser exibida.",
     propertyPrimaryKey: "PK",
     propertyRequired: "obrigatório",
     mode: {

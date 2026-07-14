@@ -185,6 +185,10 @@ export const zh_CN: TranslationMap = {
     noOntology: "此树未声明任何本体实体或关系。",
     graphHint: "拖动节点 · 滚动缩放",
     routeTitle: "已采用的路径",
+    routeViewLabel: "路由视图",
+    routeViewRoute: "仅路由",
+    routeViewTree: "完整树",
+    routeViewTreeUnavailable: "自此次运行以来树已更改，因此无法显示。",
     propertyPrimaryKey: "PK",
     propertyRequired: "必填",
     mode: {

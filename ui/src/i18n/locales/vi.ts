@@ -188,6 +188,10 @@ export const vi: TranslationMap = {
     noOntology: "Cây này không khai báo thực thể hoặc mối quan hệ bản thể học nào.",
     graphHint: "Kéo một nút · cuộn để phóng to",
     routeTitle: "Tuyến đã đi",
+    routeViewLabel: "Chế độ xem tuyến",
+    routeViewRoute: "Chỉ tuyến",
+    routeViewTree: "Toàn bộ cây",
+    routeViewTreeUnavailable: "Cây đã thay đổi kể từ lần chạy này, vì vậy không thể hiển thị.",
     propertyPrimaryKey: "PK",
     propertyRequired: "bắt buộc",
     mode: {

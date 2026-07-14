@@ -190,6 +190,11 @@ export const nl: TranslationMap = {
     noOntology: "Deze boom bevat geen ontologie-entiteiten of -relaties.",
     graphHint: "Sleep een knooppunt · scroll om te zoomen",
     routeTitle: "Gevolgde route",
+    routeViewLabel: "Routeweergave",
+    routeViewRoute: "Alleen route",
+    routeViewTree: "Volledige boom",
+    routeViewTreeUnavailable:
+      "De boom is gewijzigd sinds deze uitvoering en kan daarom niet worden weergegeven.",
     propertyPrimaryKey: "PK",
     propertyRequired: "verplicht",
     mode: {

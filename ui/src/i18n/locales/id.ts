@@ -188,6 +188,11 @@ export const id: TranslationMap = {
     noOntology: "Tree ini tidak mendeklarasikan entitas atau relasi ontologi.",
     graphHint: "Seret node · gulir untuk zoom",
     routeTitle: "Rute yang diambil",
+    routeViewLabel: "Tampilan rute",
+    routeViewRoute: "Hanya rute",
+    routeViewTree: "Seluruh pohon",
+    routeViewTreeUnavailable:
+      "Pohon telah berubah sejak eksekusi ini, sehingga tidak dapat ditampilkan.",
     propertyPrimaryKey: "PK",
     propertyRequired: "wajib",
     mode: {

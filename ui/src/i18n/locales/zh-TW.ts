@@ -185,6 +185,10 @@ export const zh_TW: TranslationMap = {
     noOntology: "此樹狀結構未宣告任何本體實體或關係。",
     graphHint: "拖曳節點 · 捲動以縮放",
     routeTitle: "已採取的路徑",
+    routeViewLabel: "路由檢視",
+    routeViewRoute: "僅路由",
+    routeViewTree: "完整樹狀結構",
+    routeViewTreeUnavailable: "此次執行後樹狀結構已變更，因此無法顯示。",
     propertyPrimaryKey: "PK",
     propertyRequired: "必填",
     mode: {

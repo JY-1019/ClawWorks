@@ -190,6 +190,10 @@ export const tr: TranslationMap = {
     noOntology: "Bu ağaç herhangi bir ontoloji varlığı veya ilişkisi bildirmiyor.",
     graphHint: "Düğümü sürükleyin · yakınlaştırmak için kaydırın",
     routeTitle: "İzlenen rota",
+    routeViewLabel: "Rota görünümü",
+    routeViewRoute: "Yalnızca rota",
+    routeViewTree: "Tüm ağaç",
+    routeViewTreeUnavailable: "Bu çalıştırmadan bu yana ağaç değiştiği için gösterilemiyor.",
     propertyPrimaryKey: "PK",
     propertyRequired: "zorunlu",
     mode: {

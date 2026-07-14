@@ -191,6 +191,10 @@ export const ja_JP: TranslationMap = {
     noOntology: "このツリーにはオントロジーエンティティやリレーションシップが宣言されていません。",
     graphHint: "ノードをドラッグ · スクロールでズーム",
     routeTitle: "選択されたルート",
+    routeViewLabel: "ルート表示",
+    routeViewRoute: "ルートのみ",
+    routeViewTree: "ツリー全体",
+    routeViewTreeUnavailable: "この実行以降にツリーが変更されたため、表示できません。",
     propertyPrimaryKey: "PK",
     propertyRequired: "必須",
     mode: {

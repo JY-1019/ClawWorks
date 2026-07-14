@@ -215,9 +215,11 @@ function groupMessages(items: ChatItem[]): Array<ChatItem | MessageGroup> {
         senderLabel,
         messages: [{ message: item.message, key: item.key, duplicateCount: item.duplicateCount }],
         timestamp,
+        lastTimestamp: timestamp,
         isStreaming: false,
       };
     } else {
+      currentGroup.lastTimestamp = timestamp;
       currentGroup.messages.push({
         message: item.message,
         key: item.key,

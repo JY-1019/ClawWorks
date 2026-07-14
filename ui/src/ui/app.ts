@@ -110,7 +110,6 @@ import {
   clearEnterpriseChatRoute,
   loadEnterpriseChatMode,
   loadEnterpriseChatRoute,
-  markEnterpriseChatTurnStart,
   setEnterpriseChatMode,
   type EnterpriseMode,
 } from "./controllers/enterprise-chat.ts";
@@ -488,7 +487,7 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseChatModeBusy = false;
   @state() enterpriseChatModeError: string | null = null;
   @state() enterpriseChatRun: EnterpriseRunDetail | null = null;
-  @state() enterpriseChatRunBefore: string | null = null;
+  @state() enterpriseChatRunTree: EnterpriseTreeDetail | null = null;
 
   setEnterpriseChatMode = async (mode: EnterpriseMode) => {
     await setEnterpriseChatMode(this, mode);
@@ -976,15 +975,9 @@ export class OpenClawApp extends LitElement {
     // with started/in_flight long before the agent dispatches — and mediation now
     // waits for lane admission — so refreshing on `chatSending` would look for a
     // trace that does not exist yet and then never look again.
-    if (changed.has("chatRunId")) {
-      if (this.chatRunId) {
-        // A run started: freeze which route was already on screen, so a turn that
-        // traces nothing cannot leave the previous route under the new answer.
-        markEnterpriseChatTurnStart(this);
-      } else if (this.connected && this.sessionKey) {
-        // The run reached a terminal state: its trace exists now.
-        void loadEnterpriseChatRoute(this, this.sessionKey);
-      }
+    if (changed.has("chatRunId") && !this.chatRunId && this.connected && this.sessionKey) {
+      // The run reached a terminal state: its trace exists now.
+      void loadEnterpriseChatRoute(this, this.sessionKey);
     }
     // Some render callbacks assign tab directly while preparing nested panel state.
     if (changed.has("tab") && this.tab !== "chat" && this.chatMobileControlsOpen) {

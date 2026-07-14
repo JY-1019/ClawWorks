@@ -186,6 +186,7 @@ function renderAssistantMessages(
       message,
     })),
     timestamp,
+    lastTimestamp: timestamp,
     isStreaming: false,
   };
   render(
@@ -211,6 +212,7 @@ function renderAssistantMessageEntries(
     role: "assistant",
     messages: entries,
     timestamp: Date.now(),
+    lastTimestamp: Date.now(),
     isStreaming: false,
   };
   render(
@@ -243,6 +245,7 @@ function renderGroupedMessage(
     role,
     messages: [{ key: `${role}-message`, message }],
     timestamp,
+    lastTimestamp: timestamp,
     isStreaming: false,
   };
   render(
@@ -270,6 +273,7 @@ function createMessageGroup(message: unknown, role: string): MessageGroup {
     role,
     messages: [{ key: `${role}:${timestamp}:message`, message }],
     timestamp,
+    lastTimestamp: timestamp,
     isStreaming: false,
   };
 }
@@ -949,6 +953,7 @@ describe("grouped chat rendering", () => {
         },
       ],
       timestamp: 1000,
+      lastTimestamp: 1000,
       isStreaming: false,
     };
 
@@ -995,6 +1000,7 @@ describe("grouped chat rendering", () => {
         },
       ],
       timestamp: 1000,
+      lastTimestamp: 1000,
       isStreaming: false,
     };
 
@@ -1040,6 +1046,7 @@ describe("grouped chat rendering", () => {
         },
       ],
       timestamp: 1000,
+      lastTimestamp: 1000,
       isStreaming: false,
     };
 
@@ -1080,6 +1087,7 @@ describe("grouped chat rendering", () => {
         },
       ],
       timestamp: 1000,
+      lastTimestamp: 1000,
       isStreaming: false,
     };
 

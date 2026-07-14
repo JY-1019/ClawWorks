@@ -3,7 +3,6 @@ import {
   clearEnterpriseChatRoute,
   loadEnterpriseChatMode,
   loadEnterpriseChatRoute,
-  markEnterpriseChatTurnStart,
   setEnterpriseChatMode,
   type EnterpriseChatState,
 } from "./enterprise-chat.ts";
@@ -22,7 +21,7 @@ function createState(): {
     enterpriseChatModeBusy: false,
     enterpriseChatModeError: null,
     enterpriseChatRun: null,
-    enterpriseChatRunBefore: null,
+    enterpriseChatRunTree: null,
   };
   return { state, request };
 }
@@ -136,15 +135,16 @@ describe("loadEnterpriseChatRoute", () => {
     expect(state.enterpriseChatRun).toBeNull();
   });
 
-  it("hides the previous run when this turn produced no governed run", async () => {
+  it("keeps the run on its own bubble when this turn produced no governed run", async () => {
     // Enterprise switched off mid-thread: the turn traces nothing, so the newest
-    // run is still the one already on screen. Identity, not timestamps — a
-    // browser-vs-gateway clock comparison would misfire on any skew.
+    // run is still the one already on screen. It must STAY — the card belongs to
+    // the bubble that run wrote, and the group binding keeps it off the newer,
+    // ungoverned answer. Dropping it here would blank the correct card until reload.
     const { state, request } = createState();
     state.enterpriseChatRun = {
       executionId: "exec-old",
+      status: "completed",
     } as EnterpriseChatState["enterpriseChatRun"];
-    markEnterpriseChatTurnStart(state);
     request.mockImplementation(async (method) => {
       if (method === "enterprise.runs.list") {
         return { runs: [runSummary("exec-old", "agent:main:me")] };
@@ -152,7 +152,25 @@ describe("loadEnterpriseChatRoute", () => {
       throw new Error("runs.get must not be reached for an unchanged run");
     });
     await loadEnterpriseChatRoute(state, "agent:main:me");
-    expect(state.enterpriseChatRun).toBeNull();
+    expect(state.enterpriseChatRun?.executionId).toBe("exec-old");
+  });
+
+  it("refetches the SAME run once it leaves running", async () => {
+    // Joining a session mid-run caches the run as `running`, and only a completed
+    // run gets a card. Skipping the terminal refetch on id alone would strand it.
+    const { state, request } = createState();
+    state.enterpriseChatRun = {
+      executionId: "exec-1",
+      status: "running",
+    } as EnterpriseChatState["enterpriseChatRun"];
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-1", "agent:main:me")] };
+      }
+      return { run: { executionId: "exec-1", status: "completed", treeName: "T" } };
+    });
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    expect(state.enterpriseChatRun?.status).toBe("completed");
   });
 
   it("shows the route when the turn DID produce a new governed run", async () => {
@@ -160,7 +178,6 @@ describe("loadEnterpriseChatRoute", () => {
     state.enterpriseChatRun = {
       executionId: "exec-old",
     } as EnterpriseChatState["enterpriseChatRun"];
-    markEnterpriseChatTurnStart(state);
     request.mockImplementation(async (method) => {
       if (method === "enterprise.runs.list") {
         return { runs: [runSummary("exec-new", "agent:main:me")] };
@@ -169,6 +186,40 @@ describe("loadEnterpriseChatRoute", () => {
     });
     await loadEnterpriseChatRoute(state, "agent:main:me");
     expect(state.enterpriseChatRun?.executionId).toBe("exec-new");
+  });
+
+  it("enables the whole-tree view only for the tree the run actually governed", async () => {
+    const { state, request } = createState();
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-1", "agent:main:me")] };
+      }
+      if (method === "enterprise.runs.get") {
+        return { run: { executionId: "exec-1", treeName: "T", treeId: "t", treeHash: "h1" } };
+      }
+      return { tree: { id: "t", hash: "h1", nodes: [] } };
+    });
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    expect(state.enterpriseChatRunTree?.hash).toBe("h1");
+  });
+
+  it("refuses a tree the gateway itself reports as unauthoritative", async () => {
+    // importError means the imported override failed to load and `tree` may be a
+    // stale built-in. Drawing its untaken branches would misstate what the run was
+    // governed by, so the card falls back to route-only.
+    const { state, request } = createState();
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-1", "agent:main:me")] };
+      }
+      if (method === "enterprise.runs.get") {
+        return { run: { executionId: "exec-1", treeName: "T", treeId: "t", treeHash: "h1" } };
+      }
+      return { tree: { id: "t", hash: "h1", nodes: [] }, importError: "bad yaml" };
+    });
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    expect(state.enterpriseChatRun?.executionId).toBe("exec-1");
+    expect(state.enterpriseChatRunTree).toBeNull();
   });
 
   it("drops a response superseded by a session switch", async () => {

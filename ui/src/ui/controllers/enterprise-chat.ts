@@ -10,6 +10,8 @@ import type {
   EnterpriseRunDetail,
   EnterpriseRunsGetResult,
   EnterpriseRunsListResult,
+  EnterpriseTreeDetail,
+  EnterpriseTreesGetResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../gateway.ts";
 
@@ -27,14 +29,11 @@ export type EnterpriseChatState = {
   /** Route detail of the newest governed run in THIS session, if any. */
   enterpriseChatRun: EnterpriseRunDetail | null;
   /**
-   * Execution id of the run already on screen when the current turn started.
-   * If the turn produces no NEW governed run, the newest run is still this one —
-   * so the card is cleared rather than claiming the new answer took an old route.
-   *
-   * Identity, not time: comparing a gateway timestamp against browser Date.now()
-   * would misclassify runs whenever the two clocks disagree.
+   * The FULL tree that run bound to, so the card can show the branches the run
+   * did NOT take. Null when the live definition cannot be proven to be the one
+   * the run governed (see the hash check) — the route itself still renders.
    */
-  enterpriseChatRunBefore: string | null;
+  enterpriseChatRunTree: EnterpriseTreeDetail | null;
 };
 
 function isEnterpriseMode(value: unknown): value is EnterpriseMode {
@@ -140,19 +139,22 @@ export async function loadEnterpriseChatRoute(state: EnterpriseChatState, sessio
     const mine = list?.runs?.[0];
     if (!mine) {
       state.enterpriseChatRun = null;
-      state.enterpriseChatRunBefore = null;
+      state.enterpriseChatRunTree = null;
       return;
     }
-    // A turn that produced NO new governed run (enterprise switched off, or an
-    // unmediated run) leaves the PREVIOUS run as the newest. Showing it would
-    // claim this response took a route it never took. Compare identities, not
-    // timestamps: a browser-vs-gateway clock skew would misclassify both ways.
+    // Already loaded AND unchanged: this turn produced no NEW governed run
+    // (enterprise switched off, or an unmediated turn), so the newest run is still
+    // the one on screen.
     //
-    // `baseline` is whatever this loader last saw, so it is set on connect and
-    // on session switch too — not only at turn start. Without that, a reconnect
-    // would leave it null and the first ungoverned turn would show a stale route.
-    if (state.enterpriseChatRunBefore === mine.executionId) {
-      state.enterpriseChatRun = null;
+    // KEEP it. The card is bound to the assistant bubble that run actually wrote,
+    // so a later ungoverned answer cannot wear it; clearing here would instead make
+    // the correct card vanish from its own bubble until the next reload.
+    //
+    // Status is part of the identity check: joining a session mid-run caches the run
+    // as `running`, and only a COMPLETED run gets a card. An id-only check would
+    // skip the terminal refetch and strand it as `running` forever.
+    const cached = state.enterpriseChatRun;
+    if (cached?.executionId === mine.executionId && cached.status === mine.status) {
       return;
     }
     const detail = await state.client.request<EnterpriseRunsGetResult>("enterprise.runs.get", {
@@ -162,26 +164,38 @@ export async function loadEnterpriseChatRoute(state: EnterpriseChatState, sessio
       return;
     }
     state.enterpriseChatRun = detail?.run ?? null;
-    state.enterpriseChatRunBefore = mine.executionId;
+    state.enterpriseChatRunTree = null;
+
+    // Load the tree too, so the card can offer "show the whole tree" with the
+    // untaken branches dimmed. Identity is proven by CONTENT hash: a version
+    // match cannot, since a tree is re-importable unchanged and removing an
+    // imported override reveals a different built-in.
+    const runDetail = detail?.run;
+    const runHash = runDetail?.treeHash;
+    if (!runDetail || !runHash) {
+      return;
+    }
+    const treeRes = await state.client
+      .request<EnterpriseTreesGetResult>("enterprise.trees.get", {
+        treeId: runDetail.treeId,
+      })
+      .catch(() => null);
+    if (seq !== routeSeq) {
+      return;
+    }
+    // The gateway may answer with a STALE fallback tree while reporting importError
+    // (the imported override failed to load) or storeError (the store is unreadable);
+    // the protocol says such a `tree` is not authoritative. Opening the whole-tree
+    // view on it would draw "untaken branches" from a definition the gateway itself
+    // does not trust. Route-only is honest; a wrong tree is not.
+    const trustworthy = !treeRes?.importError && !treeRes?.storeError;
+    const live = trustworthy ? (treeRes?.tree ?? null) : null;
+    state.enterpriseChatRunTree = live && live.hash === runHash ? live : null;
   } catch {
     if (seq === routeSeq) {
       state.enterpriseChatRun = null;
+      state.enterpriseChatRunTree = null;
     }
-  }
-}
-
-/**
- * Freeze the baseline at the run currently on screen.
- *
- * A hidden card does NOT mean there is no last-seen run: after one ungoverned
- * turn the card is cleared while its execution id stays the newest one. Nulling
- * the baseline here would make the next ungoverned turn treat that same old run
- * as new and show a stale route, so an existing baseline is preserved.
- */
-export function markEnterpriseChatTurnStart(state: EnterpriseChatState) {
-  const shown = state.enterpriseChatRun?.executionId;
-  if (shown) {
-    state.enterpriseChatRunBefore = shown;
   }
 }
 
@@ -189,5 +203,5 @@ export function markEnterpriseChatTurnStart(state: EnterpriseChatState) {
 export function clearEnterpriseChatRoute(state: EnterpriseChatState) {
   routeSeq++;
   state.enterpriseChatRun = null;
-  state.enterpriseChatRunBefore = null;
+  state.enterpriseChatRunTree = null;
 }

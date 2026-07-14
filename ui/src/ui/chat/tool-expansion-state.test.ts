@@ -18,6 +18,7 @@ function createGroup(message: unknown, key = "assistant-1"): MessageGroup {
     role: "assistant",
     messages: [{ key, message }],
     timestamp: 1,
+    lastTimestamp: 1,
     isStreaming: false,
   };
 }

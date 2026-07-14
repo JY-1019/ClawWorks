@@ -187,6 +187,10 @@ export const ko: TranslationMap = {
     noOntology: "이 트리에는 선언된 온톨로지 엔터티 또는 관계가 없습니다.",
     graphHint: "노드를 드래그 · 스크롤하여 확대/축소",
     routeTitle: "선택된 경로",
+    routeViewLabel: "경로 보기",
+    routeViewRoute: "경로만",
+    routeViewTree: "전체 트리",
+    routeViewTreeUnavailable: "이 실행 이후 트리가 변경되어 표시할 수 없습니다.",
     propertyPrimaryKey: "PK",
     propertyRequired: "필수",
     mode: {

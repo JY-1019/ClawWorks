@@ -298,7 +298,7 @@ export type AppViewState = {
   enterpriseChatModeBusy: boolean;
   enterpriseChatModeError: string | null;
   enterpriseChatRun: EnterpriseRunDetail | null;
-  enterpriseChatRunBefore: string | null;
+  enterpriseChatRunTree: EnterpriseTreeDetail | null;
   setEnterpriseChatMode: (mode: EnterpriseMode) => Promise<void> | void;
   enterpriseDetailLoading: boolean;
   enterpriseSelectedTreeId: string | null;

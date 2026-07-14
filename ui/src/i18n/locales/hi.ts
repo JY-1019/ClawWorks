@@ -187,6 +187,10 @@ export const hi: TranslationMap = {
     noOntology: "यह ट्री कोई ऑन्टोलॉजी इकाई या संबंध घोषित नहीं करता।",
     graphHint: "नोड खींचें · ज़ूम करने के लिए स्क्रॉल करें",
     routeTitle: "अपनाया गया मार्ग",
+    routeViewLabel: "रूट दृश्य",
+    routeViewRoute: "केवल रूट",
+    routeViewTree: "पूरा ट्री",
+    routeViewTreeUnavailable: "इस रन के बाद से ट्री बदल गया है, इसलिए इसे दिखाया नहीं जा सकता।",
     propertyPrimaryKey: "PK",
     propertyRequired: "आवश्यक",
     mode: {

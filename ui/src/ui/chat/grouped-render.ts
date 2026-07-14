@@ -1,5 +1,5 @@
 // Control UI chat module implements grouped render behavior.
-import { html, nothing } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { until } from "lit/directives/until.js";
 import { getSafeLocalStorage } from "../../local-storage.ts";
@@ -410,6 +410,12 @@ export function renderStreamingGroup(
 }
 
 type RenderMessageGroupOptions = {
+  /**
+   * Governed-route card for THIS group. Only the newest assistant group gets one:
+   * it describes the run that produced that answer, so it belongs in that bubble
+   * and nowhere else.
+   */
+  enterpriseRoute?: TemplateResult | typeof nothing;
   onOpenSidebar?: (content: SidebarContent) => void;
   sessionKey?: string;
   agentId?: string;
@@ -613,6 +619,9 @@ export function renderMessageGroup(group: MessageGroup, opts: RenderMessageGroup
             opts.onOpenSidebar,
           ),
         )}
+        ${normalizedRole === "assistant" && opts.enterpriseRoute && opts.enterpriseRoute !== nothing
+          ? opts.enterpriseRoute
+          : nothing}
         <div class="chat-group-footer">
           <span class="chat-sender-name">${who}</span>
           ${renderChatTimestamp(group.timestamp)} ${renderMessageMeta(meta)}

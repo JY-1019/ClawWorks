@@ -29,7 +29,6 @@ import {
 } from "./app-render.helpers.ts";
 import { hasOperatorAdminAccess, hasOperatorWriteAccess, warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
-import { renderEnterpriseRouteCard } from "./chat/enterprise-controls.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
   renderChatSessionSelect,
@@ -3864,7 +3863,8 @@ export function renderApp(state: AppViewState) {
                   onDismissRealtimeTalkError: () => dismissRealtimeTalkError(state),
                   sessions: state.sessionsResult,
                   composerControls: renderGuardedChatControls(state),
-                  enterpriseRoute: renderEnterpriseRouteCard(state.enterpriseChatRun),
+                  enterpriseRun: state.enterpriseChatRun,
+                  enterpriseRunTree: state.enterpriseChatRunTree,
                   sessionWorkspace: {
                     collapsed: chatWorkspaceFiles.collapsed,
                     sessionKey: state.sessionKey,

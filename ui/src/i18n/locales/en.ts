@@ -185,6 +185,10 @@ export const en: TranslationMap = {
     noOntology: "This tree declares no ontology entities or relationships.",
     graphHint: "Drag a node · scroll to zoom",
     routeTitle: "Route taken",
+    routeViewLabel: "Route view",
+    routeViewRoute: "Route only",
+    routeViewTree: "Whole tree",
+    routeViewTreeUnavailable: "The tree changed since this run, so it cannot be shown.",
     propertyPrimaryKey: "PK",
     propertyRequired: "required",
     mode: {

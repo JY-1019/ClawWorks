@@ -189,6 +189,11 @@ export const pl: TranslationMap = {
     noOntology: "To drzewo nie deklaruje żadnych encji ani relacji ontologicznych.",
     graphHint: "Przeciągnij węzeł · przewiń, aby powiększyć",
     routeTitle: "Wybrana trasa",
+    routeViewLabel: "Widok trasy",
+    routeViewRoute: "Tylko trasa",
+    routeViewTree: "Całe drzewo",
+    routeViewTreeUnavailable:
+      "Drzewo zmieniło się od tego uruchomienia, więc nie można go wyświetlić.",
     propertyPrimaryKey: "PK",
     propertyRequired: "wymagane",
     mode: {

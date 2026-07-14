@@ -186,6 +186,10 @@ export const ar: TranslationMap = {
     noOntology: "لا تُعلن هذه الشجرة عن أي كيانات أو علاقات أنطولوجية.",
     graphHint: "اسحب عقدة · مرر للتكبير",
     routeTitle: "المسار المتبع",
+    routeViewLabel: "عرض المسار",
+    routeViewRoute: "المسار فقط",
+    routeViewTree: "الشجرة الكاملة",
+    routeViewTreeUnavailable: "تغيّرت الشجرة منذ هذا التشغيل، لذا لا يمكن عرضها.",
     propertyPrimaryKey: "PK",
     propertyRequired: "مطلوب",
     mode: {
