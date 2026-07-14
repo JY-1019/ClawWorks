@@ -60,6 +60,12 @@ export class OpenClawChatRouteCard extends LitElement {
     :host {
       display: block;
       margin-top: 8px;
+      /* The bubble is a flex column with align-items: flex-start, so a block child
+         sizes to its content. Stretch to the bubble instead and let the tree scroll
+         inside it; otherwise the card grows to the tree's full width. */
+      align-self: stretch;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .card {
@@ -68,6 +74,7 @@ export class OpenClawChatRouteCard extends LitElement {
       border-radius: 8px;
       background: var(--bg-accent, var(--card));
       font-size: 12px;
+      max-width: 100%;
     }
 
     .head {

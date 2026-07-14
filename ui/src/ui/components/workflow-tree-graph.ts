@@ -174,6 +174,12 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
   static override styles = css`
     :host {
       display: block;
+      /* The SVG is as wide as the tree (a 40-node tree is thousands of px). The
+         chat bubble lays its children out with align-items: flex-start, which sizes
+         them to their CONTENT — so without these the card would inflate to the full
+         tree width and spill out of the bubble instead of scrolling inside it. */
+      max-width: 100%;
+      min-width: 0;
     }
 
     .tree-shell {
@@ -182,7 +188,16 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
       border: 1px solid var(--border);
       border-radius: 10px;
       background: var(--bg-accent, var(--card));
-      overflow-x: auto;
+      /* Both axes: a full tree overflows horizontally (breadth) and vertically
+         (depth). Capped against the viewport so the graph can never outgrow the
+         screen — you scroll the tree, not the page. */
+      overflow: auto;
+      /* border-box so the cap bounds the WHOLE box: with the default content-box
+         the padding and border would push the shell past the viewport budget. */
+      box-sizing: border-box;
+      max-height: min(60vh, 460px);
+      /* Reaching the tree's edge must not start scrolling the chat thread behind it. */
+      overscroll-behavior: contain;
     }
 
     svg {
