@@ -156,6 +156,19 @@ export const EnterpriseOntologyActionSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** A derived value computed from one object type's own properties. */
+export const EnterpriseOntologyFunctionSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    title: Type.Optional(Type.String()),
+    description: Type.Optional(Type.String()),
+    entity: NonEmptyString,
+    expression: NonEmptyString,
+    returns: EnterpriseOntologyValueTypeSchema,
+  },
+  { additionalProperties: false },
+);
+
 /** A constraint the step must respect (prompt guidance). */
 export const EnterpriseOntologyConstraintSchema = Type.Object(
   { id: NonEmptyString, description: Type.String() },
@@ -168,6 +181,7 @@ export const EnterpriseTreeOntologySchema = Type.Object(
     entities: Type.Optional(Type.Array(EnterpriseOntologyEntitySchema)),
     relationships: Type.Optional(Type.Array(EnterpriseOntologyRelationshipSchema)),
     actions: Type.Optional(Type.Array(EnterpriseOntologyActionSchema)),
+    functions: Type.Optional(Type.Array(EnterpriseOntologyFunctionSchema)),
     constraints: Type.Optional(Type.Array(EnterpriseOntologyConstraintSchema)),
     allowedTools: Type.Optional(Type.Array(Type.String())),
     deniedTools: Type.Optional(Type.Array(Type.String())),

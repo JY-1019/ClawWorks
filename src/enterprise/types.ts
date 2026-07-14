@@ -87,6 +87,28 @@ export type OntologyAction = {
   effects?: OntologyActionEffect[];
 };
 
+/**
+ * Derived value computed from one object's properties — the ontology's read-only
+ * counterpart to an action.
+ *
+ * `expression` is NOT JavaScript: it is evaluated by the closed, total op set in
+ * ontology-expression.ts. A workflow tree arrives through an import, so treating
+ * an expression as code would make "import a tree" mean "run arbitrary code".
+ * Properties are referenced with a `$` sigil ($claimed-amount), because ontology
+ * ids are hyphenated and a bare id would lex as subtraction.
+ */
+export type OntologyFunction = {
+  id: EnterpriseId;
+  title?: string;
+  description?: string;
+  /** Object type whose properties the expression reads. */
+  entity: EnterpriseId;
+  /** Closed-op expression over that entity's declared properties. */
+  expression: string;
+  /** Value type the expression yields; checked against the computed value. */
+  returns: OntologyValueType;
+};
+
 /** Constraint the step must respect; blocking constraints join governance denials. */
 export type OntologyConstraint = {
   id: EnterpriseId;
@@ -102,6 +124,7 @@ export type OntologyBinding = {
   entities?: OntologyEntity[];
   relationships?: OntologyRelationship[];
   actions?: OntologyAction[];
+  functions?: OntologyFunction[];
   constraints?: OntologyConstraint[];
   /** Tool name globs allowed for this node. Empty/omitted = allow all (repo tool-policy semantics). */
   allowedTools?: string[];

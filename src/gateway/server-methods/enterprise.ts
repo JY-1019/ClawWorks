@@ -193,6 +193,16 @@ function mapTreeOntology(ontology: OntologyBinding | undefined): EnterpriseTreeO
       effects: action.effects ? structuredClone(action.effects) : undefined,
     }));
   }
+  if (ontology.functions?.length) {
+    projected.functions = ontology.functions.map((fn) => ({
+      id: fn.id,
+      title: fn.title,
+      description: fn.description,
+      entity: fn.entity,
+      expression: fn.expression,
+      returns: fn.returns,
+    }));
+  }
   if (ontology.constraints?.length) {
     projected.constraints = ontology.constraints.map((constraint) => ({
       id: constraint.id,

@@ -1,12 +1,19 @@
+import { z } from "zod";
 /**
  * Zod schemas and validation for ClawWorks enterprise definitions.
  * Import/export artifacts (workflow trees) validate against the versioned
  * envelope here; config-declared governance policies share the same shapes.
  */
-import { z } from "zod";
+import {
+  expressionTypeOf,
+  inferOntologyExpressionType,
+  ontologyExpressionProperties,
+  parseOntologyExpression,
+} from "./ontology-expression.js";
 import {
   WORKFLOW_TREE_SCHEMA,
   WORKFLOW_TREE_SCHEMA_VERSION,
+  type OntologyValueType,
   type WorkflowTreeDefinition,
 } from "./types.js";
 
@@ -125,6 +132,25 @@ const OntologyActionSchema = z
   })
   .strict();
 
+const OntologyFunctionSchema = z
+  .object({
+    id: EnterpriseIdSchema,
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    entity: EnterpriseIdSchema,
+    expression: NonBlankStringSchema,
+    returns: OntologyValueTypeSchema,
+  })
+  .strict()
+  .superRefine((fn, ctx) => {
+    // Parse at import, not at first use: a syntax error must fail the import with
+    // a path, not surface mid-run as a computed value that quietly went missing.
+    const parsed = parseOntologyExpression(fn.expression);
+    if (!parsed.ok) {
+      ctx.addIssue({ code: "custom", path: ["expression"], message: parsed.error });
+    }
+  });
+
 const OntologyConstraintSchema = z
   .object({
     id: EnterpriseIdSchema,
@@ -137,6 +163,7 @@ export const OntologyBindingSchema = z
     entities: z.array(OntologyEntitySchema).optional(),
     relationships: z.array(OntologyRelationshipSchema).optional(),
     actions: z.array(OntologyActionSchema).optional(),
+    functions: z.array(OntologyFunctionSchema).optional(),
     constraints: z.array(OntologyConstraintSchema).optional(),
     allowedTools: z.array(NonBlankStringSchema).optional(),
     deniedTools: z.array(NonBlankStringSchema).optional(),
@@ -211,7 +238,7 @@ export const WorkflowTreeDefinitionSchema = z
     /** Merged shape of each tree-scoped object type, to catch conflicting redeclarations. */
     const entityShapes = new Map<
       string,
-      { primaryKey?: string; propertyTypes: Map<string, string> }
+      { primaryKey?: string; propertyTypes: Map<string, OntologyValueType> }
     >();
     /** Merged shape of each tree-scoped link type, keyed by "from to id". */
     const relationshipShapes = new Map<string, { cardinality?: string; inverse?: string }>();
@@ -235,7 +262,9 @@ export const WorkflowTreeDefinitionSchema = z
         // within one — otherwise a child could redeclare `customer` with a
         // different primaryKey and the merge would pick one arbitrarily.
         const entityPath = [...path, "ontology", "entities", entityIndex];
-        const shape = entityShapes.get(entity.id) ?? { propertyTypes: new Map<string, string>() };
+        const shape = entityShapes.get(entity.id) ?? {
+          propertyTypes: new Map<string, OntologyValueType>(),
+        };
         for (const property of entity.properties ?? []) {
           const knownType = shape.propertyTypes.get(property.id);
           if (knownType && knownType !== property.type) {
@@ -307,6 +336,65 @@ export const WorkflowTreeDefinitionSchema = z
             });
           }
         });
+      });
+      // A function's expression is checked against the MERGED tree-wide shape of
+      // its object type, so a deep step may compute over a property its ancestor
+      // declared. Resolving refs here (not at call time) is the whole point: an
+      // unresolvable `$property` is a definition bug, and finding it at import
+      // beats returning a null from compute_function in the middle of a run.
+      node.ontology?.functions?.forEach((fn, index) => {
+        const functionPath = [...path, "ontology", "functions", index];
+        const shape = entityShapes.get(fn.entity);
+        if (!shape) {
+          ctx.addIssue({
+            code: "custom",
+            path: [...functionPath, "entity"],
+            message: `function "${fn.id}" computes over undeclared object type "${fn.entity}"`,
+          });
+          return;
+        }
+        const parsed = parseOntologyExpression(fn.expression);
+        if (!parsed.ok) {
+          // The field-level refine already reported the syntax error.
+          return;
+        }
+        let refsResolve = true;
+        for (const property of ontologyExpressionProperties(parsed.expression)) {
+          if (!shape.propertyTypes.has(property)) {
+            refsResolve = false;
+            ctx.addIssue({
+              code: "custom",
+              path: [...functionPath, "expression"],
+              message: `function "${fn.id}" reads "$${property}", which object type "${fn.entity}" does not declare`,
+            });
+          }
+        }
+        if (!refsResolve) {
+          // Type-checking an expression with a dangling ref would only restate
+          // the error above in a more confusing way.
+          return;
+        }
+        // Type-check against the declared property types, then against `returns`.
+        // Skipping this would leave `returns` a label nobody enforces: a boolean
+        // expression could claim `returns: string`, and the gateway would project
+        // that lie to every client until something finally evaluated it.
+        const inferred = inferOntologyExpressionType(parsed.expression, shape.propertyTypes);
+        if (!inferred.ok) {
+          ctx.addIssue({
+            code: "custom",
+            path: [...functionPath, "expression"],
+            message: `function "${fn.id}": ${inferred.error}`,
+          });
+          return;
+        }
+        const declared = expressionTypeOf(fn.returns);
+        if (inferred.type !== declared) {
+          ctx.addIssue({
+            code: "custom",
+            path: [...functionPath, "returns"],
+            message: `function "${fn.id}" declares returns "${fn.returns}" (${declared}), but its expression yields ${inferred.type}`,
+          });
+        }
       });
     }
   });

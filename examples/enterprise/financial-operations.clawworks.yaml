@@ -248,6 +248,39 @@ root:
         cardinality: one-to-many
         inverse: sar-included-in
 
+    # ---- Derived values (read-only counterpart to actions) ----
+    # An expression is NOT JavaScript: it is evaluated by a closed, total op set
+    # (see src/enterprise/ontology-expression.ts), because a tree is imported data
+    # and evaluating it as code would make "import a tree" mean "run arbitrary
+    # code". Properties are referenced with a `$` sigil, since ontology ids are
+    # hyphenated and a bare `claimed-amount` would lex as subtraction.
+    #
+    # These parse and resolve their `$` refs at IMPORT: a typo fails the import
+    # with a path rather than surfacing as a dud value midway through a run.
+    functions:
+      - id: claim-triage-band
+        title: Claim triage band
+        description: Which lane a claim should be worked in, from its own fields.
+        entity: claim
+        expression: "$fraud-score >= 80 ? 'refer' : ($claimed-amount > 10000 ? 'review' : 'auto')"
+        returns: string
+      - id: alert-is-high-risk
+        title: Alert is high risk
+        description: Whether a monitoring alert clears the escalation threshold.
+        entity: alert
+        expression: "$score >= 75"
+        returns: boolean
+      # A function reads only its OWN object type's properties, so a value that
+      # depends on another object (say, capping this at the policy's
+      # coverage-limit) is NOT expressible here — that needs a link traversal.
+      # Do not describe a function as doing something its expression cannot do.
+      - id: claim-amount-or-zero
+        title: Claim amount, or zero
+        description: The claimed amount, treating an unset amount as zero.
+        entity: claim
+        expression: "coalesce($claimed-amount, 0)"
+        returns: number
+
     # Root tool floor: nothing under this tree runs shell or process tools, in any
     # step. Deny wins over any descendant's allow, so this is a hard ceiling.
     deniedTools: [exec, process, browser]
