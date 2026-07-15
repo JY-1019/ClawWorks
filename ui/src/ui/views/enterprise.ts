@@ -16,7 +16,12 @@ import type { OntologyEntity } from "../components/ontology-graph.ts";
 import "../components/modal-dialog.ts";
 import "../components/ontology-graph.ts";
 import "../components/workflow-tree-graph.ts";
-import type { EnterpriseTreeConfirm, EnterpriseTreeEditFormat } from "../controllers/enterprise.ts";
+import type {
+  EnterpriseNodeDraft,
+  EnterpriseNodeDraftError,
+  EnterpriseTreeConfirm,
+  EnterpriseTreeEditFormat,
+} from "../controllers/enterprise.ts";
 import {
   collectNodeOntologyGraph,
   collectOntologyGraph,
@@ -56,6 +61,9 @@ export type EnterpriseProps = {
   // Whether the session holds operator.admin: tree import/remove are admin-only,
   // so mutation controls are hidden without it (reads stay available).
   canEdit: boolean;
+  // P5 dynamic node creation: the open "add child node" form (under a selected
+  // node), or null. Submit splices the child and loads the editor for Save.
+  nodeDraft: EnterpriseNodeDraft | null;
   error: string | null;
   onRefresh: () => void;
   onSelectRun: (executionId: string) => void;
@@ -73,6 +81,10 @@ export type EnterpriseProps = {
   onLoadVersion: (treeId: string, revision: number) => void;
   onSelectNode: (nodeId: string | null) => void;
   onSelectNodeEntity: (entity: string) => void;
+  onBeginAddNode: (parentId: string) => void;
+  onEditNodeDraft: (patch: { id?: string; title?: string }) => void;
+  onCancelAddNode: () => void;
+  onSubmitAddNode: () => void;
 };
 
 function formatTime(ms: number): string {
@@ -660,7 +672,87 @@ function renderNodeInspector(
             ></openclaw-ontology-graph>
             ${renderNodeObjects(objectEntities, props)}
           `}
+      ${props.canEdit ? renderAddNode(tree.id, nodeId, props) : nothing}
     </section>
+  `;
+}
+
+/** i18n message for a rejected node-add draft. */
+function nodeDraftErrorMessage(error: EnterpriseNodeDraftError): string {
+  const messages: Record<EnterpriseNodeDraftError, string> = {
+    "id-empty": t("enterprise.addNodeErrorIdEmpty"),
+    "id-pattern": t("enterprise.addNodeErrorIdPattern"),
+    "id-duplicate": t("enterprise.addNodeErrorIdDuplicate"),
+    "title-empty": t("enterprise.addNodeErrorTitleEmpty"),
+    "parent-missing": t("enterprise.addNodeErrorParentMissing"),
+    "export-failed": t("enterprise.addNodeErrorExportFailed"),
+  };
+  return messages[error];
+}
+
+/**
+ * The "add child node" affordance under the selected node: a button that opens an
+ * inline form (new-node id + title). Submitting splices a bare child into the
+ * tree definition and loads the editor to review + Save, so creation reuses the
+ * existing import path. Admin-only (the caller gates on canEdit).
+ */
+function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): TemplateResult {
+  // Match the tree too: a draft under a node id shared by another tree (e.g. a
+  // root named "root") must not resurface here after a tree switch.
+  const draft =
+    props.nodeDraft?.treeId === treeId && props.nodeDraft.parentId === nodeId
+      ? props.nodeDraft
+      : null;
+  if (!draft) {
+    return html`
+      <button
+        type="button"
+        class="btn"
+        style="margin-top: 12px;"
+        @click=${() => props.onBeginAddNode(nodeId)}
+      >
+        ${t("enterprise.addNodeButton")}
+      </button>
+    `;
+  }
+  const fieldStyle =
+    "width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);";
+  return html`
+    <div class="card-nested" style="margin-top: 12px;">
+      <div class="card-sub">${t("enterprise.addNodeTitle")}</div>
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+        <label style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="muted">${t("enterprise.addNodeIdLabel")}</span>
+          <input
+            style=${fieldStyle}
+            .value=${draft.id}
+            placeholder=${`${nodeId}.step`}
+            @input=${(event: Event) =>
+              props.onEditNodeDraft({ id: (event.target as HTMLInputElement).value })}
+          />
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="muted">${t("enterprise.addNodeTitleLabel")}</span>
+          <input
+            style=${fieldStyle}
+            .value=${draft.title}
+            @input=${(event: Event) =>
+              props.onEditNodeDraft({ title: (event.target as HTMLInputElement).value })}
+          />
+        </label>
+        ${draft.error
+          ? html`<div class="callout danger">${nodeDraftErrorMessage(draft.error)}</div>`
+          : nothing}
+        <div class="row" style="gap: 8px;">
+          <button type="button" class="btn primary" @click=${props.onSubmitAddNode}>
+            ${t("enterprise.addNodeSubmit")}
+          </button>
+          <button type="button" class="btn" @click=${props.onCancelAddNode}>
+            ${t("common.cancel")}
+          </button>
+        </div>
+      </div>
+    </div>
   `;
 }
 

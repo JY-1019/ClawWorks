@@ -321,6 +321,7 @@ export type AppViewState = {
   enterpriseTreeConfirm: import("./controllers/enterprise.js").EnterpriseTreeConfirm | null;
   enterpriseTreeVersions: EnterpriseTreeVersionSummary[];
   enterpriseTreeVersionsLoading: boolean;
+  enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null;
   enterpriseError: string | null;
   agentsLoading: boolean;
   agentsList: AgentsListResult | null;

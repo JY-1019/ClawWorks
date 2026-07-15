@@ -21,6 +21,11 @@ import type {
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
+  type EditableTreeDefinition,
+  insertChildNode,
+  newNodeIdIssue,
+} from "../views/enterprise-tree-edit.ts";
+import {
   formatMissingOperatorReadScopeMessage,
   isMissingOperatorReadScopeError,
 } from "./scope-errors.ts";
@@ -29,6 +34,30 @@ import {
 export type EnterpriseTreeConfirm = { kind: "save" } | { kind: "remove"; treeId: string };
 
 export type EnterpriseTreeEditFormat = "yaml" | "json";
+
+/** Why a node-add draft was rejected; the view maps each to an i18n message. */
+export type EnterpriseNodeDraftError =
+  | "id-empty"
+  | "id-pattern"
+  | "id-duplicate"
+  | "title-empty"
+  | "parent-missing"
+  | "export-failed";
+
+/**
+ * An in-progress "add child node" form. Bound to `treeId` so a draft can never be
+ * applied to a different tree that happens to share the parent node id (e.g. a
+ * root named `root`); `parentId` is the node the child is added under. null when
+ * no form is open. On submit the tree is re-exported, spliced, and loaded into the
+ * raw editor for review + Save, so node creation reuses enterprise.trees.import.
+ */
+export type EnterpriseNodeDraft = {
+  treeId: string;
+  parentId: string;
+  id: string;
+  title: string;
+  error: EnterpriseNodeDraftError | null;
+};
 
 export type EnterpriseState = {
   client: GatewayBrowserClient | null;
@@ -73,6 +102,9 @@ export type EnterpriseState = {
   enterpriseTreeConfirm: EnterpriseTreeConfirm | null;
   enterpriseTreeVersions: EnterpriseTreeVersionSummary[];
   enterpriseTreeVersionsLoading: boolean;
+  // P5 dynamic node creation: the open "add child node" form, or null. Splices a
+  // child into the tree definition and reuses the editor's import-to-save flow.
+  enterpriseNodeDraft: EnterpriseNodeDraft | null;
   enterpriseError: string | null;
 };
 
@@ -320,6 +352,10 @@ function clearEnterpriseNodeObjects(state: EnterpriseState) {
 function clearEnterpriseNodeSelection(state: EnterpriseState) {
   clearEnterpriseNodeObjects(state);
   state.enterpriseSelectedNodeId = null;
+  // A node-add draft belongs to the selected node in its tree; a tree switch,
+  // pruned node, or scope loss (every caller of this) invalidates it, so drop it
+  // rather than let a stale form reappear under a same-named node elsewhere.
+  state.enterpriseNodeDraft = null;
 }
 
 /**
@@ -578,6 +614,143 @@ export function setEnterpriseTreeEditContent(state: EnterpriseState, content: st
   // token drops a late format/history reseed that would clobber this text.
   editSeedSeq++;
   state.enterpriseTreeEditContent = content;
+}
+
+const NODE_ID_DRAFT_ERROR: Record<
+  ReturnType<typeof newNodeIdIssue> & string,
+  EnterpriseNodeDraftError
+> = {
+  empty: "id-empty",
+  pattern: "id-pattern",
+  duplicate: "id-duplicate",
+};
+
+/** Open the "add child node" form under `parentId` (the selected node). */
+export function beginAddEnterpriseNode(state: EnterpriseState, parentId: string) {
+  const treeId = state.enterpriseTreeDetail?.id;
+  if (!treeId) {
+    return;
+  }
+  state.enterpriseNodeDraft = { treeId, parentId, id: "", title: "", error: null };
+}
+
+/** Update the open draft's fields; any prior error clears as the operator edits. */
+export function editEnterpriseNodeDraft(
+  state: EnterpriseState,
+  patch: { id?: string; title?: string },
+) {
+  const draft = state.enterpriseNodeDraft;
+  if (!draft) {
+    return;
+  }
+  state.enterpriseNodeDraft = {
+    ...draft,
+    ...(patch.id !== undefined ? { id: patch.id } : {}),
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    error: null,
+  };
+}
+
+export function cancelAddEnterpriseNode(state: EnterpriseState) {
+  state.enterpriseNodeDraft = null;
+}
+
+function failNodeDraft(
+  state: EnterpriseState,
+  draft: EnterpriseNodeDraft,
+  error: EnterpriseNodeDraftError,
+) {
+  state.enterpriseNodeDraft = { ...draft, error };
+}
+
+/**
+ * Validate the draft, then splice a bare child into the tree's CANONICAL nested
+ * definition (re-exported as JSON — the flat detail is lossy and JSON avoids
+ * pulling a YAML parser into the UI) and load the result into the raw editor.
+ * The operator reviews it and Saves through the existing confirm ->
+ * enterprise.trees.import flow, so node creation adds no second write path.
+ */
+export async function submitAddEnterpriseNode(state: EnterpriseState) {
+  const draft = state.enterpriseNodeDraft;
+  const tree = state.enterpriseTreeDetail;
+  // The draft must belong to the tree on screen (both clear on a tree switch, so a
+  // mismatch means a race — abort rather than splice into the wrong tree).
+  if (!draft || !tree || draft.treeId !== tree.id) {
+    return;
+  }
+  const id = draft.id.trim();
+  const title = draft.title.trim();
+  // Validate client-side against the import contract so the common mistakes show
+  // in the form, not as a raw-editor issue after a whole-tree-replace attempt.
+  const existingIds = new Set(tree.nodes.map((node) => node.id));
+  const idIssue = newNodeIdIssue(id, existingIds);
+  if (idIssue) {
+    failNodeDraft(state, draft, NODE_ID_DRAFT_ERROR[idIssue]);
+    return;
+  }
+  if (title.length === 0) {
+    failNodeDraft(state, draft, "title-empty");
+    return;
+  }
+  if (!existingIds.has(draft.parentId)) {
+    failNodeDraft(state, draft, "parent-missing");
+    return;
+  }
+  // Claim the editor seed intent: a competing Edit/New/history load started while
+  // the export is in flight supersedes this add, and applyEditorSeed re-checks it.
+  const seedSeq = ++editSeedSeq;
+  const exported = await fetchExportContent(state, tree.id, "json");
+  // Every draft mutation (edit/cancel/reopen) REPLACES the object, so an identity
+  // check rejects a submit whose form changed during the export — its captured
+  // id/title/parent would be stale. The seed token catches a competing editor load.
+  if (seedSeq !== editSeedSeq || state.enterpriseNodeDraft !== draft) {
+    return;
+  }
+  if (!exported.ok) {
+    // A scope loss already cleared governed data + set the global banner.
+    if (!exported.scopeCleared) {
+      failNodeDraft(state, draft, "export-failed");
+    }
+    return;
+  }
+  const definition = parseTreeDefinition(exported.content);
+  if (!definition) {
+    failNodeDraft(state, draft, "export-failed");
+    return;
+  }
+  const spliced = insertChildNode(definition, draft.parentId, { id, title });
+  if (!spliced.ok) {
+    // Lost a race with a concurrent change to the definition since the detail load.
+    failNodeDraft(
+      state,
+      draft,
+      spliced.reason === "duplicate-id" ? "id-duplicate" : "parent-missing",
+    );
+    return;
+  }
+  state.enterpriseNodeDraft = null;
+  applyEditorSeed(state, seedSeq, "json", tree.id, null, {
+    ok: true,
+    content: `${JSON.stringify(spliced.definition, null, 2)}\n`,
+  });
+}
+
+function parseTreeDefinition(content: string): EditableTreeDefinition | null {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    // The export is a validated definition, but guard the shape the splice needs.
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "root" in parsed &&
+      typeof (parsed as { root: unknown }).root === "object"
+    ) {
+      return parsed as EditableTreeDefinition;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**

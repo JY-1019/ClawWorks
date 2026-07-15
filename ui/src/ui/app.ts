@@ -516,6 +516,8 @@ export class OpenClawApp extends LitElement {
     | null = null;
   @state() enterpriseTreeVersions: EnterpriseTreeVersionSummary[] = [];
   @state() enterpriseTreeVersionsLoading = false;
+  @state() enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null =
+    null;
   @state() enterpriseError: string | null = null;
 
   @state() agentsLoading = false;

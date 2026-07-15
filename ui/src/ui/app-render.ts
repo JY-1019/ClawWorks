@@ -114,11 +114,14 @@ import {
   updateDreamingEnabled,
 } from "./controllers/dreaming.ts";
 import {
+  beginAddEnterpriseNode,
   beginEditEnterpriseTree,
   beginNewEnterpriseTree,
+  cancelAddEnterpriseNode,
   cancelEditEnterpriseTree,
   cancelEnterpriseTreeConfirm,
   confirmEnterpriseTreeAction,
+  editEnterpriseNodeDraft,
   exportEnterpriseTree,
   loadEnterpriseRunDetail,
   loadEnterpriseTreeVersion,
@@ -130,6 +133,7 @@ import {
   selectEnterpriseTree,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
+  submitAddEnterpriseNode,
 } from "./controllers/enterprise.ts";
 import {
   loadExecApprovals,
@@ -2896,6 +2900,7 @@ export function renderApp(state: AppViewState) {
                 treeVersions: state.enterpriseTreeVersions,
                 treeVersionsLoading: state.enterpriseTreeVersionsLoading,
                 canEdit: hasOperatorAdminAccess(state.hello?.auth ?? null),
+                nodeDraft: state.enterpriseNodeDraft,
                 error: state.enterpriseError,
                 onRefresh: () => void refreshEnterprise(state),
                 onSelectRun: (executionId) => void loadEnterpriseRunDetail(state, executionId),
@@ -2914,6 +2919,10 @@ export function renderApp(state: AppViewState) {
                   void loadEnterpriseTreeVersion(state, treeId, revision),
                 onSelectNode: (nodeId) => selectEnterpriseNode(state, nodeId),
                 onSelectNodeEntity: (entity) => selectEnterpriseNodeEntity(state, entity),
+                onBeginAddNode: (parentId) => beginAddEnterpriseNode(state, parentId),
+                onEditNodeDraft: (patch) => editEnterpriseNodeDraft(state, patch),
+                onCancelAddNode: () => cancelAddEnterpriseNode(state),
+                onSubmitAddNode: () => void submitAddEnterpriseNode(state),
               }),
             )
           : nothing}
