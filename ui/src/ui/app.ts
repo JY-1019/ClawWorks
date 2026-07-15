@@ -154,6 +154,7 @@ import type {
   CronJob,
   CronRunLogEntry,
   CronStatus,
+  EnterpriseOntologyObject,
   EnterpriseRunDetail,
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
@@ -497,6 +498,10 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseTreeDetail: EnterpriseTreeDetail | null = null;
   @state() enterpriseTreeLoading = false;
   @state() enterpriseTreeIssue: string | null = null;
+  @state() enterpriseSelectedNodeId: string | null = null;
+  @state() enterpriseNodeObjectsEntity: string | null = null;
+  @state() enterpriseNodeObjects: EnterpriseOntologyObject[] = [];
+  @state() enterpriseNodeObjectsLoading = false;
   @state() enterpriseTreeEditing = false;
   @state() enterpriseTreeEditTreeId: string | null = null;
   @state() enterpriseTreeEditRevision: number | null = null;

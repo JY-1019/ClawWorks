@@ -254,6 +254,43 @@ export const EnterpriseTreesGetResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** A concrete ontology property VALUE (an object instance carries these). */
+export const EnterpriseOntologyValueSchema = Type.Union([
+  Type.String(),
+  Type.Number(),
+  Type.Boolean(),
+  Type.Null(),
+]);
+
+/** One ontology object INSTANCE, as the operator inspector renders it. */
+export const EnterpriseOntologyObjectSchema = Type.Object(
+  {
+    objectId: NonEmptyString,
+    properties: Type.Record(Type.String(), EnterpriseOntologyValueSchema),
+    /** Whether the tree declared this object (`seed`) or an action created it (`runtime`). */
+    provenance: Type.Union([Type.Literal("seed"), Type.Literal("runtime")]),
+    updatedAt: TimestampSchema,
+  },
+  { additionalProperties: false },
+);
+
+/** Instances of one object type in one tree, for the node inspector. */
+export const EnterpriseObjectsListParamsSchema = Type.Object(
+  {
+    treeId: NonEmptyString,
+    entity: NonEmptyString,
+    /** Case-insensitive substring over property values. */
+    match: Type.Optional(Type.String()),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  },
+  { additionalProperties: false },
+);
+
+export const EnterpriseObjectsListResultSchema = Type.Object(
+  { objects: Type.Array(EnterpriseOntologyObjectSchema) },
+  { additionalProperties: false },
+);
+
 /** Exchange serialization format for tree import/export. */
 export const EnterpriseTreeFormatSchema = Type.Union([Type.Literal("yaml"), Type.Literal("json")]);
 

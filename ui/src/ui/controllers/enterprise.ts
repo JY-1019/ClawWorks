@@ -1,5 +1,7 @@
 // Control UI controller manages the enterprise inspection gateway state.
 import type {
+  EnterpriseObjectsListResult,
+  EnterpriseOntologyObject,
   EnterpriseRunDetail,
   EnterpriseRunsGetResult,
   EnterpriseRunsListResult,
@@ -17,6 +19,7 @@ import type {
   EnterpriseTreeVersionSummary,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
   formatMissingOperatorReadScopeMessage,
   isMissingOperatorReadScopeError,
@@ -49,6 +52,12 @@ export type EnterpriseState = {
   enterpriseTreeDetail: EnterpriseTreeDetail | null;
   enterpriseTreeLoading: boolean;
   enterpriseTreeIssue: string | null;
+  // P4 node inspector: the expanded workflow node, which entity type's instances
+  // are shown for it, and those rows. Cleared on tree switch/reload.
+  enterpriseSelectedNodeId: string | null;
+  enterpriseNodeObjectsEntity: string | null;
+  enterpriseNodeObjects: EnterpriseOntologyObject[];
+  enterpriseNodeObjectsLoading: boolean;
   enterpriseTreeEditing: boolean;
   // The id being edited, or null for a brand-new tree — distinguishes create
   // from edit so format switches reseed from the right source.
@@ -203,6 +212,10 @@ export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: s
   if (!state.client || !state.connected) {
     return;
   }
+  // A save that imports a NEW tree opens it through this same path, so a node id
+  // shared with the prior tree (e.g. "root") must not carry that selection across.
+  const previousTreeId = state.enterpriseSelectedTreeId;
+  const treeChanged = previousTreeId !== treeId;
   const requestSeq = ++treeRequestSeq;
   state.enterpriseSelectedTreeId = treeId;
   state.enterpriseTreeDetail = null;
@@ -211,6 +224,14 @@ export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: s
   // Clear any prior banner (e.g. a transient runs.get failure); a successful
   // tree load must not render beneath a stale global error.
   state.enterpriseError = null;
+  // Drop the prior node selection eagerly on a tree switch — before the async
+  // load can fail or be superseded. Clearing only on success would leave the old
+  // selection dangling under the just-assigned tree id, where a later retry
+  // (now previousTreeId === treeId) would mistake a shared node id for a
+  // same-tree refresh and auto-load the wrong tree's rows.
+  if (treeChanged) {
+    clearEnterpriseNodeSelection(state);
+  }
   try {
     const res = await state.client.request<EnterpriseTreesGetResult>("enterprise.trees.get", {
       treeId,
@@ -221,6 +242,17 @@ export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: s
     state.enterpriseTreeDetail = res.tree;
     // A stale built-in may be returned; surface the failed override/store read.
     state.enterpriseTreeIssue = res.storeError ?? res.importError ?? null;
+    // Reconcile only a same-tree refresh that returned an authoritative tree.
+    // A fallback (storeError/importError) or a missing tree means the ontology on
+    // screen may not match the selection, so drop it rather than load rows.
+    const authoritative = !res.storeError && !res.importError;
+    if (!treeChanged && authoritative && res.tree) {
+      // Same-tree reload (Refresh / re-save): keep the node selection but re-point
+      // its instance rows at the freshly loaded ontology so they cannot go stale.
+      reconcileNodeSelectionAfterReload(state, res.tree);
+    } else {
+      clearEnterpriseNodeSelection(state);
+    }
   } catch (err) {
     if (requestSeq !== treeRequestSeq) {
       return;
@@ -264,8 +296,126 @@ function resetTreeEditing(state: EnterpriseState) {
 export function selectEnterpriseTree(state: EnterpriseState, treeId: string) {
   // Switching trees abandons an unsaved edit of the previous one.
   resetTreeEditing(state);
+  // A node selection belongs to the tree it was made in; a different tree's node
+  // panel would be nonsense against the new tree's ontology.
+  clearEnterpriseNodeSelection(state);
   void loadEnterpriseTreeDetail(state, treeId);
   void loadEnterpriseTreeVersions(state, treeId);
+}
+
+// Separate token so a node's object load races independently from tree/detail
+// loads: a fast node click while a detail refresh is in flight must not drop.
+let nodeObjectsRequestSeq = 0;
+
+// Drop the loaded instance rows and invalidate any in-flight objects request,
+// without touching which node is selected. Bumping the token here is what makes
+// a late reply from a superseded entity/tree load fall through its own guard.
+function clearEnterpriseNodeObjects(state: EnterpriseState) {
+  nodeObjectsRequestSeq++;
+  state.enterpriseNodeObjectsEntity = null;
+  state.enterpriseNodeObjects = [];
+  state.enterpriseNodeObjectsLoading = false;
+}
+
+function clearEnterpriseNodeSelection(state: EnterpriseState) {
+  clearEnterpriseNodeObjects(state);
+  state.enterpriseSelectedNodeId = null;
+}
+
+/**
+ * Refresh and post-save re-import reload the *same* tree in place, so a node's
+ * cached instances belong to the pre-reload ontology. Reconcile against the
+ * freshly loaded tree: drop the selection if the node vanished, otherwise reload
+ * rows for the still-valid entity — keeping the operator's chosen type when it
+ * survives the re-import, else the node's default. Without this the inspector
+ * shows stale rows until the operator manually re-toggles the node.
+ */
+function reconcileNodeSelectionAfterReload(state: EnterpriseState, tree: EnterpriseTreeDetail) {
+  const nodeId = state.enterpriseSelectedNodeId;
+  if (!nodeId) {
+    return;
+  }
+  if (!tree.nodes.some((node) => node.id === nodeId)) {
+    clearEnterpriseNodeSelection(state);
+    return;
+  }
+  const entities = nodeObjectEntityIds(tree, nodeId);
+  const current = state.enterpriseNodeObjectsEntity;
+  const entity = current && entities.includes(current) ? current : entities[0];
+  if (entity) {
+    void loadEnterpriseNodeObjects(state, nodeId, entity);
+  } else {
+    // Node survives but no longer scopes any object type: keep its ontology
+    // graph up, just clear the now-meaningless rows.
+    clearEnterpriseNodeObjects(state);
+  }
+}
+
+/**
+ * Expand (or collapse) a workflow node in the inspector. Selecting a node
+ * auto-loads the first object type in its scope so the panel shows live data at
+ * once; the entity list and this default derive from the same helper the view
+ * renders chips from, so the highlighted chip always matches the loaded rows.
+ */
+export function selectEnterpriseNode(state: EnterpriseState, nodeId: string | null) {
+  if (!nodeId) {
+    clearEnterpriseNodeSelection(state);
+    return;
+  }
+  clearEnterpriseNodeSelection(state);
+  state.enterpriseSelectedNodeId = nodeId;
+  const tree = state.enterpriseTreeDetail;
+  const defaultEntity = tree ? nodeObjectEntityIds(tree, nodeId)[0] : undefined;
+  if (defaultEntity) {
+    void loadEnterpriseNodeObjects(state, nodeId, defaultEntity);
+  }
+}
+
+/** Switch which entity type's instances the node inspector shows. */
+export function selectEnterpriseNodeEntity(state: EnterpriseState, entity: string) {
+  const nodeId = state.enterpriseSelectedNodeId;
+  if (!nodeId) {
+    return;
+  }
+  void loadEnterpriseNodeObjects(state, nodeId, entity);
+}
+
+/** Load one entity type's object instances for the selected node's tree. */
+async function loadEnterpriseNodeObjects(state: EnterpriseState, nodeId: string, entity: string) {
+  const treeId = state.enterpriseSelectedTreeId;
+  if (!state.client || !state.connected || !treeId) {
+    return;
+  }
+  const requestSeq = ++nodeObjectsRequestSeq;
+  state.enterpriseNodeObjectsEntity = entity;
+  state.enterpriseNodeObjects = [];
+  state.enterpriseNodeObjectsLoading = true;
+  try {
+    const res = await state.client.request<EnterpriseObjectsListResult>("enterprise.objects.list", {
+      treeId,
+      entity,
+    });
+    // A node re-selection or entity switch bumps the token; drop the stale reply.
+    if (requestSeq !== nodeObjectsRequestSeq || state.enterpriseSelectedNodeId !== nodeId) {
+      return;
+    }
+    state.enterpriseNodeObjects = res.objects;
+  } catch (err) {
+    if (requestSeq !== nodeObjectsRequestSeq) {
+      return;
+    }
+    if (isMissingOperatorReadScopeError(err)) {
+      applyError(state, err);
+    } else {
+      // Instance load failures are non-fatal to the inspector: leave the type
+      // graph up and just show no rows rather than tearing down the panel.
+      state.enterpriseNodeObjects = [];
+    }
+  } finally {
+    if (requestSeq === nodeObjectsRequestSeq) {
+      state.enterpriseNodeObjectsLoading = false;
+    }
+  }
 }
 
 /** Load the saved-revision list for the history panel (bounded server-side). */
@@ -714,6 +864,10 @@ function applyError(state: EnterpriseState, err: unknown) {
     detailRequestSeq++;
     treeRequestSeq++;
     versionsRequestSeq++;
+    // Also drop the node inspector: clearing bumps nodeObjectsRequestSeq so an
+    // in-flight enterprise.objects.list cannot write governed rows back after
+    // the scope loss, the same invariant the other tokens above enforce.
+    clearEnterpriseNodeSelection(state);
     // A pending loadEnterprise owns enterpriseLoading; since its token is now
     // stale it will skip its own finally, so clear the flag here.
     state.enterpriseLoading = false;

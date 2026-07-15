@@ -125,6 +125,8 @@ import {
   refreshEnterprise,
   requestRemoveEnterpriseTree,
   requestSaveEnterpriseTree,
+  selectEnterpriseNode,
+  selectEnterpriseNodeEntity,
   selectEnterpriseTree,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
@@ -2880,6 +2882,10 @@ export function renderApp(state: AppViewState) {
                 treeDetail: state.enterpriseTreeDetail,
                 treeLoading: state.enterpriseTreeLoading,
                 treeIssue: state.enterpriseTreeIssue,
+                selectedNodeId: state.enterpriseSelectedNodeId,
+                nodeObjectsEntity: state.enterpriseNodeObjectsEntity,
+                nodeObjects: state.enterpriseNodeObjects,
+                nodeObjectsLoading: state.enterpriseNodeObjectsLoading,
                 treeEditing: state.enterpriseTreeEditing,
                 treeEditContent: state.enterpriseTreeEditContent,
                 treeEditFormat: state.enterpriseTreeEditFormat,
@@ -2906,6 +2912,8 @@ export function renderApp(state: AppViewState) {
                 onExport: (treeId, format) => void exportEnterpriseTree(state, treeId, format),
                 onLoadVersion: (treeId, revision) =>
                   void loadEnterpriseTreeVersion(state, treeId, revision),
+                onSelectNode: (nodeId) => selectEnterpriseNode(state, nodeId),
+                onSelectNodeEntity: (entity) => selectEnterpriseNodeEntity(state, entity),
               }),
             )
           : nothing}

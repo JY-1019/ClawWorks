@@ -142,6 +142,30 @@ export type OntologySeedData = {
 };
 
 /**
+ * Object types a tree can currently address: an entity declared anywhere in the
+ * tree with a primaryKey. Only these can hold instances (identity IS a primaryKey
+ * value), so an operator read of any other id would only ever surface runtime
+ * rows a prior definition left behind — `replaceSeededOntologyObjects` keeps
+ * runtime rows across re-imports. Reads gate on this so a dropped entity's stale
+ * rows are not exposed after the definition stops declaring it.
+ */
+export function addressableObjectEntityIds(tree: WorkflowTreeDefinition): Set<EnterpriseId> {
+  const ids = new Set<EnterpriseId>();
+  const walk = (node: WorkflowNodeDefinition): void => {
+    for (const entity of node.ontology?.entities ?? []) {
+      if (entity.properties?.some((property) => property.primaryKey)) {
+        ids.add(entity.id);
+      }
+    }
+    for (const child of node.children ?? []) {
+      walk(child);
+    }
+  };
+  walk(tree.root);
+  return ids;
+}
+
+/**
  * Flatten a validated tree's declared instances into rows.
  *
  * Object identity is the VALUE of the object type's primaryKey property — that

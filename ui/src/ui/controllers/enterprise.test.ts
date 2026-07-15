@@ -40,6 +40,10 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeDetail: null,
     enterpriseTreeLoading: false,
     enterpriseTreeIssue: null,
+    enterpriseSelectedNodeId: null,
+    enterpriseNodeObjectsEntity: null,
+    enterpriseNodeObjects: [],
+    enterpriseNodeObjectsLoading: false,
     enterpriseTreeEditing: false,
     enterpriseTreeEditTreeId: null,
     enterpriseTreeEditRevision: null,
@@ -443,6 +447,139 @@ describe("loadEnterpriseTreeDetail", () => {
     expect(state.enterpriseSelectedTreeId).toBeNull();
     expect(state.enterpriseTreeDetail).toBeNull();
     expect(state.enterpriseError).toContain("operator.read");
+  });
+});
+
+function treeWithObjectEntity(id: string, entityId: string) {
+  return {
+    id,
+    version: "1.0.0",
+    name: `Tree ${id}`,
+    source: "imported" as const,
+    nodes: [
+      {
+        id: `${id}.root`,
+        parentId: null,
+        depth: 0,
+        title: "Root",
+        ontology: {
+          entities: [{ id: entityId, properties: [{ id: "cid", type: "id", primaryKey: true }] }],
+        },
+      },
+    ],
+  };
+}
+
+function objectRow(objectId: string) {
+  return { objectId, properties: { cid: objectId }, provenance: "seed" as const, updatedAt: 1 };
+}
+
+// All request mocks below are pre-resolved, so a few microtask ticks flush the
+// fire-and-forget objects.list the reconcile kicks off after the tree renders.
+async function flushMicrotasks() {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve();
+  }
+}
+
+describe("loadEnterpriseTreeDetail node-selection reconcile", () => {
+  it("reloads the selected node's instances when the same tree is refreshed", async () => {
+    const { state, request } = createState();
+    const nodeId = "acme.support.root";
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseSelectedNodeId = nodeId;
+    state.enterpriseNodeObjectsEntity = "claim";
+    state.enterpriseNodeObjects = [objectRow("old-1")];
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.get") {
+        return Promise.resolve({ tree: treeWithObjectEntity("acme.support", "claim") });
+      }
+      return Promise.resolve({ objects: [objectRow("fresh-1")] });
+    });
+
+    await loadEnterpriseTreeDetail(state, "acme.support");
+    await flushMicrotasks();
+
+    // Node survives the re-import, so the operator's chosen type stays selected
+    // but its rows are re-fetched — the stale "old-1" must be gone.
+    expect(state.enterpriseSelectedNodeId).toBe(nodeId);
+    expect(state.enterpriseNodeObjectsEntity).toBe("claim");
+    expect(state.enterpriseNodeObjects.map((object) => object.objectId)).toEqual(["fresh-1"]);
+  });
+
+  it("drops the node selection when a refresh removes the selected node", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    // Selected node is absent from the reloaded tree (only *.root survives).
+    state.enterpriseSelectedNodeId = "acme.support.gone";
+    state.enterpriseNodeObjectsEntity = "claim";
+    state.enterpriseNodeObjects = [objectRow("old-1")];
+    request.mockResolvedValue({ tree: treeWithObjectEntity("acme.support", "claim") });
+
+    await loadEnterpriseTreeDetail(state, "acme.support");
+    await flushMicrotasks();
+
+    expect(state.enterpriseSelectedNodeId).toBeNull();
+    expect(state.enterpriseNodeObjectsEntity).toBeNull();
+    expect(state.enterpriseNodeObjects).toEqual([]);
+    // A vanished node needs no instance fetch.
+    expect(request).not.toHaveBeenCalledWith("enterprise.objects.list", expect.anything());
+  });
+
+  it("drops the selection when a different tree opens, even on a shared node id", async () => {
+    const { state, request } = createState();
+    // Prior tree had node "acme.a.root" selected; the newly opened tree also has
+    // a "*.root" node, but the selection must NOT carry across.
+    state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseSelectedNodeId = "acme.a.root";
+    state.enterpriseNodeObjectsEntity = "claim";
+    state.enterpriseNodeObjects = [objectRow("old-1")];
+    request.mockResolvedValue({ tree: treeWithObjectEntity("acme.b", "claim") });
+
+    // A save/import flow opens a different tree directly (not via selectEnterpriseTree).
+    await loadEnterpriseTreeDetail(state, "acme.b");
+    await flushMicrotasks();
+
+    expect(state.enterpriseSelectedNodeId).toBeNull();
+    expect(state.enterpriseNodeObjects).toEqual([]);
+    expect(request).not.toHaveBeenCalledWith("enterprise.objects.list", expect.anything());
+  });
+
+  it("clears the selection eagerly when a tree switch fails to load", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseSelectedNodeId = "acme.a.root";
+    state.enterpriseNodeObjects = [objectRow("old-1")];
+    request.mockRejectedValue(new Error("network down"));
+
+    // The load fails, but the selection must already be gone: it was cleared
+    // before the request so a retry can't mistake a shared id for a same-tree hit.
+    await loadEnterpriseTreeDetail(state, "acme.b");
+
+    expect(state.enterpriseSelectedTreeId).toBe("acme.b");
+    expect(state.enterpriseSelectedNodeId).toBeNull();
+    expect(state.enterpriseNodeObjects).toEqual([]);
+  });
+
+  it("does not reconcile a same-tree refresh that returns a non-authoritative fallback", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseSelectedNodeId = "acme.support.root";
+    state.enterpriseNodeObjectsEntity = "claim";
+    state.enterpriseNodeObjects = [objectRow("old-1")];
+    // The override failed to parse: the store returns a stale built-in fallback,
+    // whose ontology may not match the selection, so rows must not auto-load.
+    request.mockResolvedValue({
+      tree: treeWithObjectEntity("acme.support", "claim"),
+      importError: "definition_json invalid",
+    });
+
+    await loadEnterpriseTreeDetail(state, "acme.support");
+    await flushMicrotasks();
+
+    expect(state.enterpriseSelectedNodeId).toBeNull();
+    expect(state.enterpriseNodeObjects).toEqual([]);
+    expect(request).not.toHaveBeenCalledWith("enterprise.objects.list", expect.anything());
   });
 });
 
