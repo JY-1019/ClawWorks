@@ -210,7 +210,7 @@ Skills own workflows; root owns hard policy and routing.
 - Cycles: keep `pnpm check:import-cycles` + architecture/madge green.
 - Classes: no prototype mixins/mutations. Prefer inheritance/composition. Tests prefer per-instance stubs.
 - Split files around ~700 LOC when clarity/testability improves.
-- Naming: **OpenClaw** product/docs; `openclaw` CLI/package/path/config.
+- Naming: **ClawWorks** product/docs display name; `openclaw` stays for CLI/package/path/config/import ids (never rename machine ids). Fork rebrand in progress: user-facing brand chrome (CLI banner/tagline, Control UI title + PWA manifest, `docs.json` site name) already says ClawWorks; deep docs prose and the agent system-prompt self-identity still say OpenClaw pending a follow-up sweep, so mixed mentions there are known, not violations.
 - English: American spelling.
 
 ## Tests

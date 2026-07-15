@@ -1,6 +1,6 @@
 {
-  "name": "OpenClaw Control",
-  "short_name": "OpenClaw",
+  "name": "ClawWorks Control",
+  "short_name": "ClawWorks",
   "description": "Multi-channel AI gateway control panel",
   "start_url": "./",
   "display": "standalone",
