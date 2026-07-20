@@ -398,6 +398,54 @@ export type KnowledgeFoundationConnectionResult = {
 };
 
 /**
+ * Normalized indexing lifecycle for one document. Adapters map their store's
+ * own vocabulary onto this closed set so the inspector can render status
+ * without knowing which backend produced it. "unknown" is deliberate: a store
+ * may add states faster than adapters track them, and an unrecognized state
+ * must degrade to a neutral chip rather than break the list.
+ */
+export type KnowledgeDocumentStatus = "pending" | "processing" | "indexed" | "failed" | "unknown";
+
+/** One document held by a foundation that stores operator-supplied files. */
+export type KnowledgeFoundationDocument = {
+  id: string;
+  /** File name as the backing store reports it. */
+  name: string;
+  status: KnowledgeDocumentStatus;
+  /**
+   * Short excerpt the store derived from the content. Some stores (LightRAG
+   * among them) expose no full-text read, so this is all a viewer can show.
+   */
+  summary?: string;
+  /** Content length in characters, when the store reports one. */
+  contentLength?: number;
+  chunkCount?: number;
+  /** Indexing error, present when status is "failed". */
+  error?: string;
+  updatedAt?: string;
+};
+
+/**
+ * Upload outcome. Duplicate and size rejections are their own cases because
+ * they are operator-actionable ("delete the existing one", "send a smaller
+ * file") rather than a fault to retry.
+ */
+export type KnowledgeDocumentUploadOutcome =
+  | { outcome: "accepted"; trackingId?: string }
+  | { outcome: "duplicate"; detail?: string }
+  | { outcome: "too-large"; detail?: string }
+  | { outcome: "rejected"; detail?: string };
+
+/**
+ * Removal outcome. "started" rather than "removed": stores commonly delete in
+ * the background, so the caller must not report the document as gone yet.
+ */
+export type KnowledgeDocumentRemovalOutcome =
+  | { outcome: "started" }
+  | { outcome: "busy"; detail?: string }
+  | { outcome: "refused"; detail?: string };
+
+/**
  * Adapter that retrieves from one knowledge foundation. Plugins (e.g. LightRAG)
  * register an adapter per foundation id; the built-in in-memory adapter serves
  * examples and tests.
@@ -423,6 +471,20 @@ export type KnowledgeFoundationAdapter = {
    * instead. (Adding a signal later stays additive; removing one would not.)
    */
   testConnection?(): Promise<KnowledgeFoundationConnectionResult>;
+  /**
+   * Document management, implemented only by foundations this deployment
+   * administers (`describe().kind === "local"`). An adapter implements all
+   * three or none: the inspector offers the Files section when `listDocuments`
+   * is present, and an upload button with no `uploadDocument` behind it would
+   * be a dead control.
+   */
+  listDocuments?(): Promise<KnowledgeFoundationDocument[]>;
+  uploadDocument?(file: {
+    name: string;
+    /** Raw bytes; the gateway decodes its base64 transport before this call. */
+    content: Uint8Array;
+  }): Promise<KnowledgeDocumentUploadOutcome>;
+  removeDocument?(documentId: string): Promise<KnowledgeDocumentRemovalOutcome>;
 };
 
 /**

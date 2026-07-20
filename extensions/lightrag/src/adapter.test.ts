@@ -211,3 +211,180 @@ describe("LightRagKnowledgeFoundation", () => {
     });
   });
 });
+
+describe("LightRagKnowledgeFoundation documents", () => {
+  it("flattens the status-grouped document list and normalizes each state", async () => {
+    const { fetchImpl, calls } = mockFetch({
+      statuses: {
+        processed: [
+          {
+            id: "doc-1",
+            file_path: "handbook.pdf",
+            content_summary: "Company handbook",
+            content_length: 5000,
+            chunks_count: 12,
+            updated_at: "2026-01-02T03:04:05",
+          },
+        ],
+        parsing: [{ id: "doc-2", file_path: "ship.md" }],
+        failed: [{ id: "doc-3", file_path: "broken.txt", error_msg: "parse error" }],
+      },
+    });
+    const adapter = buildAdapter({ serverUrl: "http://localhost:9621/", fetchImpl });
+
+    const documents = await adapter.listDocuments();
+
+    expect(calls[0].url).toBe("http://localhost:9621/documents");
+    expect(calls[0].init.method).toBe("GET");
+    // Sorted by name so a server that only groups still renders stably.
+    expect(documents.map((entry) => entry.name)).toEqual(["broken.txt", "handbook.pdf", "ship.md"]);
+    expect(documents.find((entry) => entry.id === "doc-1")).toEqual({
+      id: "doc-1",
+      name: "handbook.pdf",
+      status: "indexed",
+      summary: "Company handbook",
+      contentLength: 5000,
+      chunkCount: 12,
+      updatedAt: "2026-01-02T03:04:05",
+    });
+    // Mid-pipeline states collapse to "processing"; the inspector shows
+    // progress, not LightRAG's internal phases.
+    expect(documents.find((entry) => entry.id === "doc-2")?.status).toBe("processing");
+    expect(documents.find((entry) => entry.id === "doc-3")).toMatchObject({
+      status: "failed",
+      error: "parse error",
+    });
+  });
+
+  it("maps an unrecognized pipeline state to unknown rather than dropping the row", async () => {
+    // LightRAG can add states faster than this adapter tracks them.
+    const { fetchImpl } = mockFetch({
+      statuses: { teleporting: [{ id: "d", file_path: "a.md" }] },
+    });
+    const adapter = buildAdapter({ fetchImpl });
+    expect((await adapter.listDocuments())[0].status).toBe("unknown");
+  });
+
+  it("skips documents with no id, which could not be deleted anyway", async () => {
+    const { fetchImpl } = mockFetch({
+      statuses: { processed: [{ file_path: "ghost.md" }, { id: "real", file_path: "real.md" }] },
+    });
+    const adapter = buildAdapter({ fetchImpl });
+    expect((await adapter.listDocuments()).map((entry) => entry.id)).toEqual(["real"]);
+  });
+
+  it("throws on a non-200 document list so the host reports a failure", async () => {
+    const { fetchImpl } = mockFetch({}, { ok: false, status: 500 });
+    const adapter = buildAdapter({ fetchImpl });
+    await expect(adapter.listDocuments()).rejects.toThrow(/HTTP 500/);
+  });
+
+  it("uploads multipart to /documents/upload and returns the tracking id", async () => {
+    const { fetchImpl, calls } = mockFetch({ status: "success", track_id: "upload-123" });
+    const adapter = buildAdapter({ serverUrl: "http://localhost:9621", apiKey: "k", fetchImpl });
+
+    const outcome = await adapter.uploadDocument({
+      name: "notes.md",
+      content: new TextEncoder().encode("hello"),
+    });
+
+    expect(calls[0].url).toBe("http://localhost:9621/documents/upload");
+    expect(calls[0].init.method).toBe("POST");
+    expect((calls[0].init.headers as Record<string, string>)["X-API-Key"]).toBe("k");
+    const form = calls[0].init.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    // LightRAG's route declares `file: UploadFile = File(...)`.
+    expect((form.get("file") as File).name).toBe("notes.md");
+    expect(outcome).toEqual({ outcome: "accepted", trackingId: "upload-123" });
+  });
+
+  it("reports a same-name upload as a duplicate, not a generic failure", async () => {
+    // LightRAG keys documents by filename and answers 409; the operator has to
+    // delete the existing one, so this must not read as a server fault.
+    const { fetchImpl } = mockFetch(
+      { detail: "Document storage already contains notes.md" },
+      { ok: false, status: 409 },
+    );
+    const adapter = buildAdapter({ fetchImpl });
+    expect(
+      await adapter.uploadDocument({ name: "notes.md", content: new Uint8Array([1]) }),
+    ).toEqual({
+      outcome: "duplicate",
+      detail: "Document storage already contains notes.md",
+    });
+  });
+
+  it("reports an oversized upload distinctly from other rejections", async () => {
+    const { fetchImpl } = mockFetch({ detail: "too big" }, { ok: false, status: 413 });
+    const adapter = buildAdapter({ fetchImpl });
+    expect(await adapter.uploadDocument({ name: "big.bin", content: new Uint8Array([1]) })).toEqual(
+      { outcome: "too-large", detail: "too big" },
+    );
+  });
+
+  it("falls back to the status code when a rejection body is not JSON", async () => {
+    const calls: Captured[] = [];
+    const fetchImpl = async (url: string, init: RequestInit): Promise<Response> => {
+      calls.push({ url, init });
+      return {
+        ok: false,
+        status: 409,
+        json: async () => {
+          throw new SyntaxError("not json");
+        },
+      } as unknown as Response;
+    };
+    const adapter = buildAdapter({ fetchImpl });
+    expect(
+      await adapter.uploadDocument({ name: "notes.md", content: new Uint8Array([1]) }),
+    ).toEqual({ outcome: "duplicate", detail: "HTTP 409" });
+  });
+
+  it("treats a failure status in a 200 upload body as a rejection", async () => {
+    const { fetchImpl } = mockFetch({ status: "failure", message: "unsupported type" });
+    const adapter = buildAdapter({ fetchImpl });
+    expect(await adapter.uploadDocument({ name: "x.zip", content: new Uint8Array([1]) })).toEqual({
+      outcome: "rejected",
+      detail: "unsupported type",
+    });
+  });
+
+  it("deletes by id and reports that removal only started", async () => {
+    const { fetchImpl, calls } = mockFetch({ status: "deletion_started", doc_id: "doc-1" });
+    const adapter = buildAdapter({ serverUrl: "http://localhost:9621", fetchImpl });
+
+    const outcome = await adapter.removeDocument("doc-1");
+
+    // The route is /documents/delete_document with a JSON body, NOT
+    // DELETE /documents/{id} (which does not exist despite an upstream docstring).
+    expect(calls[0].url).toBe("http://localhost:9621/documents/delete_document");
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ doc_ids: ["doc-1"] });
+    // Deletion runs in the background: "started" is not "removed".
+    expect(outcome).toEqual({ outcome: "started" });
+  });
+
+  it("surfaces a busy pipeline instead of claiming the delete succeeded", async () => {
+    const { fetchImpl } = mockFetch({ status: "busy", message: "pipeline busy" });
+    const adapter = buildAdapter({ fetchImpl });
+    expect(await adapter.removeDocument("doc-1")).toEqual({
+      outcome: "busy",
+      detail: "pipeline busy",
+    });
+  });
+
+  it("treats an unexpected delete status as a refusal", async () => {
+    const { fetchImpl } = mockFetch({ status: "not_allowed", message: "nope" });
+    const adapter = buildAdapter({ fetchImpl });
+    expect(await adapter.removeDocument("doc-1")).toEqual({ outcome: "refused", detail: "nope" });
+  });
+
+  it("reports a non-200 delete as refused", async () => {
+    const { fetchImpl } = mockFetch({}, { ok: false, status: 500 });
+    const adapter = buildAdapter({ fetchImpl });
+    expect(await adapter.removeDocument("doc-1")).toEqual({
+      outcome: "refused",
+      detail: "HTTP 500",
+    });
+  });
+});

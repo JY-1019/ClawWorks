@@ -638,3 +638,113 @@ export const EnterpriseKnowledgeFoundationsTestConnectionResultSchema = Type.Obj
   },
   { additionalProperties: false },
 );
+
+/** Normalized document indexing lifecycle (mirrors KnowledgeDocumentStatus). */
+export const EnterpriseKnowledgeDocumentStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("processing"),
+  Type.Literal("indexed"),
+  Type.Literal("failed"),
+  Type.Literal("unknown"),
+]);
+
+/** One document held by a locally administered foundation. */
+export const EnterpriseKnowledgeDocumentSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    name: Type.String(),
+    status: EnterpriseKnowledgeDocumentStatusSchema,
+    /** Store-derived excerpt; some stores expose no full-text read. */
+    summary: Type.Optional(Type.String()),
+    contentLength: Type.Optional(Type.Integer({ minimum: 0 })),
+    chunkCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    error: Type.Optional(Type.String()),
+    updatedAt: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * Why a document call could not be served. Shared by all three document
+ * methods: "read-only" means the foundation is not operator-administered
+ * (`kind !== "local"`), which is a policy answer rather than a fault.
+ */
+const KnowledgeDocumentsUnavailableStatuses = [
+  Type.Literal("unsupported"),
+  Type.Literal("read-only"),
+  Type.Literal("not-registered"),
+  Type.Literal("failed"),
+] as const;
+
+export const EnterpriseKnowledgeDocumentsListParamsSchema = Type.Object(
+  { foundationId: NonEmptyString },
+  { additionalProperties: false },
+);
+
+export const EnterpriseKnowledgeDocumentsListResultSchema = Type.Object(
+  {
+    status: Type.Union([Type.Literal("ok"), ...KnowledgeDocumentsUnavailableStatuses]),
+    /** Always present; empty unless status is "ok". */
+    documents: Type.Array(EnterpriseKnowledgeDocumentSchema),
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * Decoded upload cap. Base64 inflates by 4/3, so 8 MiB of file is ~11 MiB on
+ * the wire — well inside the gateway's 25 MiB frame limit (MAX_PAYLOAD_BYTES)
+ * with room for the rest of the envelope.
+ */
+export const ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES = 8 * 1024 * 1024;
+
+export const EnterpriseKnowledgeDocumentsUploadParamsSchema = Type.Object(
+  {
+    foundationId: NonEmptyString,
+    name: NonEmptyString,
+    // Length gate before decoding, so an oversized payload is rejected without
+    // allocating it; the handler re-checks the decoded byte length.
+    contentBase64: Type.String({ minLength: 1, maxLength: 11_184_816 }),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * Flat closed outcome. The store's answers (accepted/duplicate/too-large/
+ * rejected) and the host's (unsupported/read-only/not-registered/failed) share
+ * one enum so a client switches once instead of unwrapping nested statuses.
+ */
+export const EnterpriseKnowledgeDocumentsUploadResultSchema = Type.Object(
+  {
+    status: Type.Union([
+      Type.Literal("accepted"),
+      Type.Literal("duplicate"),
+      Type.Literal("too-large"),
+      Type.Literal("rejected"),
+      ...KnowledgeDocumentsUnavailableStatuses,
+    ]),
+    /** Store-side tracking handle for the async indexing job, when given. */
+    trackingId: Type.Optional(Type.String()),
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const EnterpriseKnowledgeDocumentsRemoveParamsSchema = Type.Object(
+  { foundationId: NonEmptyString, documentId: NonEmptyString },
+  { additionalProperties: false },
+);
+
+/** "started" rather than "removed": stores commonly delete in the background. */
+export const EnterpriseKnowledgeDocumentsRemoveResultSchema = Type.Object(
+  {
+    status: Type.Union([
+      Type.Literal("started"),
+      Type.Literal("busy"),
+      Type.Literal("refused"),
+      ...KnowledgeDocumentsUnavailableStatuses,
+    ]),
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);

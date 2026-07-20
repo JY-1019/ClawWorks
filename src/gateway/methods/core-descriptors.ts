@@ -112,6 +112,11 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "enterprise.runs.get", scope: "operator.read" },
   { name: "enterprise.knowledge.foundations.list", scope: "operator.read" },
   { name: "enterprise.knowledge.foundations.testConnection", scope: "operator.read" },
+  { name: "enterprise.knowledge.documents.list", scope: "operator.read" },
+  // Upload/remove change the content governed retrieval will serve to agents,
+  // so they need admin like enterprise.trees.import, not a chat-scoped write token.
+  { name: "enterprise.knowledge.documents.upload", scope: "operator.admin" },
+  { name: "enterprise.knowledge.documents.remove", scope: "operator.admin" },
   { name: "enterprise.mode.get", scope: "operator.read" },
   // Switching the mode turns governance enforcement on or off for every run, so
   // it is admin like trees.import — a chat/tool operator.write token must not be

@@ -3,6 +3,10 @@
 // enterprise tab). The wire shapes trim the model-visible plan/ontology to the
 // execution-scoping fields an inspector renders; the internal records carry more.
 import {
+  ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES,
+  type EnterpriseKnowledgeDocumentsListResult,
+  type EnterpriseKnowledgeDocumentsRemoveResult,
+  type EnterpriseKnowledgeDocumentsUploadResult,
   type EnterpriseKnowledgeFoundationReference,
   type EnterpriseKnowledgeFoundationsListResult,
   type EnterpriseKnowledgeFoundationsTestConnectionResult,
@@ -26,6 +30,9 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateEnterpriseKnowledgeDocumentsListParams,
+  validateEnterpriseKnowledgeDocumentsRemoveParams,
+  validateEnterpriseKnowledgeDocumentsUploadParams,
   validateEnterpriseKnowledgeFoundationsListParams,
   validateEnterpriseKnowledgeFoundationsTestConnectionParams,
   validateEnterpriseObjectsListParams,
@@ -45,8 +52,11 @@ import { readConfigFileSnapshotForWrite } from "../../config/io.js";
 import { getRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
+  listEnterpriseKnowledgeDocuments,
   listEnterpriseKnowledgeFoundationDescriptors,
+  removeEnterpriseKnowledgeDocument,
   testEnterpriseKnowledgeFoundationConnection,
+  uploadEnterpriseKnowledgeDocument,
 } from "../../enterprise/knowledge.js";
 import {
   addressableObjectEntityIds,
@@ -304,6 +314,49 @@ function indexKnowledgeFoundationReferences(): Map<
   return index;
 }
 
+/**
+ * Flatten the host outcome and the store's own answer into the single wire
+ * enum. Keeping both levels would make a client unwrap twice to learn whether
+ * anything happened.
+ */
+function mapUploadOutcome(
+  outcome: Awaited<ReturnType<typeof uploadEnterpriseKnowledgeDocument>>,
+): EnterpriseKnowledgeDocumentsUploadResult {
+  if (outcome.status !== "ok") {
+    return {
+      status: outcome.status,
+      ...(outcome.status === "failed" ? { detail: outcome.detail } : {}),
+    };
+  }
+  const { result } = outcome;
+  if (result.outcome === "accepted") {
+    return {
+      status: "accepted",
+      ...(result.trackingId !== undefined ? { trackingId: result.trackingId } : {}),
+    };
+  }
+  return {
+    status: result.outcome,
+    ...(result.detail !== undefined ? { detail: result.detail } : {}),
+  };
+}
+
+function mapRemovalOutcome(
+  outcome: Awaited<ReturnType<typeof removeEnterpriseKnowledgeDocument>>,
+): EnterpriseKnowledgeDocumentsRemoveResult {
+  if (outcome.status !== "ok") {
+    return {
+      status: outcome.status,
+      ...(outcome.status === "failed" ? { detail: outcome.detail } : {}),
+    };
+  }
+  const { result } = outcome;
+  return {
+    status: result.outcome,
+    ...("detail" in result && result.detail !== undefined ? { detail: result.detail } : {}),
+  };
+}
+
 function mapTreeMatch(match: WorkflowTreeMatch): NonNullable<EnterpriseTreeDetail["match"]> {
   // Clone the shared registry arrays so payload mutation can't affect selection.
   const projected: NonNullable<EnterpriseTreeDetail["match"]> = {};
@@ -391,6 +444,74 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
     };
     respond(true, result);
+  },
+  "enterprise.knowledge.documents.list": async ({ params, respond }) => {
+    if (!validateEnterpriseKnowledgeDocumentsListParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.knowledge.documents.list params: ${formatValidationErrors(validateEnterpriseKnowledgeDocumentsListParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const outcome = await listEnterpriseKnowledgeDocuments(params.foundationId);
+    const result: EnterpriseKnowledgeDocumentsListResult =
+      outcome.status === "ok"
+        ? { status: "ok", documents: outcome.documents }
+        : {
+            status: outcome.status,
+            // Always an array so a client renders one shape regardless of status.
+            documents: [],
+            ...(outcome.status === "failed" ? { detail: outcome.detail } : {}),
+          };
+    respond(true, result);
+  },
+  "enterprise.knowledge.documents.upload": async ({ params, respond }) => {
+    if (!validateEnterpriseKnowledgeDocumentsUploadParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.knowledge.documents.upload params: ${formatValidationErrors(validateEnterpriseKnowledgeDocumentsUploadParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const content = Buffer.from(params.contentBase64, "base64");
+    // The schema caps the encoded string; this caps what it actually decoded to,
+    // since base64 length only bounds the payload to within its 4/3 inflation.
+    if (content.byteLength > ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES) {
+      const tooLarge: EnterpriseKnowledgeDocumentsUploadResult = {
+        status: "too-large",
+        detail: `document exceeds ${ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES} bytes`,
+      };
+      respond(true, tooLarge);
+      return;
+    }
+    const outcome = await uploadEnterpriseKnowledgeDocument(params.foundationId, {
+      name: params.name,
+      content: new Uint8Array(content),
+    });
+    respond(true, mapUploadOutcome(outcome));
+  },
+  "enterprise.knowledge.documents.remove": async ({ params, respond }) => {
+    if (!validateEnterpriseKnowledgeDocumentsRemoveParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.knowledge.documents.remove params: ${formatValidationErrors(validateEnterpriseKnowledgeDocumentsRemoveParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const outcome = await removeEnterpriseKnowledgeDocument(params.foundationId, params.documentId);
+    respond(true, mapRemovalOutcome(outcome));
   },
   "enterprise.trees.list": ({ params, respond }) => {
     if (!validateEnterpriseTreesListParams(params)) {

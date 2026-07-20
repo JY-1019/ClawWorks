@@ -311,6 +311,20 @@ export type EnterpriseKnowledgeFoundationsListParams =
 export type EnterpriseKnowledgeFoundationsListResult =
   SchemaType<"EnterpriseKnowledgeFoundationsListResult">;
 export type EnterpriseKnowledgeConnectionStatus = SchemaType<"EnterpriseKnowledgeConnectionStatus">;
+export type EnterpriseKnowledgeDocumentStatus = SchemaType<"EnterpriseKnowledgeDocumentStatus">;
+export type EnterpriseKnowledgeDocument = SchemaType<"EnterpriseKnowledgeDocument">;
+export type EnterpriseKnowledgeDocumentsListParams =
+  SchemaType<"EnterpriseKnowledgeDocumentsListParams">;
+export type EnterpriseKnowledgeDocumentsListResult =
+  SchemaType<"EnterpriseKnowledgeDocumentsListResult">;
+export type EnterpriseKnowledgeDocumentsUploadParams =
+  SchemaType<"EnterpriseKnowledgeDocumentsUploadParams">;
+export type EnterpriseKnowledgeDocumentsUploadResult =
+  SchemaType<"EnterpriseKnowledgeDocumentsUploadResult">;
+export type EnterpriseKnowledgeDocumentsRemoveParams =
+  SchemaType<"EnterpriseKnowledgeDocumentsRemoveParams">;
+export type EnterpriseKnowledgeDocumentsRemoveResult =
+  SchemaType<"EnterpriseKnowledgeDocumentsRemoveResult">;
 export type EnterpriseKnowledgeFoundationsTestConnectionParams =
   SchemaType<"EnterpriseKnowledgeFoundationsTestConnectionParams">;
 export type EnterpriseKnowledgeFoundationsTestConnectionResult =

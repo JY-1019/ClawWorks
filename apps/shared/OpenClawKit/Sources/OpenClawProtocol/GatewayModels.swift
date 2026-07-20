@@ -69,6 +69,14 @@ public enum EnterpriseKnowledgeConnectionStatus: String, Codable, Sendable {
     case notRegistered = "not-registered"
 }
 
+public enum EnterpriseKnowledgeDocumentStatus: String, Codable, Sendable {
+    case pending = "pending"
+    case processing = "processing"
+    case indexed = "indexed"
+    case failed = "failed"
+    case unknown = "unknown"
+}
+
 public struct ConnectParams: Codable, Sendable {
     public let minprotocol: Int
     public let maxprotocol: Int
@@ -7368,6 +7376,164 @@ public struct EnterpriseKnowledgeFoundationsListResult: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case foundations
+    }
+}
+
+public struct EnterpriseKnowledgeDocument: Codable, Sendable {
+    public let id: String
+    public let name: String
+    public let status: EnterpriseKnowledgeDocumentStatus
+    public let summary: String?
+    public let contentlength: Int?
+    public let chunkcount: Int?
+    public let error: String?
+    public let updatedat: String?
+
+    public init(
+        id: String,
+        name: String,
+        status: EnterpriseKnowledgeDocumentStatus,
+        summary: String?,
+        contentlength: Int?,
+        chunkcount: Int?,
+        error: String?,
+        updatedat: String?)
+    {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.summary = summary
+        self.contentlength = contentlength
+        self.chunkcount = chunkcount
+        self.error = error
+        self.updatedat = updatedat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case status
+        case summary
+        case contentlength = "contentLength"
+        case chunkcount = "chunkCount"
+        case error
+        case updatedat = "updatedAt"
+    }
+}
+
+public struct EnterpriseKnowledgeDocumentsListParams: Codable, Sendable {
+    public let foundationid: String
+
+    public init(
+        foundationid: String)
+    {
+        self.foundationid = foundationid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case foundationid = "foundationId"
+    }
+}
+
+public struct EnterpriseKnowledgeDocumentsListResult: Codable, Sendable {
+    public let status: AnyCodable
+    public let documents: [EnterpriseKnowledgeDocument]
+    public let detail: String?
+
+    public init(
+        status: AnyCodable,
+        documents: [EnterpriseKnowledgeDocument],
+        detail: String?)
+    {
+        self.status = status
+        self.documents = documents
+        self.detail = detail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case documents
+        case detail
+    }
+}
+
+public struct EnterpriseKnowledgeDocumentsUploadParams: Codable, Sendable {
+    public let foundationid: String
+    public let name: String
+    public let contentbase64: String
+
+    public init(
+        foundationid: String,
+        name: String,
+        contentbase64: String)
+    {
+        self.foundationid = foundationid
+        self.name = name
+        self.contentbase64 = contentbase64
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case foundationid = "foundationId"
+        case name
+        case contentbase64 = "contentBase64"
+    }
+}
+
+public struct EnterpriseKnowledgeDocumentsUploadResult: Codable, Sendable {
+    public let status: AnyCodable
+    public let trackingid: String?
+    public let detail: String?
+
+    public init(
+        status: AnyCodable,
+        trackingid: String?,
+        detail: String?)
+    {
+        self.status = status
+        self.trackingid = trackingid
+        self.detail = detail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case trackingid = "trackingId"
+        case detail
+    }
+}
+
+public struct EnterpriseKnowledgeDocumentsRemoveParams: Codable, Sendable {
+    public let foundationid: String
+    public let documentid: String
+
+    public init(
+        foundationid: String,
+        documentid: String)
+    {
+        self.foundationid = foundationid
+        self.documentid = documentid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case foundationid = "foundationId"
+        case documentid = "documentId"
+    }
+}
+
+public struct EnterpriseKnowledgeDocumentsRemoveResult: Codable, Sendable {
+    public let status: AnyCodable
+    public let detail: String?
+
+    public init(
+        status: AnyCodable,
+        detail: String?)
+    {
+        self.status = status
+        self.detail = detail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case detail
     }
 }
 

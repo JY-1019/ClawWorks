@@ -262,8 +262,25 @@ import {
   EnterpriseTreesHistoryListParamsSchema,
   type EnterpriseTreesHistoryListResult,
   EnterpriseTreesHistoryListResultSchema,
+  ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES,
   type EnterpriseKnowledgeConnectionStatus,
   EnterpriseKnowledgeConnectionStatusSchema,
+  type EnterpriseKnowledgeDocumentStatus,
+  EnterpriseKnowledgeDocumentStatusSchema,
+  type EnterpriseKnowledgeDocument,
+  EnterpriseKnowledgeDocumentSchema,
+  type EnterpriseKnowledgeDocumentsListParams,
+  EnterpriseKnowledgeDocumentsListParamsSchema,
+  type EnterpriseKnowledgeDocumentsListResult,
+  EnterpriseKnowledgeDocumentsListResultSchema,
+  type EnterpriseKnowledgeDocumentsUploadParams,
+  EnterpriseKnowledgeDocumentsUploadParamsSchema,
+  type EnterpriseKnowledgeDocumentsUploadResult,
+  EnterpriseKnowledgeDocumentsUploadResultSchema,
+  type EnterpriseKnowledgeDocumentsRemoveParams,
+  EnterpriseKnowledgeDocumentsRemoveParamsSchema,
+  type EnterpriseKnowledgeDocumentsRemoveResult,
+  EnterpriseKnowledgeDocumentsRemoveResultSchema,
   type EnterpriseKnowledgeFoundationKind,
   EnterpriseKnowledgeFoundationKindSchema,
   type EnterpriseKnowledgeFoundationReference,
@@ -828,6 +845,16 @@ export const validateEnterpriseTreesHistoryListParams =
 export const validateEnterpriseTreesHistoryGetParams = lazyCompile<EnterpriseTreesHistoryGetParams>(
   EnterpriseTreesHistoryGetParamsSchema,
 );
+export const validateEnterpriseKnowledgeDocumentsListParams =
+  lazyCompile<EnterpriseKnowledgeDocumentsListParams>(EnterpriseKnowledgeDocumentsListParamsSchema);
+export const validateEnterpriseKnowledgeDocumentsUploadParams =
+  lazyCompile<EnterpriseKnowledgeDocumentsUploadParams>(
+    EnterpriseKnowledgeDocumentsUploadParamsSchema,
+  );
+export const validateEnterpriseKnowledgeDocumentsRemoveParams =
+  lazyCompile<EnterpriseKnowledgeDocumentsRemoveParams>(
+    EnterpriseKnowledgeDocumentsRemoveParamsSchema,
+  );
 export const validateEnterpriseKnowledgeFoundationsListParams =
   lazyCompile<EnterpriseKnowledgeFoundationsListParams>(
     EnterpriseKnowledgeFoundationsListParamsSchema,
@@ -1247,7 +1274,16 @@ export {
   EnterpriseKnowledgeFoundationSummarySchema,
   EnterpriseKnowledgeFoundationsListParamsSchema,
   EnterpriseKnowledgeFoundationsListResultSchema,
+  ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES,
   EnterpriseKnowledgeConnectionStatusSchema,
+  EnterpriseKnowledgeDocumentStatusSchema,
+  EnterpriseKnowledgeDocumentSchema,
+  EnterpriseKnowledgeDocumentsListParamsSchema,
+  EnterpriseKnowledgeDocumentsListResultSchema,
+  EnterpriseKnowledgeDocumentsUploadParamsSchema,
+  EnterpriseKnowledgeDocumentsUploadResultSchema,
+  EnterpriseKnowledgeDocumentsRemoveParamsSchema,
+  EnterpriseKnowledgeDocumentsRemoveResultSchema,
   EnterpriseKnowledgeFoundationsTestConnectionParamsSchema,
   EnterpriseKnowledgeFoundationsTestConnectionResultSchema,
   ConfigGetParamsSchema,
@@ -1609,6 +1645,14 @@ export type {
   EnterpriseKnowledgeFoundationsListParams,
   EnterpriseKnowledgeFoundationsListResult,
   EnterpriseKnowledgeConnectionStatus,
+  EnterpriseKnowledgeDocumentStatus,
+  EnterpriseKnowledgeDocument,
+  EnterpriseKnowledgeDocumentsListParams,
+  EnterpriseKnowledgeDocumentsListResult,
+  EnterpriseKnowledgeDocumentsUploadParams,
+  EnterpriseKnowledgeDocumentsUploadResult,
+  EnterpriseKnowledgeDocumentsRemoveParams,
+  EnterpriseKnowledgeDocumentsRemoveResult,
   EnterpriseKnowledgeFoundationsTestConnectionParams,
   EnterpriseKnowledgeFoundationsTestConnectionResult,
   CronJob,

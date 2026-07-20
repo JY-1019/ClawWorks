@@ -2,20 +2,28 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   clearEnterpriseKnowledgeFoundations,
   InMemoryKnowledgeFoundation,
+  listEnterpriseKnowledgeDocuments,
   listEnterpriseKnowledgeFoundationDescriptors,
   listEnterpriseKnowledgeFoundationIds,
   listEnterpriseKnowledgeFoundations,
   registerEnterpriseKnowledgeFoundation,
   resolveEnterpriseKnowledge,
   restoreEnterpriseKnowledgeFoundations,
+  removeEnterpriseKnowledgeDocument,
   testEnterpriseKnowledgeFoundationConnection,
+  uploadEnterpriseKnowledgeDocument,
 } from "./knowledge.js";
 import {
   clearEnterpriseActiveRunsForTest,
   registerEnterpriseActiveRun,
   type EnterpriseActiveRun,
 } from "./runtime.js";
-import type { EnterpriseRunPlan, GovernancePolicy, KnowledgeSnippet } from "./types.js";
+import type {
+  EnterpriseRunPlan,
+  GovernancePolicy,
+  KnowledgeFoundationAdapter,
+  KnowledgeSnippet,
+} from "./types.js";
 
 type SinkEvent = { kind: string; nodeId: string; payload: Record<string, unknown> };
 
@@ -340,6 +348,117 @@ describe("testEnterpriseKnowledgeFoundationConnection", () => {
     expect(await testEnterpriseKnowledgeFoundationConnection("acme.kb")).toEqual({
       status: "failed",
       detail: "connection test failed",
+    });
+  });
+});
+
+describe("knowledge documents", () => {
+  function localAdapter(overrides: Partial<KnowledgeFoundationAdapter> = {}) {
+    return {
+      retrieve: async () => [],
+      describe: () => ({ kind: "local" as const, displayName: "Local KB" }),
+      ...overrides,
+    };
+  }
+
+  it("lists documents for a locally administered foundation", async () => {
+    registerEnterpriseKnowledgeFoundation(
+      "local.kb",
+      localAdapter({
+        listDocuments: async () => [{ id: "d1", name: "a.md", status: "indexed" }],
+      }),
+    );
+
+    expect(await listEnterpriseKnowledgeDocuments("local.kb")).toEqual({
+      status: "ok",
+      documents: [{ id: "d1", name: "a.md", status: "indexed" }],
+    });
+  });
+
+  it("refuses document access for a foundation the operator did not claim", async () => {
+    // The adapter implements the methods, but kind says someone else runs this
+    // server: the host must not let it be administered from here.
+    registerEnterpriseKnowledgeFoundation("remote.kb", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Remote KB" }),
+      listDocuments: async () => [{ id: "d1", name: "leak.md", status: "indexed" }],
+      uploadDocument: async () => ({ outcome: "accepted" }),
+      removeDocument: async () => ({ outcome: "started" }),
+    });
+
+    expect(await listEnterpriseKnowledgeDocuments("remote.kb")).toEqual({ status: "read-only" });
+    expect(
+      await uploadEnterpriseKnowledgeDocument("remote.kb", {
+        name: "x.md",
+        content: new Uint8Array([1]),
+      }),
+    ).toEqual({ status: "read-only" });
+    expect(await removeEnterpriseKnowledgeDocument("remote.kb", "d1")).toEqual({
+      status: "read-only",
+    });
+  });
+
+  it("reports unsupported for a local adapter that manages no documents", async () => {
+    registerEnterpriseKnowledgeFoundation("local.kb", localAdapter());
+    expect(await listEnterpriseKnowledgeDocuments("local.kb")).toEqual({ status: "unsupported" });
+  });
+
+  it("reports an unregistered id without probing an adapter", async () => {
+    expect(await listEnterpriseKnowledgeDocuments("ghost.kb")).toEqual({
+      status: "not-registered",
+    });
+  });
+
+  it("keeps a thrown adapter error out of the operator-facing outcome", async () => {
+    registerEnterpriseKnowledgeFoundation(
+      "local.kb",
+      localAdapter({
+        listDocuments: async () => {
+          throw new Error("http://admin:hunter2@kb:9621 exploded");
+        },
+      }),
+    );
+
+    // The raw message can carry urls/credentials; it belongs in the log only.
+    expect(await listEnterpriseKnowledgeDocuments("local.kb")).toEqual({
+      status: "failed",
+      detail: "document list failed",
+    });
+  });
+
+  it("passes the upload through and returns the adapter's outcome verbatim", async () => {
+    const uploads: Array<{ name: string; content: Uint8Array }> = [];
+    registerEnterpriseKnowledgeFoundation(
+      "local.kb",
+      localAdapter({
+        uploadDocument: async (file) => {
+          uploads.push(file);
+          return { outcome: "duplicate", detail: "already there" };
+        },
+      }),
+    );
+
+    const outcome = await uploadEnterpriseKnowledgeDocument("local.kb", {
+      name: "notes.md",
+      content: new Uint8Array([1, 2, 3]),
+    });
+
+    expect(uploads).toEqual([{ name: "notes.md", content: new Uint8Array([1, 2, 3]) }]);
+    expect(outcome).toEqual({
+      status: "ok",
+      result: { outcome: "duplicate", detail: "already there" },
+    });
+  });
+
+  it("passes a removal through and preserves the async 'started' meaning", async () => {
+    registerEnterpriseKnowledgeFoundation(
+      "local.kb",
+      localAdapter({ removeDocument: async () => ({ outcome: "started" }) }),
+    );
+
+    expect(await removeEnterpriseKnowledgeDocument("local.kb", "d1")).toEqual({
+      status: "ok",
+      result: { outcome: "started" },
     });
   });
 });

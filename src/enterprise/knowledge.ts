@@ -15,8 +15,11 @@ import { findPlanNode, resolvePlanNodePath } from "./plan.js";
 import { getEnterpriseActiveRun, type EnterpriseRunTraceSink } from "./runtime.js";
 import type {
   EnterprisePlanNode,
+  KnowledgeDocumentRemovalOutcome,
+  KnowledgeDocumentUploadOutcome,
   KnowledgeFoundationAdapter,
   KnowledgeFoundationDescriptor,
+  KnowledgeFoundationDocument,
   KnowledgeSnippet,
 } from "./types.js";
 
@@ -151,6 +154,84 @@ export async function testEnterpriseKnowledgeFoundationConnection(
     );
     return { status: "failed", detail: "connection test failed" };
   }
+}
+
+/**
+ * Host-level document outcome. Like the connection probe, this is wider than
+ * the adapter's own result: only the host knows an id is unregistered or that
+ * the adapter manages no documents at all.
+ */
+export type KnowledgeDocumentsOutcome<TValue> =
+  | ({ status: "ok" } & TValue)
+  | { status: "unsupported" }
+  | { status: "read-only" }
+  | { status: "not-registered" }
+  | { status: "failed"; detail: string };
+
+/**
+ * Resolve an adapter and run one document operation against it, mapping the
+ * registry/capability misses and adapter faults onto the shared outcome shape.
+ * Raw adapter errors stay in the log: they can carry urls and credentials, and
+ * these outcomes cross the gateway to an operator screen.
+ */
+async function withDocumentAdapter<TValue>(
+  foundationId: string,
+  operation: string,
+  run: (adapter: KnowledgeFoundationAdapter) => Promise<TValue> | undefined,
+): Promise<KnowledgeDocumentsOutcome<TValue>> {
+  const adapter = foundations().get(foundationId);
+  if (!adapter) {
+    return { status: "not-registered" };
+  }
+  // `kind` is the authority on who administers a foundation's content, and an
+  // adapter can implement document methods for every server it talks to (the
+  // LightRAG one does). Enforcing the read-only reading here means a foundation
+  // the operator did not claim stays read-only no matter which adapter backs
+  // it, rather than depending on each adapter to police itself.
+  if (describeFoundation(foundationId).kind !== "local") {
+    return { status: "read-only" };
+  }
+  const pending = run(adapter);
+  if (!pending) {
+    return { status: "unsupported" };
+  }
+  try {
+    return { status: "ok", ...(await pending) };
+  } catch (err) {
+    log.warn(
+      `enterprise knowledge foundation "${foundationId}" ${operation} failed: ${errorMessage(err)}`,
+    );
+    return { status: "failed", detail: `${operation} failed` };
+  }
+}
+
+/** List the documents a foundation holds, for the operator inspector. */
+export function listEnterpriseKnowledgeDocuments(
+  foundationId: string,
+): Promise<KnowledgeDocumentsOutcome<{ documents: KnowledgeFoundationDocument[] }>> {
+  return withDocumentAdapter(foundationId, "document list", (adapter) =>
+    adapter.listDocuments?.().then((documents) => ({ documents })),
+  );
+}
+
+/** Upload one operator-supplied document into a foundation. */
+export function uploadEnterpriseKnowledgeDocument(
+  foundationId: string,
+  file: { name: string; content: Uint8Array },
+): Promise<KnowledgeDocumentsOutcome<{ result: KnowledgeDocumentUploadOutcome }>> {
+  return withDocumentAdapter(foundationId, "document upload", (adapter) =>
+    adapter.uploadDocument?.(file).then((result) => ({ result })),
+  );
+}
+
+/** Remove one document from a foundation. */
+export function removeEnterpriseKnowledgeDocument(
+  foundationId: string,
+  documentId: string,
+): Promise<KnowledgeDocumentsOutcome<{ result: KnowledgeDocumentRemovalOutcome }>> {
+  return withDocumentAdapter(foundationId, "document removal", (adapter) =>
+    adapter.removeDocument?.(documentId).then((result) => ({ result })),
+  );
 }
 
 /**

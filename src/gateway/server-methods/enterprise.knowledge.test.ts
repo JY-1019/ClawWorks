@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES } from "../../../packages/gateway-protocol/src/index.js";
 import {
   clearEnterpriseKnowledgeFoundations,
   registerEnterpriseKnowledgeFoundation,
@@ -205,5 +206,152 @@ describe("enterprise.knowledge.foundations.testConnection", () => {
     expect(String((error as { message?: string }).message)).toMatch(
       /invalid enterprise\.knowledge\.foundations\.testConnection params/,
     );
+  });
+});
+
+describe("enterprise.knowledge.documents", () => {
+  function registerLocal(overrides: Record<string, unknown> = {}) {
+    registerEnterpriseKnowledgeFoundation("local.kb", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "local", displayName: "Local KB" }),
+      ...overrides,
+    } as never);
+  }
+
+  it("lists documents for a locally administered foundation", async () => {
+    registerLocal({
+      listDocuments: async () => [
+        { id: "d1", name: "a.md", status: "indexed", summary: "hello", chunkCount: 3 },
+      ],
+    });
+
+    const { ok, payload } = await invoke("enterprise.knowledge.documents.list", {
+      foundationId: "local.kb",
+    });
+    expect(ok).toBe(true);
+    expect(payload).toEqual({
+      status: "ok",
+      documents: [{ id: "d1", name: "a.md", status: "indexed", summary: "hello", chunkCount: 3 }],
+    });
+  });
+
+  it("refuses documents for a foundation the operator has not claimed", async () => {
+    registerEnterpriseKnowledgeFoundation("remote.kb", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Remote KB" }),
+      listDocuments: async () => [{ id: "d1", name: "leak.md", status: "indexed" }],
+    } as never);
+
+    const { payload } = await invoke("enterprise.knowledge.documents.list", {
+      foundationId: "remote.kb",
+    });
+    // read-only is a policy answer, not a fault, and must not leak the list.
+    expect(payload).toEqual({ status: "read-only", documents: [] });
+  });
+
+  it("always returns a documents array so clients render one shape", async () => {
+    const { payload } = await invoke("enterprise.knowledge.documents.list", {
+      foundationId: "ghost.kb",
+    });
+    expect(payload).toEqual({ status: "not-registered", documents: [] });
+  });
+
+  it("decodes the base64 payload and reports the tracking id", async () => {
+    const received: Array<{ name: string; content: Uint8Array }> = [];
+    registerLocal({
+      uploadDocument: async (file: { name: string; content: Uint8Array }) => {
+        received.push(file);
+        return { outcome: "accepted", trackingId: "job-1" };
+      },
+    });
+
+    const { payload } = await invoke("enterprise.knowledge.documents.upload", {
+      foundationId: "local.kb",
+      name: "notes.md",
+      contentBase64: Buffer.from("hello world", "utf8").toString("base64"),
+    });
+
+    expect(Buffer.from(received[0].content).toString("utf8")).toBe("hello world");
+    expect(payload).toEqual({ status: "accepted", trackingId: "job-1" });
+  });
+
+  it("flattens a duplicate rejection into the wire status", async () => {
+    registerLocal({
+      uploadDocument: async () => ({ outcome: "duplicate", detail: "already there" }),
+    });
+
+    const { payload } = await invoke("enterprise.knowledge.documents.upload", {
+      foundationId: "local.kb",
+      name: "notes.md",
+      contentBase64: Buffer.from("x").toString("base64"),
+    });
+    // One flat enum: the client switches once instead of unwrapping two levels.
+    expect(payload).toEqual({ status: "duplicate", detail: "already there" });
+  });
+
+  it("rejects a payload whose decoded size exceeds the cap before reaching the adapter", async () => {
+    let called = false;
+    registerLocal({
+      uploadDocument: async () => {
+        called = true;
+        return { outcome: "accepted" };
+      },
+    });
+
+    const oversized = Buffer.alloc(ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES + 1).toString("base64");
+    const { ok, payload } = await invoke("enterprise.knowledge.documents.upload", {
+      foundationId: "local.kb",
+      name: "big.bin",
+      contentBase64: oversized,
+    });
+
+    expect(ok).toBe(true);
+    expect((payload as { status: string }).status).toBe("too-large");
+    expect(called).toBe(false);
+  });
+
+  it("refuses an upload to a foundation the operator has not claimed", async () => {
+    registerEnterpriseKnowledgeFoundation("remote.kb", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Remote KB" }),
+      uploadDocument: async () => ({ outcome: "accepted" }),
+    } as never);
+
+    const { payload } = await invoke("enterprise.knowledge.documents.upload", {
+      foundationId: "remote.kb",
+      name: "notes.md",
+      contentBase64: Buffer.from("x").toString("base64"),
+    });
+    expect(payload).toEqual({ status: "read-only" });
+  });
+
+  it("reports that a removal only started, never that it completed", async () => {
+    registerLocal({ removeDocument: async () => ({ outcome: "started" }) });
+
+    const { payload } = await invoke("enterprise.knowledge.documents.remove", {
+      foundationId: "local.kb",
+      documentId: "d1",
+    });
+    // Stores delete in the background; claiming "removed" here would be a lie.
+    expect(payload).toEqual({ status: "started" });
+  });
+
+  it("surfaces a busy store rather than implying the removal succeeded", async () => {
+    registerLocal({
+      removeDocument: async () => ({ outcome: "busy", detail: "pipeline busy" }),
+    });
+
+    const { payload } = await invoke("enterprise.knowledge.documents.remove", {
+      foundationId: "local.kb",
+      documentId: "d1",
+    });
+    expect(payload).toEqual({ status: "busy", detail: "pipeline busy" });
+  });
+
+  it("rejects malformed document params", async () => {
+    const { ok } = await invoke("enterprise.knowledge.documents.remove", {
+      foundationId: "local.kb",
+    });
+    expect(ok).toBe(false);
   });
 });
