@@ -312,6 +312,12 @@ export type EnterpriseKnowledgeFoundationsListResult =
   SchemaType<"EnterpriseKnowledgeFoundationsListResult">;
 export type EnterpriseKnowledgeConnectionStatus = SchemaType<"EnterpriseKnowledgeConnectionStatus">;
 export type EnterpriseKnowledgeDocumentStatus = SchemaType<"EnterpriseKnowledgeDocumentStatus">;
+export type EnterpriseKnowledgeDocumentsListStatus =
+  SchemaType<"EnterpriseKnowledgeDocumentsListStatus">;
+export type EnterpriseKnowledgeDocumentsUploadStatus =
+  SchemaType<"EnterpriseKnowledgeDocumentsUploadStatus">;
+export type EnterpriseKnowledgeDocumentsRemoveStatus =
+  SchemaType<"EnterpriseKnowledgeDocumentsRemoveStatus">;
 export type EnterpriseKnowledgeDocument = SchemaType<"EnterpriseKnowledgeDocument">;
 export type EnterpriseKnowledgeDocumentsListParams =
   SchemaType<"EnterpriseKnowledgeDocumentsListParams">;

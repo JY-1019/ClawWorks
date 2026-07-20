@@ -77,6 +77,35 @@ public enum EnterpriseKnowledgeDocumentStatus: String, Codable, Sendable {
     case unknown = "unknown"
 }
 
+public enum EnterpriseKnowledgeDocumentsListStatus: String, Codable, Sendable {
+    case ok = "ok"
+    case unsupported = "unsupported"
+    case readOnly = "read-only"
+    case notRegistered = "not-registered"
+    case failed = "failed"
+}
+
+public enum EnterpriseKnowledgeDocumentsUploadStatus: String, Codable, Sendable {
+    case accepted = "accepted"
+    case duplicate = "duplicate"
+    case tooLarge = "too-large"
+    case rejected = "rejected"
+    case unsupported = "unsupported"
+    case readOnly = "read-only"
+    case notRegistered = "not-registered"
+    case failed = "failed"
+}
+
+public enum EnterpriseKnowledgeDocumentsRemoveStatus: String, Codable, Sendable {
+    case started = "started"
+    case busy = "busy"
+    case refused = "refused"
+    case unsupported = "unsupported"
+    case readOnly = "read-only"
+    case notRegistered = "not-registered"
+    case failed = "failed"
+}
+
 public struct ConnectParams: Codable, Sendable {
     public let minprotocol: Int
     public let maxprotocol: Int
@@ -7436,12 +7465,12 @@ public struct EnterpriseKnowledgeDocumentsListParams: Codable, Sendable {
 }
 
 public struct EnterpriseKnowledgeDocumentsListResult: Codable, Sendable {
-    public let status: AnyCodable
+    public let status: EnterpriseKnowledgeDocumentsListStatus
     public let documents: [EnterpriseKnowledgeDocument]
     public let detail: String?
 
     public init(
-        status: AnyCodable,
+        status: EnterpriseKnowledgeDocumentsListStatus,
         documents: [EnterpriseKnowledgeDocument],
         detail: String?)
     {
@@ -7480,12 +7509,12 @@ public struct EnterpriseKnowledgeDocumentsUploadParams: Codable, Sendable {
 }
 
 public struct EnterpriseKnowledgeDocumentsUploadResult: Codable, Sendable {
-    public let status: AnyCodable
+    public let status: EnterpriseKnowledgeDocumentsUploadStatus
     public let trackingid: String?
     public let detail: String?
 
     public init(
-        status: AnyCodable,
+        status: EnterpriseKnowledgeDocumentsUploadStatus,
         trackingid: String?,
         detail: String?)
     {
@@ -7520,11 +7549,11 @@ public struct EnterpriseKnowledgeDocumentsRemoveParams: Codable, Sendable {
 }
 
 public struct EnterpriseKnowledgeDocumentsRemoveResult: Codable, Sendable {
-    public let status: AnyCodable
+    public let status: EnterpriseKnowledgeDocumentsRemoveStatus
     public let detail: String?
 
     public init(
-        status: AnyCodable,
+        status: EnterpriseKnowledgeDocumentsRemoveStatus,
         detail: String?)
     {
         self.status = status

@@ -681,9 +681,15 @@ export const EnterpriseKnowledgeDocumentsListParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** Named so codegen emits a real enum instead of an opaque any-typed field. */
+export const EnterpriseKnowledgeDocumentsListStatusSchema = Type.Union([
+  Type.Literal("ok"),
+  ...KnowledgeDocumentsUnavailableStatuses,
+]);
+
 export const EnterpriseKnowledgeDocumentsListResultSchema = Type.Object(
   {
-    status: Type.Union([Type.Literal("ok"), ...KnowledgeDocumentsUnavailableStatuses]),
+    status: EnterpriseKnowledgeDocumentsListStatusSchema,
     /** Always present; empty unless status is "ok". */
     documents: Type.Array(EnterpriseKnowledgeDocumentSchema),
     detail: Type.Optional(Type.String()),
@@ -714,15 +720,17 @@ export const EnterpriseKnowledgeDocumentsUploadParamsSchema = Type.Object(
  * rejected) and the host's (unsupported/read-only/not-registered/failed) share
  * one enum so a client switches once instead of unwrapping nested statuses.
  */
+export const EnterpriseKnowledgeDocumentsUploadStatusSchema = Type.Union([
+  Type.Literal("accepted"),
+  Type.Literal("duplicate"),
+  Type.Literal("too-large"),
+  Type.Literal("rejected"),
+  ...KnowledgeDocumentsUnavailableStatuses,
+]);
+
 export const EnterpriseKnowledgeDocumentsUploadResultSchema = Type.Object(
   {
-    status: Type.Union([
-      Type.Literal("accepted"),
-      Type.Literal("duplicate"),
-      Type.Literal("too-large"),
-      Type.Literal("rejected"),
-      ...KnowledgeDocumentsUnavailableStatuses,
-    ]),
+    status: EnterpriseKnowledgeDocumentsUploadStatusSchema,
     /** Store-side tracking handle for the async indexing job, when given. */
     trackingId: Type.Optional(Type.String()),
     detail: Type.Optional(Type.String()),
@@ -736,14 +744,16 @@ export const EnterpriseKnowledgeDocumentsRemoveParamsSchema = Type.Object(
 );
 
 /** "started" rather than "removed": stores commonly delete in the background. */
+export const EnterpriseKnowledgeDocumentsRemoveStatusSchema = Type.Union([
+  Type.Literal("started"),
+  Type.Literal("busy"),
+  Type.Literal("refused"),
+  ...KnowledgeDocumentsUnavailableStatuses,
+]);
+
 export const EnterpriseKnowledgeDocumentsRemoveResultSchema = Type.Object(
   {
-    status: Type.Union([
-      Type.Literal("started"),
-      Type.Literal("busy"),
-      Type.Literal("refused"),
-      ...KnowledgeDocumentsUnavailableStatuses,
-    ]),
+    status: EnterpriseKnowledgeDocumentsRemoveStatusSchema,
     detail: Type.Optional(Type.String()),
   },
   { additionalProperties: false },

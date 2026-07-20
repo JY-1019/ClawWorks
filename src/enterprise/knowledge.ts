@@ -191,11 +191,14 @@ async function withDocumentAdapter<TValue>(
   if (describeFoundation(foundationId).kind !== "local") {
     return { status: "read-only" };
   }
-  const pending = run(adapter);
-  if (!pending) {
-    return { status: "unsupported" };
-  }
   try {
+    // Invoke inside the try: an adapter that throws synchronously (rather than
+    // returning a rejected promise) would otherwise escape this catch entirely
+    // and hand the gateway a raw error that can carry urls and credentials.
+    const pending = run(adapter);
+    if (!pending) {
+      return { status: "unsupported" };
+    }
     return { status: "ok", ...(await pending) };
   } catch (err) {
     log.warn(
