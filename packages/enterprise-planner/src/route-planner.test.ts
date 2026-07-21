@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildPlanCandidateDigest,
   buildRouteCandidateDigest,
   countTreeNodes,
   resolveRouteNodeIds,
-  selectWorkflowRoute,
-  type RoutePlanner,
+  selectWorkflowPlan,
+  type WorkflowPlanner,
 } from "./route-planner.js";
 import type { PlannableNode, PlannableTree } from "./types.js";
 
@@ -28,8 +29,28 @@ const TREE: PlannableTree = {
   ]),
 };
 
-const plannerReturning = (routes: string[], rationale = "because"): RoutePlanner =>
-  vi.fn(async () => ({ routes, rationale }));
+/** The permissive catch-all every trigger falls back to. */
+const DEFAULT_TREE: PlannableTree = {
+  id: "clawworks.assist",
+  name: "General assistance",
+  root: node("assist", "Assist with the request", [node("assist.do", "Carry out the work")]),
+};
+
+const CANDIDATES = [TREE, DEFAULT_TREE];
+
+const plannerReturning = (
+  treeId: string | null,
+  routes: string[],
+  rationale = "because",
+): WorkflowPlanner => vi.fn(async () => ({ treeId, routes, rationale }));
+
+const planFor = (requestText: string, planner?: WorkflowPlanner) =>
+  selectWorkflowPlan({
+    trees: CANDIDATES,
+    defaultTree: DEFAULT_TREE,
+    requestText,
+    ...(planner ? { planner } : {}),
+  });
 
 describe("resolveRouteNodeIds", () => {
   it("expands a cut point into its subtree plus every ancestor", () => {
@@ -75,86 +96,144 @@ describe("buildRouteCandidateDigest", () => {
   });
 });
 
-describe("selectWorkflowRoute", () => {
-  it("plans only the chosen branch", async () => {
-    const selection = await selectWorkflowRoute({
-      tree: TREE,
-      requestText: "pay out the claim",
-      planner: plannerReturning(["ops.claims.payout"]),
-    });
-    expect(selection.source).toBe("planner");
-    expect(selection.routes).toEqual(["ops.claims.payout"]);
-    expect(selection.nodeIds && [...selection.nodeIds].toSorted()).toEqual([
+describe("buildPlanCandidateDigest", () => {
+  it("renders every candidate tree with its nodes", () => {
+    const digest = buildPlanCandidateDigest(CANDIDATES);
+    // The model picks the tree and the branch from ONE prompt, so both trees and
+    // both node lists have to be in it.
+    expect(digest).toContain("# acme.ops — Ops");
+    expect(digest).toContain("# clawworks.assist — General assistance");
+    expect(digest).toContain("    ops.claims.payout — Claim payout");
+    expect(digest).toContain("  assist.do — Carry out the work");
+  });
+});
+
+describe("selectWorkflowPlan", () => {
+  it("binds the work-map the model chose and plans only the chosen branch", async () => {
+    const selection = await planFor(
+      "pay out the claim",
+      plannerReturning("acme.ops", ["ops.claims.payout"]),
+    );
+    expect(selection.tree.id).toBe("acme.ops");
+    expect(selection.treeSource).toBe("planner");
+    expect(selection.route.source).toBe("planner");
+    expect(selection.route.nodeIds && [...selection.route.nodeIds].toSorted()).toEqual([
       "ops",
       "ops.claims",
       "ops.claims.payout",
     ]);
   });
 
-  it("falls back to the whole tree when no planner is wired", async () => {
-    const selection = await selectWorkflowRoute({ tree: TREE, requestText: "anything" });
-    expect(selection.source).toBe("whole-tree");
-    expect(selection.nodeIds).toBeNull();
+  it("honors an explicit 'no work-map applies' by binding the default tree", async () => {
+    const selection = await planFor("write me a python script", plannerReturning(null, []));
+    // This is the judgement we ASKED for, so it is honored: a coding question on a
+    // machine that also holds a finance work-map keeps working.
+    expect(selection.tree.id).toBe(DEFAULT_TREE.id);
+    expect(selection.treeSource).toBe("no-match");
   });
 
-  it("falls back to the whole tree when the planner throws", async () => {
-    const selection = await selectWorkflowRoute({
-      tree: TREE,
-      requestText: "x",
-      planner: vi.fn(async () => {
+  it("fails closed to a work-map when the planner throws", async () => {
+    const selection = await planFor(
+      "x",
+      vi.fn(async () => {
         throw new Error("provider down");
       }),
-    });
-    // A failed planner must never yield an EMPTY plan: that would be an
-    // ungoverned run. The whole tree is less precise, never less governed.
-    expect(selection.source).toBe("whole-tree");
-    expect(selection.nodeIds).toBeNull();
-    expect(selection.rationale).toContain("provider down");
+    );
+    // NOT the permissive default: a failure is not a judgement that nothing
+    // applies, and a hostile request can provoke one.
+    expect(selection.tree.id).toBe("acme.ops");
+    expect(selection.treeSource).toBe("fallback");
+    expect(selection.treeRationale).toContain("provider down");
+    // Failing closed also means planning the tree WHOLE, never an empty plan.
+    expect(selection.route.nodeIds).toBeNull();
   });
 
-  it("falls back to the whole tree when every route is a hallucination", async () => {
-    const selection = await selectWorkflowRoute({
-      tree: TREE,
-      requestText: "x",
-      planner: plannerReturning(["ops.nonexistent"]),
+  it("fails closed when the reply is unparseable prose", async () => {
+    // The runtime parser returns null for prose; that reaches here as "no opinion".
+    const selection = await planFor(
+      "x",
+      vi.fn(async () => null),
+    );
+    expect(selection.tree.id).toBe("acme.ops");
+    expect(selection.treeSource).toBe("fallback");
+  });
+
+  it("fails closed when the planner names a tree that does not exist", async () => {
+    const selection = await planFor("x", plannerReturning("acme.ghost", ["ops.claims"]));
+    expect(selection.tree.id).toBe("acme.ops");
+    expect(selection.treeSource).toBe("fallback");
+    expect(selection.treeRationale).toContain("acme.ghost");
+  });
+
+  it("binds the work-map, not the default, when no planner is wired", async () => {
+    const selection = await planFor("anything");
+    // Runtimes that wire no planner must not silently drop an operator's work-map;
+    // that is the hole keyword matching left open.
+    expect(selection.tree.id).toBe("acme.ops");
+    expect(selection.treeSource).toBe("fallback");
+    expect(selection.route.nodeIds).toBeNull();
+  });
+
+  it("binds the default tree when no planner is wired and no work-map exists", async () => {
+    const selection = await selectWorkflowPlan({
+      trees: [DEFAULT_TREE],
+      defaultTree: DEFAULT_TREE,
+      requestText: "anything",
     });
-    expect(selection.source).toBe("whole-tree");
-    expect(selection.nodeIds).toBeNull();
-    expect(selection.invalidRoutes).toEqual(["ops.nonexistent"]);
+    expect(selection.tree.id).toBe(DEFAULT_TREE.id);
+    expect(selection.treeSource).toBe("only-candidate");
+  });
+
+  it("makes no model call when the default tree is the only candidate", async () => {
+    const planner = plannerReturning("clawworks.assist", []);
+    const selection = await selectWorkflowPlan({
+      trees: [DEFAULT_TREE],
+      defaultTree: DEFAULT_TREE,
+      requestText: "hello",
+      planner,
+    });
+    // The stock install lands here on every run and must pay nothing for it.
+    expect(planner).not.toHaveBeenCalled();
+    expect(selection.treeSource).toBe("only-candidate");
+  });
+
+  it("plans the chosen tree whole when every route is a hallucination", async () => {
+    const selection = await planFor("x", plannerReturning("acme.ops", ["ops.nonexistent"]));
+    expect(selection.tree.id).toBe("acme.ops");
+    expect(selection.route.source).toBe("whole-tree");
+    expect(selection.route.invalidRoutes).toEqual(["ops.nonexistent"]);
   });
 
   it("keeps valid routes and reports the hallucinated ones alongside", async () => {
-    const selection = await selectWorkflowRoute({
-      tree: TREE,
-      requestText: "x",
-      planner: plannerReturning(["ops.risk.filing", "ops.ghost"]),
-    });
-    expect(selection.source).toBe("planner");
-    expect(selection.routes).toEqual(["ops.risk.filing"]);
-    expect(selection.invalidRoutes).toEqual(["ops.ghost"]);
+    const selection = await planFor(
+      "x",
+      plannerReturning("acme.ops", ["ops.risk.filing", "ops.ghost"]),
+    );
+    expect(selection.route.source).toBe("planner");
+    expect(selection.route.routes).toEqual(["ops.risk.filing"]);
+    expect(selection.route.invalidRoutes).toEqual(["ops.ghost"]);
   });
 
   it("reports selecting the root as whole-tree, not as a narrowing", async () => {
-    const selection = await selectWorkflowRoute({
-      tree: TREE,
-      requestText: "x",
-      planner: plannerReturning(["ops"]),
-    });
-    // Selecting the root covers every node; calling that a "route" would make the
-    // trace claim a selection that pruned nothing.
-    expect(selection.source).toBe("whole-tree");
-    expect(selection.nodeIds).toBeNull();
+    const selection = await planFor("x", plannerReturning("acme.ops", ["ops"]));
+    expect(selection.route.source).toBe("whole-tree");
+    expect(selection.route.nodeIds).toBeNull();
   });
 
-  it("does not call the planner for a tree too small to be worth planning", async () => {
-    const planner = plannerReturning(["tiny.a"]);
+  it("skips route planning for a chosen tree too small to be worth it", async () => {
     const tiny: PlannableTree = {
-      ...TREE,
       id: "acme.tiny",
+      name: "Tiny",
       root: node("tiny", "Tiny", [node("tiny.a", "A")]),
     };
-    const selection = await selectWorkflowRoute({ tree: tiny, requestText: "x", planner });
-    expect(planner).not.toHaveBeenCalled();
-    expect(selection.source).toBe("whole-tree");
+    const selection = await selectWorkflowPlan({
+      trees: [tiny, DEFAULT_TREE],
+      defaultTree: DEFAULT_TREE,
+      requestText: "x",
+      planner: plannerReturning("acme.tiny", ["tiny.a"]),
+    });
+    expect(selection.tree.id).toBe("acme.tiny");
+    expect(selection.treeSource).toBe("planner");
+    expect(selection.route.source).toBe("whole-tree");
   });
 });

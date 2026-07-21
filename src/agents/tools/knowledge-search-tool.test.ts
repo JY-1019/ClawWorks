@@ -18,7 +18,7 @@ function activeRun(): EnterpriseActiveRun {
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "help",
     nodes: [{ nodeId: "support", parentId: null, seq: 0, title: "Support", ontology: {} }],
     activeNodeId: "support",

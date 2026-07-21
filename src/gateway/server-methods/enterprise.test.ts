@@ -41,7 +41,7 @@ function makePlan(runId: string, activeNodeId: string): EnterpriseRunPlan {
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "keywords",
+    matchedBy: "planner",
     requestSummary: "help with refund",
     nodes: [
       { nodeId: "support", parentId: null, seq: 0, title: "Support", ontology: {} },
@@ -167,7 +167,7 @@ describe("enterprise gateway methods", () => {
       executionId: "exec-gw-1",
       runId: "run-gw-1",
       treeName: "Support",
-      matchedBy: "keywords",
+      matchedBy: "planner",
       status: "completed",
       activeNodeId: "support.triage",
       // Both executions share the runId, so the sibling count is 2.

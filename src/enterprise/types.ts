@@ -2,6 +2,9 @@
  * ClawWorks enterprise domain contracts: workflow trees, per-node ontology
  * bindings, governance policies, and per-run execution plans.
  */
+// Type-only: the planner package decides which tree governs a run, so it owns
+// the vocabulary for how that choice was reached.
+import type { WorkflowTreeSource } from "@openclaw/enterprise-planner";
 
 /** Enterprise execution mode resolved from config. Default: "enforce". */
 export type EnterpriseMode = "enforce" | "observe" | "off";
@@ -312,8 +315,18 @@ export type EnterpriseRunPlan = {
   treeId: EnterpriseId;
   treeVersion: string;
   treeName: string;
-  /** How the tree was chosen for this request. */
-  matchedBy: "keywords" | "trigger" | "default";
+  /**
+   * How the tree was chosen for this request. "fallback" is the one that needs
+   * reading: the planner could not be trusted to choose (unreachable, or an
+   * unusable reply), so a work-map was bound rather than the permissive default.
+   */
+  matchedBy: WorkflowTreeSource;
+  /**
+   * Why the tree was chosen, when the model chose it. Model text about the
+   * request, so it is redacted and bounded like the route rationale before it is
+   * persisted.
+   */
+  treeRationale?: string;
   /**
    * Content hash of the tree DEFINITION this run planned against.
    *

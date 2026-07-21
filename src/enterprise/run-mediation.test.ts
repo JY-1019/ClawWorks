@@ -125,7 +125,7 @@ describe("beginEnterpriseRun", () => {
       });
       const planner = vi.fn(async () => {
         await gate;
-        return { routes: ["big.a"], rationale: "a" };
+        return { treeId: "acme.big", routes: ["big.a"], rationale: "a" };
       });
       const runId = nextRunId();
       const first = beginEnterpriseRun({ runId, prompt: "bigtest please", routePlanner: planner });
@@ -317,7 +317,7 @@ describe("beginEnterpriseRun", () => {
         ],
       },
     };
-    const planner = vi.fn(async () => ({ routes: ["x"], rationale: "should not run" }));
+    const planner = vi.fn(async () => ({ treeId: null, routes: [], rationale: "should not run" }));
     const runId = nextRunId();
     const mediation = await beginEnterpriseRun({
       runId,
@@ -332,7 +332,7 @@ describe("beginEnterpriseRun", () => {
   });
 
   it("still plans a route in observe mode when a policy would deny (nothing is blocked)", async () => {
-    const planner = vi.fn(async () => ({ routes: [], rationale: "no narrowing" }));
+    const planner = vi.fn(async () => ({ treeId: null, routes: [], rationale: "no narrowing" }));
     const runId = nextRunId();
     const mediation = await beginEnterpriseRun({
       runId,
@@ -358,7 +358,7 @@ describe("beginEnterpriseRun", () => {
     endEnterpriseRun({ runId, status: "completed" });
   });
 
-  it("selects imported trees over built-ins when their keywords match", async () => {
+  it("binds an imported work-map over the permissive default, with no planner wired", async () => {
     const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
     const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
     const imported = importWorkflowTreeContent({
@@ -380,7 +380,9 @@ describe("beginEnterpriseRun", () => {
       expect(mediation.kind).toBe("mediated");
       if (mediation.kind === "mediated") {
         expect(mediation.plan.treeId).toBe("acme.billing");
-        expect(mediation.plan.matchedBy).toBe("keywords");
+        // No planner is wired here, so selection fails closed onto the work-map
+        // rather than leaving the run on the guidance-free default.
+        expect(mediation.plan.matchedBy).toBe("fallback");
       }
       const verdict = evaluateEnterpriseToolCall({ runId, toolName: "exec" });
       expect(verdict?.blocked).toBe(true);

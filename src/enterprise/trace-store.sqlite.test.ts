@@ -28,7 +28,7 @@ function makePlan(runId: string): EnterpriseRunPlan {
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "keywords",
+    matchedBy: "planner",
     requestSummary: "help with refund",
     nodes: [
       { nodeId: "support", parentId: null, seq: 0, title: "Support", ontology: {} },

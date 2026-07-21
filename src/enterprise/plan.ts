@@ -1,12 +1,17 @@
 /**
- * Workflow subtree selection and per-run plan construction. Selection is the
- * slice-1 request-decomposition placeholder: trees advertise keyword/trigger
- * match hints and the highest-scoring tree wins deterministically.
+ * Workflow candidate collection and per-run plan construction.
+ *
+ * Trees advertise the trigger classes they serve, which is filtered here and
+ * stays deterministic. WHICH of the surviving trees governs a request is a
+ * semantic judgement made by @openclaw/enterprise-planner, not a match hint:
+ * keyword matching used to decide it and failed both ways — a request phrased
+ * without a tree's keywords escaped its governance, and an unrelated request
+ * that happened to contain one was locked into it.
  */
 import { createHash } from "node:crypto";
 import { countTreeNodes, type EnterpriseRouteSelection } from "@openclaw/enterprise-planner";
 import { redactSecrets } from "../logging/redact.js";
-import { BUILTIN_ASSIST_TREE } from "./builtin-trees.js";
+import { BUILTIN_ASSIST_TREE, BUILTIN_SYSTEM_TREE } from "./builtin-trees.js";
 import type {
   EnterpriseRoutePlan,
   EnterpriseMode,
@@ -40,70 +45,53 @@ export function classifyWorkflowTrigger(params: {
   }
 }
 
-function scoreKeywords(requestText: string, keywords: readonly string[] | undefined): number {
-  if (!keywords || keywords.length === 0) {
-    return 0;
-  }
-  const haystack = requestText.toLowerCase();
-  let hits = 0;
-  for (const keyword of keywords) {
-    if (haystack.includes(keyword.toLowerCase())) {
-      hits += 1;
-    }
-  }
-  return hits;
-}
-
-export type WorkflowTreeSelection = {
-  tree: WorkflowTreeDefinition;
-  matchedBy: EnterpriseRunPlan["matchedBy"];
+export type WorkflowTreeCandidates = {
+  /**
+   * Trees that could govern this trigger, ordered work-maps first (priority
+   * desc, then id) with the catch-all default last. The order is the contract
+   * the planner package fails closed on: it binds the FIRST candidate when the
+   * model cannot be trusted to choose.
+   */
+  candidates: readonly WorkflowTreeDefinition[];
+  /** The catch-all for this trigger; governs when no work-map applies. */
+  defaultTree: WorkflowTreeDefinition;
 };
 
 /**
- * Pick the tree for a request. Keyword hits beat trigger-only matches; ties
- * break on priority then tree id so selection stays deterministic.
+ * Collect the trees a request could bind to.
+ *
+ * Trigger classing stays DETERMINISTIC and is not the model's to decide: a cron
+ * or heartbeat run must never bind a user-facing work-map, whatever its text
+ * says. Within a trigger class the choice is semantic, so this returns every
+ * candidate and lets the planner pick (see selectWorkflowPlan).
+ *
+ * The default is resolved from the provided list first, so an imported tree that
+ * reuses the built-in id keeps governing runs no work-map claims — that is the
+ * seam an operator uses to make unmatched runs non-permissive.
  */
-export function selectWorkflowTree(params: {
-  requestText: string;
+export function collectWorkflowTreeCandidates(params: {
   trigger: WorkflowTreeTrigger;
   trees: readonly WorkflowTreeDefinition[];
-}): WorkflowTreeSelection {
-  let best: { tree: WorkflowTreeDefinition; keywordHits: number; priority: number } | null = null;
-  for (const tree of params.trees) {
+}): WorkflowTreeCandidates {
+  const builtinDefault = params.trigger === "system" ? BUILTIN_SYSTEM_TREE : BUILTIN_ASSIST_TREE;
+  const defaultTree = params.trees.find((tree) => tree.id === builtinDefault.id) ?? builtinDefault;
+  const matching = params.trees.filter((tree) => {
     // Omitted or empty trigger lists mean user-triggered (the schema rejects
     // empty arrays; this also covers programmatically-built trees).
     const triggers = tree.match?.triggers?.length ? tree.match.triggers : ["user"];
-    if (!triggers.includes(params.trigger)) {
-      continue;
-    }
-    const keywordHits = scoreKeywords(params.requestText, tree.match?.keywords);
-    if (tree.match?.keywords?.length && keywordHits === 0) {
-      // Keyword-scoped trees only apply when the request mentions them.
-      continue;
-    }
-    const priority = tree.match?.priority ?? 0;
-    if (
-      !best ||
-      keywordHits > best.keywordHits ||
-      (keywordHits === best.keywordHits && priority > best.priority) ||
-      (keywordHits === best.keywordHits && priority === best.priority && tree.id < best.tree.id)
-    ) {
-      best = { tree, keywordHits, priority };
-    }
+    return triggers.includes(params.trigger);
+  });
+  const candidates = matching.toSorted((left, right) => {
+    const byPriority = (right.match?.priority ?? 0) - (left.match?.priority ?? 0);
+    return byPriority !== 0 ? byPriority : left.id.localeCompare(right.id);
+  });
+  // The default must always be selectable, even when it declares no trigger that
+  // matches (or was dropped from the registry): enterprise mode never leaves a
+  // run without a bound tree.
+  if (!candidates.some((tree) => tree.id === defaultTree.id)) {
+    candidates.push(defaultTree);
   }
-  if (best) {
-    return {
-      tree: best.tree,
-      matchedBy: best.keywordHits > 0 ? "keywords" : "trigger",
-    };
-  }
-  // No tree matched the trigger class: fall back to the default tree so
-  // enterprise mode never leaves a run without a bound tree. The fallback is
-  // resolved from the provided list first so imported overrides of the
-  // built-in default keep governing unmatched runs.
-  const fallback =
-    params.trees.find((tree) => tree.id === BUILTIN_ASSIST_TREE.id) ?? BUILTIN_ASSIST_TREE;
-  return { tree: fallback, matchedBy: "default" };
+  return { candidates, defaultTree };
 }
 
 /**
@@ -179,30 +167,36 @@ export function hashWorkflowTree(tree: WorkflowTreeDefinition): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-/** Build the prepared execution plan for one enterprise-mode run. */
+/**
+ * Build the prepared execution plan for one enterprise-mode run.
+ *
+ * The governing tree is passed IN, never re-derived here: selection is a model
+ * judgement now, so a second derivation could disagree with the one the run was
+ * governed and prompted against.
+ */
 export function buildEnterpriseRunPlan(params: {
   runId: string;
   requestText: string;
-  trigger: WorkflowTreeTrigger;
   mode: Exclude<EnterpriseMode, "off">;
-  trees: readonly WorkflowTreeDefinition[];
+  /** The governing tree, already chosen. */
+  tree: WorkflowTreeDefinition;
+  /** How it was chosen; recorded on the plan for audit. */
+  matchedBy: EnterpriseRunPlan["matchedBy"];
+  /** Why it was chosen. Model text when the model chose, so it is redacted. */
+  treeRationale?: string;
   /** Route through the chosen tree. Omit to plan the whole subtree. */
   route?: EnterpriseRouteSelection;
   now?: number;
 }): EnterpriseRunPlan {
-  const selection = selectWorkflowTree({
-    requestText: params.requestText,
-    trigger: params.trigger,
-    trees: params.trees,
-  });
-  const totalNodes = countTreeNodes(selection.tree);
+  const tree = params.tree;
+  const totalNodes = countTreeNodes(tree);
   // A route resolved against a DIFFERENT tree cannot prune this one; ignoring it
   // is the safe read (plan everything) rather than planning an empty run.
   const routeNodeIds =
-    params.route?.nodeIds && params.route.nodeIds.has(selection.tree.root.id)
+    params.route?.nodeIds && params.route.nodeIds.has(tree.root.id)
       ? params.route.nodeIds
       : undefined;
-  const nodes = flattenPlanNodes(selection.tree.root, routeNodeIds);
+  const nodes = flattenPlanNodes(tree.root, routeNodeIds);
   const route: EnterpriseRoutePlan | undefined = params.route
     ? {
         // Route ids are safe: they were resolved against the tree, so they can
@@ -223,11 +217,14 @@ export function buildEnterpriseRunPlan(params: {
     : undefined;
   return {
     runId: params.runId,
-    treeId: selection.tree.id,
-    treeVersion: selection.tree.version,
-    treeName: selection.tree.name,
-    matchedBy: selection.matchedBy,
-    treeHash: hashWorkflowTree(selection.tree),
+    treeId: tree.id,
+    treeVersion: tree.version,
+    treeName: tree.name,
+    matchedBy: params.matchedBy,
+    // Model text about the request, so it gets the same redaction as the route
+    // rationale: it is persisted to the trace and rendered to operators.
+    ...(params.treeRationale ? { treeRationale: summarizeModelText(params.treeRationale) } : {}),
+    treeHash: hashWorkflowTree(tree),
     requestSummary: summarizeRequestText(params.requestText),
     nodes,
     ...(route ? { route } : {}),

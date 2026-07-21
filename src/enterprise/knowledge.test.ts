@@ -38,7 +38,7 @@ function run(opts: {
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "help",
     nodes: [
       {
@@ -171,7 +171,7 @@ describe("resolveEnterpriseKnowledge", () => {
       treeId: "acme.support",
       treeVersion: "1.0.0",
       treeName: "Support",
-      matchedBy: "trigger",
+      matchedBy: "planner",
       requestSummary: "help",
       nodes: [
         { nodeId: "support", parentId: null, seq: 0, title: "Support", ontology: { audit: true } },

@@ -9,11 +9,11 @@ import {
   buildEnterprisePromptSection,
   buildEnterpriseRunPlan,
   classifyWorkflowTrigger,
+  collectWorkflowTreeCandidates,
   enterpriseStepSequence,
   ontologyHasGuidance,
   planTracksSteps,
   resolvePlanNodePath,
-  selectWorkflowTree,
 } from "./plan.js";
 import { validateWorkflowTreeDefinition } from "./schema.js";
 import type { WorkflowTreeDefinition } from "./types.js";
@@ -54,71 +54,53 @@ describe("classifyWorkflowTrigger", () => {
   });
 });
 
-describe("selectWorkflowTree", () => {
+describe("collectWorkflowTreeCandidates", () => {
   const trees = [BUILTIN_ASSIST_TREE, BUILTIN_SYSTEM_TREE, REFUND_TREE];
 
-  it("prefers keyword matches over trigger-only trees", () => {
-    const selection = selectWorkflowTree({
-      requestText: "I want a refund for my order",
-      trigger: "user",
-      trees,
-    });
-    expect(selection.tree.id).toBe("acme.refunds");
-    expect(selection.matchedBy).toBe("keywords");
+  it("offers every tree that serves the trigger, work-maps before the default", () => {
+    const { candidates, defaultTree } = collectWorkflowTreeCandidates({ trigger: "user", trees });
+    // Order is the contract the planner fails closed on: the first candidate is
+    // the work-map it binds when the model cannot be trusted to choose.
+    expect(candidates.map((tree) => tree.id)).toEqual(["acme.refunds", "clawworks.assist"]);
+    expect(defaultTree.id).toBe("clawworks.assist");
   });
 
-  it("skips keyword-scoped trees when nothing matches", () => {
-    const selection = selectWorkflowTree({
-      requestText: "what is the weather like",
-      trigger: "user",
-      trees,
-    });
-    expect(selection.tree.id).toBe("clawworks.assist");
-    expect(selection.matchedBy).toBe("trigger");
+  it("keeps trigger classing deterministic: system runs never see user work-maps", () => {
+    const { candidates, defaultTree } = collectWorkflowTreeCandidates({ trigger: "system", trees });
+    expect(candidates.map((tree) => tree.id)).toEqual(["clawworks.system"]);
+    expect(defaultTree.id).toBe("clawworks.system");
   });
 
-  it("routes system triggers to the system tree", () => {
-    const selection = selectWorkflowTree({ requestText: "tick", trigger: "system", trees });
-    expect(selection.tree.id).toBe("clawworks.system");
-  });
-
-  it("falls back to the built-in default when no tree matches the trigger", () => {
-    const selection = selectWorkflowTree({
-      requestText: "hello",
+  it("always offers the default, even when no tree declares the trigger", () => {
+    const { candidates, defaultTree } = collectWorkflowTreeCandidates({
       trigger: "system",
       trees: [REFUND_TREE],
     });
-    expect(selection.tree.id).toBe("clawworks.assist");
-    expect(selection.matchedBy).toBe("default");
+    expect(candidates.map((tree) => tree.id)).toEqual(["clawworks.system"]);
+    expect(defaultTree.id).toBe("clawworks.system");
   });
 
-  it("falls back to an imported override of the default tree, not the static built-in", () => {
+  it("uses an imported override of the default tree, not the static built-in", () => {
     const assistOverride: WorkflowTreeDefinition = {
       ...BUILTIN_ASSIST_TREE,
       version: "9.9.9",
-      match: { keywords: ["special"], triggers: ["user"] },
     };
-    const selection = selectWorkflowTree({
-      requestText: "hello",
+    const { defaultTree } = collectWorkflowTreeCandidates({
       trigger: "user",
       trees: [assistOverride, BUILTIN_SYSTEM_TREE],
     });
-    expect(selection.matchedBy).toBe("default");
-    expect(selection.tree.version).toBe("9.9.9");
+    // This is the seam an operator uses to make unmatched runs non-permissive.
+    expect(defaultTree.version).toBe("9.9.9");
   });
 
   it("treats an empty trigger list like user-triggered (programmatic trees)", () => {
     const tree: WorkflowTreeDefinition = {
       ...REFUND_TREE,
       id: "acme.empty-triggers",
-      match: { keywords: ["refund"], triggers: [] },
+      match: { triggers: [] },
     };
-    const selection = selectWorkflowTree({
-      requestText: "refund please",
-      trigger: "user",
-      trees: [tree],
-    });
-    expect(selection.tree.id).toBe("acme.empty-triggers");
+    const { candidates } = collectWorkflowTreeCandidates({ trigger: "user", trees: [tree] });
+    expect(candidates.map((candidate) => candidate.id)).toContain("acme.empty-triggers");
   });
 });
 
@@ -132,9 +114,9 @@ describe("built-in support example tree", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "example",
       requestText: "clawworks support example: resolve ticket #4471",
-      trigger: "user",
       mode: "enforce",
-      trees: BUILTIN_WORKFLOW_TREES,
+      tree: BUILTIN_SUPPORT_EXAMPLE_TREE,
+      matchedBy: "planner",
     });
     expect(plan.treeId).toBe("clawworks.support");
     // More than one leaf (so a route can narrow) and every leaf carries its own
@@ -147,31 +129,6 @@ describe("built-in support example tree", () => {
     expect(leaves.every((leaf) => ontologyHasGuidance(leaf.ontology))).toBe(true);
     expect(planTracksSteps(plan)).toBe(true);
   });
-
-  it("binds only on its distinctive opt-in phrase, never on normal traffic", () => {
-    const onDemo = selectWorkflowTree({
-      requestText: "clawworks support example: resolve ticket #12",
-      trigger: "user",
-      trees: BUILTIN_WORKFLOW_TREES,
-    });
-    expect(onDemo.tree.id).toBe("clawworks.support");
-    expect(onDemo.matchedBy).toBe("keywords");
-
-    // The example restricts tools per node, so it must NOT hijack real requests that
-    // merely mention support terms — those keep stock behavior on the assist tree.
-    for (const requestText of [
-      "write a python script to sort a list",
-      "write code for an order issue tracker",
-      "help me with a support ticket for my refund request",
-    ]) {
-      const selection = selectWorkflowTree({
-        requestText,
-        trigger: "user",
-        trees: BUILTIN_WORKFLOW_TREES,
-      });
-      expect(selection.tree.id).toBe("clawworks.assist");
-    }
-  });
 });
 
 describe("buildEnterpriseRunPlan", () => {
@@ -179,9 +136,9 @@ describe("buildEnterpriseRunPlan", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-1",
       requestText: "please process my refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [BUILTIN_ASSIST_TREE, REFUND_TREE],
+      tree: REFUND_TREE,
+      matchedBy: "planner",
       now: 1000,
     });
     expect(plan.treeId).toBe("acme.refunds");
@@ -201,9 +158,9 @@ describe("buildEnterpriseRunPlan", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-2",
       requestText: `a  b\n\nc ${"x".repeat(600)}`,
-      trigger: "user",
       mode: "enforce",
-      trees: [BUILTIN_ASSIST_TREE],
+      tree: BUILTIN_ASSIST_TREE,
+      matchedBy: "only-candidate",
     });
     expect(plan.requestSummary.startsWith("a b c ")).toBe(true);
     expect(plan.requestSummary.length).toBeLessThanOrEqual(300);
@@ -236,9 +193,9 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-route",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [tree],
+      tree,
+      matchedBy: "planner",
       route: {
         routes: ["refunds.payout"],
         nodeIds: new Set(["refunds", "refunds.payout", "refunds.payout.issue"]),
@@ -272,9 +229,9 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-redact",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [REFUND_TREE],
+      tree: REFUND_TREE,
+      matchedBy: "planner",
       route: {
         routes: [],
         nodeIds: null,
@@ -290,9 +247,9 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-whole",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [REFUND_TREE],
+      tree: REFUND_TREE,
+      matchedBy: "planner",
       route: {
         routes: [],
         nodeIds: null,
@@ -311,9 +268,9 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-foreign",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [REFUND_TREE],
+      tree: REFUND_TREE,
+      matchedBy: "planner",
       route: {
         routes: ["other.tree.node"],
         nodeIds: new Set(["other.tree.node"]),
@@ -333,9 +290,9 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-3",
       requestText: "hello",
-      trigger: "user",
       mode: "enforce",
-      trees: [BUILTIN_ASSIST_TREE],
+      tree: BUILTIN_ASSIST_TREE,
+      matchedBy: "only-candidate",
     });
     expect(buildEnterprisePromptSection(plan)).toBe("");
   });
@@ -348,51 +305,49 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-onto",
       requestText: "triage",
-      trigger: "user",
       mode: "enforce",
-      trees: [
-        {
-          schema: "clawworks.workflow-tree",
-          schemaVersion: 1,
-          id: "acme.claims",
-          version: "1.0.0",
-          name: "Claims",
-          match: { triggers: ["user"], priority: 50 },
-          root: {
-            id: "claims",
-            title: "Handle a claim",
-            ontology: {
-              entities: [
-                {
-                  id: "claim",
-                  properties: [
-                    { id: "claim-id", type: "id", primaryKey: true },
-                    { id: "fraud-score", type: "number" },
-                  ],
-                },
-                { id: "policy", properties: [{ id: "policy-id", type: "id", primaryKey: true }] },
-              ],
-              relationships: [
-                {
-                  id: "claim-against-policy",
-                  from: "claim",
-                  to: "policy",
-                  cardinality: "many-to-one",
-                },
-              ],
-              functions: [
-                {
-                  id: "band",
-                  entity: "claim",
-                  expression: "$fraud-score >= 80 ? 'refer' : 'auto'",
-                  returns: "string",
-                },
-              ],
-            },
-            children: [{ id: "claims.triage", title: "Triage" }],
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.claims",
+        version: "1.0.0",
+        name: "Claims",
+        match: { triggers: ["user"], priority: 50 },
+        root: {
+          id: "claims",
+          title: "Handle a claim",
+          ontology: {
+            entities: [
+              {
+                id: "claim",
+                properties: [
+                  { id: "claim-id", type: "id", primaryKey: true },
+                  { id: "fraud-score", type: "number" },
+                ],
+              },
+              { id: "policy", properties: [{ id: "policy-id", type: "id", primaryKey: true }] },
+            ],
+            relationships: [
+              {
+                id: "claim-against-policy",
+                from: "claim",
+                to: "policy",
+                cardinality: "many-to-one",
+              },
+            ],
+            functions: [
+              {
+                id: "band",
+                entity: "claim",
+                expression: "$fraud-score >= 80 ? 'refer' : 'auto'",
+                returns: "string",
+              },
+            ],
           },
+          children: [{ id: "claims.triage", title: "Triage" }],
         },
-      ],
+      },
+      matchedBy: "planner",
     });
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("Object types:");
@@ -419,27 +374,25 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-compat",
       requestText: "x",
-      trigger: "user",
       mode: "enforce",
-      trees: [
-        {
-          schema: "clawworks.workflow-tree",
-          schemaVersion: 1,
-          id: "acme.compat",
-          version: "1.0.0",
-          name: "Compat",
-          match: { triggers: ["user"], priority: 50 },
-          root: {
-            id: "compat",
-            title: "Compat step",
-            ontology: {
-              relationships: [{ id: "a-b", from: "a", to: "b" }],
-              expectedOutput: "Something.",
-            },
-            children: [{ id: "compat.leaf", title: "Leaf" }],
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.compat",
+        version: "1.0.0",
+        name: "Compat",
+        match: { triggers: ["user"], priority: 50 },
+        root: {
+          id: "compat",
+          title: "Compat step",
+          ontology: {
+            relationships: [{ id: "a-b", from: "a", to: "b" }],
+            expectedOutput: "Something.",
           },
+          children: [{ id: "compat.leaf", title: "Leaf" }],
         },
-      ],
+      },
+      matchedBy: "planner",
     });
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("Expected output: Something.");
@@ -455,9 +408,9 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-4",
       requestText: "refund please",
-      trigger: "user",
       mode: "enforce",
-      trees: [REFUND_TREE],
+      tree: REFUND_TREE,
+      matchedBy: "planner",
     });
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("## Enterprise workflow");
@@ -517,9 +470,9 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-leaf",
       requestText: "refund please",
-      trigger: "user",
       mode: "enforce",
-      trees: [tree],
+      tree,
+      matchedBy: "planner",
     });
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("1. Verify the purchase");
@@ -539,9 +492,9 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-6",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [tree],
+      tree,
+      matchedBy: "planner",
     });
     expect(buildEnterprisePromptSection(plan)).toContain(
       "Knowledge sources: acme.policy-kb, acme.support-kb",
@@ -579,9 +532,9 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-effects",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [tree],
+      tree,
+      matchedBy: "planner",
     });
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("requires: The claim must already be approved.");
@@ -609,9 +562,9 @@ describe("buildEnterprisePromptSection", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-5",
       requestText: "refund",
-      trigger: "user",
       mode: "enforce",
-      trees: [tree],
+      tree,
+      matchedBy: "planner",
     });
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("Actions:");
@@ -650,9 +603,9 @@ function planFor(tree: WorkflowTreeDefinition, keywords = "deploy") {
   return buildEnterpriseRunPlan({
     runId: "run-path",
     requestText: keywords,
-    trigger: "user",
     mode: "enforce",
-    trees: [tree],
+    tree,
+    matchedBy: "planner",
   });
 }
 
@@ -683,19 +636,17 @@ describe("enterpriseStepSequence", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-single",
       requestText: "hello",
-      trigger: "user",
       mode: "enforce",
-      trees: [
-        {
-          schema: "clawworks.workflow-tree",
-          schemaVersion: 1,
-          id: "acme.single",
-          version: "1.0.0",
-          name: "Single",
-          match: { keywords: ["hello"], triggers: ["user"] },
-          root: { id: "solo", title: "Do it", ontology: { allowedTools: ["message"] } },
-        },
-      ],
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.single",
+        version: "1.0.0",
+        name: "Single",
+        match: { keywords: ["hello"], triggers: ["user"] },
+        root: { id: "solo", title: "Do it", ontology: { allowedTools: ["message"] } },
+      },
+      matchedBy: "planner",
     });
     expect(enterpriseStepSequence(plan)).toEqual(["solo"]);
   });

@@ -27,7 +27,7 @@ function governedRun(runId: string, sink?: (event: SinkEvent) => void): Enterpri
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "help",
     nodes: [
       {
@@ -54,7 +54,7 @@ function guidanceFreeRun(runId: string): EnterpriseActiveRun {
     treeId: "clawworks.assist",
     treeVersion: "1.0.0",
     treeName: "Assist",
-    matchedBy: "default",
+    matchedBy: "no-match",
     requestSummary: "hi",
     nodes: [
       { nodeId: "assist", parentId: null, seq: 0, title: "Assist", ontology: {} },

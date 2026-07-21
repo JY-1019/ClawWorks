@@ -175,7 +175,7 @@ describeControlUiE2e("Control UI enterprise route card overflow", () => {
       treeHash,
       mode: "enforce",
       status: "completed",
-      matchedBy: "keyword",
+      matchedBy: "planner",
       requestSummary: "settle the claim",
       activeNodeId: "root.d1.s0.l0",
       route: {

@@ -463,7 +463,7 @@ describe("governance sees the action the model actually invoked", () => {
     treeId: TREE_ID,
     treeVersion: "1.0.0",
     treeName: "Actions",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "x",
     nodes: [node],
     activeNodeId: "root.work",

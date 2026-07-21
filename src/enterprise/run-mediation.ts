@@ -10,9 +10,9 @@
  */
 import { randomUUID } from "node:crypto";
 import {
-  selectWorkflowRoute,
+  selectWorkflowPlan,
   type EnterpriseRouteSelection,
-  type RoutePlanner,
+  type WorkflowPlanner,
 } from "@openclaw/enterprise-planner";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -22,7 +22,7 @@ import {
   buildEnterprisePromptSection,
   buildEnterpriseRunPlan,
   classifyWorkflowTrigger,
-  selectWorkflowTree,
+  collectWorkflowTreeCandidates,
 } from "./plan.js";
 import {
   registerEnterpriseActiveRun,
@@ -37,7 +37,12 @@ import {
   updateEnterpriseRunPlan,
 } from "./trace-store.sqlite.js";
 import { getWorkflowTreeRegistrySnapshot } from "./tree-registry.js";
-import type { EnterpriseRunEventKind, EnterpriseRunPlan, EnterpriseRunStatus } from "./types.js";
+import type {
+  EnterpriseRunEventKind,
+  EnterpriseRunPlan,
+  EnterpriseRunStatus,
+  WorkflowTreeDefinition,
+} from "./types.js";
 
 const log = createSubsystemLogger("enterprise");
 
@@ -70,8 +75,11 @@ export type BeginEnterpriseRunParams = {
   sessionKey?: string;
   agentId?: string;
   config?: OpenClawConfig;
-  /** Picks the route through the selected tree. Omit to plan the whole subtree. */
-  routePlanner?: RoutePlanner;
+  /**
+   * Picks the governing tree and the route through it. Omit to bind the trigger's
+   * default tree and plan it whole.
+   */
+  routePlanner?: WorkflowPlanner;
   /** Cancels the planning call when the agent run is aborted. */
   signal?: AbortSignal;
 };
@@ -138,45 +146,61 @@ async function beginEnterpriseRunInternal(
     ...(params.trigger !== undefined ? { trigger: params.trigger } : {}),
     ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
   });
-  // Route selection needs the tree first, so resolve it here and hand the same
-  // selection to the plan builder (which re-derives it deterministically).
-  const selection = selectWorkflowTree({ requestText: params.prompt, trigger, trees });
+  const { candidates, defaultTree } = collectWorkflowTreeCandidates({ trigger, trees });
   const policies = resolveGovernancePolicies(params.config);
 
-  const buildPlan = (route?: EnterpriseRouteSelection) =>
+  const buildPlanFor = (chosen: {
+    tree: WorkflowTreeDefinition;
+    matchedBy: EnterpriseRunPlan["matchedBy"];
+    treeRationale?: string;
+    route?: EnterpriseRouteSelection;
+  }) =>
     buildEnterpriseRunPlan({
       runId: params.runId,
       requestText: params.prompt,
-      trigger,
       mode,
-      trees,
-      ...(route ? { route } : {}),
+      ...chosen,
     });
 
-  // Evaluate run-start governance BEFORE any model contact. Route planning sends
-  // the request text to a provider, so a run a policy denies must be blocked
-  // first — otherwise a denied prompt still leaves the machine, and the block is
-  // delayed behind a model round-trip. Governance is evaluated on the unrouted
-  // plan; run-level policies select on tree/node, which pruning cannot add to.
-  const unroutedPlan = buildPlan();
-  const startDecision = evaluateRunStartGovernance({ plan: unroutedPlan, policies });
+  // Evaluate run-start governance BEFORE any model contact. Planning sends the
+  // request text to a provider, so a run a policy denies must be blocked first —
+  // otherwise a denied prompt still leaves the machine, and the block is delayed
+  // behind a model round-trip.
+  //
+  // Choosing the tree is ITSELF a model call now, so this check can no longer be
+  // scoped to "the" tree — it has to cover every tree the request could bind to.
+  // If any candidate denies the run at start, nothing is sent and selection stays
+  // deterministic. The decision that actually blocks and gets traced is still the
+  // one for the tree finally bound, evaluated below on the real plan.
+  const anyCandidateDenied = candidates.some((tree) => {
+    const decision = evaluateRunStartGovernance({
+      plan: buildPlanFor({ tree, matchedBy: "fallback" }),
+      policies,
+    });
+    return decision.effect === "deny" || decision.effect === "require_approval";
+  });
+  // Only consult (and trace) the planner when one is actually wired. With no
+  // planner there is no decision to record, and emitting a route event would make
+  // every stock run write trace rows it never wrote before.
+  const plannerConsulted =
+    Boolean(params.routePlanner) && !(anyCandidateDenied && mode === "enforce");
+  const selection = await selectWorkflowPlan({
+    trees: candidates,
+    defaultTree,
+    requestText: params.prompt,
+    ...(plannerConsulted && params.routePlanner ? { planner: params.routePlanner } : {}),
+    ...(params.signal ? { signal: params.signal } : {}),
+  });
+  const plan = buildPlanFor({
+    tree: selection.tree,
+    matchedBy: selection.treeSource,
+    treeRationale: selection.treeRationale,
+    ...(plannerConsulted ? { route: selection.route } : {}),
+  });
+  const startDecision = evaluateRunStartGovernance({ plan, policies });
   const runStartDenied =
     startDecision.effect === "deny" || startDecision.effect === "require_approval";
   const skipPlanning = runStartDenied && mode === "enforce";
-
-  // Only run (and trace) route selection when a planner is actually wired. With
-  // no planner there is no decision to record, and emitting a route event would
-  // make every stock run write trace rows it never wrote before.
-  const route =
-    params.routePlanner && !skipPlanning
-      ? await selectWorkflowRoute({
-          tree: selection.tree,
-          requestText: params.prompt,
-          planner: params.routePlanner,
-          ...(params.signal ? { signal: params.signal } : {}),
-        })
-      : undefined;
-  const plan = route ? buildPlan(route) : unroutedPlan;
 
   // Route planning can await a provider. If the turn was cancelled while it was
   // in flight, the runner is already tearing the run down — persisting

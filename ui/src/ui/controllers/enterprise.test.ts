@@ -111,7 +111,7 @@ function runDetail(executionId: string, runId: string, activeNodeId: string) {
     treeName: "Support",
     mode: "enforce",
     status: "completed" as const,
-    matchedBy: "keywords",
+    matchedBy: "planner",
     requestSummary: "help",
     activeNodeId,
     nodes: [],

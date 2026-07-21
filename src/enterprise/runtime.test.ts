@@ -27,7 +27,7 @@ function makeRun(overrides: {
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "help",
     nodes: [
       {
@@ -280,7 +280,7 @@ function makeGovernedRun(
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "help",
     nodes: [
       {

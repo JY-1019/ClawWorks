@@ -1,4 +1,4 @@
-import type { RoutePlanner } from "@openclaw/enterprise-planner";
+import type { WorkflowPlanner } from "@openclaw/enterprise-planner";
 /**
  * Runner glue for ClawWorks enterprise mediation, shared by every agent
  * runtime (embedded, CLI-backed, ACP): binds the run to a workflow subtree,
@@ -168,14 +168,15 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
   const planningPossible =
     Boolean(config) && resolveEnterpriseMode(config) !== "off" && modelChoice.kind !== "skip";
   // The planner module pulls in the provider/completion runtime. Import it inside
-  // the CALLBACK, not here: selectWorkflowRoute skips small trees entirely (the
+  // the CALLBACK, not here: selectWorkflowPlan skips small trees entirely (the
   // built-in default is 4 nodes), so a stock run would otherwise pay that startup
   // cost on the hot path for a planner it never calls.
-  const routePlanner: RoutePlanner | undefined =
+  const routePlanner: WorkflowPlanner | undefined =
     planningPossible && config
       ? async (plannerParams) => {
-          const { createModelRoutePlanner } = await import("./enterprise-route-planner.runtime.js");
-          const planner = createModelRoutePlanner({
+          const { createModelWorkflowPlanner } =
+            await import("./enterprise-route-planner.runtime.js");
+          const planner = createModelWorkflowPlanner({
             cfg: config,
             ...(params.agentId ? { agentId: params.agentId } : {}),
             // Route with the exact provider/model/profile the run dispatches to.

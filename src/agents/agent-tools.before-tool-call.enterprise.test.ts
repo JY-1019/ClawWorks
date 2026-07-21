@@ -43,7 +43,7 @@ function registerRun(params: {
     treeId: "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
-    matchedBy: "trigger",
+    matchedBy: "planner",
     requestSummary: "help",
     nodes: [
       {
