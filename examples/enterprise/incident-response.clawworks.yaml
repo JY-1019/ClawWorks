@@ -14,10 +14,10 @@ version: 1.0.0
 name: Incident response
 description: Triage, diagnose, and resolve production incidents under governance.
 match:
-  # Keywords are matched as case-insensitive substrings, so keep them specific
-  # (avoid short/common fragments like "page" or "alert" that hijack unrelated
-  # requests such as "summarize this web page").
-  keywords: [incident, outage, sev1]
+  # A model judges whether a request belongs to this work-map, so what earns it
+  # a request is the name, description, and step titles below — keep those
+  # specific. `triggers` stays deterministic: it is the hard gate on which run
+  # classes may bind here at all.
   triggers: [user, system]
   priority: 20
 root:

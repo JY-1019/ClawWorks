@@ -152,10 +152,20 @@ export function buildRouteCandidateDigest(tree: WorkflowTreeDefinition): string 
  * Render every candidate tree for one prompt. The model needs each tree's nodes
  * in the same call it picks the tree, because picking a tree without seeing what
  * is inside it is a name-matching exercise — the failure mode this replaces.
+ *
+ * The tree description carries the domain cue that keywords used to carry, so it
+ * has to be here: two work-maps can have equally generic names ("Operations")
+ * and be told apart only by what their descriptions claim.
  */
 export function buildPlanCandidateDigest(trees: readonly WorkflowTreeDefinition[]): string {
   return trees
-    .map((tree) => [`# ${tree.id} — ${tree.name}`, buildRouteCandidateDigest(tree)].join("\n"))
+    .map((tree) => {
+      const summary = shorten(tree.description);
+      return [
+        `# ${tree.id} — ${tree.name}${summary ? `: ${summary}` : ""}`,
+        buildRouteCandidateDigest(tree),
+      ].join("\n");
+    })
     .join("\n\n");
 }
 

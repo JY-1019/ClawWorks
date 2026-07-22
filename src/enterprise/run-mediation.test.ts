@@ -105,7 +105,7 @@ describe("beginEnterpriseRun", () => {
         id: "acme.big",
         version: "1.0.0",
         name: "Big",
-        match: { keywords: ["bigtest"], triggers: ["user"] },
+        match: { triggers: ["user"] },
         root: {
           id: "big",
           title: "Big",
@@ -358,6 +358,29 @@ describe("beginEnterpriseRun", () => {
     endEnterpriseRun({ runId, status: "completed" });
   });
 
+  it("never offers a shipped built-in example as a candidate", async () => {
+    // The support example ships REGISTERED so the Control UI has a rich tree to
+    // inspect, and its leaves restrict tools. Only the imported-only rule keeps
+    // it off stock traffic now that no phrase gates it. If it were a candidate,
+    // the planner would be consulted (it is big enough to plan) and the blind
+    // fallback would bind it — so asserting no model call also asserts that
+    // stock installs stay free of per-request planning cost.
+    const planner = vi.fn(async () => ({
+      treeId: "clawworks.support",
+      routes: [],
+      rationale: "support",
+    }));
+    const runId = nextRunId();
+    const mediation = await beginEnterpriseRun({
+      runId,
+      prompt: "resolve ticket #12, already triaged, issue a $30 refund",
+      routePlanner: planner,
+    });
+    expect(planner).not.toHaveBeenCalled();
+    expect(mediation.kind === "mediated" && mediation.plan.treeId).toBe("clawworks.assist");
+    endEnterpriseRun({ runId, status: "completed" });
+  });
+
   it("binds an imported work-map over the permissive default, with no planner wired", async () => {
     const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
     const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
@@ -368,7 +391,7 @@ describe("beginEnterpriseRun", () => {
         id: "acme.billing",
         version: "1.0.0",
         name: "Billing",
-        match: { keywords: ["invoice"], triggers: ["user"] },
+        match: { triggers: ["user"] },
         root: { id: "billing", title: "Handle billing", ontology: { allowedTools: ["message"] } },
       }),
       format: "json",
@@ -446,7 +469,7 @@ describe("enterprise step tracing", () => {
         id: "acme.flow",
         version: "1.0.0",
         name: "Flow",
-        match: { keywords: ["flowtest"], triggers: ["user"] },
+        match: { triggers: ["user"] },
         root: {
           id: "flow",
           title: "Run the flow",

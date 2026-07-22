@@ -23,9 +23,14 @@ built-in trees (`clawworks.assist`, `clawworks.system`) are guidance-free, so a
 stock install behaves like ordinary OpenClaw until you import trees or declare
 policies. One shipped built-in, `clawworks.support` ("Customer support
 (example)"), is a guidance-bearing demo you can inspect in the Control UI; it
-carries per-node ontology and tool scope but only binds when a request contains
-its distinctive opt-in phrase `clawworks support example`, so normal requests are
-never affected.
+carries per-node ontology and tool scope, but only imported work-maps ever
+govern a request, so normal requests are never affected. Adopt it by exporting
+and importing it back:
+
+```bash
+openclaw enterprise trees export clawworks.support --out support.yaml
+openclaw enterprise trees import support.yaml
+```
 
 ## Modes
 
@@ -61,7 +66,6 @@ version: 1.0.0
 name: Customer support
 description: Triage and resolve customer requests.
 match:
-  keywords: [refund, order, support]
   triggers: [user]
   priority: 10
 root:
@@ -147,8 +151,13 @@ addressable from the current step.
 
 When a request starts an enterprise-mediated run:
 
-1. **Selection** matches the request to a tree by keywords, trigger, and
-   priority (or the default tree).
+1. **Selection** narrows the imported work-maps to the ones serving the run's
+   trigger, then a model judges which of them governs the request. Built-in
+   trees other than the default are shipped examples and never govern until you
+   import them. When no work-map applies, when none is imported, or when the
+   model cannot be reached, selection stays deterministic: the default tree
+   governs on a judged "none apply", and a work-map planned whole governs when
+   the model is unavailable, so a failure is never a way out of governance.
 2. **Decomposition** flattens the chosen subtree into a depth-first plan. For
    embedded and CLI runs the whole subtree's guidance is injected once as a
    static step digest so the model sees every step's rules up front (this keeps

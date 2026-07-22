@@ -24,7 +24,7 @@ const REFUND_TREE: WorkflowTreeDefinition = {
   id: "acme.refunds",
   version: "1.0.0",
   name: "Refund handling",
-  match: { keywords: ["refund", "chargeback"], triggers: ["user"] },
+  match: { triggers: ["user"] },
   root: {
     id: "refunds",
     title: "Handle a refund request",
@@ -113,7 +113,7 @@ describe("built-in support example tree", () => {
 
     const plan = buildEnterpriseRunPlan({
       runId: "example",
-      requestText: "clawworks support example: resolve ticket #4471",
+      requestText: "resolve ticket #4471",
       mode: "enforce",
       tree: BUILTIN_SUPPORT_EXAMPLE_TREE,
       matchedBy: "planner",

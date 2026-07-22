@@ -922,16 +922,17 @@ describe("enterprise tree editing", () => {
     expect(state.enterpriseTreeEditing).toBe(true);
   });
 
-  it("seeds a scoped match in the new-tree template so it is not a catch-all", async () => {
+  it("seeds the new-tree template with an explicit trigger scope", async () => {
     const { state } = createState();
     await setEnterpriseTreeEditFormat(state, "json"); // prefer JSON so we can parse it
     beginNewEnterpriseTree(state);
     const parsed = JSON.parse(state.enterpriseTreeEditContent) as {
-      match?: { keywords?: string[] };
+      match?: { triggers?: string[] };
     };
-    // A keyword-scoped match keeps a saved-as-is placeholder from hijacking every
-    // user request (an unscoped tree beats the assist backstop's -100 priority).
-    expect(parsed.match?.keywords?.length).toBeGreaterThan(0);
+    // Saving imports the tree, and imported work-maps govern runs. `triggers` is
+    // the deterministic gate the model cannot override, so the template must
+    // pin it rather than leave a half-finished draft open to system runs.
+    expect(parsed.match?.triggers).toEqual(["user"]);
   });
 
   it("regenerates the template (not a stale export) when a new-tree format switches", async () => {

@@ -63,32 +63,13 @@ description: >-
   Customer lifecycle, financial-crime risk, claims handling, and regulatory
   reporting for a retail financial-services operation, under governance.
 match:
-  # These only decide that THIS TREE is the right tree; picking the branch inside
-  # it is the route planner's job. They must therefore cover the whole domain's
-  # vocabulary — a request that belongs here but misses every keyword falls back
-  # to the generic assist tree and is never governed by this ontology at all.
-  #
-  # Keep each one specific: a short common fragment (e.g. "alert", "policy")
-  # would hijack unrelated requests, so multi-word or domain-unique terms only.
-  keywords:
-    - claim
-    - kyc
-    - onboarding
-    - sanctions
-    - aml
-    - money laundering
-    - transaction monitoring
-    - suspicious activity
-    - structuring
-    - alert triage
-    - underwriting
-    - credit application
-    - chargeback
-    - dispute
-    - payout
-    - settlement
-    - sar
-    - regulatory report
+  # Whether THIS TREE is the right tree is a model judgement; picking the branch
+  # inside it is the route planner's job. So the description above and the step
+  # titles below are what earn this work-map a request — write them to cover the
+  # whole domain, because a request the model does not recognize as financial
+  # operations falls back to the generic assist tree and is never governed by
+  # this ontology at all. `triggers` is the one deterministic gate: a run class
+  # not listed here can never bind this tree, whatever the request says.
   triggers: [user, system]
   priority: 30
 

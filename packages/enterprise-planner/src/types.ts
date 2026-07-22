@@ -16,5 +16,11 @@ export type PlannableNode = {
 export type PlannableTree = {
   id: string;
   name: string;
+  /**
+   * What domain this work-map governs. Selection reads it: with keyword matching
+   * gone, this and the node titles are the only cues the model gets for deciding
+   * whether a request belongs here.
+   */
+  description?: string;
   root: PlannableNode;
 };

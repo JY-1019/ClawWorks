@@ -106,6 +106,20 @@ describe("buildPlanCandidateDigest", () => {
     expect(digest).toContain("    ops.claims.payout — Claim payout");
     expect(digest).toContain("  assist.do — Carry out the work");
   });
+
+  it("renders each tree's description, the domain cue selection depends on", () => {
+    // Two work-maps can carry equally generic names and be told apart only by
+    // what their descriptions claim. Nothing else carries that signal since
+    // keyword matching was removed, so leaving it out silently degrades
+    // selection to name matching.
+    const digest = buildPlanCandidateDigest([
+      { ...TREE, description: "Claims handling and financial-crime risk." },
+      DEFAULT_TREE,
+    ]);
+    expect(digest).toContain("# acme.ops — Ops: Claims handling and financial-crime risk.");
+    // A tree without one still renders cleanly (no dangling separator).
+    expect(digest).toContain("# clawworks.assist — General assistance\n");
+  });
 });
 
 describe("selectWorkflowPlan", () => {

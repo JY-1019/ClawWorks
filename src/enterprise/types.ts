@@ -199,13 +199,17 @@ export type WorkflowNodeDefinition = {
   children?: WorkflowNodeDefinition[];
 };
 
-/** Selection hints matching inbound requests onto a tree. */
+/** Which runs a tree can bind to, and how it orders against other candidates. */
 export type WorkflowTreeMatch = {
-  /** Case-insensitive keywords scored against the request text. */
+  /**
+   * RETIRED. Keyword scoring no longer picks the governing tree — a model
+   * judges that now (see @openclaw/enterprise-planner). Still accepted so trees
+   * imported before the change keep loading; nothing reads it.
+   */
   keywords?: string[];
   /** Run triggers this tree applies to. Empty/omitted = user-triggered runs. */
   triggers?: WorkflowTreeTrigger[];
-  /** Higher wins ties; equal priority ties break on tree id. */
+  /** Candidate order: higher first, equal priority breaks on tree id. */
   priority?: number;
 };
 

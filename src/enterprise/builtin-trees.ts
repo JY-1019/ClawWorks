@@ -35,16 +35,18 @@ export const BUILTIN_ASSIST_TREE: WorkflowTreeDefinition = {
  * Shipped EXAMPLE work-map, always visible in the Enterprise UI: a customer-support
  * workflow whose leaves each carry their own ontology (tool scope, actions,
  * constraints, expected output), so the UI shows a rich per-node ontology and the
- * entity/relationship graph. Its keyword is a DISTINCTIVE opt-in phrase ("clawworks
- * support example") that real traffic never contains, so it binds only when someone
- * deliberately triggers the demo — every normal request still resolves to the
- * guidance-free `clawworks.assist` default, so stock behavior (including enforce-mode
- * tool scope) is unchanged. This matters because the example DOES restrict tools per
- * node, which must not silently apply to unrelated requests. To test it, prefix a
- * request with the phrase, e.g.:
- *   "clawworks support example: resolve ticket #12, already triaged and investigated,
- *    issue a $30 refund". With `enterprise.routePlanner.enabled` the LLM route planner
- * then narrows the run to just the steps the request needs (here -> support.resolve).
+ * entity/relationship graph.
+ *
+ * It is registered for INSPECTION, not for governance: mediation only lets
+ * IMPORTED trees bind a run, so a stock install still resolves every request to
+ * the guidance-free `clawworks.assist` default and prompt bytes match
+ * non-enterprise OpenClaw exactly. That gate matters because this example DOES
+ * restrict tools per node, which must not silently apply to unrelated requests —
+ * and which tree governs is a model judgement now, so no phrase gate stands
+ * between the example and a normal request. Adopt it by importing it, which
+ * overrides this built-in by id:
+ *   openclaw enterprise trees export clawworks.support --out support.yaml
+ *   openclaw enterprise trees import support.yaml
  */
 export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
   schema: "clawworks.workflow-tree",
@@ -53,11 +55,9 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
   version: "1.0.0",
   name: "Customer support (example)",
   description:
-    'Example enterprise work-map for inspecting per-node ontology and trying the route planner. It stays out of normal runs on purpose: prefix a request with "clawworks support example" to route a run through it (e.g. "clawworks support example: resolve ticket #12, already triaged, issue a $30 refund"). With enterprise.routePlanner.enabled the LLM route planner narrows the run to the steps your request needs. Click a step to inspect its ontology.',
+    "Example enterprise work-map for inspecting per-node ontology. Click a step to see its tool scope, actions, constraints, and expected output. It stays out of normal runs on purpose: only imported work-maps govern requests. To have runs bind to it, export it (openclaw enterprise trees export clawworks.support --out support.yaml) and import that file back.",
   match: {
-    keywords: ["clawworks support example"],
     triggers: ["user"],
-    priority: 10,
   },
   root: {
     id: "support",

@@ -219,7 +219,9 @@ export const WorkflowTreeTriggerSchema = z.enum(["user", "system", "subagent"]);
 
 const WorkflowTreeMatchSchema = z
   .object({
-    // Blank keywords would substring-match every request and hijack selection.
+    // RETIRED: nothing reads keywords since tree selection became a model
+    // judgement. Kept accepted (and validated) so a tree imported before that
+    // change still loads instead of failing closed on an unknown key.
     keywords: z.array(NonBlankStringSchema).min(1).optional(),
     // Empty trigger lists are rejected: omitted means user-triggered, and an
     // empty array would make the tree unselectable for every trigger.

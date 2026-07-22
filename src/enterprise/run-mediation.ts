@@ -141,7 +141,17 @@ async function beginEnterpriseRunInternal(
     log.warn(`enterprise observe mode continuing on built-in trees: ${treeLoadFailure}`);
   }
 
-  const trees = registry.entries.map((entry) => entry.tree);
+  // Only trees an operator IMPORTED can govern a run. Built-ins other than the
+  // trigger default ship as EXAMPLES — registered so the Enterprise UI can show
+  // a rich work-map without an import step, not so they bind real traffic. They
+  // restrict tools per node, and picking a tree is a model judgement now, so
+  // nothing else keeps a shipped example off unrelated requests: without this
+  // filter the customer-support example governs every stock run, and it also
+  // outranks the operator's own work-maps in the fail-closed fallback.
+  // Adopting an example means importing it (imports override built-ins by id).
+  const trees = registry.entries
+    .filter((entry) => entry.source === "imported")
+    .map((entry) => entry.tree);
   const trigger = classifyWorkflowTrigger({
     ...(params.trigger !== undefined ? { trigger: params.trigger } : {}),
     ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),

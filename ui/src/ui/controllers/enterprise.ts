@@ -968,17 +968,17 @@ function triggerDownload(filename: string, content: string) {
 }
 
 function treeTemplate(format: EnterpriseTreeEditFormat): string {
-  // The template is keyword-scoped on purpose: an unscoped tree (no match) is
-  // selected with priority 0 and would beat the built-in assist backstop (-100),
-  // hijacking every user request. A placeholder keyword keeps a saved-as-is draft
-  // inert until the author narrows the match to real triggers.
+  // Saving makes this an IMPORTED work-map, and imported work-maps govern runs
+  // — there is no inert draft state, so the placeholder name/steps are meant to
+  // be replaced before saving. `triggers` is the one deterministic gate left: it
+  // keeps a half-finished tree out of system and subagent runs.
   const tree = {
     schema: "clawworks.workflow-tree",
     schemaVersion: 1,
     id: "acme.new-tree",
     version: "1.0.0",
     name: "New workflow tree",
-    match: { keywords: ["acme-new-tree"], triggers: ["user"], priority: 0 },
+    match: { triggers: ["user"] },
     root: { id: "root", title: "Root step" },
   };
   if (format === "json") {
@@ -991,9 +991,7 @@ function treeTemplate(format: EnterpriseTreeEditFormat): string {
     "version: 1.0.0",
     "name: New workflow tree",
     "match:",
-    "  keywords: [acme-new-tree]",
     "  triggers: [user]",
-    "  priority: 0",
     "root:",
     "  id: root",
     "  title: Root step",
