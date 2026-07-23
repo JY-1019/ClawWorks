@@ -226,6 +226,7 @@ export const uk: TranslationMap = {
     allowedTools: "Дозволити: {tools}",
     deniedTools: "Заборонити: {tools}",
     knowledge: "Знання: {ids}",
+    guidance: "Інструкції: {text}",
     audit: "Перевірено",
     activeBadge: "активний",
     nodeCount: "{count} крок(ів)",

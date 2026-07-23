@@ -121,8 +121,15 @@ Each node carries executable metadata in its `ontology`:
   omitted allows every configured foundation.
 - `contextHints` / `expectedOutput`: compact lines surfaced to the model in the
   step digest so it knows the rules up front.
+- `guidance`: a free-form instruction line for the step, rendered in the digest.
+  Advisory only: tool scope and governance policies still enforce, and if they
+  conflict, enforcement wins.
 - `audit`: record a trace event for every tool decision under this node, even
   default allows.
+
+Guidance is the advisory lane: it teaches the model how to work but never widens
+what it may do. Structure (tool scope, the object model) and governance policies
+remain the enforced authority.
 
 ### The typed object model
 

@@ -229,6 +229,7 @@ export const ja_JP: TranslationMap = {
     allowedTools: "許可: {tools}",
     deniedTools: "拒否: {tools}",
     knowledge: "ナレッジ: {ids}",
+    guidance: "指示: {text}",
     audit: "監査済み",
     activeBadge: "アクティブ",
     nodeCount: "{count} ステップ",

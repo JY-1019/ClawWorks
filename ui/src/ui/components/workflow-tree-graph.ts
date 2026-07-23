@@ -38,6 +38,7 @@ export type WorkflowTreeOntology = {
   deniedTools?: string[];
   knowledgeFoundations?: string[];
   contextHints?: string[];
+  guidance?: string;
   expectedOutput?: string;
   audit?: boolean;
 };
@@ -539,6 +540,9 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     }
     if (ontology.contextHints?.length) {
       rows.push(row(t("enterprise.contextHints", { hints: ontology.contextHints.join(" · ") })));
+    }
+    if (ontology.guidance) {
+      rows.push(row(t("enterprise.guidance", { text: ontology.guidance })));
     }
     for (const constraint of ontology.constraints ?? []) {
       rows.push(row(t("enterprise.constraint", { text: constraint.description })));

@@ -219,6 +219,7 @@ export const zh_CN: TranslationMap = {
     allowedTools: "允许：{tools}",
     deniedTools: "拒绝：{tools}",
     knowledge: "知识：{ids}",
+    guidance: "指令：{text}",
     audit: "已审计",
     activeBadge: "活跃",
     nodeCount: "{count} 个步骤",

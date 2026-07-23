@@ -183,6 +183,12 @@ export type OntologyBinding = {
   knowledgeFoundations?: string[];
   /** Compact context lines surfaced to the model in the step digest. */
   contextHints?: string[];
+  /**
+   * Free-form step instructions rendered into the step digest. Advisory only:
+   * tool scope and governance policies still enforce, and if they conflict,
+   * enforcement wins.
+   */
+  guidance?: string;
   /** Expected output shape/summary for this step. */
   expectedOutput?: string;
   /** Record detailed audit events for every tool decision under this node. */

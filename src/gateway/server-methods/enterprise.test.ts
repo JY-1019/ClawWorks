@@ -54,6 +54,7 @@ function makePlan(runId: string, activeNodeId: string): EnterpriseRunPlan {
         ontology: {
           allowedTools: ["memory_search"],
           knowledgeFoundations: ["acme.kb"],
+          guidance: "Confirm the order id first.",
           audit: true,
         },
       },
@@ -192,6 +193,7 @@ describe("enterprise gateway methods", () => {
       ontology: {
         allowedTools: ["memory_search"],
         knowledgeFoundations: ["acme.kb"],
+        guidance: "Confirm the order id first.",
         audit: true,
       },
     });

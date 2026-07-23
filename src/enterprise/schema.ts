@@ -190,6 +190,7 @@ export const OntologyBindingSchema = z
     deniedTools: z.array(NonBlankStringSchema).optional(),
     knowledgeFoundations: z.array(EnterpriseIdSchema).optional(),
     contextHints: z.array(NonBlankStringSchema).optional(),
+    guidance: NonBlankStringSchema.optional(),
     expectedOutput: z.string().optional(),
     audit: z.boolean().optional(),
   })

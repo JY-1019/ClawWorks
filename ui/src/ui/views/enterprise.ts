@@ -303,6 +303,11 @@ function renderStep(
             : nothing}
         </div>
         ${node.description ? html`<div class="list-sub">${node.description}</div>` : nothing}
+        ${ontology.guidance
+          ? html`<div class="list-sub">
+              ${t("enterprise.guidance", { text: ontology.guidance })}
+            </div>`
+          : nothing}
         <div class="chip-row">
           ${ontology.allowedTools?.length
             ? html`<span class="chip"

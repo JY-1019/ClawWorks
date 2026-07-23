@@ -101,6 +101,18 @@ describe("validateWorkflowTreeDefinition", () => {
     const blankKeyword = { ...validTree(), match: { keywords: ["  "] } };
     expect(validateWorkflowTreeDefinition(blankKeyword).ok).toBe(false);
   });
+
+  it("accepts free-form step guidance and rejects a blank string", () => {
+    const withGuidance = validTree();
+    (withGuidance.root as { ontology: Record<string, unknown> }).ontology = {
+      guidance: "Confirm the order id before issuing a refund.",
+    };
+    expect(validateWorkflowTreeDefinition(withGuidance).ok).toBe(true);
+
+    const blankGuidance = validTree();
+    (blankGuidance.root as { ontology: Record<string, unknown> }).ontology = { guidance: "  " };
+    expect(validateWorkflowTreeDefinition(blankGuidance).ok).toBe(false);
+  });
 });
 
 describe("ontology object / link / action types", () => {

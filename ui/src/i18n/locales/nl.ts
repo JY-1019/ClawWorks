@@ -228,6 +228,7 @@ export const nl: TranslationMap = {
     allowedTools: "Toestaan: {tools}",
     deniedTools: "Weigeren: {tools}",
     knowledge: "Kennis: {ids}",
+    guidance: "Instructies: {text}",
     audit: "Gecontroleerd",
     activeBadge: "actief",
     nodeCount: "{count} stap(pen)",

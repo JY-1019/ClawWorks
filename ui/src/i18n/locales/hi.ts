@@ -223,6 +223,7 @@ export const hi: TranslationMap = {
     allowedTools: "अनुमति: {tools}",
     deniedTools: "अस्वीकृत: {tools}",
     knowledge: "ज्ञान: {ids}",
+    guidance: "निर्देश: {text}",
     audit: "ऑडिट किया गया",
     activeBadge: "सक्रिय",
     nodeCount: "{count} चरण",

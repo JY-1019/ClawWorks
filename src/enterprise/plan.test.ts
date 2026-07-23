@@ -501,6 +501,27 @@ describe("buildEnterprisePromptSection", () => {
     );
   });
 
+  it("renders free-form step guidance as an advisory instruction line", () => {
+    const tree: WorkflowTreeDefinition = {
+      ...REFUND_TREE,
+      root: {
+        id: "refunds",
+        title: "Handle a refund request",
+        ontology: { guidance: "Confirm the order id before issuing a refund." },
+      },
+    };
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-7",
+      requestText: "refund",
+      mode: "enforce",
+      tree,
+      matchedBy: "planner",
+    });
+    expect(buildEnterprisePromptSection(plan)).toContain(
+      "Instructions: Confirm the order id before issuing a refund.",
+    );
+  });
+
   it("renders action preconditions and write effects (the model must see them before it acts)", () => {
     const tree: WorkflowTreeDefinition = {
       ...REFUND_TREE,
@@ -658,6 +679,9 @@ describe("ontologyHasGuidance / planTracksSteps", () => {
     expect(ontologyHasGuidance({ audit: true })).toBe(false);
     expect(ontologyHasGuidance({ allowedTools: ["message"] })).toBe(true);
     expect(ontologyHasGuidance({ expectedOutput: "a summary" })).toBe(true);
+    // A node whose only guidance is a `guidance` field must still count, or the
+    // step loop never advances into it and its digest stays empty.
+    expect(ontologyHasGuidance({ guidance: "confirm the order id first" })).toBe(true);
   });
 
   it("tracks steps only for governed trees with a leaf to advance into", () => {

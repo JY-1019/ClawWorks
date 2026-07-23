@@ -222,6 +222,7 @@ export const en: TranslationMap = {
     allowedTools: "Allow: {tools}",
     deniedTools: "Deny: {tools}",
     knowledge: "Knowledge: {ids}",
+    guidance: "Instructions: {text}",
     audit: "Audited",
     activeBadge: "active",
     nodeCount: "{count} step(s)",

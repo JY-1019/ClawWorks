@@ -223,6 +223,7 @@ export const ko: TranslationMap = {
     allowedTools: "허용: {tools}",
     deniedTools: "거부: {tools}",
     knowledge: "Knowledge: {ids}",
+    guidance: "지침: {text}",
     audit: "감사 완료",
     activeBadge: "활성",
     nodeCount: "{count}개 단계",

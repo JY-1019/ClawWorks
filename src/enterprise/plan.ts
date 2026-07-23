@@ -280,6 +280,7 @@ export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
   return Boolean(
     ontology.constraints?.length ||
     ontology.contextHints?.length ||
+    ontology.guidance ||
     ontology.allowedTools?.length ||
     ontology.deniedTools?.length ||
     ontology.actions?.length ||
@@ -403,6 +404,11 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
     for (const hint of ontology.contextHints.slice(0, DIGEST_MAX_HINT_LINES)) {
       lines.push(`${indent}- ${hint}`);
     }
+  }
+  // Advisory only: guidance teaches how to work; it never widens the step's tool
+  // scope or overrides governance (enforcement wins on conflict).
+  if (ontology.guidance) {
+    lines.push(`${indent}Instructions: ${ontology.guidance}`);
   }
   if (ontology.allowedTools?.length) {
     lines.push(`${indent}Allowed tools: ${ontology.allowedTools.toSorted().join(", ")}`);

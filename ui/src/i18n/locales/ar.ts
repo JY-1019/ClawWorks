@@ -222,6 +222,7 @@ export const ar: TranslationMap = {
     allowedTools: "السماح: {tools}",
     deniedTools: "الرفض: {tools}",
     knowledge: "المعرفة: {ids}",
+    guidance: "التعليمات: {text}",
     audit: "تمت المراجعة",
     activeBadge: "نشط",
     nodeCount: "{count} خطوة(خطوات)",

@@ -80,4 +80,37 @@ describe("openclaw-workflow-tree-graph node selection", () => {
     await element.updateComplete;
     expect(events).toEqual([null]);
   });
+
+  it("renders step guidance in the inspector (not 'no step scope')", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const nodes: WorkflowTreeNode[] = [
+      { id: "root", parentId: null, depth: 0, title: "Root", ontology: {} },
+      {
+        id: "root.triage",
+        parentId: "root",
+        depth: 1,
+        title: "Triage",
+        // A node whose only scope is guidance must still show it, not fall
+        // through to the "no step scope" placeholder.
+        ontology: { guidance: "Confirm the order id first." },
+      },
+    ];
+    render(
+      html`<openclaw-workflow-tree-graph
+        .nodes=${nodes}
+        .selected=${"root.triage"}
+      ></openclaw-workflow-tree-graph>`,
+      container,
+    );
+    const element = container.querySelector<OpenClawWorkflowTreeGraph>(
+      "openclaw-workflow-tree-graph",
+    );
+    if (!element) {
+      throw new Error("component did not mount");
+    }
+    await element.updateComplete;
+    const text = element.shadowRoot?.querySelector(".inspector")?.textContent ?? "";
+    expect(text).toContain("Confirm the order id first.");
+  });
 });

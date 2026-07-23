@@ -226,6 +226,7 @@ export const tr: TranslationMap = {
     allowedTools: "İzin ver: {tools}",
     deniedTools: "Reddet: {tools}",
     knowledge: "Bilgi: {ids}",
+    guidance: "Talimatlar: {text}",
     audit: "Denetlendi",
     activeBadge: "aktif",
     nodeCount: "{count} adım",
