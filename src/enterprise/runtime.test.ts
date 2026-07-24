@@ -4,6 +4,7 @@ import {
   enterpriseRunTracksSteps,
   evaluateEnterpriseToolCall,
   getEnterpriseActiveRun,
+  getSessionActiveRunId,
   recordEnterpriseApprovalResolution,
   recordEnterpriseTurnExecuted,
   registerEnterpriseActiveRun,
@@ -16,6 +17,7 @@ import type { EnterprisePlanNode, EnterpriseRunPlan, GovernancePolicy } from "./
 
 function makeRun(overrides: {
   runId?: string;
+  sessionId?: string;
   mode?: "enforce" | "observe";
   allowedTools?: string[];
   audit?: boolean;
@@ -48,6 +50,7 @@ function makeRun(overrides: {
   return {
     plan,
     policies: overrides.policies ?? [],
+    ...(overrides.sessionId ? { sessionId: overrides.sessionId } : {}),
     ...(overrides.sink ? { sink: overrides.sink } : {}),
   };
 }
@@ -262,6 +265,33 @@ describe("evaluateEnterpriseToolCall", () => {
     expect(getEnterpriseActiveRun("run-1")).toBeDefined();
     unregisterEnterpriseActiveRun("run-1");
     expect(evaluateEnterpriseToolCall({ runId: "run-1", toolName: "exec" })).toBeUndefined();
+  });
+});
+
+describe("session → active run index", () => {
+  it("resolves the run a session is executing, and clears it on end", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-1", sessionId: "session-a" }));
+    expect(getSessionActiveRunId("session-a")).toBe("run-1");
+    unregisterEnterpriseActiveRun("run-1");
+    expect(getSessionActiveRunId("session-a")).toBeUndefined();
+  });
+
+  it("indexes nothing for a run with no session", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-1" }));
+    expect(getSessionActiveRunId("session-a")).toBeUndefined();
+  });
+
+  it("keeps the successor's link when the prior run ends out of order", () => {
+    // Run end runs outside the session lane, so the next turn's run can begin (and
+    // re-point the session) before the previous one ends. The stale end must not
+    // clear the successor's link.
+    registerEnterpriseActiveRun(makeRun({ runId: "run-1", sessionId: "session-a" }));
+    registerEnterpriseActiveRun(makeRun({ runId: "run-2", sessionId: "session-a" }));
+    expect(getSessionActiveRunId("session-a")).toBe("run-2");
+    unregisterEnterpriseActiveRun("run-1");
+    expect(getSessionActiveRunId("session-a")).toBe("run-2");
+    unregisterEnterpriseActiveRun("run-2");
+    expect(getSessionActiveRunId("session-a")).toBeUndefined();
   });
 });
 

@@ -21,6 +21,7 @@ function activateLoopbackRuntime(port: number): void {
     port,
     ownerToken,
     nonOwnerToken: "test-non-owner-token",
+    sessionBindingSecret: "test-session-binding-secret",
   });
 }
 

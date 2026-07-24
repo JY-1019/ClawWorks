@@ -6,10 +6,12 @@ import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.ty
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import { resolveMainSessionKey } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { getSessionActiveRunId } from "../enterprise/runtime.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
 import { getHeader } from "./http-utils.js";
+import { verifyMcpLoopbackSessionToken } from "./mcp-http.loopback-runtime.js";
 import { isLoopbackAddress } from "./net.js";
 import { checkBrowserOrigin } from "./origin-check.js";
 
@@ -51,6 +53,10 @@ function logMcpLoopbackHttp(step: string, details: Record<string, unknown>): voi
 type McpRequestContext = {
   sessionKey: string;
   sessionId: string | undefined;
+  // The active enterprise run this loopback call belongs to, resolved server-side
+  // from the AUTHENTICATED sessionId (see resolveMcpRequestContext). Never read
+  // from a client header, so a call cannot borrow another run's governance scope.
+  runId: string | undefined;
   messageProvider: string | undefined;
   currentChannelId: string | undefined;
   currentThreadTs: string | undefined;
@@ -358,10 +364,28 @@ export function resolveMcpRequestContext(
   req: IncomingMessage,
   cfg: OpenClawConfig,
   auth: { senderIsOwner: boolean },
+  sessionBindingSecret: string,
 ): McpRequestContext {
+  const sessionId = normalizeOptionalString(getHeader(req, "x-openclaw-session-id"));
+  // Bind the run to the sessionId ONLY when its per-session token authenticates
+  // it. The bearer token proves owner/non-owner but is shared across CLI backends,
+  // so any subprocess could otherwise present another (discoverable) sessionId and
+  // borrow that run's ontology/governance scope. The token is HMAC(secret,
+  // sessionId); a subprocess can produce one only for its own session.
+  const sessionAuthenticated =
+    sessionId !== undefined &&
+    verifyMcpLoopbackSessionToken(
+      sessionBindingSecret,
+      sessionId,
+      normalizeOptionalString(getHeader(req, "x-openclaw-session-token")),
+    );
   return {
     sessionKey: resolveScopedSessionKey(cfg, getHeader(req, "x-session-key")),
-    sessionId: normalizeOptionalString(getHeader(req, "x-openclaw-session-id")),
+    sessionId,
+    // Server-authoritative: the run the AUTHENTICATED session is currently
+    // executing. Never derived from a client-forgeable run-id header, and never
+    // from an unauthenticated session claim.
+    runId: sessionAuthenticated && sessionId ? getSessionActiveRunId(sessionId) : undefined,
     messageProvider:
       normalizeMessageChannel(getHeader(req, "x-openclaw-message-channel")) ?? undefined,
     currentChannelId: normalizeOptionalString(getHeader(req, "x-openclaw-current-channel-id")),

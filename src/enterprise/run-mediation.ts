@@ -74,6 +74,11 @@ export type BeginEnterpriseRunParams = {
   trigger?: string;
   spawnedBy?: string | null;
   sessionKey?: string;
+  /**
+   * Ephemeral session UUID. Indexed so the loopback MCP server can resolve THIS
+   * run from its own trusted sessionId instead of a forgeable run-id header.
+   */
+  sessionId?: string;
   agentId?: string;
   config?: OpenClawConfig;
   /**
@@ -236,6 +241,7 @@ async function beginEnterpriseRunInternal(
   const run: MediatedRunState = {
     plan,
     policies,
+    ...(params.sessionId ? { sessionId: params.sessionId } : {}),
     // Snapshot the tree's required-property shape from the definition this run
     // PLANNED against. Looking it up per tool call would drift: a re-import
     // mid-run invalidates the registry, and an in-flight write would start being

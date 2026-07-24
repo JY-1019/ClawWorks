@@ -29,6 +29,10 @@ type McpLoopbackScopeParams = {
   cfg: OpenClawConfig;
   sessionKey: string;
   sessionId?: string;
+  // The run this turn is executing, resolved server-side from the session. Binds
+  // each ontology tool CALL to that run for execution scope; the loopback also
+  // governs the call via the same runId in HookContext.
+  runId?: string;
   yieldContextCacheKey?: string;
   onYield?: (message: string) => Promise<void> | void;
   messageProvider: string | undefined;
@@ -67,6 +71,9 @@ export class McpLoopbackToolCache {
     const cacheKey = [
       params.sessionKey,
       params.sessionId ?? "",
+      // Ontology tools bind to the current run for execution scope, so a cached
+      // entry must not be reused across runs even though the schemas are identical.
+      params.runId ?? "",
       params.yieldContextCacheKey ?? "",
       params.messageProvider ?? "",
       params.currentChannelId ?? "",

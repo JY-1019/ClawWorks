@@ -14,6 +14,7 @@ import { ensureMcpLoopbackServer } from "../../gateway/mcp-http.js";
 import {
   createMcpLoopbackServerConfig,
   getActiveMcpLoopbackRuntime,
+  mintMcpLoopbackSessionToken,
   resolveMcpLoopbackBearerToken,
 } from "../../gateway/mcp-http.loopback-runtime.js";
 import { resolveMcpLoopbackScopedTools } from "../../gateway/mcp-http.runtime.js";
@@ -100,6 +101,7 @@ const prepareDeps = {
   ensureMcpLoopbackServer,
   createMcpLoopbackServerConfig,
   resolveMcpLoopbackBearerToken,
+  mintMcpLoopbackSessionToken,
   resolveMcpLoopbackScopedTools,
   resolveOpenClawReferencePaths: async (
     params: Parameters<typeof import("../docs-path.js").resolveOpenClawReferencePaths>[0],
@@ -456,6 +458,14 @@ export async function prepareCliRunContext(
           OPENCLAW_MCP_ACCOUNT_ID: params.agentAccountId ?? "",
           OPENCLAW_MCP_SESSION_KEY: params.sessionKey ?? "",
           OPENCLAW_MCP_SESSION_ID: params.sessionId,
+          // Authenticates this session to the loopback so enterprise governance
+          // binds to THIS run, not another session's (the id header is forgeable).
+          OPENCLAW_MCP_SESSION_TOKEN: params.sessionId
+            ? prepareDeps.mintMcpLoopbackSessionToken(
+                mcpLoopbackRuntime.sessionBindingSecret,
+                params.sessionId,
+              )
+            : "",
           OPENCLAW_MCP_MESSAGE_CHANNEL: params.messageChannel ?? params.messageProvider ?? "",
           OPENCLAW_MCP_CURRENT_CHANNEL_ID: params.currentChannelId ?? "",
           OPENCLAW_MCP_CURRENT_THREAD_TS: params.currentThreadTs ?? "",

@@ -16,6 +16,28 @@ describe("resolveGatewayScopedTools", () => {
     });
   });
 
+  it("exposes enterprise ontology tools on the loopback surface when enterprise governance is on", () => {
+    const base = { cfg: {} as OpenClawConfig, sessionKey: "agent:main:main" };
+    // Loopback + enterprise on (default mode): exposure is STABLE across warm turns
+    // and does not depend on an active run — a call self-gates and the per-tool-call
+    // hook governs it via the run resolved server-side from the session.
+    const loopback = resolveGatewayScopedTools({ ...base, surface: "loopback" });
+    expect(loopback.tools.some((tool) => tool.name === "search_objects")).toBe(true);
+    expect(loopback.tools.some((tool) => tool.name === "invoke_action")).toBe(true);
+
+    // The external HTTP surface never exposes them.
+    const http = resolveGatewayScopedTools({ ...base, surface: "http" });
+    expect(http.tools.some((tool) => tool.name === "search_objects")).toBe(false);
+
+    // enterprise.mode "off" opts a deployment out entirely, loopback included.
+    const off = resolveGatewayScopedTools({
+      ...base,
+      cfg: { enterprise: { mode: "off" } } as OpenClawConfig,
+      surface: "loopback",
+    });
+    expect(off.tools.some((tool) => tool.name === "search_objects")).toBe(false);
+  });
+
   it("force-allows the message tool for room-event loopback turns", () => {
     const result = resolveGatewayScopedTools({
       cfg: { tools: { profile: "minimal" } } as OpenClawConfig,

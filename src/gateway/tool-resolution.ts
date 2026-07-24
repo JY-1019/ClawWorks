@@ -32,6 +32,7 @@ import {
 import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveEnterpriseMode } from "../enterprise/runtime.js";
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import {
@@ -46,6 +47,11 @@ export function resolveGatewayScopedTools(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   sessionId?: string;
+  // The run this loopback turn is executing, resolved server-side from the trusted
+  // sessionId (never a client header). Binds each ontology tool call to the run
+  // for execution scope, while the loopback layer governs the call via the same
+  // runId in HookContext. Absent when no run is active this turn.
+  runId?: string;
   onYield?: (message: string) => Promise<void> | void;
   messageProvider?: string;
   currentChannelId?: string;
@@ -169,7 +175,15 @@ export function resolveGatewayScopedTools(params: {
     explicitDenylist.length > 0 ||
     excludedToolNames.length > 0;
 
+  // Enterprise ontology tools ride the agent's own loopback surface (never the
+  // external HTTP surface). Exposure is stable per session — enterprise mode is a
+  // config fact, so the loopback tool list does not shift across warm turns — and
+  // each CALL binds to the turn's run for scope, self-gating when none is active.
+  const exposeOntologyTools = surface === "loopback" && resolveEnterpriseMode(params.cfg) !== "off";
   const allTools = createOpenClawTools({
+    ...(exposeOntologyTools
+      ? { exposeOntologyTools: true, ...(params.runId ? { ontologyRunId: params.runId } : {}) }
+      : {}),
     agentSessionKey: params.sessionKey,
     agentChannel: params.messageProvider ?? undefined,
     agentAccountId: params.accountId,

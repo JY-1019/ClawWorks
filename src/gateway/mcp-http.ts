@@ -151,6 +151,8 @@ export async function startMcpLoopbackServer(port = 0): Promise<{
 }> {
   const ownerToken = crypto.randomBytes(32).toString("hex");
   const nonOwnerToken = crypto.randomBytes(32).toString("hex");
+  // HMAC key for per-session run binding; see verifyMcpLoopbackSessionToken.
+  const sessionBindingSecret = crypto.randomBytes(32).toString("hex");
   const toolCache = new McpLoopbackToolCache();
   // GET notification streams are intentionally long-lived; shutdown must end
   // them itself before waiting for httpServer.close() to drain active responses.
@@ -225,12 +227,13 @@ export async function startMcpLoopbackServer(port = 0): Promise<{
         });
         markMcpLoopbackRequestClassified(cliRequestCaptureHandle);
         const cfg = getRuntimeConfig();
-        const requestContext = resolveMcpRequestContext(req, cfg, auth);
+        const requestContext = resolveMcpRequestContext(req, cfg, auth, sessionBindingSecret);
         const yieldContext = resolveMcpLoopbackYieldContext(cliRequestCaptureHandle);
         const scopedTools = toolCache.resolve({
           cfg,
           sessionKey: requestContext.sessionKey,
           sessionId: requestContext.sessionId,
+          runId: requestContext.runId,
           yieldContextCacheKey: yieldContext?.cacheKey,
           onYield: yieldContext?.onYield,
           messageProvider: requestContext.messageProvider,
@@ -273,6 +276,10 @@ export async function startMcpLoopbackServer(port = 0): Promise<{
                 agentId: scopedTools.agentId,
                 config: cfg,
                 sessionKey: requestContext.sessionKey,
+                // Attribute the call to its enterprise run so the before-tool-call
+                // hook enforces ontology governance (deny/approval), matching a
+                // native in-process tool call.
+                ...(requestContext.runId ? { runId: requestContext.runId } : {}),
               },
               signal: requestAbort.signal,
               onToolCallPrepared: cliCaptureHandle
@@ -373,7 +380,12 @@ export async function startMcpLoopbackServer(port = 0): Promise<{
   }
   // Register tokens only after the TCP listener is live so clients never learn
   // a bearer token for a server that failed to bind.
-  setActiveMcpLoopbackRuntime({ port: address.port, ownerToken, nonOwnerToken });
+  setActiveMcpLoopbackRuntime({
+    port: address.port,
+    ownerToken,
+    nonOwnerToken,
+    sessionBindingSecret,
+  });
   logDebug(`mcp loopback listening on 127.0.0.1:${address.port}`);
 
   const server: McpLoopbackServer = {

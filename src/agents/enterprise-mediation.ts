@@ -21,6 +21,9 @@ export type EnterpriseMediatedRunParams = {
   trigger?: string;
   spawnedBy?: string | null;
   sessionKey?: string;
+  /** Ephemeral session UUID; bound to the run so the loopback can attribute its
+   * tool calls to this run from its own trusted sessionId. */
+  sessionId?: string;
   agentId?: string;
   config?: OpenClawConfig;
   extraSystemPrompt?: string;
@@ -194,6 +197,7 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
     ...(params.trigger !== undefined ? { trigger: params.trigger } : {}),
     ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    ...(params.sessionId ? { sessionId: params.sessionId } : {}),
     ...(params.agentId ? { agentId: params.agentId } : {}),
     ...(config ? { config } : {}),
     ...(routePlanner ? { routePlanner } : {}),

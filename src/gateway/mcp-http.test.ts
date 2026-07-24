@@ -2,6 +2,11 @@
 // JSON-RPC surface, including hook filtering and context propagation.
 import { request } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearEnterpriseActiveRunsForTest,
+  registerEnterpriseActiveRun,
+} from "../enterprise/runtime.js";
+import type { EnterpriseRunPlan } from "../enterprise/types.js";
 import { getFreePortBlockWithPermissionFallback } from "../test-utils/ports.js";
 import { buildMcpToolSchema } from "./mcp-http.schema.js";
 
@@ -24,6 +29,7 @@ type MockBeforeToolCallHookResult =
 type ScopedToolsCall = {
   sessionKey?: string;
   sessionId?: string;
+  runId?: string;
   yieldContextCacheKey?: string;
   onYield?: (message: string) => Promise<void> | void;
   accountId?: string;
@@ -115,6 +121,7 @@ import {
   clearMcpLoopbackToolCallCapturesForTest,
   markMcpLoopbackToolCallFinished,
   markMcpLoopbackToolCallStarted,
+  mintMcpLoopbackSessionToken,
   recordMcpLoopbackToolCallResult,
   waitForMcpLoopbackToolCallCaptureIdle,
 } from "./mcp-http.loopback-runtime.js";
@@ -565,8 +572,27 @@ function buildMockMcpToolSchema(tools: MockGatewayTool[]) {
   return buildMcpToolSchema(tools as unknown as Parameters<typeof buildMcpToolSchema>[0]);
 }
 
+// Register the run a session is executing, so the loopback resolves its runId
+// from the trusted sessionId exactly as production mediation does.
+function registerActiveRunForSession(sessionId: string, runId: string): void {
+  const plan: EnterpriseRunPlan = {
+    runId,
+    treeId: "clawworks.test",
+    treeVersion: "1.0.0",
+    treeName: "Test",
+    matchedBy: "planner",
+    requestSummary: "t",
+    nodes: [{ nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} }],
+    activeNodeId: "root",
+    mode: "enforce",
+    createdAt: 0,
+  };
+  registerEnterpriseActiveRun({ sessionId, plan, policies: [] });
+}
+
 beforeEach(() => {
   clearMcpLoopbackToolCallCapturesForTest();
+  clearEnterpriseActiveRunsForTest();
   resolveGatewayScopedToolsMock.mockClear();
   runBeforeToolCallHookMock.mockClear();
   runBeforeToolCallHookMock.mockImplementation(
@@ -680,6 +706,14 @@ describe("mcp loopback server", () => {
       fallbackBase: 53_000,
     });
     const { runtime, port: serverPort } = await startLoopbackServerForTest(port);
+    // The session is executing run-abc. Its session token authenticates the
+    // sessionId; a forged run-id header must be ignored — the loopback attributes
+    // the call to the run bound to this authenticated session.
+    registerActiveRunForSession("session-123", "run-abc");
+    const sessionToken = mintMcpLoopbackSessionToken(
+      runtime?.sessionBindingSecret ?? "",
+      "session-123",
+    );
 
     const response = await sendRaw({
       port: serverPort,
@@ -687,6 +721,8 @@ describe("mcp loopback server", () => {
       headers: jsonHeaders({
         "x-session-key": "agent:main:telegram:group:chat123",
         "x-openclaw-session-id": "session-123",
+        "x-openclaw-session-token": sessionToken,
+        "x-openclaw-run-id": "run-forged",
         "x-openclaw-account-id": "work",
         "x-openclaw-message-channel": "telegram",
         "x-openclaw-current-channel-id": "telegram:chat123",
@@ -704,6 +740,7 @@ describe("mcp loopback server", () => {
     const call = getScopedToolsCall(0);
     expect(call.sessionKey).toBe("agent:main:telegram:group:chat123");
     expect(call.sessionId).toBe("session-123");
+    expect(call.runId).toBe("run-abc");
     expect(call.accountId).toBe("work");
     expect(call.messageProvider).toBe("telegram");
     expect(call.currentChannelId).toBe("telegram:chat123");
@@ -722,6 +759,34 @@ describe("mcp loopback server", () => {
       "exec",
       "process",
     ]);
+  });
+
+  it("refuses to bind a run to a session whose token is missing or forged", async () => {
+    const port = await getFreePortBlockWithPermissionFallback({
+      offsets: [0],
+      fallbackBase: 53_000,
+    });
+    const { runtime, port: serverPort } = await startLoopbackServerForTest(port);
+    // Another session (victim) is executing a run. A CLI that learned the victim's
+    // sessionId (e.g. via sessions_list) but cannot mint its token must NOT be able
+    // to borrow the victim's run scope.
+    registerActiveRunForSession("victim-session", "victim-run");
+
+    const response = await sendRaw({
+      port: serverPort,
+      token: runtime?.nonOwnerToken,
+      headers: jsonHeaders({
+        "x-session-key": "agent:main:main",
+        "x-openclaw-session-id": "victim-session",
+        "x-openclaw-session-token": "not-the-victims-token",
+      }),
+      body: mcpToolsListBody(),
+    });
+
+    expect(response.status).toBe(200);
+    // sessionId still flows for non-security context, but no run is bound without a
+    // valid token, so the call cannot execute ontology tools under the victim's run.
+    expect(getScopedToolsCall(0).runId).toBeUndefined();
   });
 
   it("routes sessions_yield to the current CLI capture", async () => {
@@ -1700,6 +1765,9 @@ describe("createMcpLoopbackServerConfig", () => {
     );
     expect(config.mcpServers?.openclaw?.headers?.["x-openclaw-session-id"]).toBe(
       "${OPENCLAW_MCP_SESSION_ID}",
+    );
+    expect(config.mcpServers?.openclaw?.headers?.["x-openclaw-session-token"]).toBe(
+      "${OPENCLAW_MCP_SESSION_TOKEN}",
     );
     expect(config.mcpServers?.openclaw?.headers?.["x-openclaw-message-channel"]).toBe(
       "${OPENCLAW_MCP_MESSAGE_CHANNEL}",

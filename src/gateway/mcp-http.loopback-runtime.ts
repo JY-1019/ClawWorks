@@ -1,9 +1,43 @@
 // Process-local MCP loopback runtime state for owner/non-owner HTTP access.
+import { createHmac } from "node:crypto";
+import { safeEqualSecret } from "../security/secret-equal.js";
+
 type McpLoopbackRuntime = {
   port: number;
   ownerToken: string;
   nonOwnerToken: string;
+  // HMAC key for per-session binding tokens. The bearer token only proves
+  // owner/non-owner and is shared by every CLI backend, so it cannot say WHICH
+  // session a request belongs to. This secret never leaves the gateway; only the
+  // per-session HMAC of it does, so a subprocess can bind only its own session.
+  sessionBindingSecret: string;
 };
+
+/**
+ * The credential that proves a loopback request belongs to a specific session:
+ * HMAC(secret, sessionId). The gateway mints it for the subprocess it spawns and
+ * injects it as an env-substituted header. A subprocess holds only its own
+ * session's token and cannot compute another session's (it never sees the
+ * secret), so it cannot claim another session's active run.
+ */
+export function mintMcpLoopbackSessionToken(
+  sessionBindingSecret: string,
+  sessionId: string,
+): string {
+  return createHmac("sha256", sessionBindingSecret).update(sessionId).digest("hex");
+}
+
+/** Constant-time check that a session token authenticates the claimed sessionId. */
+export function verifyMcpLoopbackSessionToken(
+  sessionBindingSecret: string,
+  sessionId: string,
+  token: string | undefined,
+): boolean {
+  if (!token) {
+    return false;
+  }
+  return safeEqualSecret(token, mintMcpLoopbackSessionToken(sessionBindingSecret, sessionId));
+}
 
 export type McpLoopbackToolCallResult = {
   toolName: string;
@@ -378,6 +412,9 @@ export function createMcpLoopbackServerConfig(port: number) {
           Authorization: "Bearer ${OPENCLAW_MCP_TOKEN}",
           "x-session-key": "${OPENCLAW_MCP_SESSION_KEY}",
           "x-openclaw-session-id": "${OPENCLAW_MCP_SESSION_ID}",
+          // Authenticates the sessionId above so governance binds to this run and
+          // not another session's (the id header alone is forgeable).
+          "x-openclaw-session-token": "${OPENCLAW_MCP_SESSION_TOKEN}",
           "x-openclaw-agent-id": "${OPENCLAW_MCP_AGENT_ID}",
           "x-openclaw-account-id": "${OPENCLAW_MCP_ACCOUNT_ID}",
           "x-openclaw-message-channel": "${OPENCLAW_MCP_MESSAGE_CHANNEL}",

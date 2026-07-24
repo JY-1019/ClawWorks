@@ -31,6 +31,13 @@ export type EnterpriseRunTraceSink = (event: {
 export type EnterpriseActiveRun = {
   plan: EnterpriseRunPlan;
   policies: readonly GovernancePolicy[];
+  /**
+   * The session this run executes for. Indexed into a sessionId→runId map so an
+   * out-of-process caller (the loopback MCP server, spawned by this run) can find
+   * the run it belongs to from its own trusted sessionId, instead of trusting a
+   * client-supplied run-id header it could forge to another run's scope.
+   */
+  sessionId?: string;
   sink?: EnterpriseRunTraceSink;
   /**
    * Required property ids per object type, from the tree this run PLANNED
@@ -62,21 +69,52 @@ function activeRuns(): Map<string, EnterpriseActiveRun> {
   return holder[ACTIVE_RUNS_KEY];
 }
 
+// sessionId → the runId that session is CURRENTLY executing. Turns of one session
+// are serialized (the session lane), so at most one run is active per session at
+// a time and this map is unambiguous during a turn. Same symbol-keyed global as
+// the run registry so duplicated dist chunks share one map.
+const SESSION_ACTIVE_RUNS_KEY = Symbol.for("openclaw.enterpriseSessionActiveRuns");
+
+function sessionActiveRuns(): Map<string, string> {
+  const holder = globalThis as { [SESSION_ACTIVE_RUNS_KEY]?: Map<string, string> };
+  holder[SESSION_ACTIVE_RUNS_KEY] ??= new Map();
+  return holder[SESSION_ACTIVE_RUNS_KEY];
+}
+
 export function registerEnterpriseActiveRun(run: EnterpriseActiveRun): void {
   activeRuns().set(run.plan.runId, run);
+  if (run.sessionId) {
+    // Begin runs inside the session lane, so a fresh turn's begin overwrites the
+    // prior turn's link before this turn's tool calls resolve — always the
+    // current run.
+    sessionActiveRuns().set(run.sessionId, run.plan.runId);
+  }
 }
 
 export function getEnterpriseActiveRun(runId: string): EnterpriseActiveRun | undefined {
   return activeRuns().get(runId);
 }
 
+/** The run a session is executing right now, or undefined between/outside runs. */
+export function getSessionActiveRunId(sessionId: string): string | undefined {
+  return sessionActiveRuns().get(sessionId);
+}
+
 export function unregisterEnterpriseActiveRun(runId: string): void {
+  const run = activeRuns().get(runId);
   activeRuns().delete(runId);
+  // Guarded clear: run end runs OUTSIDE the session lane, so the next run for the
+  // same session can begin (and re-point the link) before this one ends. Drop the
+  // link only if it still names the ending run, or we would orphan the successor.
+  if (run?.sessionId && sessionActiveRuns().get(run.sessionId) === runId) {
+    sessionActiveRuns().delete(run.sessionId);
+  }
 }
 
 /** Test-only: clear registry state between cases (isolate:false lanes). */
 export function clearEnterpriseActiveRunsForTest(): void {
   activeRuns().clear();
+  sessionActiveRuns().clear();
 }
 
 /** Whether a mediated run advances/traces per-node steps (governed trees only). */

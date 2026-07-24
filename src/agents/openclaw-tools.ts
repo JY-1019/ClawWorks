@@ -106,6 +106,23 @@ export function createOpenClawTools(
     runSessionKey?: string;
     agentChannel?: GatewayMessageChannel;
     runId?: string;
+    /**
+     * Loopback surface only: expose the ontology tools on a STABLE, per-session
+     * basis rather than per-run. The loopback MCP client caches its tool list
+     * across warm turns, so a per-run tool set would freeze at the first turn's
+     * run; the tools self-gate at execution instead (see ontology-tools.ts), so a
+     * call outside an ontology run just reports "not governed". In-process callers
+     * leave this unset and keep the per-run `runDeclaresOntology` gate.
+     */
+    exposeOntologyTools?: boolean;
+    /**
+     * Loopback surface only: the run each ontology CALL is scoped to (the
+     * session's current run, resolved server-side). Undefined means no run is
+     * active this turn, which the tools report as ungoverned. Kept separate from
+     * `runId` so exposing ontology tools does not also turn on the other
+     * run-scoped tools (knowledge, skill workshop) the loopback leaves off.
+     */
+    ontologyRunId?: string;
     agentAccountId?: string;
     /** Delivery target for topic/thread routing. */
     agentTo?: string;
@@ -210,25 +227,37 @@ export function createOpenClawTools(
     options?.runId && runHasRetrievableKnowledgeFoundations(options.runId)
       ? options.runId
       : undefined;
-  // Expose the ontology tools only when the run's TREE actually declares an object
-  // graph. Enterprise mode is on by default and the stock built-in trees are
-  // deliberately guidance-free, so gating on run registration alone would add
-  // three useless tools to every stock run's tool list.
+  // In-process runs expose the ontology tools only when the run's TREE actually
+  // declares an object graph. Enterprise mode is on by default and the stock
+  // built-in trees are deliberately guidance-free, so gating on run registration
+  // alone would add three useless tools to every stock run's tool list.
   //
   // The gate reads the PLAN, which is fixed for the run, so the tools stay in the
   // list for the run's whole life: gating on the ACTIVE node's ontology would
   // mutate the model-visible tool list as the run walks the tree and blow the
   // prompt cache mid-run. Per-node scoping happens at execution instead.
-  const enterpriseOntologyRunId =
+  const perRunOntologyRunId =
     options?.runId && runDeclaresOntology(options.runId) ? options.runId : undefined;
+  // The loopback surface cannot gate exposure per-run (its MCP client caches the
+  // tool list across warm turns), so it exposes the tools on a stable per-session
+  // basis and binds each CALL to the session's current run for execution scope.
+  const stableOntologyExposure = options?.exposeOntologyTools === true;
+  const exposeOntologyReadTools = stableOntologyExposure || perRunOntologyRunId !== undefined;
+  // The run each ontology call is scoped to: the loopback's current run (may be
+  // absent this turn → ungoverned), or the in-process run that declared it. Empty
+  // string when absent so the factory's `resolveActiveOntologyScope` no-ops.
+  const ontologyCallRunId = stableOntologyExposure
+    ? (options?.ontologyRunId ?? "")
+    : (perRunOntologyRunId ?? "");
   // The WRITE tool needs an explicit opt-in on top of that. An omitted
   // `allowedTools` means allow-all, so an existing tree that declares actions but
   // scopes no tools would otherwise gain object-store writes on upgrade — from
-  // effects that until now were only validated and rendered.
-  const enterpriseOntologyWriteRunId =
-    enterpriseOntologyRunId && runAllowsOntologyWrites(enterpriseOntologyRunId)
-      ? enterpriseOntologyRunId
-      : undefined;
+  // effects that until now were only validated and rendered. Loopback exposure is
+  // stable like the read tools; the per-call gate still denies a write from a step
+  // that did not opt in.
+  const exposeOntologyWriteTool = stableOntologyExposure
+    ? true
+    : perRunOntologyRunId !== undefined && runAllowsOntologyWrites(perRunOntologyRunId);
   const runtimeSnapshot = getActiveSecretsRuntimeConfigSnapshot();
   const availabilityConfig = selectApplicableRuntimeConfig({
     inputConfig: resolvedConfig,
@@ -503,16 +532,14 @@ export function createOpenClawTools(
       : []),
     // Fixed position: tool ORDER is part of the prompt-cache key, so these are
     // spliced at one stable point rather than appended wherever convenient.
-    ...(enterpriseOntologyRunId
+    ...(exposeOntologyReadTools
       ? [
-          createSearchObjectsTool({ runId: enterpriseOntologyRunId }),
-          createGetNeighborsTool({ runId: enterpriseOntologyRunId }),
-          createComputeFunctionTool({ runId: enterpriseOntologyRunId }),
+          createSearchObjectsTool({ runId: ontologyCallRunId }),
+          createGetNeighborsTool({ runId: ontologyCallRunId }),
+          createComputeFunctionTool({ runId: ontologyCallRunId }),
         ]
       : []),
-    ...(enterpriseOntologyWriteRunId
-      ? [createInvokeActionTool({ runId: enterpriseOntologyWriteRunId })]
-      : []),
+    ...(exposeOntologyWriteTool ? [createInvokeActionTool({ runId: ontologyCallRunId })] : []),
     createGetGoalTool({
       agentSessionKey: options?.agentSessionKey,
       runSessionKey: options?.runSessionKey,
