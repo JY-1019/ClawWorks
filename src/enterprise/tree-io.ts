@@ -4,6 +4,7 @@
  * the calling surface (CLI today, gateway later).
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { reloadPersistedBundleFoundations } from "./knowledge-bundle-loader.js";
 import { validateWorkflowTreeDefinition, type WorkflowTreeValidationIssue } from "./schema.js";
 import {
   getWorkflowTreeRegistryEntry,
@@ -78,6 +79,10 @@ export function importWorkflowTreeContent(
   const existing = getWorkflowTreeRegistryEntry(parsed.tree.id, options);
   upsertEnterpriseWorkflowTree({ tree: parsed.tree, sourceFormat: params.format }, options);
   invalidateWorkflowTreeRegistry();
+  // The upsert pruned any bundled foundations this tree no longer references;
+  // reconcile the live registry from the canonical store so a running gateway
+  // stops serving them immediately, not only after a restart.
+  reloadPersistedBundleFoundations(options);
   return { ok: true, tree: parsed.tree, replaced: existing?.source ?? null };
 }
 
@@ -116,6 +121,12 @@ export function removeImportedWorkflowTree(
   const removed = deleteEnterpriseWorkflowTree(treeId, options);
   if (removed) {
     invalidateWorkflowTreeRegistry();
+    // The delete dropped this tree's bundled-foundation rows; reconcile the live
+    // bundle registry from the remaining rows so a running gateway stops serving
+    // a removed tree's foundations (keeping ones another tree still carries). This
+    // reconciles immediately, so an already-active run's next knowledge_search
+    // reflects the change (known limitation; see docs/cli/enterprise.md).
+    reloadPersistedBundleFoundations(options);
   }
   return removed;
 }

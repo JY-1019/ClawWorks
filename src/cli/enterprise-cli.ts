@@ -4,6 +4,8 @@ import { InvalidArgumentError, type Command } from "commander";
 import { formatDocsLink } from "../../packages/terminal-core/src/links.js";
 import { theme } from "../../packages/terminal-core/src/theme.js";
 import {
+  enterpriseBundleExportCommand,
+  enterpriseBundleImportCommand,
   enterpriseRunsListCommand,
   enterpriseRunsShowCommand,
   enterpriseTreesExportCommand,
@@ -75,6 +77,31 @@ export function registerEnterpriseCli(program: Command) {
       });
     });
   applyParentDefaultHelpAction(trees);
+
+  const bundle = enterprise
+    .command("bundle")
+    .description("Export/import self-contained workflow bundles (trees + inlined knowledge)");
+  bundle
+    .command("export")
+    .description("Export a tree and everything it references as a portable bundle")
+    .argument("<treeId>", "Tree id (see enterprise trees list)")
+    .option("--out <file>", "Write to a file instead of stdout")
+    .option("--format <format>", "Output format: yaml or json")
+    .action(async (treeId: string, opts: { out?: string; format?: string }) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        await enterpriseBundleExportCommand(treeId, defaultRuntime, opts);
+      });
+    });
+  bundle
+    .command("import")
+    .description("Validate and import a workflow bundle file (trees + knowledge)")
+    .argument("<file>", "Bundle file (.yaml/.yml/.json)")
+    .action(async (file: string) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        enterpriseBundleImportCommand(file, defaultRuntime);
+      });
+    });
+  applyParentDefaultHelpAction(bundle);
 
   const runs = enterprise.command("runs").description("Inspect enterprise run traces");
   runs

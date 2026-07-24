@@ -501,6 +501,15 @@ export interface EnterpriseRuns {
   updated_at: number;
 }
 
+export interface EnterpriseTreeBundledFoundations {
+  descriptor_json: string;
+  foundation_id: string;
+  imported_at: number;
+  snippets_json: string;
+  tree_id: string;
+  updated_at: number;
+}
+
 export interface EnterpriseWorkflowTreeVersions {
   definition_json: string;
   name: string;
@@ -1054,6 +1063,7 @@ export interface DB {
   enterprise_ontology_objects: EnterpriseOntologyObjects;
   enterprise_run_events: EnterpriseRunEvents;
   enterprise_runs: EnterpriseRuns;
+  enterprise_tree_bundled_foundations: EnterpriseTreeBundledFoundations;
   enterprise_workflow_tree_versions: EnterpriseWorkflowTreeVersions;
   enterprise_workflow_trees: EnterpriseWorkflowTrees;
   exec_approvals_config: ExecApprovalsConfig;

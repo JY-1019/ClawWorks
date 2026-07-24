@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import { resetPersistedBundleFoundationsForTest } from "./knowledge-bundle-loader.js";
 import {
   exportWorkflowTree,
   importWorkflowTreeContent,
@@ -19,6 +20,9 @@ const FIXTURE = path.join(process.cwd(), "test/fixtures/enterprise/customer-supp
 
 afterEach(() => {
   invalidateWorkflowTreeRegistry();
+  // import/remove reload the bundle registry and set the once-guard; reset it so a
+  // later test in the same worker (--isolate=false) re-hydrates from its fixture.
+  resetPersistedBundleFoundationsForTest();
 });
 
 afterAll(() => {

@@ -31,10 +31,81 @@ const log = createSubsystemLogger("enterprise");
 // pattern as the enterprise active-run registry).
 const FOUNDATIONS_KEY = Symbol.for("openclaw.enterpriseKnowledgeFoundations");
 
+// Bundle-imported foundations live in a SEPARATE registry from plugin-registered
+// ones because their lifecycle owner differs: the plugin loader snapshots,
+// clears, restores, and caches the plugin registry as a unit (see loader.ts), so
+// a bundle foundation stored there would be dropped on a plugin reload. This map
+// is owned by the runtime's startup loader and never touched by the plugin
+// lifecycle.
+//
+// Keyed by OWNING tree, then foundation id. Bundle knowledge is workflow-scoped:
+// a run may only retrieve a bundle foundation its own tree imported. Keying by
+// tree (not a flat id map with a shared owner set) also keeps each tree's content
+// separate, so two bundles reusing an id with different snippets never serve one
+// another's corpus.
+const BUNDLE_FOUNDATIONS_KEY = Symbol.for("openclaw.enterpriseBundleKnowledgeFoundations");
+
 function foundations(): Map<string, KnowledgeFoundationAdapter> {
   const holder = globalThis as { [FOUNDATIONS_KEY]?: Map<string, KnowledgeFoundationAdapter> };
   holder[FOUNDATIONS_KEY] ??= new Map();
   return holder[FOUNDATIONS_KEY];
+}
+
+function bundleFoundationsByTree(): Map<string, Map<string, KnowledgeFoundationAdapter>> {
+  const holder = globalThis as {
+    [BUNDLE_FOUNDATIONS_KEY]?: Map<string, Map<string, KnowledgeFoundationAdapter>>;
+  };
+  holder[BUNDLE_FOUNDATIONS_KEY] ??= new Map();
+  return holder[BUNDLE_FOUNDATIONS_KEY];
+}
+
+/** Resolve an adapter by id (global/inspector): a live plugin foundation, else any tree's bundle one. */
+function resolveFoundationAdapter(foundationId: string): KnowledgeFoundationAdapter | undefined {
+  const plugin = foundations().get(foundationId);
+  if (plugin) {
+    return plugin;
+  }
+  for (const perTree of bundleFoundationsByTree().values()) {
+    const adapter = perTree.get(foundationId);
+    if (adapter) {
+      return adapter;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve an adapter for retrieval by a run on `treeId`: a live plugin foundation
+ * (global, deployment service), else THIS tree's own bundle foundation — never
+ * another tree's, even for the same id.
+ */
+function resolveRetrievalAdapter(
+  treeId: string,
+  foundationId: string,
+): KnowledgeFoundationAdapter | undefined {
+  return (
+    foundations().get(foundationId) ?? bundleFoundationsByTree().get(treeId)?.get(foundationId)
+  );
+}
+
+/** Foundation ids a run on `treeId` may retrieve: plugin ids + this tree's bundle ids, sorted. */
+function retrievalFoundationIds(treeId: string): string[] {
+  const ids = new Set<string>(foundations().keys());
+  for (const foundationId of bundleFoundationsByTree().get(treeId)?.keys() ?? []) {
+    ids.add(foundationId);
+  }
+  return [...ids].toSorted();
+}
+
+/** All registered foundation ids (plugin + every tree's bundle), deduped and sorted. */
+function allFoundationIds(): string[] {
+  const ids = new Set<string>(foundations().keys());
+  for (const perTree of bundleFoundationsByTree().values()) {
+    for (const foundationId of perTree.keys()) {
+      ids.add(foundationId);
+    }
+  }
+  return [...ids].toSorted();
 }
 
 /** Register (or replace) the adapter for one knowledge foundation id. */
@@ -45,9 +116,37 @@ export function registerEnterpriseKnowledgeFoundation(
   foundations().set(foundationId, adapter);
 }
 
-/** Registered foundation ids in deterministic (sorted) order for stable digests. */
+/**
+ * Register a bundle-imported foundation owned by `treeId`, keyed under that tree so
+ * its content stays isolated from other trees that reuse the id. Kept out of the
+ * plugin registry so the plugin loader's clear/restore/cache lifecycle cannot drop
+ * it; the runtime's startup loader re-hydrates it from SQLite.
+ */
+export function registerBundleKnowledgeFoundation(
+  treeId: string,
+  foundationId: string,
+  adapter: KnowledgeFoundationAdapter,
+): void {
+  const perTree = bundleFoundationsByTree().get(treeId);
+  if (perTree) {
+    perTree.set(foundationId, adapter);
+  } else {
+    bundleFoundationsByTree().set(treeId, new Map([[foundationId, adapter]]));
+  }
+}
+
+/** Clear bundle-imported foundations (test isolation; startup re-registers them). */
+export function clearBundleKnowledgeFoundations(): void {
+  bundleFoundationsByTree().clear();
+}
+
+/**
+ * All registered foundation ids (plugin + every bundle) in deterministic order.
+ * This is the operator/inspector view; retrieval uses the tree-scoped list so
+ * bundle knowledge never leaks across workflows.
+ */
 export function listEnterpriseKnowledgeFoundationIds(): string[] {
-  return [...foundations().keys()].toSorted();
+  return allFoundationIds();
 }
 
 /** One registry entry, used to snapshot/restore across plugin (de)activation. */
@@ -100,8 +199,13 @@ export function listEnterpriseKnowledgeFoundationDescriptors(): EnterpriseKnowle
   }));
 }
 
-function describeFoundation(foundationId: string): KnowledgeFoundationDescriptor {
-  const adapter = foundations().get(foundationId);
+// The adapter defaults to the global lookup (inspector view); callers with a
+// run/export tree pass the tree-scoped adapter so the descriptor matches the same
+// tree's content, never another workflow's for a reused id.
+function describeFoundation(
+  foundationId: string,
+  adapter: KnowledgeFoundationAdapter | undefined = resolveFoundationAdapter(foundationId),
+): KnowledgeFoundationDescriptor {
   const fallback: KnowledgeFoundationDescriptor = { kind: "remote", displayName: foundationId };
   if (!adapter?.describe) {
     return fallback;
@@ -133,7 +237,7 @@ export type KnowledgeFoundationConnectionStatus = {
 export async function testEnterpriseKnowledgeFoundationConnection(
   foundationId: string,
 ): Promise<KnowledgeFoundationConnectionStatus> {
-  const adapter = foundations().get(foundationId);
+  const adapter = resolveFoundationAdapter(foundationId);
   if (!adapter) {
     return { status: "not-registered" };
   }
@@ -179,7 +283,7 @@ async function withDocumentAdapter<TValue>(
   operation: string,
   run: (adapter: KnowledgeFoundationAdapter) => Promise<TValue> | undefined,
 ): Promise<KnowledgeDocumentsOutcome<TValue>> {
-  const adapter = foundations().get(foundationId);
+  const adapter = resolveFoundationAdapter(foundationId);
   if (!adapter) {
     return { status: "not-registered" };
   }
@@ -206,6 +310,57 @@ async function withDocumentAdapter<TValue>(
     );
     return { status: "failed", detail: `${operation} failed` };
   }
+}
+
+/** A foundation's inlinable content plus its descriptor, for a workflow bundle. */
+export type KnowledgeFoundationSnapshot =
+  | { status: "ok"; descriptor: KnowledgeFoundationDescriptor; snippets: KnowledgeSnippet[] }
+  | { status: "not-registered" }
+  | { status: "unsupported" }
+  | { status: "failed"; detail: string };
+
+/**
+ * Snapshot a foundation's full content for bundling. Only foundations that own
+ * their content in-process implement `snapshot()`; server-backed adapters report
+ * "unsupported" so the bundle records them as un-inlined rather than shipping
+ * partial content. Adapter faults stay contained (they can carry urls/paths).
+ */
+export async function snapshotEnterpriseKnowledgeFoundation(
+  treeId: string,
+  foundationId: string,
+): Promise<KnowledgeFoundationSnapshot> {
+  // Scope to what `treeId` may retrieve (a live plugin foundation, or a bundle one
+  // it OWNS): never snapshot another workflow's bundled content into this tree's
+  // export, matching what runtime retrieval hides from the tree.
+  const adapter = resolveRetrievalAdapter(treeId, foundationId);
+  if (!adapter) {
+    return { status: "not-registered" };
+  }
+  if (!adapter.snapshot) {
+    return { status: "unsupported" };
+  }
+  try {
+    const snippets = await adapter.snapshot();
+    // Same tree-scoped adapter for both content and descriptor, so an export never
+    // pairs this tree's snippets with another tree's descriptor for a reused id.
+    return { status: "ok", descriptor: describeFoundation(foundationId, adapter), snippets };
+  } catch (err) {
+    log.warn(
+      `enterprise knowledge foundation "${foundationId}" snapshot failed: ${errorMessage(err)}`,
+    );
+    return { status: "failed", detail: "snapshot failed" };
+  }
+}
+
+/**
+ * Whether a run's tree can retrieve any foundation (a live plugin foundation or a
+ * bundle one it owns). Gates whether `knowledge_search` is exposed to the model,
+ * so an unrelated workflow does not receive a dead tool after a bundle import for
+ * some other tree.
+ */
+export function runHasRetrievableKnowledgeFoundations(runId: string): boolean {
+  const run = getEnterpriseActiveRun(runId);
+  return run ? retrievalFoundationIds(run.plan.treeId).length > 0 : false;
 }
 
 /** List the documents a foundation holds, for the operator inspector. */
@@ -286,7 +441,12 @@ export function describeWorkflowKnowledgeFoundations(runId: string): WorkflowKno
     }
   }
   return [...referenced].toSorted().map((foundationId) => {
-    const { description } = describeFoundation(foundationId);
+    // Tree-scoped adapter so the model-facing glossary never shows another
+    // workflow's description for a reused foundation id.
+    const { description } = describeFoundation(
+      foundationId,
+      resolveRetrievalAdapter(run.plan.treeId, foundationId),
+    );
     return description !== undefined ? { foundationId, description } : { foundationId };
   });
 }
@@ -357,7 +517,11 @@ export async function resolveEnterpriseKnowledge(params: {
       }
     }
   }
-  for (const foundationId of listEnterpriseKnowledgeFoundationIds()) {
+  // Scope to plugin foundations (deployment-wide) plus bundle foundations THIS
+  // run's tree owns. A bundle imported for another workflow is invisible here, so
+  // its knowledge never leaks into an unrelated run whose ontology omits an
+  // allow-list (which the path gate below reads as allow-all).
+  for (const foundationId of retrievalFoundationIds(run.plan.treeId)) {
     if (!foundationAllowedByPath(path, foundationId)) {
       continue; // outside the step's ontology allow-list; not a governance denial
     }
@@ -390,7 +554,7 @@ export async function resolveEnterpriseKnowledge(params: {
       skipped.push({ foundationId, reason: decision.reason });
       continue;
     }
-    const adapter = foundations().get(foundationId);
+    const adapter = resolveRetrievalAdapter(run.plan.treeId, foundationId);
     if (!adapter) {
       continue;
     }
@@ -440,7 +604,25 @@ function recordKnowledgeDecision(
  * case-insensitive term overlap so `retrieve` is deterministic.
  */
 export class InMemoryKnowledgeFoundation implements KnowledgeFoundationAdapter {
-  constructor(private readonly documents: readonly KnowledgeSnippet[]) {}
+  // Only defined when a descriptor is supplied (e.g. a bundle import), so a
+  // descriptor-less foundation still falls back to the host's neutral descriptor
+  // exactly as before this adapter gained a `describe`.
+  readonly describe?: () => KnowledgeFoundationDescriptor;
+
+  constructor(
+    private readonly documents: readonly KnowledgeSnippet[],
+    descriptor?: KnowledgeFoundationDescriptor,
+  ) {
+    if (descriptor) {
+      this.describe = () => descriptor;
+    }
+  }
+
+  /** The full content, for bundling. `retrieve` re-stamps the foundation id, so
+   *  the ids stored here are irrelevant once re-imported. */
+  snapshot(): KnowledgeSnippet[] {
+    return this.documents.map((doc) => ({ ...doc }));
+  }
 
   async retrieve(params: {
     foundationId: string;

@@ -5,6 +5,8 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { theme } from "../../packages/terminal-core/src/theme.js";
+import { exportWorkflowBundle, importWorkflowBundle } from "../enterprise/bundle-io.js";
+import { loadPersistedBundleFoundations } from "../enterprise/knowledge-bundle-loader.js";
 import type { WorkflowTreeValidationIssue } from "../enterprise/schema.js";
 import {
   getEnterpriseRunRecord,
@@ -24,12 +26,15 @@ import {
   getWorkflowTreeRegistrySnapshot,
 } from "../enterprise/tree-registry.js";
 import type { WorkflowTreeSourceFormat } from "../enterprise/tree-store.sqlite.js";
+import { writeTextAtomic } from "../infra/json-files.js";
 import type { RuntimeEnv } from "../runtime.js";
 
 const GATEWAY_RELOAD_HINT =
   "A running gateway loads tree definitions at startup; restart it to apply this change.";
 
-function readTreeFile(
+// Shared by tree and bundle commands: both exchange formats key off the same
+// file extensions, so one reader keeps the extension policy in one place.
+function readEnterpriseExchangeFile(
   filePath: string,
   runtime: RuntimeEnv,
 ): { content: string; format: WorkflowTreeSourceFormat } | null {
@@ -53,8 +58,9 @@ function readTreeFile(
 function printValidationIssues(
   issues: readonly WorkflowTreeValidationIssue[],
   runtime: RuntimeEnv,
+  subject: string,
 ): void {
-  runtime.error(`Invalid workflow tree definition (${issues.length} issue(s)):`);
+  runtime.error(`Invalid ${subject} (${issues.length} issue(s)):`);
   for (const issue of issues) {
     runtime.error(`  - ${issue.path || "(root)"}: ${issue.message}`);
   }
@@ -104,13 +110,13 @@ export function enterpriseTreesListCommand(runtime: RuntimeEnv, opts: { json?: b
 }
 
 export function enterpriseTreesValidateCommand(filePath: string, runtime: RuntimeEnv): void {
-  const file = readTreeFile(filePath, runtime);
+  const file = readEnterpriseExchangeFile(filePath, runtime);
   if (!file) {
     return;
   }
   const result = parseWorkflowTreeContent(file.content, file.format);
   if (!result.ok) {
-    printValidationIssues(result.issues, runtime);
+    printValidationIssues(result.issues, runtime, "workflow tree definition");
     runtime.exit(1);
     return;
   }
@@ -120,13 +126,13 @@ export function enterpriseTreesValidateCommand(filePath: string, runtime: Runtim
 }
 
 export function enterpriseTreesImportCommand(filePath: string, runtime: RuntimeEnv): void {
-  const file = readTreeFile(filePath, runtime);
+  const file = readEnterpriseExchangeFile(filePath, runtime);
   if (!file) {
     return;
   }
   const result = importWorkflowTreeContent({ content: file.content, format: file.format });
   if (!result.ok) {
-    printValidationIssues(result.issues, runtime);
+    printValidationIssues(result.issues, runtime, "workflow tree definition");
     runtime.exit(1);
     return;
   }
@@ -181,6 +187,101 @@ export function enterpriseTreesRemoveCommand(treeId: string, runtime: RuntimeEnv
     return;
   }
   runtime.log(`Removed imported workflow tree ${treeId}.`);
+  runtime.log(theme.muted(GATEWAY_RELOAD_HINT));
+}
+
+export async function enterpriseBundleExportCommand(
+  treeId: string,
+  runtime: RuntimeEnv,
+  opts: { out?: string; format?: string },
+): Promise<void> {
+  const format = resolveExportFormat(opts, runtime);
+  if (!format) {
+    return;
+  }
+  // The enterprise CLI loads no plugins, so a fresh process has an empty
+  // foundation registry; hydrate persisted bundle foundations first or the export
+  // would drop the very knowledge the tree references. Server-backed foundations
+  // (live plugins) are not visible here and are reported as skipped below; the
+  // bundle is a portable artifact of the persisted, self-contained content.
+  loadPersistedBundleFoundations();
+  const result = await exportWorkflowBundle({ treeId, format });
+  if (!result.ok) {
+    runtime.error(result.reason);
+    runtime.exit(1);
+    return;
+  }
+  // Warn (on stderr, so piped stdout stays clean) about foundations that could
+  // not be inlined: server-backed corpora expose no full-text read, so the
+  // recipient must configure those separately for retrieval to work.
+  for (const skipped of result.skippedFoundations) {
+    runtime.error(
+      `Warning: knowledge foundation "${skipped.id}" was not inlined (${skipped.reason}); the recipient must configure it separately.`,
+    );
+  }
+  if (result.impliedAllowAllKnowledge) {
+    runtime.error(
+      "Warning: this tree's root declares no knowledge allow-list, so at runtime it can retrieve any " +
+        "configured foundation (allow-all). The bundle cannot capture that implicit set; add an explicit " +
+        "root knowledgeFoundations allow-list to bundle its knowledge completely.",
+    );
+  }
+  if (opts.out) {
+    try {
+      // A bundle embeds knowledge snippet text that was protected inside the 0600
+      // state DB, so write it privately (atomic temp + rename, mode 0600) instead
+      // of inheriting a world-readable 0644 from the umask.
+      await writeTextAtomic(opts.out, result.content);
+    } catch (err) {
+      runtime.error(
+        `Could not write ${opts.out}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      runtime.exit(1);
+      return;
+    }
+    runtime.log(`Exported bundle for ${treeId} (${result.source}) to ${opts.out}`);
+    return;
+  }
+  runtime.log(result.content);
+}
+
+export function enterpriseBundleImportCommand(filePath: string, runtime: RuntimeEnv): void {
+  const file = readEnterpriseExchangeFile(filePath, runtime);
+  if (!file) {
+    return;
+  }
+  const result = importWorkflowBundle({ content: file.content, format: file.format });
+  if (!result.ok) {
+    printValidationIssues(result.issues, runtime, "workflow bundle");
+    runtime.exit(1);
+    return;
+  }
+  for (const tree of result.trees) {
+    const action =
+      tree.replaced === null
+        ? "Imported tree"
+        : tree.replaced === "builtin"
+          ? "Imported tree (overrides built-in)"
+          : "Updated tree";
+    runtime.log(`${action}: ${tree.id}`);
+  }
+  for (const foundationId of result.foundations) {
+    runtime.log(`Imported knowledge foundation: ${foundationId}`);
+  }
+  // Warn about foundations the trees reference but the bundle did not carry (the
+  // sender's export skipped them as server-backed): retrieval for these is dead
+  // until the operator configures them on this deployment.
+  if (result.missingFoundations.length > 0) {
+    runtime.error(
+      `Warning: these referenced knowledge foundations were not included and must be configured separately: ${result.missingFoundations.join(", ")}`,
+    );
+  }
+  // Surface referenced tool names: a bundle carries tree scope and knowledge,
+  // never tool implementations, so the operator must confirm the target
+  // deployment provides these.
+  if (result.requiredTools.length > 0) {
+    runtime.log(theme.muted(`Required tools: ${result.requiredTools.join(", ")}`));
+  }
   runtime.log(theme.muted(GATEWAY_RELOAD_HINT));
 }
 

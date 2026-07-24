@@ -19,12 +19,18 @@ import {
 } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import {
+  deleteBundledKnowledgeFoundationsForTree,
+  pruneBundledKnowledgeFoundationsForTree,
+  replaceBundledKnowledgeFoundationsForTree,
+} from "./enterprise-knowledge-store.sqlite.js";
+import {
   collectOntologySeed,
   deleteOntologyObjectsForTree,
   replaceSeededOntologyObjects,
 } from "./object-store.sqlite.js";
 import { validateWorkflowTreeDefinition } from "./schema.js";
-import type { WorkflowTreeDefinition } from "./types.js";
+import { collectReferencedFoundationIds } from "./tree-references.js";
+import type { BundledKnowledgeFoundation, WorkflowTreeDefinition } from "./types.js";
 
 export type EnterpriseTreeStoreOptions = {
   env?: NodeJS.ProcessEnv;
@@ -227,6 +233,12 @@ export function upsertEnterpriseWorkflowTree(
     tree: WorkflowTreeDefinition;
     sourceFormat: WorkflowTreeSourceFormat;
     now?: number;
+    /**
+     * Knowledge foundations a bundle inlined for this tree. Provided only by
+     * bundle import; a plain tree import omits it and leaves any existing set
+     * untouched, so editing a tree never silently drops its bundled knowledge.
+     */
+    bundledFoundations?: readonly BundledKnowledgeFoundation[];
   },
   options: EnterpriseTreeStoreOptions = {},
 ): void {
@@ -282,6 +294,29 @@ export function upsertEnterpriseWorkflowTree(
       seed: collectOntologySeed(params.tree),
       now,
     });
+    // Keep this tree's persisted bundled foundations in sync with its definition,
+    // in the SAME transaction so tree and knowledge are never half-applied. Note:
+    // only the live set is kept — bundled knowledge is NOT snapshotted into the
+    // append-only revision history above, so restoring an old tree revision does
+    // not restore that revision's knowledge (re-import the bundle for that). This
+    // is a known limitation; see docs/cli/enterprise.md.
+    if (params.bundledFoundations) {
+      // Bundle import: replace with the inlined set (the importer already filtered
+      // it to the tree's references), so a re-import drops foundations it omitted.
+      replaceBundledKnowledgeFoundationsForTree(database, {
+        treeId: params.tree.id,
+        foundations: params.bundledFoundations,
+        now,
+      });
+    } else {
+      // Plain tree import (no inlined content): keep still-referenced foundations,
+      // but drop ones the new definition no longer references, so detached
+      // knowledge cannot outlive the reference and leak into unrelated runs.
+      pruneBundledKnowledgeFoundationsForTree(database, {
+        treeId: params.tree.id,
+        keepIds: collectReferencedFoundationIds(params.tree),
+      });
+    }
   }, stateDatabaseOptions(options));
 }
 
@@ -435,9 +470,10 @@ export function deleteEnterpriseWorkflowTree(
     removed = (normalizeSqliteNumber(result.numAffectedRows ?? 0n) ?? 0) > 0;
     if (removed) {
       // There is no FK to cascade from (built-in trees are code, not rows), so
-      // this has to be explicit: otherwise the removed tree's objects survive and
-      // are inherited by whatever tree next claims the id.
+      // this has to be explicit: otherwise the removed tree's objects and bundled
+      // foundations survive and are inherited by whatever tree next claims the id.
       deleteOntologyObjectsForTree(database, treeId);
+      deleteBundledKnowledgeFoundationsForTree(database, treeId);
     }
   }, stateDatabaseOptions(options));
   return removed;

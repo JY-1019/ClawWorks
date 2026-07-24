@@ -3,6 +3,7 @@
  * plugin IDs from metadata scope the load when available.
  */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { ensureBundleFoundationsLoadedOnce } from "../enterprise/knowledge-bundle-loader.js";
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { getCurrentPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-snapshot.js";
 import { getActivePluginRuntimeSubagentMode } from "../plugins/runtime.js";
@@ -38,6 +39,11 @@ export function ensureRuntimePluginsLoaded(params: {
   workspaceDir?: string | null;
   allowGatewaySubagentBinding?: boolean;
 }): void {
+  // Persisted bundle foundations are operator-imported data, not plugins (they
+  // register into their own registry the plugin lifecycle never clears), so load
+  // them even when plugins are disabled, before the early-return below. Guarded to
+  // load once per process; the gateway reloads them per lifecycle (see loader).
+  ensureBundleFoundationsLoadedOnce();
   if (params.config && !normalizePluginsConfig(params.config.plugins).enabled) {
     return;
   }

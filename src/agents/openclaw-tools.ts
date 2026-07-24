@@ -8,9 +8,9 @@ import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.ty
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import { selectApplicableRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { listEnterpriseKnowledgeFoundationIds } from "../enterprise/knowledge.js";
+import { runHasRetrievableKnowledgeFoundations } from "../enterprise/knowledge.js";
 import { runDeclaresOntology } from "../enterprise/ontology-runtime.js";
-import { getEnterpriseActiveRun, runAllowsOntologyWrites } from "../enterprise/runtime.js";
+import { runAllowsOntologyWrites } from "../enterprise/runtime.js";
 import { callGateway } from "../gateway/call.js";
 import { isEmbeddedMode } from "../infra/embedded-mode.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
@@ -201,12 +201,13 @@ export function createOpenClawTools(
   // Expose knowledge_search only when this run is actually enterprise-mediated
   // (an active run is registered — the authoritative signal that also respects
   // enterprise.mode "off" via the runtime snapshot mediation used) and a
-  // knowledge foundation is registered. Otherwise the stock tool list is
-  // unchanged (foundations are process-stable, so this stays fixed per run).
+  // knowledge foundation is retrievable BY THIS RUN'S TREE. Checking the global
+  // registry would expose a dead tool to an unrelated run after a bundle import
+  // for some other tree (its foundations are invisible here). Otherwise the stock
+  // tool list is unchanged (foundations are process-stable, so this stays fixed
+  // per run).
   const enterpriseKnowledgeRunId =
-    options?.runId &&
-    getEnterpriseActiveRun(options.runId) &&
-    listEnterpriseKnowledgeFoundationIds().length > 0
+    options?.runId && runHasRetrievableKnowledgeFoundations(options.runId)
       ? options.runId
       : undefined;
   // Expose the ontology tools only when the run's TREE actually declares an object

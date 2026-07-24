@@ -239,6 +239,36 @@ export type WorkflowTreeDefinition = {
   root: WorkflowNodeDefinition;
 };
 
+export const WORKFLOW_BUNDLE_SCHEMA = "clawworks.workflow-bundle" as const;
+export const WORKFLOW_BUNDLE_SCHEMA_VERSION = 1 as const;
+
+/** One knowledge foundation carried inside a bundle: its identity + inlined content. */
+export type BundledKnowledgeFoundation = {
+  id: EnterpriseId;
+  descriptor: KnowledgeFoundationDescriptor;
+  /** Full content, so import can register an in-memory foundation that retrieves identically. */
+  snippets: KnowledgeSnippet[];
+};
+
+/**
+ * A self-contained workflow bundle: exactly one tree plus everything it
+ * references (inlined knowledge foundations, a required-tools manifest), so a
+ * recipient can import it and run identically with no extra setup. A superset of
+ * the tree exchange format — `trees export`/`import` keep working unchanged. The
+ * `trees` array carries the single tree; the shape leaves room for a future
+ * multi-tree format version.
+ */
+export type WorkflowBundle = {
+  schema: typeof WORKFLOW_BUNDLE_SCHEMA;
+  schemaVersion: typeof WORKFLOW_BUNDLE_SCHEMA_VERSION;
+  /** The bundle's workflow tree (exactly one). */
+  trees: WorkflowTreeDefinition[];
+  /** Every foundation the trees reference that could be snapshotted, inlined. */
+  knowledgeFoundations: BundledKnowledgeFoundation[];
+  /** Tool names the trees' nodes require available (their allow-lists), so import can warn on gaps. */
+  requiredTools: string[];
+};
+
 /** Governance policy effects. Precedence: deny > require_approval > allow > audit. */
 export type GovernanceEffect = "allow" | "deny" | "audit" | "require_approval";
 
@@ -515,6 +545,15 @@ export type KnowledgeFoundationAdapter = {
     content: Uint8Array;
   }): Promise<KnowledgeDocumentUploadOutcome>;
   removeDocument?(documentId: string): Promise<KnowledgeDocumentRemovalOutcome>;
+  /**
+   * Enumerate the foundation's full content as snippets so a workflow bundle can
+   * inline it and reproduce retrieval after import. Implemented only by
+   * foundations that own their content in-process (the in-memory reference
+   * adapter); server-backed adapters expose no full-text read (see
+   * KnowledgeFoundationDocument), so they omit it and a bundle records them as
+   * un-snapshottable rather than shipping partial content.
+   */
+  snapshot?(): KnowledgeSnippet[] | Promise<KnowledgeSnippet[]>;
 };
 
 /**

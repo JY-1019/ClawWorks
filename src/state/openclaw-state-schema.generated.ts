@@ -1278,6 +1278,24 @@ CREATE TABLE IF NOT EXISTS enterprise_workflow_trees (
   updated_at INTEGER NOT NULL
 );
 
+-- Knowledge foundations a workflow bundle inlined, keyed by the tree they were
+-- imported with. The retrieval registry is process-local and plugin-populated;
+-- persisting a bundle's inlined content here lets the runtime re-register it at
+-- startup so knowledge_search works after a gateway restart, the same reload
+-- contract imported trees use. Scoped by tree_id (not global) so a re-import
+-- replaces exactly this tree's set and removeImportedWorkflowTree deletes it in
+-- the tree's own transaction, mirroring enterprise_ontology_objects; no FK for
+-- the same reason (built-in trees are code, not rows).
+CREATE TABLE IF NOT EXISTS enterprise_tree_bundled_foundations (
+  tree_id TEXT NOT NULL,
+  foundation_id TEXT NOT NULL,
+  descriptor_json TEXT NOT NULL,
+  snippets_json TEXT NOT NULL,
+  imported_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (tree_id, foundation_id)
+);
+
 -- Append-only history of imported tree definitions: every upsert records one
 -- revision so the editor can list and restore prior versions. The (tree_id,
 -- revision) primary key also serves the newest-first history listing.

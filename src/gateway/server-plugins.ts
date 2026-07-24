@@ -12,6 +12,7 @@ import { PROTOCOL_VERSION } from "../../packages/gateway-protocol/src/version.js
 import { normalizeModelRef, parseModelRef } from "../agents/model-selection.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { reloadPersistedBundleFoundations } from "../enterprise/knowledge-bundle-loader.js";
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { clearActivatedPluginRuntimeState, loadOpenClawPlugins } from "../plugins/loader.js";
 import { loadPluginLookUpTable, type PluginLookUpTable } from "../plugins/plugin-lookup-table.js";
@@ -736,6 +737,11 @@ export function loadGatewayPlugins(params: {
   };
 }) {
   const started = performance.now();
+  // Re-hydrate operator-imported bundle knowledge foundations for THIS gateway
+  // lifecycle. globalThis survives an in-process restart, so the per-process
+  // once-guard is not enough — a re-import between restarts would otherwise keep
+  // serving stale content. This reads the canonical SQLite set each restart.
+  reloadPersistedBundleFoundations();
   const activationAutoEnabled =
     params.activationSourceConfig !== undefined && params.autoEnabledReasons === undefined
       ? applyPluginAutoEnable({

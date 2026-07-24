@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  clearBundleKnowledgeFoundations,
   clearEnterpriseKnowledgeFoundations,
   InMemoryKnowledgeFoundation,
   listEnterpriseKnowledgeDocuments,
   listEnterpriseKnowledgeFoundationDescriptors,
   listEnterpriseKnowledgeFoundationIds,
   listEnterpriseKnowledgeFoundations,
+  registerBundleKnowledgeFoundation,
   registerEnterpriseKnowledgeFoundation,
   resolveEnterpriseKnowledge,
+  runHasRetrievableKnowledgeFoundations,
   restoreEnterpriseKnowledgeFoundations,
   removeEnterpriseKnowledgeDocument,
   testEnterpriseKnowledgeFoundationConnection,
@@ -29,13 +32,14 @@ type SinkEvent = { kind: string; nodeId: string; payload: Record<string, unknown
 
 function run(opts: {
   mode?: "enforce" | "observe";
+  treeId?: string;
   knowledgeFoundations?: string[];
   policies?: GovernancePolicy[];
   sink?: (event: SinkEvent) => void;
 }): EnterpriseActiveRun {
   const plan: EnterpriseRunPlan = {
     runId: "run-k",
-    treeId: "acme.support",
+    treeId: opts.treeId ?? "acme.support",
     treeVersion: "1.0.0",
     treeName: "Support",
     matchedBy: "planner",
@@ -70,6 +74,7 @@ function foundation(...texts: string[]): InMemoryKnowledgeFoundation {
 afterEach(() => {
   clearEnterpriseActiveRunsForTest();
   clearEnterpriseKnowledgeFoundations();
+  clearBundleKnowledgeFoundations();
 });
 
 describe("knowledge foundation registry", () => {
@@ -137,6 +142,54 @@ describe("resolveEnterpriseKnowledge", () => {
       "acme.a",
       "acme.b",
     ]);
+  });
+
+  it("scopes a bundle foundation to its owning tree, never leaking across workflows", async () => {
+    // A bundle foundation owned by tree "acme.other".
+    registerBundleKnowledgeFoundation("acme.other", "acme.bundle", foundation("bundled refund"));
+    // Plugin foundations stay global.
+    registerEnterpriseKnowledgeFoundation("acme.plugin", foundation("plugin refund"));
+
+    // A run on a DIFFERENT tree with an empty allow-list (allow-all) sees the
+    // global plugin foundation but NOT the other workflow's bundle foundation.
+    registerEnterpriseActiveRun(run({ treeId: "acme.support" }));
+    const other = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(other.snippets.map((snippet) => snippet.foundationId)).toEqual(["acme.plugin"]);
+    clearEnterpriseActiveRunsForTest();
+
+    // A run on the OWNING tree retrieves the bundle foundation (and the plugin one).
+    registerEnterpriseActiveRun(run({ treeId: "acme.other" }));
+    const owner = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(owner.snippets.map((snippet) => snippet.foundationId).toSorted()).toEqual([
+      "acme.bundle",
+      "acme.plugin",
+    ]);
+  });
+
+  it("keeps two trees' bundle content for the same id separate", async () => {
+    // Same foundation id, different snippets, imported by two workflows.
+    registerBundleKnowledgeFoundation("acme.a", "shared.kb", foundation("alpha refund"));
+    registerBundleKnowledgeFoundation("acme.b", "shared.kb", foundation("beta refund"));
+
+    registerEnterpriseActiveRun(run({ treeId: "acme.a" }));
+    const a = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(a.snippets.map((snippet) => snippet.text)).toEqual(["alpha refund"]);
+    clearEnterpriseActiveRunsForTest();
+
+    registerEnterpriseActiveRun(run({ treeId: "acme.b" }));
+    const b = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(b.snippets.map((snippet) => snippet.text)).toEqual(["beta refund"]);
+  });
+
+  it("reports retrievable foundations only for the owning tree (gates knowledge_search)", () => {
+    registerBundleKnowledgeFoundation("acme.other", "acme.bundle", foundation("x"));
+
+    registerEnterpriseActiveRun(run({ treeId: "acme.support" }));
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
+    clearEnterpriseActiveRunsForTest();
+
+    registerEnterpriseActiveRun(run({ treeId: "acme.other" }));
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(true);
   });
 
   it("targets only the requested foundations within the step allow-list", async () => {
