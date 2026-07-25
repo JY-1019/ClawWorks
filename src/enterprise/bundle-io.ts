@@ -16,6 +16,7 @@ import { snapshotEnterpriseKnowledgeFoundation } from "./knowledge.js";
 import { EnterpriseIdSchema, WorkflowTreeDefinitionSchema } from "./schema.js";
 import {
   collectReferencedFoundationIds,
+  collectReferencedSkills,
   collectReferencedToolGlobs,
   treeHasUnboundedKnowledgeScope,
 } from "./tree-references.js";
@@ -75,6 +76,7 @@ const WorkflowBundleSchema = z
     trees: z.array(WorkflowTreeDefinitionSchema).length(1),
     knowledgeFoundations: z.array(BundledKnowledgeFoundationSchema),
     requiredTools: z.array(z.string()),
+    requiredSkills: z.array(z.string()),
   })
   .strict()
   .superRefine((bundle, ctx) => {
@@ -156,6 +158,8 @@ export type WorkflowBundleImportResult =
        */
       missingFoundations: string[];
       requiredTools: string[];
+      /** Skill ids the imported trees declare, so the recipient can spot any it lacks. */
+      requiredSkills: string[];
     }
   | { ok: false; issues: WorkflowBundleValidationIssue[] };
 
@@ -172,6 +176,7 @@ export function serializeWorkflowBundle(
       a.id.localeCompare(b.id),
     ),
     requiredTools: [...bundle.requiredTools].toSorted(),
+    requiredSkills: [...bundle.requiredSkills].toSorted(),
   };
   if (format === "yaml") {
     return stringifyYaml(canonical);
@@ -233,6 +238,7 @@ export async function exportWorkflowBundle(
   }
   const foundationIds = collectReferencedFoundationIds(entry.tree);
   const requiredTools = collectReferencedToolGlobs(entry.tree);
+  const requiredSkills = collectReferencedSkills(entry.tree);
   const knowledgeFoundations: WorkflowBundle["knowledgeFoundations"] = [];
   const skippedFoundations: SkippedBundleFoundation[] = [];
   for (const id of foundationIds) {
@@ -251,6 +257,7 @@ export async function exportWorkflowBundle(
     trees: [entry.tree],
     knowledgeFoundations,
     requiredTools,
+    requiredSkills,
   };
   return {
     ok: true,
@@ -292,10 +299,16 @@ export function importWorkflowBundle(
   // trusting the bundle's stored array, which a stale export or manual edit could
   // leave inconsistent with what the workflow actually references.
   const requiredTools = new Set<string>();
+  // Same rationale for skills: derive from the trees, not the bundle's stored
+  // array, so a stale export cannot misreport the dependency.
+  const requiredSkills = new Set<string>();
   for (const tree of bundle.trees) {
     const existing = getWorkflowTreeRegistryEntry(tree.id, options);
     for (const tool of collectReferencedToolGlobs(tree)) {
       requiredTools.add(tool);
+    }
+    for (const skill of collectReferencedSkills(tree)) {
+      requiredSkills.add(skill);
     }
     const bundledFoundations: BundledKnowledgeFoundation[] = [];
     for (const id of collectReferencedFoundationIds(tree)) {
@@ -325,5 +338,6 @@ export function importWorkflowBundle(
     foundations: bundle.knowledgeFoundations.map((foundation) => foundation.id),
     missingFoundations: [...missing].toSorted(),
     requiredTools: [...requiredTools].toSorted(),
+    requiredSkills: [...requiredSkills].toSorted(),
   };
 }

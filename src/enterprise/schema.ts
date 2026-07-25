@@ -35,6 +35,20 @@ export const EnterpriseIdSchema = z
     'must be a dotted lowercase id (e.g. "assist.respond"): segments of [a-z0-9-] separated by dots',
   );
 
+// A step's skill ids must match the full runtime SKILL.md name contract
+// (validateName in src/skills/loading/session.ts): lowercase a-z, digits, and
+// single hyphens between segments, at most 64 chars — no leading/trailing or
+// consecutive hyphens. A declared skill the runtime would reject could never
+// resolve to a loaded one. Flat name, not the dotted EnterpriseId: skills are
+// not namespaced.
+const SkillNameSchema = z
+  .string()
+  .max(64, "skill name must be at most 64 characters")
+  .regex(
+    /^[a-z0-9]+(-[a-z0-9]+)*$/,
+    "must be a skill name: lowercase a-z, 0-9, single hyphens between segments",
+  );
+
 export const OntologyValueTypeSchema = z.enum(["string", "number", "boolean", "date", "id"]);
 
 const OntologyPropertySchema = z
@@ -191,6 +205,10 @@ export const OntologyBindingSchema = z
     knowledgeFoundations: z.array(EnterpriseIdSchema).optional(),
     contextHints: z.array(NonBlankStringSchema).optional(),
     guidance: NonBlankStringSchema.optional(),
+    // Flat SKILL.md name contract (lowercase a-z, digits, hyphens): a declared
+    // skill must be able to match a loaded one, so an id the runtime rejects
+    // cannot be accepted here.
+    skills: z.array(SkillNameSchema).optional(),
     expectedOutput: z.string().optional(),
     audit: z.boolean().optional(),
   })

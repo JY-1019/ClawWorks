@@ -229,6 +229,7 @@ export const nl: TranslationMap = {
     deniedTools: "Weigeren: {tools}",
     knowledge: "Kennis: {ids}",
     guidance: "Instructies: {text}",
+    skills: "Skills: {ids}",
     audit: "Gecontroleerd",
     activeBadge: "actief",
     nodeCount: "{count} stap(pen)",

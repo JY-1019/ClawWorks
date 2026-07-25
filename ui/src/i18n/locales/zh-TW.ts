@@ -221,6 +221,7 @@ export const zh_TW: TranslationMap = {
     deniedTools: "拒絕：{tools}",
     knowledge: "知識：{ids}",
     guidance: "指示：{text}",
+    skills: "Skills：{ids}",
     audit: "已稽核",
     activeBadge: "進行中",
     nodeCount: "{count} 個步驟",

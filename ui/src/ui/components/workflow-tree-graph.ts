@@ -39,6 +39,7 @@ export type WorkflowTreeOntology = {
   knowledgeFoundations?: string[];
   contextHints?: string[];
   guidance?: string;
+  skills?: string[];
   expectedOutput?: string;
   audit?: boolean;
 };
@@ -502,6 +503,9 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     }
     if (ontology.knowledgeFoundations?.length) {
       rows.push(row(t("enterprise.knowledge", { ids: ontology.knowledgeFoundations.join(", ") })));
+    }
+    if (ontology.skills?.length) {
+      rows.push(row(t("enterprise.skills", { ids: ontology.skills.join(", ") })));
     }
     // Actions get a block each, not a comma-joined id list: the parameters,
     // preconditions, and write effects ARE the action type, and an operator

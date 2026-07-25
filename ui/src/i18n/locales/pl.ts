@@ -227,6 +227,7 @@ export const pl: TranslationMap = {
     deniedTools: "Zabronione: {tools}",
     knowledge: "Wiedza: {ids}",
     guidance: "Instrukcje: {text}",
+    skills: "Skills: {ids}",
     audit: "Zaudytowane",
     activeBadge: "aktywne",
     nodeCount: "Liczba kroków: {count}",

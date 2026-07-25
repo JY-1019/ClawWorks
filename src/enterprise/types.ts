@@ -189,6 +189,18 @@ export type OntologyBinding = {
    * enforcement wins.
    */
   guidance?: string;
+  /**
+   * Skill ids this step depends on, recorded for operators. A declarative
+   * annotation: it is projected to the enterprise inspector and carried in a
+   * workflow bundle as a portability dependency, so a tree names the know-how a
+   * step needs. It never widens the step's tool scope or overrides governance,
+   * and it does not itself inject skill content into the run — skills load through
+   * OpenClaw's own (session-level, allowlist-gated) skill system. Wiring a step's
+   * declared skills into that eligible snapshot is a separate follow-up, so this
+   * stays out of the model-facing digest until then (a digest line promising a
+   * skill the run may have stripped would be a broken instruction).
+   */
+  skills?: string[];
   /** Expected output shape/summary for this step. */
   expectedOutput?: string;
   /** Record detailed audit events for every tool decision under this node. */
@@ -252,7 +264,7 @@ export type BundledKnowledgeFoundation = {
 
 /**
  * A self-contained workflow bundle: exactly one tree plus everything it
- * references (inlined knowledge foundations, a required-tools manifest), so a
+ * references (inlined knowledge foundations, required-tools and required-skills manifests), so a
  * recipient can import it and run identically with no extra setup. A superset of
  * the tree exchange format — `trees export`/`import` keep working unchanged. The
  * `trees` array carries the single tree; the shape leaves room for a future
@@ -267,6 +279,8 @@ export type WorkflowBundle = {
   knowledgeFoundations: BundledKnowledgeFoundation[];
   /** Tool names the trees' nodes require available (their allow-lists), so import can warn on gaps. */
   requiredTools: string[];
+  /** Skill ids the trees' nodes declare as dependencies, so import can warn on gaps. Names only — content is not inlined. */
+  requiredSkills: string[];
 };
 
 /** Governance policy effects. Precedence: deny > require_approval > allow > audit. */

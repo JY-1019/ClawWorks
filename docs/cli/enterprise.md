@@ -55,6 +55,9 @@ openclaw enterprise bundle import <file>
 - The required-tools list is informational: a bundle carries workflow scope
   and knowledge, never tool implementations, so confirm the target deployment
   provides the listed tools.
+- The required-skills list is informational the same way: a bundle records the
+  flat SKILL.md skill names its nodes declare (`ontology.skills`), never skill
+  content, so confirm the target has those skills installed.
 
 ### Known limitations
 

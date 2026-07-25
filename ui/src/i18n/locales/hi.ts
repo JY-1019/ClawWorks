@@ -224,6 +224,7 @@ export const hi: TranslationMap = {
     deniedTools: "अस्वीकृत: {tools}",
     knowledge: "ज्ञान: {ids}",
     guidance: "निर्देश: {text}",
+    skills: "Skills: {ids}",
     audit: "ऑडिट किया गया",
     activeBadge: "सक्रिय",
     nodeCount: "{count} चरण",

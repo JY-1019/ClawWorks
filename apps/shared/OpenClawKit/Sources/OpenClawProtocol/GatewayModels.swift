@@ -6883,6 +6883,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
     public let knowledgefoundations: [String]?
     public let contexthints: [String]?
     public let guidance: String?
+    public let skills: [String]?
     public let expectedoutput: String?
     public let audit: Bool?
 
@@ -6897,6 +6898,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
         knowledgefoundations: [String]?,
         contexthints: [String]?,
         guidance: String? = nil,
+        skills: [String]? = nil,
         expectedoutput: String?,
         audit: Bool?)
     {
@@ -6910,6 +6912,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
         self.knowledgefoundations = knowledgefoundations
         self.contexthints = contexthints
         self.guidance = guidance
+        self.skills = skills
         self.expectedoutput = expectedoutput
         self.audit = audit
     }
@@ -6925,6 +6928,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
         case knowledgefoundations = "knowledgeFoundations"
         case contexthints = "contextHints"
         case guidance
+        case skills
         case expectedoutput = "expectedOutput"
         case audit
     }

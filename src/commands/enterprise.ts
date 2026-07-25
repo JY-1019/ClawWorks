@@ -282,6 +282,11 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
   if (result.requiredTools.length > 0) {
     runtime.log(theme.muted(`Required tools: ${result.requiredTools.join(", ")}`));
   }
+  // Skills are named dependencies too: the bundle carries the ids, not the skill
+  // content, so the operator must confirm the target has them installed.
+  if (result.requiredSkills.length > 0) {
+    runtime.log(theme.muted(`Required skills: ${result.requiredSkills.join(", ")}`));
+  }
   runtime.log(theme.muted(GATEWAY_RELOAD_HINT));
 }
 

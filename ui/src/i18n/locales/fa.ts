@@ -227,6 +227,7 @@ export const fa: TranslationMap = {
     deniedTools: "غیرمجاز: {tools}",
     knowledge: "دانش: {ids}",
     guidance: "دستورالعمل‌ها: {text}",
+    skills: "Skills: {ids}",
     audit: "بازرسی‌شده",
     activeBadge: "فعال",
     nodeCount: "{count} مرحله",

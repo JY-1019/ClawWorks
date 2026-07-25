@@ -113,6 +113,23 @@ describe("validateWorkflowTreeDefinition", () => {
     (blankGuidance.root as { ontology: Record<string, unknown> }).ontology = { guidance: "  " };
     expect(validateWorkflowTreeDefinition(blankGuidance).ok).toBe(false);
   });
+
+  it("accepts flat skill names and rejects ones outside the runtime name contract", () => {
+    const withSkills = validTree();
+    (withSkills.root as { ontology: Record<string, unknown> }).ontology = {
+      skills: ["refund-playbook", "tone-guide"],
+    };
+    expect(validateWorkflowTreeDefinition(withSkills).ok).toBe(true);
+
+    // Names a loaded SKILL.md id could never take (colon/uppercase, leading or
+    // consecutive hyphen, over 64 chars) must be rejected up front, matching the
+    // runtime contract in src/skills/loading/session.ts.
+    for (const bad of ["plugin:Tone-Guide", "-refund", "refund-", "a--b", "x".repeat(65)]) {
+      const badSkill = validTree();
+      (badSkill.root as { ontology: Record<string, unknown> }).ontology = { skills: [bad] };
+      expect(validateWorkflowTreeDefinition(badSkill).ok, bad).toBe(false);
+    }
+  });
 });
 
 describe("ontology object / link / action types", () => {

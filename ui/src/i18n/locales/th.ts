@@ -221,6 +221,7 @@ export const th: TranslationMap = {
     deniedTools: "ปฏิเสธ: {tools}",
     knowledge: "ความรู้: {ids}",
     guidance: "คำแนะนำ: {text}",
+    skills: "Skills: {ids}",
     audit: "ตรวจสอบแล้ว",
     activeBadge: "ใช้งานอยู่",
     nodeCount: "{count} ขั้นตอน",

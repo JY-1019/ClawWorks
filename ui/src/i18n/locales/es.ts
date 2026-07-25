@@ -225,6 +225,7 @@ export const es: TranslationMap = {
     deniedTools: "Denegar: {tools}",
     knowledge: "Conocimiento: {ids}",
     guidance: "Instrucciones: {text}",
+    skills: "Skills: {ids}",
     audit: "Auditado",
     activeBadge: "activo",
     nodeCount: "{count} paso(s)",

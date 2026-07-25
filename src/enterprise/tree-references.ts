@@ -57,3 +57,19 @@ export function collectReferencedToolGlobs(tree: WorkflowTreeDefinition): string
   });
   return [...tools].toSorted();
 }
+
+/**
+ * Skill ids the tree's nodes name as dependencies (their `skills` declarations),
+ * sorted. A portability requirement like tool globs: they record the know-how the
+ * workflow expects the target to provide. Content is not inlined — the bundle
+ * reports the names so a target missing a skill is visible, not silently degraded.
+ */
+export function collectReferencedSkills(tree: WorkflowTreeDefinition): string[] {
+  const skills = new Set<string>();
+  walkWorkflowNodes(tree.root, (node) => {
+    for (const skill of node.ontology?.skills ?? []) {
+      skills.add(skill);
+    }
+  });
+  return [...skills].toSorted();
+}

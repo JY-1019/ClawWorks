@@ -326,6 +326,11 @@ function renderStep(
                 })}</span
               >`
             : nothing}
+          ${ontology.skills?.length
+            ? html`<span class="chip"
+                >${t("enterprise.skills", { ids: ontology.skills.join(", ") })}</span
+              >`
+            : nothing}
           ${ontology.audit ? html`<span class="chip">${t("enterprise.audit")}</span>` : nothing}
         </div>
       </div>

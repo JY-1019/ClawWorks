@@ -220,6 +220,7 @@ export const zh_CN: TranslationMap = {
     deniedTools: "拒绝：{tools}",
     knowledge: "知识：{ids}",
     guidance: "指令：{text}",
+    skills: "Skills：{ids}",
     audit: "已审计",
     activeBadge: "活跃",
     nodeCount: "{count} 个步骤",

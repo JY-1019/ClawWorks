@@ -86,8 +86,15 @@ root:
       ontology:
         allowedTools: [memory_search, message]
         deniedTools: [exec, process]
+        skills: [refund-playbook]
         expectedOutput: A resolution summary or an escalation note.
 ```
+
+A node's `ontology.skills` names the [skills](/tools/skills) whose know-how the
+step depends on, using flat SKILL.md names (lowercase letters, digits, hyphens).
+It is an operator-facing annotation for inspection and bundle portability; it
+does not load skill content into the run, which stays with the normal skill
+system.
 
 Manage trees with the CLI (see [`openclaw enterprise`](/cli/enterprise)):
 

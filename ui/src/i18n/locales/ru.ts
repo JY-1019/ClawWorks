@@ -228,6 +228,7 @@ export const ru: TranslationMap = {
     deniedTools: "Запретить: {tools}",
     knowledge: "Знания: {ids}",
     guidance: "Инструкции: {text}",
+    skills: "Skills: {ids}",
     audit: "Проверено",
     activeBadge: "активен",
     nodeCount: "Шагов: {count}",

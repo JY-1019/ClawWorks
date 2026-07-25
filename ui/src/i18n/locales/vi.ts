@@ -224,6 +224,7 @@ export const vi: TranslationMap = {
     deniedTools: "Từ chối: {tools}",
     knowledge: "Kiến thức: {ids}",
     guidance: "Hướng dẫn: {text}",
+    skills: "Skills: {ids}",
     audit: "Đã kiểm toán",
     activeBadge: "đang hoạt động",
     nodeCount: "{count} bước",

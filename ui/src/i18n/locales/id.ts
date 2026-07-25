@@ -226,6 +226,7 @@ export const id: TranslationMap = {
     deniedTools: "Tolak: {tools}",
     knowledge: "Pengetahuan: {ids}",
     guidance: "Instruksi: {text}",
+    skills: "Skills: {ids}",
     audit: "Diaudit",
     activeBadge: "aktif",
     nodeCount: "{count} langkah",

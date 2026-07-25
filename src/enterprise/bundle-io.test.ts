@@ -52,6 +52,7 @@ function treeWithOntology(id: string, foundationId = "acme.kb"): WorkflowTreeDef
         knowledgeFoundations: [foundationId],
         allowedTools: ["read_*"],
         deniedTools: ["shell"],
+        skills: ["refund-playbook"],
       },
     },
   };
@@ -70,6 +71,7 @@ function makeBundle(): WorkflowBundle {
       },
     ],
     requiredTools: ["read_*"],
+    requiredSkills: ["refund-playbook"],
   };
 }
 
@@ -85,6 +87,7 @@ describe("workflow bundle serialize/parse", () => {
       expect(parsed.bundle.trees.map((tree) => tree.id)).toEqual(["acme.imported"]);
       expect(parsed.bundle.knowledgeFoundations[0].id).toBe("acme.kb");
       expect(parsed.bundle.requiredTools).toEqual(["read_*"]);
+      expect(parsed.bundle.requiredSkills).toEqual(["refund-playbook"]);
     }
   });
 
@@ -152,6 +155,7 @@ describe("workflow bundle export", () => {
     expect(parsed.bundle.knowledgeFoundations[0].snippets[0].text).toContain("Refunds");
     // Only the node's allowed tool is required; its denied "shell" is excluded.
     expect(parsed.bundle.requiredTools).toEqual(["read_*"]);
+    expect(parsed.bundle.requiredSkills).toEqual(["refund-playbook"]);
 
     deleteEnterpriseWorkflowTree("acme.support", storeOptions);
   });
@@ -303,6 +307,7 @@ describe("workflow bundle import", () => {
     expect(result.foundations).toEqual(["acme.kb"]);
     expect(result.missingFoundations).toEqual([]);
     expect(result.requiredTools).toEqual(["read_*"]);
+    expect(result.requiredSkills).toEqual(["refund-playbook"]);
 
     // Persisted to SQLite so a restart re-registers it.
     expect(
@@ -354,6 +359,7 @@ describe("workflow bundle import", () => {
         },
       ],
       requiredTools: ["read_*"],
+      requiredSkills: [],
     };
     clearBundleKnowledgeFoundations();
     const result = importWorkflowBundle(
@@ -414,6 +420,7 @@ describe("workflow bundle import", () => {
         },
       ],
       requiredTools: ["read_*"],
+      requiredSkills: [],
     };
     importWorkflowBundle(
       { content: serializeWorkflowBundle(withBoth, "json"), format: "json" },
@@ -475,6 +482,7 @@ describe("workflow bundle import", () => {
     const bundle = makeBundle();
     // A stale or hand-edited manifest must not mislead the compatibility report.
     bundle.requiredTools = ["stale_tool"];
+    bundle.requiredSkills = ["stale_skill"];
     clearBundleKnowledgeFoundations();
     const result = importWorkflowBundle(
       { content: serializeWorkflowBundle(bundle, "json"), format: "json" },
@@ -486,6 +494,8 @@ describe("workflow bundle import", () => {
     }
     // The tree's allow-list ["read_*"] is what the workflow actually requires.
     expect(result.requiredTools).toEqual(["read_*"]);
+    // Skills derive from the tree too, so the stale ["stale_skill"] is ignored.
+    expect(result.requiredSkills).toEqual(["refund-playbook"]);
     deleteEnterpriseWorkflowTree("acme.imported", storeOptions);
   });
 
