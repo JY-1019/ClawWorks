@@ -71,6 +71,42 @@ openclaw enterprise bundle import <file>
   state on its next call. Apply tree/bundle changes between runs, or restart the
   gateway, when in-flight consistency matters.
 
+## Governance policies
+
+Compile a plain-language governance intent into a structured policy for review:
+
+```bash
+openclaw enterprise policy compile "<intent>" [--model <provider/model>] [--json]
+```
+
+- The command asks a model to translate the intent (for example
+  `"require approval before the issue-refund action"`) into one governance policy.
+  By default it prints a readable summary; pass `--json` to emit the raw policy on
+  stdout for `jq`/config tooling. It is an authoring aid only: nothing is changed.
+  Review the suggestion, then add it under `enterprise.governance.policies` in your
+  config.
+- `--model` must be a full `provider/model` ref; a partial ref like `openai/` is
+  rejected rather than silently falling back to the agent's default model.
+- Policies scope by tree, node, tool, action, and knowledge-foundation globs —
+  never by value predicates or record attributes. An intent that implies a numeric
+  threshold ("refunds over $200"), an amount, or an attribute ("VIP customers only")
+  cannot be expressed exactly; the draft captures the closest representable id scope.
+  The command's review reminder always states this limitation, so confirm the
+  selectors capture your intent before adopting the policy.
+- `*` is the only wildcard. Every selector (tree, node, tool, action, and knowledge)
+  is matched with the same rules as sandbox tool policies: names are case-insensitive,
+  tool aliases apply (`bash` matches `exec`), and a `group:<name>` id expands to its
+  members (so a `write` selector also governs `apply_patch`). A selector can therefore
+  govern a broader or different id than its literal text suggests — review the reminder
+  before adopting the policy.
+- A policy with no selectors is a run-level rule that applies to every enterprise run,
+  so an all-selectors-omitted `deny` blocks all runs. The review summary marks this
+  explicitly as `scope: every enterprise run`.
+- Runtime enforcement stays deterministic and admin-owned. A model never gets a
+  vote at run time; it only helps you draft the structured rule.
+- The draft is validated against the governance policy schema, so a malformed
+  suggestion fails with a path instead of being printed.
+
 ## Run traces
 
 ```bash

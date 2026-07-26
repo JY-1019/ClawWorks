@@ -1,37 +1,9 @@
 // Defines ClawWorks enterprise-mode Zod schema fragments.
 import { z } from "zod";
+// The governance refinements (approval scope, knowledge-vs-tool exclusivity) live
+// on GovernancePolicySchema in enterprise/schema.ts so config validation and the
+// NL->policy compiler share one contract.
 import { GovernancePolicySchema } from "../enterprise/schema.js";
-
-// Approval prompts are tool-call scoped: a run-level require_approval policy
-// would have no interactive channel at run start and mediation treats it as
-// a deny, so the schema rejects it up front with a clear message.
-const GovernancePolicyWithApprovalScopeSchema = GovernancePolicySchema.superRefine(
-  (policy, ctx) => {
-    if (policy.effect === "require_approval" && !policy.tools?.length && !policy.actions?.length) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["effect"],
-        message:
-          "require_approval policies need a tools or actions selector; run-level approvals are not supported",
-      });
-    }
-    if (policy.effect !== "require_approval" && policy.approval) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["approval"],
-        message: 'approval settings only apply when effect is "require_approval"',
-      });
-    }
-    if (policy.knowledge?.length && (policy.tools?.length || policy.actions?.length)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["knowledge"],
-        message:
-          "a policy targets either tool calls (tools/actions) or knowledge retrieval (knowledge), not both; split them into separate policies",
-      });
-    }
-  },
-);
 
 /**
  * Enterprise execution mode:
@@ -43,7 +15,7 @@ export const EnterpriseModeSchema = z.enum(["enforce", "observe", "off"]);
 
 const EnterpriseGovernanceSchema = z
   .object({
-    policies: z.array(GovernancePolicyWithApprovalScopeSchema).optional(),
+    policies: z.array(GovernancePolicySchema).optional(),
   })
   .strict()
   .optional();

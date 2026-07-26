@@ -5,7 +5,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   beginEnterpriseRun,
   clearEnterpriseRunMediationForTest,
@@ -13,8 +14,10 @@ import {
 } from "../enterprise/run-mediation.js";
 import { removeImportedWorkflowTree } from "../enterprise/tree-io.js";
 import { invalidateWorkflowTreeRegistry } from "../enterprise/tree-registry.js";
+import type { GovernancePolicy } from "../enterprise/types.js";
 import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
+  enterprisePolicyCompileCommand,
   enterpriseRunsListCommand,
   enterpriseRunsShowCommand,
   enterpriseTreesExportCommand,
@@ -23,6 +26,13 @@ import {
   enterpriseTreesRemoveCommand,
   enterpriseTreesValidateCommand,
 } from "./enterprise.js";
+
+// The compiler's model call is exercised in enterprise-policy-compile.runtime.test.ts;
+// here we mock it to assert the command's output routing and field sanitization.
+vi.mock("../agents/enterprise-policy-compile.runtime.js", () => ({
+  compileGovernancePolicy: vi.fn(),
+}));
+import { compileGovernancePolicy } from "../agents/enterprise-policy-compile.runtime.js";
 
 const FIXTURE = path.join(process.cwd(), "test/fixtures/enterprise/customer-support.tree.yaml");
 const tempDir = mkdtempSync(path.join(tmpdir(), "clawworks-cli-"));
@@ -153,6 +163,100 @@ describe("enterprise runs commands", () => {
   it("exits 1 for unknown runIds", () => {
     const runtime = makeRuntime();
     enterpriseRunsShowCommand("no-such-run", runtime, {});
+    expect(runtime.exitCodes).toEqual([1]);
+  });
+});
+
+describe("enterprise policy compile output", () => {
+  type OutputRuntime = FakeRuntime & {
+    writeStdout: (value: string) => void;
+    writeJson: (value: unknown) => void;
+    stdout: string[];
+    jsons: unknown[];
+  };
+
+  function makeOutputRuntime(): OutputRuntime {
+    const base = makeRuntime();
+    const stdout: string[] = [];
+    const jsons: unknown[] = [];
+    return {
+      ...base,
+      stdout,
+      jsons,
+      writeStdout: (value: string) => stdout.push(value),
+      writeJson: (value: unknown) => jsons.push(value),
+    };
+  }
+
+  const cfg = {} as OpenClawConfig;
+
+  afterEach(() => {
+    vi.mocked(compileGovernancePolicy).mockReset();
+  });
+
+  it("writes the raw policy to stdout (not console.log) in --json mode", async () => {
+    const policy = {
+      id: "refund.approval",
+      effect: "require_approval",
+      actions: ["issue-refund"],
+    } satisfies GovernancePolicy;
+    vi.mocked(compileGovernancePolicy).mockResolvedValue({ kind: "compiled", policy });
+    const runtime = makeOutputRuntime();
+    await enterprisePolicyCompileCommand("intent", runtime, { json: true, cfg, agentId: "main" });
+    // --json routes console output to stderr, so the machine contract must go
+    // through the stdout writer, never runtime.log.
+    expect(runtime.jsons).toEqual([policy]);
+    expect(runtime.logs).toEqual([]);
+    // The unconditional limitation warning still reaches the operator, on stderr, so
+    // stdout stays pure JSON for jq/config tooling.
+    expect(runtime.errors.join("\n")).toContain("Selectors match ids");
+  });
+
+  it("quotes selectors and shows the full description so the caveat is never truncated", async () => {
+    const longNote = `${"x".repeat(220)} THRESHOLD-CAVEAT-END`;
+    vi.mocked(compileGovernancePolicy).mockResolvedValue({
+      kind: "compiled",
+      policy: {
+        id: "x.y",
+        effect: "deny",
+        tools: ["exec, shell", "run"],
+        description: longNote,
+      } satisfies GovernancePolicy,
+    });
+    const runtime = makeOutputRuntime();
+    await enterprisePolicyCompileCommand("intent", runtime, { cfg, agentId: "main" });
+    const summary = runtime.logs.join("\n");
+    // A comma-containing glob stays one quoted token, distinct from two globs.
+    expect(summary).toContain('"exec, shell"');
+    expect(summary).toContain('"run"');
+    // The description is shown in full so an appended threshold caveat at the end is
+    // never truncated out of the operator's review.
+    expect(summary).toContain("THRESHOLD-CAVEAT-END");
+  });
+
+  it("marks a no-selector policy as governing every enterprise run", async () => {
+    // A selector-less policy is a run-level rule matching every run; the summary must
+    // surface that scope so a broad deny is not mistaken for a narrow one.
+    vi.mocked(compileGovernancePolicy).mockResolvedValue({
+      kind: "compiled",
+      policy: { id: "block.all", effect: "deny" } satisfies GovernancePolicy,
+    });
+    const runtime = makeOutputRuntime();
+    await enterprisePolicyCompileCommand("intent", runtime, { cfg, agentId: "main" });
+    expect(runtime.logs.join("\n")).toContain("every enterprise run");
+  });
+
+  it("strips Unicode format controls from a compile failure reason", async () => {
+    const rlo = String.fromCharCode(0x202e);
+    vi.mocked(compileGovernancePolicy).mockResolvedValue({
+      kind: "failed",
+      reason: `bad${rlo}reason`,
+    });
+    const runtime = makeOutputRuntime();
+    await enterprisePolicyCompileCommand("intent", runtime, { cfg, agentId: "main" });
+    // The failure reason is raw provider text that never passes the schema, so the
+    // command must strip the reordering char before printing it.
+    expect(runtime.errors.join("\n")).not.toContain(rlo);
     expect(runtime.exitCodes).toEqual([1]);
   });
 });

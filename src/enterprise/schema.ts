@@ -11,6 +11,7 @@ import {
   ontologyValueMatchesType,
   parseOntologyExpression,
 } from "./ontology-expression.js";
+import { selectorHasUnsafeChar } from "./text-safety.js";
 import {
   WORKFLOW_TREE_SCHEMA,
   WORKFLOW_TREE_SCHEMA_VERSION,
@@ -666,8 +667,17 @@ export const GovernanceEffectSchema = z.enum(["allow", "deny", "audit", "require
 // Empty selector arrays are rejected rather than treated as omitted: the
 // evaluator reads missing subject selectors as "run-level policy", so an
 // empty array would silently flip a scoped policy into a run-wide one.
+// Selector globs are matched verbatim at run time AND printed in the compiler's review
+// output. Reject only invisible/look-alike characters (see text-safety); any visible
+// tool name — accents, CJK, spaces, "+" — stays targetable, since a plugin tool name may
+// be any non-blank string.
+const SelectorGlobSchema = NonBlankStringSchema.refine(
+  (value) => !selectorHasUnsafeChar(value),
+  "must not contain control, invisible, or line-separator characters",
+);
+
 const GovernanceSelectorSchema = z
-  .array(NonBlankStringSchema)
+  .array(SelectorGlobSchema)
   .min(1, "omit the selector instead of passing an empty array")
   .optional();
 
@@ -683,6 +693,9 @@ const GovernanceApprovalSettingsSchema = z
 export const GovernancePolicySchema = z
   .object({
     id: EnterpriseIdSchema,
+    // Free text; kept permissive so hand-authored config (YAML block text, emoji)
+    // stays valid. The compiler sanitizes its own model-authored description at the
+    // source (policy-compile.ts) instead of rejecting canonical config here.
     description: z.string().optional(),
     effect: GovernanceEffectSchema,
     trees: GovernanceSelectorSchema,
@@ -692,7 +705,37 @@ export const GovernancePolicySchema = z
     knowledge: GovernanceSelectorSchema,
     approval: GovernanceApprovalSettingsSchema,
   })
-  .strict();
+  .strict()
+  // Canonical governance refinements, shared by config validation and the
+  // NL->policy compiler so a draft that config would reject fails at the source.
+  .superRefine((policy, ctx) => {
+    // Approval prompts are tool-call scoped: a run-level require_approval has no
+    // interactive channel at run start (mediation treats it as deny), so it must
+    // carry a tools or actions selector.
+    if (policy.effect === "require_approval" && !policy.tools?.length && !policy.actions?.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["effect"],
+        message:
+          "require_approval policies need a tools or actions selector; run-level approvals are not supported",
+      });
+    }
+    if (policy.effect !== "require_approval" && policy.approval) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["approval"],
+        message: 'approval settings only apply when effect is "require_approval"',
+      });
+    }
+    if (policy.knowledge?.length && (policy.tools?.length || policy.actions?.length)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["knowledge"],
+        message:
+          "a policy targets either tool calls (tools/actions) or knowledge retrieval (knowledge), not both; split them into separate policies",
+      });
+    }
+  });
 
 export type WorkflowTreeValidationIssue = {
   /** Dot-path to the invalid value (config-issue style). */

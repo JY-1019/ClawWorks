@@ -270,6 +270,12 @@ describe("command-path-policy", () => {
     expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "gateway", "health"])).toBe("bypass");
     expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "node", "run"])).toBe("default");
     expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "node", "status"])).toBe("bypass");
+    expect(
+      resolveCliNetworkProxyPolicy(["node", "openclaw", "enterprise", "policy", "compile"]),
+    ).toBe("default");
+    expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "enterprise", "trees", "list"])).toBe(
+      "bypass",
+    );
     expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "agent", "--local"])).toBe("default");
     expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "agent", "run"])).toBe("bypass");
     expect(resolveCliNetworkProxyPolicy(["node", "openclaw", "channels", "status"])).toBe("bypass");

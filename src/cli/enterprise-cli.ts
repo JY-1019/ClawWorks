@@ -3,9 +3,12 @@ import { parseStrictPositiveInteger } from "@openclaw/normalization-core/number-
 import { InvalidArgumentError, type Command } from "commander";
 import { formatDocsLink } from "../../packages/terminal-core/src/links.js";
 import { theme } from "../../packages/terminal-core/src/theme.js";
+import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import {
   enterpriseBundleExportCommand,
   enterpriseBundleImportCommand,
+  enterprisePolicyCompileCommand,
   enterpriseRunsListCommand,
   enterpriseRunsShowCommand,
   enterpriseTreesExportCommand,
@@ -14,9 +17,22 @@ import {
   enterpriseTreesRemoveCommand,
   enterpriseTreesValidateCommand,
 } from "../commands/enterprise.js";
+import { getRuntimeConfig } from "../config/io.js";
 import { defaultRuntime } from "../runtime.js";
 import { runCommandWithRuntime } from "./cli-utils.js";
+import { resolveCommandConfigWithSecrets } from "./command-config-resolution.js";
+import { getModelsCommandSecretTargetIds } from "./command-secret-targets.js";
 import { applyParentDefaultHelpAction } from "./program/parent-default-help.js";
+
+// A usable --model override is provider/model with both sides present. Strip any
+// trailing @profile the resolver would peel off FIRST: "openai/@work" splits to
+// model "openai/" (empty model), which selection silently replaces with the agent
+// default instead of honoring the override.
+function isProviderModelRef(raw: string): boolean {
+  const { model } = splitTrailingAuthProfile(raw);
+  const slash = model.indexOf("/");
+  return slash > 0 && slash < model.length - 1;
+}
 
 export function registerEnterpriseCli(program: Command) {
   const enterprise = program
@@ -131,6 +147,56 @@ export function registerEnterpriseCli(program: Command) {
       });
     });
   applyParentDefaultHelpAction(runs);
+
+  const policy = enterprise
+    .command("policy")
+    .description("Author governance policies from plain-language intent");
+  policy
+    .command("compile")
+    .description("Compile a plain-language governance intent into a policy for review")
+    .argument(
+      "<intent>",
+      "Governance intent, e.g. 'require approval before the issue-refund action'",
+    )
+    .option("--model <ref>", "Model ref to use (provider/model); defaults to the agent's model")
+    .option("--json", "Emit the raw policy JSON on stdout for scripting")
+    .action(async (intent: string, opts: { model?: string; json?: boolean }) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        // Reject a blank intent BEFORE resolving credentials or paying for a model
+        // call: `compile "$UNSET"` must not silently draft an unrelated policy.
+        if (!intent.trim()) {
+          defaultRuntime.error("Provide a non-empty governance intent to compile.");
+          defaultRuntime.exit(1);
+          return;
+        }
+        // Any provided --model must be a full provider/model ref. A blank,
+        // whitespace-only, or partial value (e.g. "openai/") would otherwise fall
+        // through to the agent default and send the intent to a different provider
+        // than the operator asked for, so reject every provided non-ref up front.
+        if (opts.model !== undefined && !isProviderModelRef(opts.model)) {
+          defaultRuntime.error(
+            `Invalid --model "${opts.model}". Use "<provider>/<model>", e.g. openai/gpt-5.5.`,
+          );
+          defaultRuntime.exit(1);
+          return;
+        }
+        // Resolve managed SecretRefs and the configured default agent the same way
+        // the local model-run commands do, so provider auth and model selection work.
+        const { effectiveConfig } = await resolveCommandConfigWithSecrets({
+          config: getRuntimeConfig(),
+          commandName: "enterprise policy compile",
+          targetIds: getModelsCommandSecretTargetIds(),
+          runtime: defaultRuntime,
+          autoEnable: true,
+        });
+        await enterprisePolicyCompileCommand(intent, defaultRuntime, {
+          ...opts,
+          cfg: effectiveConfig,
+          agentId: resolveDefaultAgentId(effectiveConfig),
+        });
+      });
+    });
+  applyParentDefaultHelpAction(policy);
 
   applyParentDefaultHelpAction(enterprise);
 }

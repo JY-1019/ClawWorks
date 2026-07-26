@@ -5,9 +5,12 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { theme } from "../../packages/terminal-core/src/theme.js";
+import { stripAnsi } from "../agents/utils/ansi.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { exportWorkflowBundle, importWorkflowBundle } from "../enterprise/bundle-io.js";
 import { loadPersistedBundleFoundations } from "../enterprise/knowledge-bundle-loader.js";
 import type { WorkflowTreeValidationIssue } from "../enterprise/schema.js";
+import { stripUnsafeDisplayChars } from "../enterprise/text-safety.js";
 import {
   getEnterpriseRunRecord,
   listEnterpriseRunEvents,
@@ -26,11 +29,23 @@ import {
   getWorkflowTreeRegistrySnapshot,
 } from "../enterprise/tree-registry.js";
 import type { WorkflowTreeSourceFormat } from "../enterprise/tree-store.sqlite.js";
+import type { GovernancePolicy } from "../enterprise/types.js";
 import { writeTextAtomic } from "../infra/json-files.js";
-import type { RuntimeEnv } from "../runtime.js";
+import { redactSecrets } from "../logging/redact.js";
+import { writeRuntimeJson, type RuntimeEnv } from "../runtime.js";
 
 const GATEWAY_RELOAD_HINT =
   "A running gateway loads tree definitions at startup; restart it to apply this change.";
+
+// Stated on EVERY compiled policy (both output modes): a glob policy can never encode a
+// value threshold/attribute (no reliable detector exists for every way an intent can
+// imply one), and every selector family runs through the sandbox tool-policy matcher, so
+// the literal text can govern more than it appears. Warn unconditionally rather than guess.
+const POLICY_SELECTOR_LIMITATION =
+  "Selectors match ids, not values — a policy cannot enforce a threshold, amount, or record " +
+  "attribute. Every selector is matched with the sandbox tool-policy rules (case-insensitive, " +
+  'tool aliases, "group:" expansion), so it can govern a broader or different id than its literal ' +
+  'text (e.g. a "write" selector also governs "apply_patch"). Confirm the selectors capture your intent.';
 
 // Shared by tree and bundle commands: both exchange formats key off the same
 // file extensions, so one reader keeps the extension policy in one place.
@@ -288,6 +303,114 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
     runtime.log(theme.muted(`Required skills: ${result.requiredSkills.join(", ")}`));
   }
   runtime.log(theme.muted(GATEWAY_RELOAD_HINT));
+}
+
+// A compile FAILURE reason carries raw, untrusted provider/model text (auth/quota
+// errors, refusals) that never passes the policy schema, so it can hold ANSI/OSC
+// escapes, control/bidi/zero-width chars, newlines, or credentials. Normalize to the
+// terminal-safe display form FIRST — strip ANSI/OSC escapes, then delete zero-width
+// format chars and space out control/separator chars (stripUnsafeDisplayChars) — and
+// only THEN redact. Deleting the zero-width chars rejoins a secret an attacker split
+// with one (e.g. sk-...<U+200B>...) so redactSecrets can still match it; redacting
+// first, or leaving the split as a space, would let the credential through.
+function sanitizeCompileFailure(text: string): string {
+  const normalized = stripUnsafeDisplayChars(stripAnsi(text)).replace(/\s+/g, " ").trim();
+  const redacted = redactSecrets(normalized);
+  return redacted.length > 400 ? `${redacted.slice(0, 399)}...` : redacted;
+}
+
+// Readable rendering for the default (non-JSON) path. --json emits the raw
+// policy instead; a summary here keeps the human output free of the machine
+// contract so both paths stay honest about what stdout carries.
+function renderPolicySummary(policy: GovernancePolicy): string {
+  // Every field is schema-clean: id is [a-z0-9-] dotted, selector globs and the
+  // description reject control/format/separator chars (schema.ts). So render them
+  // faithfully — the summary must equal the policy the operator pastes. Selector
+  // globs are quoted so "exec, shell" (one glob) reads differently from two globs,
+  // and the description is shown in full (never truncated, or an appended
+  // unrepresentable-threshold caveat could be silently dropped from the review).
+  const selector = (label: string, globs: string[] | undefined): string | undefined =>
+    globs?.length
+      ? `  ${label.padEnd(9)} ${globs.map((glob) => JSON.stringify(glob)).join(", ")}`
+      : undefined;
+  // A policy with no selectors is a run-level rule that policyAppliesToRun matches
+  // against EVERY tree/run — a deny would block all enterprise runs. Render that scope
+  // explicitly so an operator cannot miss how broad an all-selectors-omitted draft is.
+  const hasSelector = Boolean(
+    policy.trees?.length ||
+    policy.nodes?.length ||
+    policy.tools?.length ||
+    policy.actions?.length ||
+    policy.knowledge?.length,
+  );
+  const lines: (string | undefined)[] = [
+    `  id        ${policy.id}`,
+    `  effect    ${policy.effect}`,
+    hasSelector ? undefined : "  scope     every enterprise run (no selectors)",
+    selector("trees", policy.trees),
+    selector("nodes", policy.nodes),
+    selector("tools", policy.tools),
+    selector("actions", policy.actions),
+    selector("knowledge", policy.knowledge),
+  ];
+  if (policy.approval) {
+    const parts: string[] = [];
+    if (policy.approval.timeoutMs !== undefined)
+      parts.push(`timeout ${policy.approval.timeoutMs}ms`);
+    if (policy.approval.timeoutBehavior)
+      parts.push(`on timeout ${policy.approval.timeoutBehavior}`);
+    if (policy.approval.severity) parts.push(`severity ${policy.approval.severity}`);
+    if (parts.length) lines.push(`  approval  ${parts.join(", ")}`);
+  }
+  if (policy.description) lines.push(`  note      ${policy.description}`);
+  return lines.filter((line): line is string => line !== undefined).join("\n");
+}
+
+export async function enterprisePolicyCompileCommand(
+  intent: string,
+  runtime: RuntimeEnv,
+  opts: { model?: string; json?: boolean; cfg: OpenClawConfig; agentId: string },
+): Promise<void> {
+  // Lazy import: the store-only enterprise commands (list/import/...) must not pull
+  // in the model-completion runtime just to be registered on the CLI.
+  const { compileGovernancePolicy } =
+    await import("../agents/enterprise-policy-compile.runtime.js");
+  const result = await compileGovernancePolicy({
+    cfg: opts.cfg,
+    agentId: opts.agentId,
+    intent,
+    // An explicit --model may name a bundled static-catalog model; allow that
+    // fallback exactly as the local `model run` path does.
+    ...(opts.model ? { modelRef: opts.model, allowStaticCatalogFallback: true } : {}),
+  });
+  if (result.kind === "failed") {
+    runtime.error(
+      `Could not compile a governance policy: ${sanitizeCompileFailure(result.reason)}`,
+    );
+    runtime.exit(1);
+    return;
+  }
+  // --json is the machine contract. In JSON mode the CLI framework skips the banner
+  // and routes console output (including runtime.log) to stderr; write the policy
+  // straight to stdout so jq/config tooling receives exactly the JSON. The limitation
+  // warning is UNCONDITIONAL (docs promise it every time), so still emit it — to
+  // stderr, keeping stdout pure JSON.
+  if (opts.json) {
+    writeRuntimeJson(runtime, result.policy);
+    runtime.error(theme.muted(POLICY_SELECTOR_LIMITATION));
+    return;
+  }
+  // Default human path: a readable summary on stdout, review reminder on stderr.
+  // Adding it to config is the operator's decision, so runtime enforcement stays
+  // deterministic and admin-owned.
+  runtime.log(`Suggested governance policy (not applied):\n${renderPolicySummary(result.policy)}`);
+  runtime.error(
+    theme.muted(
+      "Review this suggestion, then add it under enterprise.governance.policies in your config. " +
+        `${POLICY_SELECTOR_LIMITATION} ` +
+        "Re-run with --json to emit the raw policy for scripting. Nothing was changed.",
+    ),
+  );
 }
 
 export function enterpriseRunsListCommand(

@@ -271,6 +271,14 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     policy: { loadPlugins: "never", networkProxy: "bypass" },
   },
   {
+    // Store-only enterprise commands bypass the managed proxy, but `policy compile`
+    // calls a model, so it must route through the operator's proxy like the
+    // model-run commands. An exact entry avoids parsing the subcommand from argv.
+    commandPath: ["enterprise", "policy", "compile"],
+    exact: true,
+    policy: { loadPlugins: "never", networkProxy: "default" },
+  },
+  {
     commandPath: ["doctor"],
     policy: {
       bypassConfigGuard: true,
