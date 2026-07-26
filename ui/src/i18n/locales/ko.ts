@@ -208,6 +208,24 @@ export const ko: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "관리되는 워크플로 실행 및 등록된 워크플로 트리입니다.",
+    section: {
+      worktree: "워크트리",
+      history: "히스토리",
+      tools: "도구",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "엔터프라이즈 도구",
+      subtitle:
+        "관리된 실행에서 사용할 수 있는 옵트인 도구로, 광범위한 도구 그룹에서는 제외됩니다.",
+      readGroup: "읽기 (group:enterprise)",
+      writeGroup: "쓰기 (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "엔터프라이즈 Skills",
+      subtitle:
+        "워크플로 단계에서 ontology.skills를 선언하여 작업에 필요한 Skills의 이름을 지정할 수 있습니다.",
+    },
     runsTitle: "최근 실행",
     treesTitle: "워크플로 트리",
     noRuns: "아직 기록된 Enterprise 실행이 없습니다.",

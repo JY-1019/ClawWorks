@@ -211,6 +211,24 @@ export const fr: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Exécutions de workflows gouvernés et arborescences de workflows enregistrées.",
+    section: {
+      worktree: "Arborescence de travail",
+      history: "Historique",
+      tools: "Outils",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Outils entreprise",
+      subtitle:
+        "Outils optionnels qu'une exécution gouvernée peut utiliser ; exclus des groupes d'outils généraux.",
+      readGroup: "Lecture (group:enterprise)",
+      writeGroup: "Écriture (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills entreprise",
+      subtitle:
+        "Une étape de workflow peut déclarer ontology.skills pour nommer les skills dont son travail dépend.",
+    },
     runsTitle: "Exécutions récentes",
     treesTitle: "Arborescences de workflows",
     noRuns: "Aucune exécution enterprise enregistrée pour le moment.",

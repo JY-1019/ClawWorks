@@ -212,6 +212,24 @@ export const ru: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Управляемые запуски рабочих процессов и зарегистрированные деревья процессов.",
+    section: {
+      worktree: "Рабочее дерево",
+      history: "История",
+      tools: "Инструменты",
+      skills: "Навыки",
+    },
+    toolsTab: {
+      title: "Корпоративные инструменты",
+      subtitle:
+        "Опциональные инструменты, доступные управляемому запуску; исключены из общих групп инструментов.",
+      readGroup: "Чтение (group:enterprise)",
+      writeGroup: "Запись (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Корпоративные Skills",
+      subtitle:
+        "Шаг рабочего процесса может объявить ontology.skills для указания навыков, от которых зависит его работа.",
+    },
     runsTitle: "Последние запуски",
     treesTitle: "Деревья процессов",
     noRuns: "Запуски Enterprise ещё не зарегистрированы.",

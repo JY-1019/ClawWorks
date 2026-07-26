@@ -205,6 +205,22 @@ export const th: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "การรันเวิร์กโฟลว์ที่มีการกำกับดูแลและแผนผังเวิร์กโฟลว์ที่ลงทะเบียนไว้",
+    section: {
+      worktree: "Worktree",
+      history: "ประวัติ",
+      tools: "เครื่องมือ",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "เครื่องมือระดับองค์กร",
+      subtitle: "เครื่องมือแบบเลือกใช้ที่การรันแบบควบคุมสามารถใช้ได้ โดยไม่รวมอยู่ในกลุ่มเครื่องมือแบบกว้าง",
+      readGroup: "อ่าน (group:enterprise)",
+      writeGroup: "เขียน (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills ระดับองค์กร",
+      subtitle: "ขั้นตอนเวิร์กโฟลว์สามารถประกาศ ontology.skills เพื่อระบุชื่อ Skills ที่งานนั้นต้องใช้",
+    },
     runsTitle: "การรันล่าสุด",
     treesTitle: "แผนผังเวิร์กโฟลว์",
     noRuns: "ยังไม่มีการบันทึกการรัน Enterprise",

@@ -2934,6 +2934,8 @@ export function renderApp(state: AppViewState) {
                 onEditNodeDraft: (patch) => editEnterpriseNodeDraft(state, patch),
                 onCancelAddNode: () => cancelAddEnterpriseNode(state),
                 onSubmitAddNode: () => void submitAddEnterpriseNode(state),
+                activeSubsection: state.enterpriseActiveSubsection,
+                onSubsectionChange: (section) => (state.enterpriseActiveSubsection = section),
               }),
             )
           : nothing}

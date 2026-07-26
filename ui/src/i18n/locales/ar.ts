@@ -207,6 +207,24 @@ export const ar: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "عمليات تشغيل سير العمل الخاضعة للحوكمة وأشجار سير العمل المسجلة.",
+    section: {
+      worktree: "شجرة العمل",
+      history: "السجل",
+      tools: "الأدوات",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "أدوات المؤسسة",
+      subtitle:
+        "أدوات اختيارية يمكن لعملية التشغيل المُدارة استخدامها؛ مستبعدة من مجموعات الأدوات العامة.",
+      readGroup: "قراءة (group:enterprise)",
+      writeGroup: "كتابة (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills المؤسسة",
+      subtitle:
+        "يمكن لخطوة سير العمل التصريح بـ ontology.skills لتسمية Skills التي يعتمد عليها عملها.",
+    },
     runsTitle: "عمليات التشغيل الأخيرة",
     treesTitle: "أشجار سير العمل",
     noRuns: "لم يتم تسجيل أي عمليات تشغيل بعد.",

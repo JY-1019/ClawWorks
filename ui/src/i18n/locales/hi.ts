@@ -208,6 +208,23 @@ export const hi: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "शासित वर्कफ़्लो रन और पंजीकृत वर्कफ़्लो ट्री।",
+    section: {
+      worktree: "Worktree",
+      history: "इतिहास",
+      tools: "टूल्स",
+      skills: "कौशल",
+    },
+    toolsTab: {
+      title: "एंटरप्राइज़ टूल्स",
+      subtitle: "ऑप्ट-इन टूल्स जिन्हें एक शासित रन उपयोग कर सकता है; व्यापक टूल समूहों से बाहर रखा गया है।",
+      readGroup: "Read (group:enterprise)",
+      writeGroup: "Write (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "एंटरप्राइज़ Skills",
+      subtitle:
+        "एक वर्कफ़्लो चरण ontology.skills घोषित कर सकता है ताकि उन Skills का नाम दिया जा सके जिन पर उसका कार्य निर्भर करता है।",
+    },
     runsTitle: "हाल के रन",
     treesTitle: "वर्कफ़्लो ट्री",
     noRuns: "अभी तक कोई enterprise रन रिकॉर्ड नहीं हुआ।",

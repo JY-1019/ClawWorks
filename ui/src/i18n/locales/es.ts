@@ -209,6 +209,24 @@ export const es: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Ejecuciones de flujos de trabajo gobernados y los árboles de flujos registrados.",
+    section: {
+      worktree: "Árbol de trabajo",
+      history: "Historial",
+      tools: "Herramientas",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Herramientas empresariales",
+      subtitle:
+        "Herramientas opcionales que una ejecución gobernada puede usar; excluidas de los grupos amplios de herramientas.",
+      readGroup: "Lectura (group:enterprise)",
+      writeGroup: "Escritura (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills empresariales",
+      subtitle:
+        "Un paso del flujo de trabajo puede declarar ontology.skills para nombrar las skills de las que depende su trabajo.",
+    },
     runsTitle: "Ejecuciones recientes",
     treesTitle: "Árboles de flujos de trabajo",
     noRuns: "Aún no se han registrado ejecuciones enterprise.",

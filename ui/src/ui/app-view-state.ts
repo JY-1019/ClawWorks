@@ -294,6 +294,8 @@ export type AppViewState = {
   enterpriseImportErrors: EnterpriseTreesListResult["importErrors"];
   enterpriseStoreError: string | null;
   enterpriseSelectedExecutionId: string | null;
+  /** Active in-view sub-tab of the Enterprise screen (worktree | history | tools | skills). */
+  enterpriseActiveSubsection: string | null;
   enterpriseDetail: EnterpriseRunDetail | null;
   enterpriseRunTree: EnterpriseTreeDetail | null;
   enterpriseChatMode: EnterpriseMode | null;

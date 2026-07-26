@@ -483,6 +483,7 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseImportErrors: EnterpriseTreesListResult["importErrors"] = [];
   @state() enterpriseStoreError: string | null = null;
   @state() enterpriseSelectedExecutionId: string | null = null;
+  @state() enterpriseActiveSubsection: string | null = null;
   @state() enterpriseDetail: EnterpriseRunDetail | null = null;
   @state() enterpriseRunTree: EnterpriseTreeDetail | null = null;
   @state() enterpriseChatMode: EnterpriseMode | null = null;

@@ -85,13 +85,85 @@ export type EnterpriseProps = {
   onEditNodeDraft: (patch: { id?: string; title?: string }) => void;
   onCancelAddNode: () => void;
   onSubmitAddNode: () => void;
+  /** Which in-view sub-tab is shown; falls back to "worktree" when unset/unknown. */
+  activeSubsection: string | null;
+  onSubsectionChange: (section: string) => void;
 };
 
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+/** In-view sub-tabs of the Enterprise screen, in display order. */
+export const ENTERPRISE_SECTIONS = ["worktree", "history", "tools", "skills"] as const;
+export type EnterpriseSection = (typeof ENTERPRISE_SECTIONS)[number];
+
+function resolveEnterpriseSection(value: string | null): EnterpriseSection {
+  return (ENTERPRISE_SECTIONS as readonly string[]).includes(value ?? "")
+    ? (value as EnterpriseSection)
+    : "worktree";
+}
+
+// Literal t() keys (the i18n key type is a closed union, so a computed
+// `enterprise.section.${id}` would not typecheck).
+function enterpriseSectionLabel(section: EnterpriseSection): string {
+  switch (section) {
+    case "worktree":
+      return t("enterprise.section.worktree");
+    case "history":
+      return t("enterprise.section.history");
+    case "tools":
+      return t("enterprise.section.tools");
+    case "skills":
+      return t("enterprise.section.skills");
+  }
+}
+
+/**
+ * Enterprise tool catalog shown, read-only, in the Tools sub-tab. Grouped like
+ * the runtime: `group:enterprise` reads, `group:enterprise-write` the lone write
+ * tool. Pinned to the server catalog (tool-catalog.ts) by a unit test, so it
+ * cannot silently drift from the tools the runtime actually exposes.
+ */
+export const ENTERPRISE_TOOL_IDS = {
+  read: ["compute_function", "get_neighbors", "knowledge_search", "search_objects"],
+  write: ["invoke_action"],
+} as const;
+
+function renderEnterpriseToolList(ids: readonly string[]): TemplateResult {
+  return html`<div class="list" style="margin-top: 8px;">
+    ${ids.map((id) => html`<div class="list-item"><code>${id}</code></div>`)}
+  </div>`;
+}
+
+function renderEnterpriseTools(): TemplateResult {
+  return html`
+    <section class="card" style="margin-top: 16px;">
+      <div class="card-title">${t("enterprise.toolsTab.title")}</div>
+      <div class="card-sub">${t("enterprise.toolsTab.subtitle")}</div>
+      <div style="margin-top: 12px;">
+        <div class="muted">${t("enterprise.toolsTab.readGroup")}</div>
+        ${renderEnterpriseToolList(ENTERPRISE_TOOL_IDS.read)}
+      </div>
+      <div style="margin-top: 12px;">
+        <div class="muted">${t("enterprise.toolsTab.writeGroup")}</div>
+        ${renderEnterpriseToolList(ENTERPRISE_TOOL_IDS.write)}
+      </div>
+    </section>
+  `;
+}
+
+function renderEnterpriseSkills(): TemplateResult {
+  return html`
+    <section class="card" style="margin-top: 16px;">
+      <div class="card-title">${t("enterprise.skillsTab.title")}</div>
+      <div class="card-sub">${t("enterprise.skillsTab.subtitle")}</div>
+    </section>
+  `;
+}
+
 export function renderEnterprise(props: EnterpriseProps) {
+  const section = resolveEnterpriseSection(props.activeSubsection);
   return html`
     <section class="card">
       <div class="row" style="justify-content: space-between;">
@@ -131,32 +203,66 @@ export function renderEnterprise(props: EnterpriseProps) {
         : nothing}
     </section>
 
-    <section class="card" style="margin-top: 16px;">
-      <div class="card-title">${t("enterprise.runsTitle")}</div>
-      <div class="list" style="margin-top: 12px;">
-        ${props.runs.length === 0
-          ? html`<div class="muted">${t("enterprise.noRuns")}</div>`
-          : props.runs.map((run) => renderRun(run, props.selectedExecutionId, props.onSelectRun))}
-      </div>
-    </section>
+    <div
+      class="row"
+      style="gap: 8px; margin-top: 16px; flex-wrap: wrap;"
+      role="tablist"
+      aria-label=${t("enterprise.title")}
+    >
+      ${ENTERPRISE_SECTIONS.map(
+        (id) => html`<button
+          class="chip ${section === id ? "list-item-selected" : ""}"
+          role="tab"
+          aria-selected=${section === id ? "true" : "false"}
+          @click=${() => props.onSubsectionChange(id)}
+        >
+          ${enterpriseSectionLabel(id)}
+        </button>`,
+      )}
+    </div>
 
-    ${renderDetailCard(props)}
-
-    <section class="card" style="margin-top: 16px;">
-      <div class="row" style="justify-content: space-between;">
-        <div class="card-title">${t("enterprise.treesTitle")}</div>
-        ${props.canEdit
-          ? html`<button class="btn" @click=${props.onBeginNew}>${t("enterprise.newTree")}</button>`
-          : nothing}
-      </div>
-      <div class="list" style="margin-top: 12px;">
-        ${props.trees.length === 0
-          ? html`<div class="muted">${t("enterprise.noTrees")}</div>`
-          : props.trees.map((tree) => renderTree(tree, props.selectedTreeId, props.onSelectTree))}
-      </div>
-    </section>
-
-    ${renderTreeVisualization(props)} ${renderTreeConfirmModal(props)}
+    ${section === "history"
+      ? html`
+          <section class="card" style="margin-top: 16px;">
+            <div class="card-title">${t("enterprise.runsTitle")}</div>
+            <div class="list" style="margin-top: 12px;">
+              ${props.runs.length === 0
+                ? html`<div class="muted">${t("enterprise.noRuns")}</div>`
+                : props.runs.map((run) =>
+                    renderRun(run, props.selectedExecutionId, props.onSelectRun),
+                  )}
+            </div>
+          </section>
+          ${renderDetailCard(props)}
+        `
+      : nothing}
+    ${section === "worktree"
+      ? html`
+          <section class="card" style="margin-top: 16px;">
+            <div class="row" style="justify-content: space-between;">
+              <div class="card-title">${t("enterprise.treesTitle")}</div>
+              ${props.canEdit
+                ? html`<button class="btn" @click=${props.onBeginNew}>
+                    ${t("enterprise.newTree")}
+                  </button>`
+                : nothing}
+            </div>
+            <div class="list" style="margin-top: 12px;">
+              ${props.trees.length === 0
+                ? html`<div class="muted">${t("enterprise.noTrees")}</div>`
+                : props.trees.map((tree) =>
+                    renderTree(tree, props.selectedTreeId, props.onSelectTree),
+                  )}
+            </div>
+          </section>
+          ${renderTreeVisualization(props)}
+        `
+      : nothing}
+    ${section === "tools" ? renderEnterpriseTools() : nothing}
+    ${section === "skills" ? renderEnterpriseSkills() : nothing}
+    <!-- Outside the subsection switch: the global Remove action (shown with import
+      errors on any tab) sets the confirm state, so its modal must render everywhere. -->
+    ${renderTreeConfirmModal(props)}
   `;
 }
 

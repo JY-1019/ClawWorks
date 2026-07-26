@@ -211,6 +211,24 @@ export const fa: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "اجراهای گردش کار تحت حاکمیت و درخت‌های گردش کار ثبت‌شده.",
+    section: {
+      worktree: "درخت کاری",
+      history: "تاریخچه",
+      tools: "ابزارها",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "ابزارهای سازمانی",
+      subtitle:
+        "ابزارهای اختیاری که یک اجرای مدیریت‌شده می‌تواند استفاده کند؛ از گروه‌های ابزار عمومی مستثنی هستند.",
+      readGroup: "خواندن (group:enterprise)",
+      writeGroup: "نوشتن (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills سازمانی",
+      subtitle:
+        "یک مرحله گردش کار می‌تواند ontology.skills را اعلام کند تا Skills مورد نیاز کار خود را مشخص کند.",
+    },
     runsTitle: "اجراهای اخیر",
     treesTitle: "درخت‌های گردش کار",
     noRuns: "هنوز هیچ اجرای Enterprise ثبت نشده است.",

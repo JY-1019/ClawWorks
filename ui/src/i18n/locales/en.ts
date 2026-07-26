@@ -207,6 +207,23 @@ export const en: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Governed workflow runs and the registered workflow trees.",
+    section: {
+      worktree: "Worktree",
+      history: "History",
+      tools: "Tools",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Enterprise tools",
+      subtitle: "Opt-in tools a governed run can use; excluded from the broad tool groups.",
+      readGroup: "Read (group:enterprise)",
+      writeGroup: "Write (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Enterprise skills",
+      subtitle:
+        "A workflow step can declare ontology.skills to name the skills its work depends on.",
+    },
     runsTitle: "Recent runs",
     treesTitle: "Workflow trees",
     noRuns: "No enterprise runs recorded yet.",

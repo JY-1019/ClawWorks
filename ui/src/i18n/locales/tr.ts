@@ -211,6 +211,24 @@ export const tr: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Yönetilen iş akışı çalıştırmaları ve kayıtlı iş akışı ağaçları.",
+    section: {
+      worktree: "Çalışma Ağacı",
+      history: "Geçmiş",
+      tools: "Araçlar",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Kurumsal araçlar",
+      subtitle:
+        "Yönetilen bir çalıştırmanın kullanabileceği isteğe bağlı araçlar; geniş araç gruplarından hariç tutulur.",
+      readGroup: "Okuma (group:enterprise)",
+      writeGroup: "Yazma (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Kurumsal skills",
+      subtitle:
+        "Bir iş akışı adımı, çalışmasının bağlı olduğu skills'leri adlandırmak için ontology.skills bildirebilir.",
+    },
     runsTitle: "Son çalıştırmalar",
     treesTitle: "İş akışı ağaçları",
     noRuns: "Henüz enterprise çalıştırması kaydedilmedi.",

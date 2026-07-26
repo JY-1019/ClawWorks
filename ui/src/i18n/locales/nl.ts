@@ -213,6 +213,24 @@ export const nl: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Beheerde workflowuitvoeringen en de geregistreerde workflowbomen.",
+    section: {
+      worktree: "Werkboom",
+      history: "Geschiedenis",
+      tools: "Tools",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Enterprise-tools",
+      subtitle:
+        "Opt-in tools die een beheerde run kan gebruiken; uitgesloten van de brede toolgroepen.",
+      readGroup: "Lezen (group:enterprise)",
+      writeGroup: "Schrijven (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Enterprise-skills",
+      subtitle:
+        "Een workflowstap kan ontology.skills declareren om de skills te benoemen waarvan het werk afhankelijk is.",
+    },
     runsTitle: "Recente uitvoeringen",
     treesTitle: "Workflowbomen",
     noRuns: "Nog geen enterprise-uitvoeringen geregistreerd.",

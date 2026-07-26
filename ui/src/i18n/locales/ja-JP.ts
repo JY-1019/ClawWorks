@@ -214,6 +214,24 @@ export const ja_JP: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "管理されたワークフロー実行と登録済みワークフローツリー。",
+    section: {
+      worktree: "ワークツリー",
+      history: "履歴",
+      tools: "ツール",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "エンタープライズツール",
+      subtitle:
+        "管理された実行で使用できるオプトインツール。広範なツールグループからは除外されます。",
+      readGroup: "読み取り (group:enterprise)",
+      writeGroup: "書き込み (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "エンタープライズ Skills",
+      subtitle:
+        "ワークフローステップは ontology.skills を宣言して、作業が依存する Skills を指定できます。",
+    },
     runsTitle: "最近の実行",
     treesTitle: "ワークフローツリー",
     noRuns: "Enterpriseの実行記録はまだありません。",

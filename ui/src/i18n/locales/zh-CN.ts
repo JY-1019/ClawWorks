@@ -204,6 +204,22 @@ export const zh_CN: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "受管控的工作流运行和已注册的工作流树。",
+    section: {
+      worktree: "工作树",
+      history: "历史记录",
+      tools: "工具",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "企业工具",
+      subtitle: "受管运行可使用的可选工具；不包含在通用工具组中。",
+      readGroup: "读取 (group:enterprise)",
+      writeGroup: "写入 (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "企业 Skills",
+      subtitle: "工作流步骤可声明 ontology.skills 来指定其工作所依赖的 Skills。",
+    },
     runsTitle: "最近运行",
     treesTitle: "工作流树",
     noRuns: "尚无 Enterprise 运行记录。",

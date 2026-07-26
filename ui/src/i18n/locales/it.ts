@@ -210,6 +210,24 @@ export const it: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Esecuzioni di workflow governate e alberi di workflow registrati.",
+    section: {
+      worktree: "Worktree",
+      history: "Cronologia",
+      tools: "Strumenti",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Strumenti enterprise",
+      subtitle:
+        "Strumenti opzionali utilizzabili da un'esecuzione governata; esclusi dai gruppi di strumenti generici.",
+      readGroup: "Lettura (group:enterprise)",
+      writeGroup: "Scrittura (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills enterprise",
+      subtitle:
+        "Un passaggio del workflow può dichiarare ontology.skills per indicare le skills da cui dipende il suo lavoro.",
+    },
     runsTitle: "Esecuzioni recenti",
     treesTitle: "Alberi di workflow",
     noRuns: "Nessuna esecuzione enterprise registrata.",

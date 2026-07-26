@@ -211,6 +211,24 @@ export const uk: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Керовані запуски робочих процесів та зареєстровані дерева робочих процесів.",
+    section: {
+      worktree: "Робоче дерево",
+      history: "Історія",
+      tools: "Інструменти",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Корпоративні інструменти",
+      subtitle:
+        "Додаткові інструменти, які може використовувати керований запуск; виключені з широких груп інструментів.",
+      readGroup: "Читання (group:enterprise)",
+      writeGroup: "Запис (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Корпоративні Skills",
+      subtitle:
+        "Крок робочого процесу може оголосити ontology.skills для визначення Skills, від яких залежить його робота.",
+    },
     runsTitle: "Останні запуски",
     treesTitle: "Дерева робочих процесів",
     noRuns: "Ще немає записаних запусків Enterprise.",

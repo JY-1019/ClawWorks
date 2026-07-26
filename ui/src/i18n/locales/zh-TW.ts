@@ -205,6 +205,22 @@ export const zh_TW: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "受治理的工作流程執行與已註冊的工作流程樹。",
+    section: {
+      worktree: "工作樹",
+      history: "歷史記錄",
+      tools: "工具",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "企業工具",
+      subtitle: "受管控的執行可使用的選擇性加入工具；不包含在廣泛工具群組中。",
+      readGroup: "讀取 (group:enterprise)",
+      writeGroup: "寫入 (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "企業 Skills",
+      subtitle: "工作流程步驟可宣告 ontology.skills 來指定其工作所依賴的 Skills。",
+    },
     runsTitle: "最近的執行",
     treesTitle: "工作流程樹",
     noRuns: "尚未記錄任何企業執行。",

@@ -208,6 +208,24 @@ export const vi: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Các lần chạy quy trình được quản trị và cây quy trình đã đăng ký.",
+    section: {
+      worktree: "Cây làm việc",
+      history: "Lịch sử",
+      tools: "Công cụ",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Công cụ doanh nghiệp",
+      subtitle:
+        "Các công cụ tùy chọn mà một lần chạy được quản lý có thể sử dụng; được loại trừ khỏi các nhóm công cụ chung.",
+      readGroup: "Đọc (group:enterprise)",
+      writeGroup: "Ghi (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills doanh nghiệp",
+      subtitle:
+        "Một bước quy trình có thể khai báo ontology.skills để đặt tên các skills mà công việc của nó phụ thuộc vào.",
+    },
     runsTitle: "Lần chạy gần đây",
     treesTitle: "Cây quy trình",
     noRuns: "Chưa có lần chạy enterprise nào được ghi nhận.",

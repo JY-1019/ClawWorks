@@ -215,6 +215,24 @@ export const de: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Überwachte Workflow-Ausführungen und registrierte Workflow-Bäume.",
+    section: {
+      worktree: "Worktree",
+      history: "Verlauf",
+      tools: "Tools",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Enterprise-Tools",
+      subtitle:
+        "Opt-in-Tools, die ein gesteuerter Lauf verwenden kann; von den allgemeinen Tool-Gruppen ausgeschlossen.",
+      readGroup: "Lesen (group:enterprise)",
+      writeGroup: "Schreiben (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Enterprise-Skills",
+      subtitle:
+        "Ein Workflow-Schritt kann ontology.skills deklarieren, um die Skills zu benennen, von denen seine Arbeit abhängt.",
+    },
     runsTitle: "Letzte Ausführungen",
     treesTitle: "Workflow-Bäume",
     noRuns: "Noch keine Enterprise-Ausführungen aufgezeichnet.",

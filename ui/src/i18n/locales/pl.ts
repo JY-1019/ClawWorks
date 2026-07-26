@@ -211,6 +211,24 @@ export const pl: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Zarządzane uruchomienia workflow i zarejestrowane drzewa workflow.",
+    section: {
+      worktree: "Drzewo robocze",
+      history: "Historia",
+      tools: "Narzędzia",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Narzędzia enterprise",
+      subtitle:
+        "Opcjonalne narzędzia dostępne dla zarządzanego uruchomienia; wykluczone z szerokich grup narzędzi.",
+      readGroup: "Odczyt (group:enterprise)",
+      writeGroup: "Zapis (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills enterprise",
+      subtitle:
+        "Krok przepływu pracy może zadeklarować ontology.skills, aby wskazać Skills, od których zależy jego działanie.",
+    },
     runsTitle: "Ostatnie uruchomienia",
     treesTitle: "Drzewa workflow",
     noRuns: "Brak zarejestrowanych uruchomień enterprise.",

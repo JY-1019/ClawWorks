@@ -210,6 +210,24 @@ export const id: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Eksekusi alur kerja yang diatur dan pohon alur kerja yang terdaftar.",
+    section: {
+      worktree: "Worktree",
+      history: "Riwayat",
+      tools: "Alat",
+      skills: "Skills",
+    },
+    toolsTab: {
+      title: "Alat enterprise",
+      subtitle:
+        "Alat opsional yang dapat digunakan oleh eksekusi terkontrol; dikecualikan dari grup alat umum.",
+      readGroup: "Baca (group:enterprise)",
+      writeGroup: "Tulis (group:enterprise-write)",
+    },
+    skillsTab: {
+      title: "Skills enterprise",
+      subtitle:
+        "Langkah alur kerja dapat mendeklarasikan ontology.skills untuk menamai skills yang dibutuhkan oleh pekerjaannya.",
+    },
     runsTitle: "Eksekusi terbaru",
     treesTitle: "Pohon alur kerja",
     noRuns: "Belum ada eksekusi enterprise yang tercatat.",
