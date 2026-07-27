@@ -215,18 +215,40 @@ export const de: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Überwachte Workflow-Ausführungen und registrierte Workflow-Bäume.",
-    section: {
-      worktree: "Worktree",
-      history: "Verlauf",
-      tools: "Tools",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Enterprise-Tools",
       subtitle:
         "Opt-in-Tools, die ein gesteuerter Lauf verwenden kann; von den allgemeinen Tool-Gruppen ausgeschlossen.",
       readGroup: "Lesen (group:enterprise)",
       writeGroup: "Schreiben (group:enterprise-write)",
+      grantTitle: "Einem Schritt ein Tool zuweisen",
+      grantSubtitle:
+        "Fügen Sie einen Tool-Namen oder eine Gruppe zu ontology.allowedTools des ausgewählten Schritts hinzu. Deny hat immer Vorrang.",
+    },
+    entryDraft: {
+      add: "Hinzufügen",
+      forStep: "Schritt: {nodeId}",
+      none: "Noch keine Einträge vorhanden.",
+      selectStep: "Wählen Sie zuerst einen Schritt im Worktree-Tab aus.",
+      stepUnavailable:
+        "Der ausgewählte Schritt ist nicht geladen. Aktualisieren Sie die Seite oder wählen Sie ihn erneut auf dem Worktree-Tab aus.",
+      editorOpen:
+        "Speichern oder verwerfen Sie den geöffneten Baumeditor, bevor Sie einen weiteren Eintrag hinzufügen.",
+      scopeNarrowing:
+        "Dieser Schritt hat noch keine Tool-Erlaubnisliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Sobald der erste Eintrag hinzugefügt wird, wird er zu einer Erlaubnisliste und nur die aufgeführten Tools bleiben verfügbar.",
+      toolLabel: "Tool-Name oder -Gruppe zum Erlauben",
+      skillLabel: "Zu deklarierender Skill-Name",
+      skillNameInvalid:
+        "Verwenden Sie einen Skill-Namen: Kleinbuchstaben, Ziffern und einzelne Bindestriche, maximal 64 Zeichen.",
+      ancestorGate:
+        "Übergeordnete Schritte ({nodeIds}) haben ihre eigene Tool-Allowlist. Die Governance prüft jeden Schritt ab dem Root, sodass ein hier gewährtes Tool dennoch abgelehnt wird, wenn diese Schritte es nicht ebenfalls erlauben.",
+      reviewHint:
+        "Beim Hinzufügen wird der Baum-Editor geöffnet, damit Sie die Änderung überprüfen und speichern können.",
+      empty: "Geben Sie zuerst einen Wert ein.",
+      duplicate: "Dieser Eintrag ist für diesen Schritt bereits vorhanden.",
+      nodeMissing:
+        "Dieser Schritt ist nicht mehr im Baum vorhanden. Laden Sie die Seite neu und versuchen Sie es erneut.",
+      exportFailed: "Die Baumdefinition konnte nicht zum Bearbeiten geladen werden.",
     },
     skillsTab: {
       title: "Enterprise-Skills",
@@ -585,6 +607,7 @@ export const de: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Steuerung",
+    enterprise: "Enterprise",
     agent: "Agent",
     settings: "Einstellungen",
     expand: "Seitenleiste ausklappen",
@@ -615,7 +638,10 @@ export const de: TranslationMap = {
     debug: "Debug",
     logs: "Protokolle",
     dreams: "Träume",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Worktree",
+    enterpriseHistory: "Verlauf",
+    enterpriseTools: "Tools",
+    enterpriseSkills: "Skills",
     knowledge: "Wissen",
   },
   subtitles: {
@@ -643,7 +669,10 @@ export const de: TranslationMap = {
     debug: "Gateway-Snapshots, Ereignisse und manuelle RPC-Aufrufe.",
     logs: "Live-Verfolgung der Gateway-Protokolldateien.",
     dreams: "Speicherkonsolidierung im Schlaf.",
-    enterprise: "Workflow-Bäume und kontrollierte Ausführungen.",
+    enterpriseWorktree: "Workflow-Bäume und ihre verwalteten Schritte.",
+    enterpriseHistory: "Vergangene verwaltete Ausführungen und ihre Traces.",
+    enterpriseTools: "Tools, die die Unternehmensgruppen bereitstellen.",
+    enterpriseSkills: "Skills, die Workflow-Schritte deklarieren.",
     knowledge: "Registrierte Wissensgrundlagen und ihr Status.",
   },
   skillWorkshop: {

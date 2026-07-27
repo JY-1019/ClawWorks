@@ -210,18 +210,38 @@ export const it: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Esecuzioni di workflow governate e alberi di workflow registrati.",
-    section: {
-      worktree: "Worktree",
-      history: "Cronologia",
-      tools: "Strumenti",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Strumenti enterprise",
       subtitle:
         "Strumenti opzionali utilizzabili da un'esecuzione governata; esclusi dai gruppi di strumenti generici.",
       readGroup: "Lettura (group:enterprise)",
       writeGroup: "Scrittura (group:enterprise-write)",
+      grantTitle: "Concedi uno strumento a uno step",
+      grantSubtitle:
+        "Aggiungi un nome di strumento o un gruppo a ontology.allowedTools dello step selezionato. Deny ha sempre la priorità.",
+    },
+    entryDraft: {
+      add: "Aggiungi",
+      forStep: "Step: {nodeId}",
+      none: "Nessuno dichiarato finora.",
+      selectStep: "Seleziona prima uno step nella scheda Worktree.",
+      stepUnavailable:
+        "Il passaggio selezionato non è caricato. Aggiorna la pagina o riselezionalo nella scheda Worktree.",
+      editorOpen: "Salva o elimina l'editor ad albero aperto prima di aggiungere un'altra voce.",
+      scopeNarrowing:
+        "Questo passaggio non ha ancora una lista di strumenti consentiti, quindi permette tutti gli strumenti tranne quelli negati. Aggiungendo la prima voce, si trasforma in una lista consentiti e solo gli strumenti elencati restano disponibili.",
+      toolLabel: "Nome o gruppo dello strumento da consentire",
+      skillLabel: "Nome della skill da dichiarare",
+      skillNameInvalid:
+        "Usa un nome di skill: lettere minuscole, cifre e trattini singoli, massimo 64 caratteri.",
+      ancestorGate:
+        "I passaggi padre ({nodeIds}) hanno la propria lista di strumenti consentiti. La governance verifica ogni passaggio dalla radice, quindi uno strumento concesso qui viene comunque negato se anche quei passaggi non lo consentono.",
+      reviewHint:
+        "L'aggiunta apre l'editor dell'albero per consentirti di rivedere e salvare la modifica.",
+      empty: "Inserisci prima un valore.",
+      duplicate: "Quella voce è già dichiarata in questo step.",
+      nodeMissing: "Quello step non è più presente nell'albero; ricarica e riprova.",
+      exportFailed: "Impossibile caricare la definizione dell'albero da modificare.",
     },
     skillsTab: {
       title: "Skills enterprise",
@@ -579,6 +599,7 @@ export const it: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Controllo",
+    enterprise: "Enterprise",
     agent: "Agente",
     settings: "Impostazioni",
     expand: "Espandi barra laterale",
@@ -609,7 +630,10 @@ export const it: TranslationMap = {
     debug: "Debug",
     logs: "Log",
     dreams: "Sogni",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Worktree",
+    enterpriseHistory: "Cronologia",
+    enterpriseTools: "Strumenti",
+    enterpriseSkills: "Skills",
     knowledge: "Conoscenza",
   },
   subtitles: {
@@ -636,7 +660,10 @@ export const it: TranslationMap = {
     debug: "Snapshot, eventi, RPC.",
     logs: "Log gateway live.",
     dreams: "Sogni della memoria, consolidamento e riflessione.",
-    enterprise: "Alberi di workflow ed esecuzioni governate.",
+    enterpriseWorktree: "Alberi di workflow e i relativi passaggi governati.",
+    enterpriseHistory: "Esecuzioni governate passate e le relative tracce.",
+    enterpriseTools: "Strumenti esposti dai gruppi enterprise.",
+    enterpriseSkills: "Skills dichiarate dai passaggi del workflow.",
     knowledge: "Basi di conoscenza registrate e relativo stato.",
   },
   skillWorkshop: {

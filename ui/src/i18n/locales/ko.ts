@@ -208,18 +208,37 @@ export const ko: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "관리되는 워크플로 실행 및 등록된 워크플로 트리입니다.",
-    section: {
-      worktree: "워크트리",
-      history: "히스토리",
-      tools: "도구",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "엔터프라이즈 도구",
       subtitle:
         "관리된 실행에서 사용할 수 있는 옵트인 도구로, 광범위한 도구 그룹에서는 제외됩니다.",
       readGroup: "읽기 (group:enterprise)",
       writeGroup: "쓰기 (group:enterprise-write)",
+      grantTitle: "단계에 도구 부여",
+      grantSubtitle:
+        "선택한 단계의 ontology.allowedTools에 도구 이름 또는 그룹을 추가합니다. Deny가 항상 우선합니다.",
+    },
+    entryDraft: {
+      add: "추가",
+      forStep: "단계: {nodeId}",
+      none: "아직 선언된 항목이 없습니다.",
+      selectStep: "먼저 Worktree 탭에서 단계를 선택하세요.",
+      stepUnavailable:
+        "선택한 단계가 로드되지 않았습니다. 새로고침하거나 Worktree 탭에서 다시 선택하세요.",
+      editorOpen: "다른 항목을 추가하기 전에 열려 있는 트리 편집기를 저장하거나 취소하세요.",
+      scopeNarrowing:
+        "이 단계에는 아직 도구 허용 목록이 없으므로 거부된 도구를 제외한 모든 도구를 허용합니다. 첫 번째 항목을 추가하면 허용 목록으로 전환되며 나열된 도구만 사용할 수 있습니다.",
+      toolLabel: "허용할 도구 이름 또는 그룹",
+      skillLabel: "선언할 Skill 이름",
+      skillNameInvalid:
+        "Skill 이름을 사용하세요: 소문자, 숫자, 단일 하이픈만 허용되며 최대 64자입니다.",
+      ancestorGate:
+        "상위 단계({nodeIds})에 자체 도구 허용 목록이 있습니다. 거버넌스는 루트부터 각 단계를 검사하므로, 여기서 허용된 도구라도 해당 상위 단계에서 허용하지 않으면 거부됩니다.",
+      reviewHint: "추가하면 트리 편집기가 열려 변경 사항을 검토하고 저장할 수 있습니다.",
+      empty: "먼저 값을 입력하세요.",
+      duplicate: "해당 항목은 이미 이 단계에 선언되어 있습니다.",
+      nodeMissing: "해당 단계가 더 이상 트리에 없습니다. 새로고침 후 다시 시도하세요.",
+      exportFailed: "편집할 트리 정의를 불러올 수 없습니다.",
     },
     skillsTab: {
       title: "엔터프라이즈 Skills",
@@ -573,6 +592,7 @@ export const ko: TranslationMap = {
   nav: {
     chat: "채팅",
     control: "Control",
+    enterprise: "Enterprise",
     agent: "에이전트",
     settings: "설정",
     expand: "사이드바 펼치기",
@@ -603,7 +623,10 @@ export const ko: TranslationMap = {
     debug: "디버그",
     logs: "로그",
     dreams: "드리밍",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "워크트리",
+    enterpriseHistory: "히스토리",
+    enterpriseTools: "도구",
+    enterpriseSkills: "Skills",
     knowledge: "지식",
   },
   subtitles: {
@@ -630,7 +653,10 @@ export const ko: TranslationMap = {
     debug: "스냅샷, 이벤트, RPC.",
     logs: "실시간 Gateway 로그.",
     dreams: "수면 중 메모리 통합.",
-    enterprise: "워크플로 트리 및 관리 실행.",
+    enterpriseWorktree: "워크플로 트리와 관리되는 단계입니다.",
+    enterpriseHistory: "과거 관리된 실행 및 해당 트레이스.",
+    enterpriseTools: "엔터프라이즈 그룹이 노출하는 도구.",
+    enterpriseSkills: "Skills 워크플로 단계가 선언하는 항목.",
     knowledge: "등록된 지식 기반 및 상태입니다.",
   },
   skillWorkshop: {

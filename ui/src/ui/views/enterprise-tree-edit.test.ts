@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addNodeOntologyEntry,
   collectDefinitionNodeIds,
   type EditableTreeDefinition,
   insertChildNode,
@@ -107,5 +108,53 @@ describe("insertChildNode", () => {
       title: "Dup",
     });
     expect(result).toEqual({ ok: false, reason: "duplicate-id" });
+  });
+});
+
+describe("addNodeOntologyEntry", () => {
+  it("creates the list on a node that has no ontology yet", () => {
+    const result = addNodeOntologyEntry(definition(), "support.triage", "skills", "refund-policy");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const triage = result.definition.root.children?.find((child) => child.id === "support.triage");
+    expect(triage?.ontology).toEqual({ skills: ["refund-policy"] });
+  });
+
+  it("appends to an existing list and preserves other ontology keys", () => {
+    const base = definition();
+    base.root.ontology = { entities: [{ id: "claim" }], allowedTools: ["group:enterprise"] };
+    const result = addNodeOntologyEntry(base, "support", "allowedTools", "invoke_action");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.definition.root.ontology).toEqual({
+      entities: [{ id: "claim" }],
+      allowedTools: ["group:enterprise", "invoke_action"],
+    });
+  });
+
+  it("does not mutate the input definition", () => {
+    const original = definition();
+    addNodeOntologyEntry(original, "support", "allowedTools", "group:enterprise");
+    expect(original.root.ontology).toEqual({ entities: [{ id: "claim" }] });
+  });
+
+  it("rejects a duplicate entry so the same grant is not added twice", () => {
+    const base = definition();
+    base.root.ontology = { allowedTools: ["group:enterprise"] };
+    expect(addNodeOntologyEntry(base, "support", "allowedTools", "group:enterprise")).toEqual({
+      ok: false,
+      reason: "duplicate-entry",
+    });
+  });
+
+  it("fails when the node id is not in the tree", () => {
+    expect(addNodeOntologyEntry(definition(), "support.ghost", "skills", "x")).toEqual({
+      ok: false,
+      reason: "node-not-found",
+    });
   });
 });

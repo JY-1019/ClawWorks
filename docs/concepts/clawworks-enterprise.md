@@ -342,16 +342,27 @@ event log of run lifecycle plus governance decisions.
   `enterprise.trees.remove` require `operator.admin`, and every import records a
   revision browsable through `enterprise.trees.history.list` /
   `enterprise.trees.history.get`.
-- **Control UI**: the **Enterprise** tab lists recent runs and shows a
-  per-execution inspector with the plan steps, their ontology scope, and the
-  governance trace. Selecting a workflow tree renders its node hierarchy and an
-  ontology graph. Clicking a node opens that node's own scope: the ontology it
-  can address plus the live object instances of each addressable type (served by
-  `enterprise.objects.list`, which fails closed on a tree whose definition did
-  not load and only returns instances of types the current definition still
-  addresses). Operators with `operator.admin` can add a child node from the
-  inspector; it splices the node into the tree definition and saves it through
-  the same `enterprise.trees.import` whole-tree replace.
+- **Control UI**: the sidebar's **Enterprise** group holds one route per surface —
+  **Worktree** (`/enterprise`), **History** (`/enterprise/history`), **Tools**
+  (`/enterprise/tools`), **Skills** (`/enterprise/skills`), and **Knowledge**
+  (`/knowledge`) — so each is deep linkable.
+  - _Worktree_ renders the tree's node hierarchy and an ontology graph. Clicking a
+    node opens that node's own scope: the ontology it can address plus the live
+    object instances of each addressable type (served by `enterprise.objects.list`,
+    which fails closed on a tree whose definition did not load and only returns
+    instances of types the current definition still addresses).
+  - _History_ lists recent runs and shows a per-execution inspector with the plan
+    steps, their ontology scope, and the governance trace.
+  - _Tools_ lists the enterprise tool groups, and _Skills_ the skills a step
+    declares.
+  - Operators with `operator.admin` can add a child node from the Worktree
+    inspector, grant a tool (`ontology.allowedTools`) from Tools, or declare a
+    skill (`ontology.skills`) from Skills. Each one splices into the tree
+    definition and opens the editor, so the change is reviewed and saved through
+    the same `enterprise.trees.import` whole-tree replace. Granting the first tool
+    on a step turns it into an allowlist, and every step from the root is an
+    independent gate, so the UI warns when a grant narrows scope or when an
+    ancestor's allowlist would still deny it.
 
 ## Related
 

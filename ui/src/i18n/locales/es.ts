@@ -209,18 +209,38 @@ export const es: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Ejecuciones de flujos de trabajo gobernados y los árboles de flujos registrados.",
-    section: {
-      worktree: "Árbol de trabajo",
-      history: "Historial",
-      tools: "Herramientas",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Herramientas empresariales",
       subtitle:
         "Herramientas opcionales que una ejecución gobernada puede usar; excluidas de los grupos amplios de herramientas.",
       readGroup: "Lectura (group:enterprise)",
       writeGroup: "Escritura (group:enterprise-write)",
+      grantTitle: "Otorgar una herramienta a un paso",
+      grantSubtitle:
+        "Añade un nombre de herramienta o grupo a ontology.allowedTools del paso seleccionado. Denegar siempre prevalece.",
+    },
+    entryDraft: {
+      add: "Añadir",
+      forStep: "Paso: {nodeId}",
+      none: "Ninguno declarado aún.",
+      selectStep: "Selecciona primero un paso en la pestaña Worktree.",
+      stepUnavailable:
+        "El paso seleccionado no se ha cargado. Actualice la página o vuelva a seleccionarlo en la pestaña Worktree.",
+      editorOpen: "Guarda o descarta el editor de árbol abierto antes de agregar otra entrada.",
+      scopeNarrowing:
+        "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Al agregar la primera entrada, se convierte en una lista de permitidas y solo las herramientas listadas permanecen disponibles.",
+      toolLabel: "Nombre o grupo de herramienta a permitir",
+      skillLabel: "Nombre del skill a declarar",
+      skillNameInvalid:
+        "Use un nombre de skill: letras minúsculas, dígitos y guiones simples, máximo 64 caracteres.",
+      ancestorGate:
+        "Los pasos padre ({nodeIds}) tienen su propia lista de herramientas permitidas. La gobernanza verifica cada paso desde la raíz, por lo que una herramienta concedida aquí seguirá siendo denegada a menos que esos pasos también la permitan.",
+      reviewHint:
+        "Al añadir se abre el editor de árbol para que puedas revisar y guardar el cambio.",
+      empty: "Introduce un valor primero.",
+      duplicate: "Esa entrada ya está declarada en este paso.",
+      nodeMissing: "Ese paso ya no está en el árbol; recarga e inténtalo de nuevo.",
+      exportFailed: "No se pudo cargar la definición del árbol para editar.",
     },
     skillsTab: {
       title: "Skills empresariales",
@@ -576,6 +596,7 @@ export const es: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Control",
+    enterprise: "Enterprise",
     agent: "Agente",
     settings: "Ajustes",
     expand: "Expandir barra lateral",
@@ -606,7 +627,10 @@ export const es: TranslationMap = {
     debug: "Depuración",
     logs: "Registros",
     dreams: "Sueños",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Árbol de trabajo",
+    enterpriseHistory: "Historial",
+    enterpriseTools: "Herramientas",
+    enterpriseSkills: "Skills",
     knowledge: "Conocimiento",
   },
   subtitles: {
@@ -634,7 +658,10 @@ export const es: TranslationMap = {
     debug: "Instantáneas de la puerta de enlace, eventos y llamadas RPC manuales.",
     logs: "Seguimiento en vivo de los registros de la puerta de enlace.",
     dreams: "Consolidación de la memoria durante el sueño.",
-    enterprise: "Árboles de flujo de trabajo y ejecuciones gobernadas.",
+    enterpriseWorktree: "Árboles de flujo de trabajo y sus pasos gobernados.",
+    enterpriseHistory: "Ejecuciones gobernadas anteriores y sus trazas.",
+    enterpriseTools: "Herramientas que exponen los grupos empresariales.",
+    enterpriseSkills: "Skills que declaran los pasos del flujo de trabajo.",
     knowledge: "Bases de conocimiento registradas y su estado.",
   },
   skillWorkshop: {

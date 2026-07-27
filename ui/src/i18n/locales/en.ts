@@ -207,17 +207,36 @@ export const en: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Governed workflow runs and the registered workflow trees.",
-    section: {
-      worktree: "Worktree",
-      history: "History",
-      tools: "Tools",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Enterprise tools",
       subtitle: "Opt-in tools a governed run can use; excluded from the broad tool groups.",
       readGroup: "Read (group:enterprise)",
       writeGroup: "Write (group:enterprise-write)",
+      grantTitle: "Grant a tool to a step",
+      grantSubtitle:
+        "Add a tool name or group to the selected step's ontology.allowedTools. Deny always wins.",
+    },
+    entryDraft: {
+      add: "Add",
+      forStep: "Step: {nodeId}",
+      none: "None declared yet.",
+      selectStep: "Select a step on the Worktree tab first.",
+      stepUnavailable:
+        "The selected step is not loaded. Refresh, or reselect it on the Worktree tab.",
+      editorOpen: "Save or discard the open tree editor before adding another entry.",
+      scopeNarrowing:
+        "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist and only the listed tools stay available.",
+      toolLabel: "Tool name or group to allow",
+      skillLabel: "Skill name to declare",
+      skillNameInvalid:
+        "Use a skill name: lowercase letters, digits, and single hyphens, at most 64 characters.",
+      ancestorGate:
+        "Parent steps ({nodeIds}) have their own tool allowlist. Governance checks each step from the root, so a tool granted here is still denied unless those steps allow it too.",
+      reviewHint: "Adding opens the tree editor so you can review and save the change.",
+      empty: "Enter a value first.",
+      duplicate: "That entry is already declared on this step.",
+      nodeMissing: "That step is no longer in the tree; reload and try again.",
+      exportFailed: "Could not load the tree definition to edit.",
     },
     skillsTab: {
       title: "Enterprise skills",
@@ -570,6 +589,7 @@ export const en: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Control",
+    enterprise: "Enterprise",
     agent: "Agent",
     settings: "Settings",
     expand: "Expand sidebar",
@@ -600,7 +620,10 @@ export const en: TranslationMap = {
     debug: "Debug",
     logs: "Logs",
     dreams: "Dreaming",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Worktree",
+    enterpriseHistory: "History",
+    enterpriseTools: "Tools",
+    enterpriseSkills: "Skills",
     knowledge: "Knowledge",
   },
   subtitles: {
@@ -627,7 +650,10 @@ export const en: TranslationMap = {
     debug: "Snapshots, events, RPC.",
     logs: "Live gateway logs.",
     dreams: "Memory dreaming, consolidation, and reflection.",
-    enterprise: "Workflow trees and governed runs.",
+    enterpriseWorktree: "Workflow trees and their governed steps.",
+    enterpriseHistory: "Past governed runs and their traces.",
+    enterpriseTools: "Tools the enterprise groups expose.",
+    enterpriseSkills: "Skills workflow steps declare.",
     knowledge: "Registered knowledge foundations and their status.",
   },
   skillWorkshop: {

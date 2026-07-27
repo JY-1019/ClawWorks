@@ -207,18 +207,36 @@ export const ar: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "عمليات تشغيل سير العمل الخاضعة للحوكمة وأشجار سير العمل المسجلة.",
-    section: {
-      worktree: "شجرة العمل",
-      history: "السجل",
-      tools: "الأدوات",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "أدوات المؤسسة",
       subtitle:
         "أدوات اختيارية يمكن لعملية التشغيل المُدارة استخدامها؛ مستبعدة من مجموعات الأدوات العامة.",
       readGroup: "قراءة (group:enterprise)",
       writeGroup: "كتابة (group:enterprise-write)",
+      grantTitle: "منح أداة لخطوة",
+      grantSubtitle:
+        "أضف اسم أداة أو مجموعة إلى ontology.allowedTools الخاصة بالخطوة المحددة. الرفض له الأولوية دائمًا.",
+    },
+    entryDraft: {
+      add: "إضافة",
+      forStep: "الخطوة: {nodeId}",
+      none: "لم يتم التصريح بأي شيء بعد.",
+      selectStep: "حدد خطوة في علامة تبويب شجرة العمل أولاً.",
+      stepUnavailable:
+        "الخطوة المحددة غير محمّلة. قم بالتحديث، أو أعد تحديدها في علامة تبويب شجرة العمل.",
+      editorOpen: "احفظ أو تجاهل محرر الشجرة المفتوح قبل إضافة إدخال آخر.",
+      scopeNarrowing:
+        "هذه الخطوة لا تحتوي على قائمة أدوات مسموح بها بعد، لذا فهي تسمح بجميع الأدوات باستثناء ما تم رفضه. إضافة أول إدخال تحوّلها إلى قائمة مسموح بها وتبقى الأدوات المدرجة فقط متاحة.",
+      toolLabel: "اسم الأداة أو المجموعة المراد السماح بها",
+      skillLabel: "اسم المهارة المراد الإعلان عنها",
+      skillNameInvalid: "استخدم اسم مهارة: أحرف صغيرة وأرقام وشرطات مفردة، بحد أقصى 64 حرفًا.",
+      ancestorGate:
+        "الخطوات الأصلية ({nodeIds}) لديها قائمة أدوات مسموح بها خاصة بها. يتحقق نظام الحوكمة من كل خطوة بدءًا من الجذر، لذا فإن الأداة الممنوحة هنا تظل مرفوضة ما لم تسمح بها تلك الخطوات أيضًا.",
+      reviewHint: "تؤدي الإضافة إلى فتح محرر الشجرة حتى تتمكن من المراجعة وحفظ التغيير.",
+      empty: "أدخل قيمة أولاً.",
+      duplicate: "هذا الإدخال مُصرَّح به بالفعل في هذه الخطوة.",
+      nodeMissing: "هذه الخطوة لم تعد موجودة في الشجرة؛ أعد التحميل وحاول مرة أخرى.",
+      exportFailed: "تعذّر تحميل تعريف الشجرة للتحرير.",
     },
     skillsTab: {
       title: "Skills المؤسسة",
@@ -571,6 +589,7 @@ export const ar: TranslationMap = {
   nav: {
     chat: "الدردشة",
     control: "التحكم",
+    enterprise: "المؤسسات",
     agent: "الوكيل",
     settings: "الإعدادات",
     expand: "توسيع الشريط الجانبي",
@@ -601,7 +620,10 @@ export const ar: TranslationMap = {
     debug: "تصحيح الأخطاء",
     logs: "السجلات",
     dreams: "الحلم",
-    enterprise: "المؤسسات",
+    enterpriseWorktree: "شجرة العمل",
+    enterpriseHistory: "السجل",
+    enterpriseTools: "الأدوات",
+    enterpriseSkills: "Skills",
     knowledge: "المعرفة",
   },
   subtitles: {
@@ -628,7 +650,10 @@ export const ar: TranslationMap = {
     debug: "اللقطات، والأحداث، وRPC.",
     logs: "سجلات Gateway المباشرة.",
     dreams: "حلم الذاكرة، والدمج، والتأمل.",
-    enterprise: "أشجار سير العمل وعمليات التشغيل المُدارة.",
+    enterpriseWorktree: "أشجار سير العمل والخطوات المُدارة فيها.",
+    enterpriseHistory: "عمليات التشغيل المُدارة السابقة وتتبعاتها.",
+    enterpriseTools: "الأدوات التي تعرضها مجموعات المؤسسة.",
+    enterpriseSkills: "Skills التي تُعلنها خطوات سير العمل.",
     knowledge: "أسس المعرفة المسجّلة وحالتها.",
   },
   skillWorkshop: {

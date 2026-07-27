@@ -468,7 +468,12 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
       case "instances":
         await loadPresence(app);
         break;
-      case "enterprise":
+      // Every Enterprise sidebar tab renders the one enterprise view, so they all
+      // need the same data loaded.
+      case "enterpriseWorktree":
+      case "enterpriseHistory":
+      case "enterpriseTools":
+      case "enterpriseSkills":
         await refreshEnterprise(app);
         break;
       case "knowledge":

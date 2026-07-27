@@ -208,18 +208,36 @@ export const vi: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Các lần chạy quy trình được quản trị và cây quy trình đã đăng ký.",
-    section: {
-      worktree: "Cây làm việc",
-      history: "Lịch sử",
-      tools: "Công cụ",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Công cụ doanh nghiệp",
       subtitle:
         "Các công cụ tùy chọn mà một lần chạy được quản lý có thể sử dụng; được loại trừ khỏi các nhóm công cụ chung.",
       readGroup: "Đọc (group:enterprise)",
       writeGroup: "Ghi (group:enterprise-write)",
+      grantTitle: "Cấp công cụ cho một bước",
+      grantSubtitle:
+        "Thêm tên công cụ hoặc nhóm vào ontology.allowedTools của bước đã chọn. Deny luôn được ưu tiên.",
+    },
+    entryDraft: {
+      add: "Thêm",
+      forStep: "Bước: {nodeId}",
+      none: "Chưa có khai báo nào.",
+      selectStep: "Chọn một bước trên tab Worktree trước.",
+      stepUnavailable: "Bước đã chọn chưa được tải. Hãy làm mới hoặc chọn lại trên tab Worktree.",
+      editorOpen: "Lưu hoặc hủy trình chỉnh sửa cây đang mở trước khi thêm mục khác.",
+      scopeNarrowing:
+        "Bước này chưa có danh sách công cụ được phép, nên nó cho phép mọi công cụ trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển thành danh sách cho phép và chỉ các công cụ được liệt kê mới khả dụng.",
+      toolLabel: "Tên công cụ hoặc nhóm được phép",
+      skillLabel: "Tên skill cần khai báo",
+      skillNameInvalid:
+        "Sử dụng tên skill: chữ cái thường, chữ số và dấu gạch ngang đơn, tối đa 64 ký tự.",
+      ancestorGate:
+        "Các bước cha ({nodeIds}) có danh sách công cụ cho phép riêng. Governance kiểm tra từng bước từ gốc, vì vậy một công cụ được cấp ở đây vẫn bị từ chối trừ khi các bước đó cũng cho phép.",
+      reviewHint: "Thao tác thêm sẽ mở trình chỉnh sửa cây để bạn có thể xem lại và lưu thay đổi.",
+      empty: "Nhập giá trị trước.",
+      duplicate: "Mục đó đã được khai báo trên bước này.",
+      nodeMissing: "Bước đó không còn trong cây; tải lại và thử lại.",
+      exportFailed: "Không thể tải định nghĩa cây để chỉnh sửa.",
     },
     skillsTab: {
       title: "Skills doanh nghiệp",
@@ -573,6 +591,7 @@ export const vi: TranslationMap = {
   nav: {
     chat: "Trò chuyện",
     control: "Điều khiển",
+    enterprise: "Enterprise",
     agent: "Agent",
     settings: "Cài đặt",
     expand: "Mở rộng thanh bên",
@@ -603,7 +622,10 @@ export const vi: TranslationMap = {
     debug: "Gỡ lỗi",
     logs: "Nhật ký",
     dreams: "Đang mơ",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Cây làm việc",
+    enterpriseHistory: "Lịch sử",
+    enterpriseTools: "Công cụ",
+    enterpriseSkills: "Skills",
     knowledge: "Kiến thức",
   },
   subtitles: {
@@ -631,7 +653,10 @@ export const vi: TranslationMap = {
     debug: "Ảnh chụp, sự kiện, RPC.",
     logs: "Nhật ký gateway trực tiếp.",
     dreams: "Mơ bộ nhớ, hợp nhất và phản chiếu.",
-    enterprise: "Cây quy trình và các lần chạy được quản lý.",
+    enterpriseWorktree: "Cây quy trình và các bước được quản lý của chúng.",
+    enterpriseHistory: "Các lần chạy được quản lý trước đây và dấu vết của chúng.",
+    enterpriseTools: "Các công cụ mà nhóm doanh nghiệp cung cấp.",
+    enterpriseSkills: "Các Skills mà bước quy trình công việc khai báo.",
     knowledge: "Các nền tảng kiến thức đã đăng ký và trạng thái của chúng.",
   },
   skillWorkshop: {

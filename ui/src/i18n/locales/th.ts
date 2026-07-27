@@ -205,17 +205,34 @@ export const th: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "การรันเวิร์กโฟลว์ที่มีการกำกับดูแลและแผนผังเวิร์กโฟลว์ที่ลงทะเบียนไว้",
-    section: {
-      worktree: "Worktree",
-      history: "ประวัติ",
-      tools: "เครื่องมือ",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "เครื่องมือระดับองค์กร",
       subtitle: "เครื่องมือแบบเลือกใช้ที่การรันแบบควบคุมสามารถใช้ได้ โดยไม่รวมอยู่ในกลุ่มเครื่องมือแบบกว้าง",
       readGroup: "อ่าน (group:enterprise)",
       writeGroup: "เขียน (group:enterprise-write)",
+      grantTitle: "มอบเครื่องมือให้กับขั้นตอน",
+      grantSubtitle:
+        "เพิ่มชื่อเครื่องมือหรือกลุ่มลงใน ontology.allowedTools ของขั้นตอนที่เลือก Deny จะมีผลเหนือกว่าเสมอ",
+    },
+    entryDraft: {
+      add: "เพิ่ม",
+      forStep: "ขั้นตอน: {nodeId}",
+      none: "ยังไม่มีการประกาศ",
+      selectStep: "เลือกขั้นตอนในแท็บ Worktree ก่อน",
+      stepUnavailable: "ขั้นตอนที่เลือกไม่ได้โหลดอยู่ กรุณารีเฟรช หรือเลือกใหม่ในแท็บ Worktree",
+      editorOpen: "บันทึกหรือยกเลิกตัวแก้ไขแผนผังที่เปิดอยู่ก่อนเพิ่มรายการใหม่",
+      scopeNarrowing:
+        "ขั้นตอนนี้ยังไม่มีรายการเครื่องมือที่อนุญาต จึงอนุญาตเครื่องมือทั้งหมดยกเว้นที่ถูกปฏิเสธ การเพิ่มรายการแรกจะเปลี่ยนเป็นรายการอนุญาต และเฉพาะเครื่องมือที่ระบุไว้เท่านั้นที่จะใช้งานได้",
+      toolLabel: "ชื่อเครื่องมือหรือกลุ่มที่จะอนุญาต",
+      skillLabel: "ชื่อ Skill ที่จะประกาศ",
+      skillNameInvalid: "ใช้ชื่อ Skill: ตัวอักษรพิมพ์เล็ก ตัวเลข และขีดกลางเดี่ยว ไม่เกิน 64 ตัวอักษร",
+      ancestorGate:
+        "ขั้นตอนหลัก ({nodeIds}) มีรายการอนุญาตเครื่องมือของตนเอง Governance จะตรวจสอบแต่ละขั้นตอนจากรากลงมา ดังนั้นเครื่องมือที่อนุญาตที่นี่จะยังคงถูกปฏิเสธ เว้นแต่ขั้นตอนเหล่านั้นจะอนุญาตด้วยเช่นกัน",
+      reviewHint: "การเพิ่มจะเปิดตัวแก้ไขทรีเพื่อให้คุณตรวจสอบและบันทึกการเปลี่ยนแปลง",
+      empty: "กรุณากรอกค่าก่อน",
+      duplicate: "รายการนี้ถูกประกาศในขั้นตอนนี้แล้ว",
+      nodeMissing: "ขั้นตอนนั้นไม่อยู่ในทรีแล้ว กรุณาโหลดใหม่แล้วลองอีกครั้ง",
+      exportFailed: "ไม่สามารถโหลดคำจำกัดความของแผนผังเพื่อแก้ไขได้",
     },
     skillsTab: {
       title: "Skills ระดับองค์กร",
@@ -567,6 +584,7 @@ export const th: TranslationMap = {
   nav: {
     chat: "แชต",
     control: "ควบคุม",
+    enterprise: "Enterprise",
     agent: "เอเจนต์",
     settings: "การตั้งค่า",
     expand: "ขยายแถบด้านข้าง",
@@ -597,7 +615,10 @@ export const th: TranslationMap = {
     debug: "ดีบัก",
     logs: "บันทึก",
     dreams: "การฝัน",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Worktree",
+    enterpriseHistory: "ประวัติ",
+    enterpriseTools: "เครื่องมือ",
+    enterpriseSkills: "Skills",
     knowledge: "ฐานความรู้",
   },
   subtitles: {
@@ -624,7 +645,10 @@ export const th: TranslationMap = {
     debug: "สแนปช็อต เหตุการณ์ และ RPC",
     logs: "บันทึกเกตเวย์แบบสด",
     dreams: "การฝันของหน่วยความจำ การรวมข้อมูล และการสะท้อนคิด",
-    enterprise: "Workflow tree และการรันที่มีการกำกับดูแล",
+    enterpriseWorktree: "แผนผังเวิร์กโฟลว์และขั้นตอนที่ควบคุม",
+    enterpriseHistory: "การรันที่ผ่านมาภายใต้การกำกับดูแลและร่องรอยของการรัน",
+    enterpriseTools: "เครื่องมือที่กลุ่มองค์กรเปิดให้ใช้งาน",
+    enterpriseSkills: "Skills ที่ขั้นตอนเวิร์กโฟลว์ประกาศใช้",
     knowledge: "ฐานความรู้ที่ลงทะเบียนไว้และสถานะของฐานความรู้",
   },
   skillWorkshop: {

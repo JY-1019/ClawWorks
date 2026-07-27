@@ -294,8 +294,6 @@ export type AppViewState = {
   enterpriseImportErrors: EnterpriseTreesListResult["importErrors"];
   enterpriseStoreError: string | null;
   enterpriseSelectedExecutionId: string | null;
-  /** Active in-view sub-tab of the Enterprise screen (worktree | history | tools | skills). */
-  enterpriseActiveSubsection: string | null;
   enterpriseDetail: EnterpriseRunDetail | null;
   enterpriseRunTree: EnterpriseTreeDetail | null;
   enterpriseChatMode: EnterpriseMode | null;
@@ -325,6 +323,9 @@ export type AppViewState = {
   enterpriseTreeVersions: EnterpriseTreeVersionSummary[];
   enterpriseTreeVersionsLoading: boolean;
   enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null;
+  enterpriseOntologyEntryDraft:
+    | import("./controllers/enterprise.js").EnterpriseOntologyEntryDraft
+    | null;
   enterpriseError: string | null;
   knowledgePhase: import("./controllers/knowledge.js").KnowledgeListPhase;
   knowledgeFoundations: EnterpriseKnowledgeFoundationSummary[];

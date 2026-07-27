@@ -21,7 +21,11 @@ import {
   selectEnterpriseTree,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
+  beginAddEnterpriseOntologyEntry,
+  cancelAddEnterpriseOntologyEntry,
+  editEnterpriseOntologyEntryDraft,
   submitAddEnterpriseNode,
+  submitAddEnterpriseOntologyEntry,
 } from "./enterprise.ts";
 
 type TestRequest = (method: string, payload?: unknown) => Promise<unknown>;
@@ -60,6 +64,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeVersions: [],
     enterpriseTreeVersionsLoading: false,
     enterpriseNodeDraft: null,
+    enterpriseOntologyEntryDraft: null,
     enterpriseError: null,
   };
   return { state, request };
@@ -1489,5 +1494,119 @@ describe("add child node (P5)", () => {
     // The stale submit must not close the form or seed the editor with old values.
     expect(state.enterpriseTreeEditing).toBe(false);
     expect(state.enterpriseNodeDraft?.title).toBe("Renamed");
+  });
+});
+
+describe("enterprise ontology entry drafts (tool grants / declared skills)", () => {
+  it("splices an allowedTools grant into a fresh export and opens the editor", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockResolvedValue({ content: supportExportContent() });
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "allowedTools");
+    editEnterpriseOntologyEntryDraft(state, "group:enterprise");
+
+    await submitAddEnterpriseOntologyEntry(state);
+
+    // Same canonical-JSON round trip as node creation, so both reuse trees.import.
+    expect(request).toHaveBeenCalledWith("enterprise.trees.export", {
+      treeId: "acme.support",
+      format: "json",
+    });
+    expect(state.enterpriseOntologyEntryDraft).toBeNull();
+    expect(state.enterpriseTreeEditing).toBe(true);
+    const parsed = JSON.parse(state.enterpriseTreeEditContent);
+    expect(parsed.root.ontology.allowedTools).toContain("group:enterprise");
+    // Nothing is written until the operator saves.
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.import", expect.anything());
+  });
+
+  it("declares a skill on the selected step", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockResolvedValue({ content: supportExportContent() });
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
+    editEnterpriseOntologyEntryDraft(state, "refund-policy");
+
+    await submitAddEnterpriseOntologyEntry(state);
+
+    const parsed = JSON.parse(state.enterpriseTreeEditContent);
+    expect(parsed.root.ontology.skills).toEqual(["refund-policy"]);
+  });
+
+  it("rejects a blank entry without re-exporting", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
+    editEnterpriseOntologyEntryDraft(state, "   ");
+
+    await submitAddEnterpriseOntologyEntry(state);
+
+    expect(state.enterpriseOntologyEntryDraft?.error).toBe("entry-empty");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("rejects an entry already declared on the step", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockResolvedValue({ content: supportExportContent() });
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
+    editEnterpriseOntologyEntryDraft(state, "refund-policy");
+    await submitAddEnterpriseOntologyEntry(state);
+
+    // Re-add the same skill against the (unchanged) exported definition.
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
+    editEnterpriseOntologyEntryDraft(state, "refund-policy");
+    request.mockResolvedValue({
+      content: JSON.stringify({
+        ...JSON.parse(supportExportContent()),
+        root: {
+          ...JSON.parse(supportExportContent()).root,
+          ontology: { skills: ["refund-policy"] },
+        },
+      }),
+    });
+    await submitAddEnterpriseOntologyEntry(state);
+
+    expect(state.enterpriseOntologyEntryDraft?.error).toBe("entry-duplicate");
+  });
+
+  it("cancel clears the draft", () => {
+    const { state } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
+    cancelAddEnterpriseOntologyEntry(state);
+    expect(state.enterpriseOntologyEntryDraft).toBeNull();
+  });
+});
+
+describe("declared skill name validation", () => {
+  it.each(["Refund Policy", "refund--policy", "-refund", "a".repeat(65)])(
+    "rejects %s without re-exporting",
+    async (name) => {
+      const { state, request } = createState();
+      state.enterpriseTreeDetail = treeDetail("acme.support");
+      beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
+      editEnterpriseOntologyEntryDraft(state, name);
+
+      await submitAddEnterpriseOntologyEntry(state);
+
+      // The import contract would refuse it, so the form fails before the splice.
+      expect(state.enterpriseOntologyEntryDraft?.error).toBe("skill-name-invalid");
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not apply the skill contract to tool grants", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockResolvedValue({ content: supportExportContent() });
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "allowedTools");
+    // Group selectors carry a colon, which the skill-name pattern forbids.
+    editEnterpriseOntologyEntryDraft(state, "group:enterprise-write");
+
+    await submitAddEnterpriseOntologyEntry(state);
+
+    expect(state.enterpriseOntologyEntryDraft).toBeNull();
+    expect(state.enterpriseTreeEditing).toBe(true);
   });
 });

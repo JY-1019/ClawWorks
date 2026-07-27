@@ -483,7 +483,6 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseImportErrors: EnterpriseTreesListResult["importErrors"] = [];
   @state() enterpriseStoreError: string | null = null;
   @state() enterpriseSelectedExecutionId: string | null = null;
-  @state() enterpriseActiveSubsection: string | null = null;
   @state() enterpriseDetail: EnterpriseRunDetail | null = null;
   @state() enterpriseRunTree: EnterpriseTreeDetail | null = null;
   @state() enterpriseChatMode: EnterpriseMode | null = null;
@@ -520,6 +519,9 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseTreeVersionsLoading = false;
   @state() enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null =
     null;
+  @state() enterpriseOntologyEntryDraft:
+    | import("./controllers/enterprise.js").EnterpriseOntologyEntryDraft
+    | null = null;
   @state() enterpriseError: string | null = null;
   @state() knowledgePhase: import("./controllers/knowledge.js").KnowledgeListPhase = "unloaded";
   @state() knowledgeFoundations: EnterpriseKnowledgeFoundationSummary[] = [];

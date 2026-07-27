@@ -19,6 +19,8 @@ import "../components/workflow-tree-graph.ts";
 import type {
   EnterpriseNodeDraft,
   EnterpriseNodeDraftError,
+  EnterpriseOntologyEntryDraft,
+  EnterpriseOntologyEntryDraftError,
   EnterpriseTreeConfirm,
   EnterpriseTreeEditFormat,
 } from "../controllers/enterprise.ts";
@@ -27,6 +29,7 @@ import {
   collectOntologyGraph,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
+import type { NodeOntologyListField } from "./enterprise-tree-edit.ts";
 
 export type EnterpriseProps = {
   loading: boolean;
@@ -85,39 +88,28 @@ export type EnterpriseProps = {
   onEditNodeDraft: (patch: { id?: string; title?: string }) => void;
   onCancelAddNode: () => void;
   onSubmitAddNode: () => void;
-  /** Which in-view sub-tab is shown; falls back to "worktree" when unset/unknown. */
-  activeSubsection: string | null;
-  onSubsectionChange: (section: string) => void;
+  // The open "grant a tool" / "declare a skill" form on the Tools/Skills tabs, or
+  // null. Submit splices the entry into the selected step and loads the editor for Save.
+  ontologyEntryDraft: EnterpriseOntologyEntryDraft | null;
+  onBeginAddOntologyEntry: (nodeId: string, field: NodeOntologyListField) => void;
+  onEditOntologyEntryDraft: (value: string) => void;
+  onCancelAddOntologyEntry: () => void;
+  onSubmitAddOntologyEntry: () => void;
+  /** Which enterprise surface to render; chosen by the active sidebar tab. */
+  section: EnterpriseSection;
 };
 
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
-/** In-view sub-tabs of the Enterprise screen, in display order. */
+/**
+ * Enterprise surfaces, in sidebar order. Each one is its own sidebar tab under the
+ * Enterprise group (see navigation.ts), so this view renders exactly the surface the
+ * active tab selects rather than owning an in-view sub-tab row.
+ */
 export const ENTERPRISE_SECTIONS = ["worktree", "history", "tools", "skills"] as const;
 export type EnterpriseSection = (typeof ENTERPRISE_SECTIONS)[number];
-
-function resolveEnterpriseSection(value: string | null): EnterpriseSection {
-  return (ENTERPRISE_SECTIONS as readonly string[]).includes(value ?? "")
-    ? (value as EnterpriseSection)
-    : "worktree";
-}
-
-// Literal t() keys (the i18n key type is a closed union, so a computed
-// `enterprise.section.${id}` would not typecheck).
-function enterpriseSectionLabel(section: EnterpriseSection): string {
-  switch (section) {
-    case "worktree":
-      return t("enterprise.section.worktree");
-    case "history":
-      return t("enterprise.section.history");
-    case "tools":
-      return t("enterprise.section.tools");
-    case "skills":
-      return t("enterprise.section.skills");
-  }
-}
 
 /**
  * Enterprise tool catalog shown, read-only, in the Tools sub-tab. Grouped like
@@ -136,7 +128,172 @@ function renderEnterpriseToolList(ids: readonly string[]): TemplateResult {
   </div>`;
 }
 
-function renderEnterpriseTools(): TemplateResult {
+function ontologyEntryErrorMessage(error: EnterpriseOntologyEntryDraftError): string {
+  switch (error) {
+    case "entry-empty":
+      return t("enterprise.entryDraft.empty");
+    case "entry-duplicate":
+      return t("enterprise.entryDraft.duplicate");
+    case "skill-name-invalid":
+      return t("enterprise.entryDraft.skillNameInvalid");
+    case "node-missing":
+      return t("enterprise.entryDraft.nodeMissing");
+    case "export-failed":
+      return t("enterprise.entryDraft.exportFailed");
+  }
+}
+
+/**
+ * The shared "add an entry to the selected step" affordance for the Tools and Skills
+ * tabs. The step is chosen on the Worktree tab, so without a selection this only
+ * points the operator there rather than silently editing an arbitrary node.
+ */
+function renderOntologyEntryAdder(
+  props: EnterpriseProps,
+  field: NodeOntologyListField,
+  values: readonly string[],
+  placeholder: string,
+  /** Accessible name for the text input; the placeholder is only an example value. */
+  inputLabel: string,
+  /**
+   * True when adding the first entry FLIPS this step into an allowlist: with no
+   * local allowedTools the step allows every tool (minus any denials), so the first
+   * grant silently revokes the rest. Told before they do it, not after.
+   */
+  restrictsScope = false,
+  /** Ancestor steps whose own allowlist can still deny the tool granted here. */
+  constrainingAncestors: readonly string[] = [],
+): TemplateResult {
+  const nodeId = props.selectedNodeId;
+  if (!nodeId) {
+    return html`<div class="muted" style="margin-top: 12px;">
+      ${t("enterprise.entryDraft.selectStep")}
+    </div>`;
+  }
+  // The selection outlives the tree detail: loadEnterpriseTreeDetail clears the
+  // detail while reloading (and leaves it null after a failed refresh) but keeps
+  // enterpriseSelectedNodeId. Rendering the form then would show empty values, the
+  // scope warning, and an Add that silently no-ops, so require the loaded node.
+  if (!props.treeDetail?.nodes.some((node) => node.id === nodeId)) {
+    return html`<div class="muted" style="margin-top: 12px;">
+      ${props.treeLoading ? t("common.loading") : t("enterprise.entryDraft.stepUnavailable")}
+    </div>`;
+  }
+  // Match on treeId too: a different tree can hold a node with the same id, and a
+  // draft carries its own tree, so an id-only match would show a stale form.
+  const draft =
+    props.ontologyEntryDraft?.treeId === props.treeDetail?.id &&
+    props.ontologyEntryDraft?.nodeId === nodeId &&
+    props.ontologyEntryDraft.field === field
+      ? props.ontologyEntryDraft
+      : null;
+  // An open editor already holds unsaved content; a second add re-exports the SAVED
+  // definition and would seed over it, dropping that edit. Send the operator to
+  // save (or discard) first instead.
+  if (props.treeEditing) {
+    return html`<div class="muted" style="margin-top: 12px;">
+      ${t("enterprise.entryDraft.editorOpen")}
+    </div>`;
+  }
+  return html`
+    <div style="margin-top: 12px;">
+      <div class="muted">${t("enterprise.entryDraft.forStep", { nodeId })}</div>
+      <div class="list" style="margin-top: 8px;">
+        ${values.length === 0
+          ? html`<div class="list-item muted">${t("enterprise.entryDraft.none")}</div>`
+          : values.map((value) => html`<div class="list-item"><code>${value}</code></div>`)}
+      </div>
+      ${restrictsScope
+        ? html`<div class="callout" style="margin-top: 8px;">
+            ${t("enterprise.entryDraft.scopeNarrowing")}
+          </div>`
+        : nothing}
+      ${constrainingAncestors.length
+        ? html`<div class="callout" style="margin-top: 8px;">
+            ${t("enterprise.entryDraft.ancestorGate", {
+              nodeIds: constrainingAncestors.join(", "),
+            })}
+          </div>`
+        : nothing}
+      ${props.canEdit
+        ? draft
+          ? html`
+              <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                <input
+                  type="text"
+                  .value=${draft.value}
+                  aria-label=${inputLabel}
+                  placeholder=${placeholder}
+                  @input=${(event: Event) =>
+                    props.onEditOntologyEntryDraft((event.target as HTMLInputElement).value)}
+                />
+                <button type="button" class="btn primary" @click=${props.onSubmitAddOntologyEntry}>
+                  ${t("enterprise.entryDraft.add")}
+                </button>
+                <button type="button" class="btn" @click=${props.onCancelAddOntologyEntry}>
+                  ${t("common.cancel")}
+                </button>
+              </div>
+              ${draft.error
+                ? html`<div class="callout danger" style="margin-top: 8px;">
+                    ${ontologyEntryErrorMessage(draft.error)}
+                  </div>`
+                : nothing}
+              <div class="muted" style="margin-top: 8px;">
+                ${t("enterprise.entryDraft.reviewHint")}
+              </div>
+            `
+          : html`<button
+              type="button"
+              class="btn"
+              style="margin-top: 8px;"
+              @click=${() => props.onBeginAddOntologyEntry(nodeId, field)}
+            >
+              ${t("enterprise.entryDraft.add")}
+            </button>`
+        : nothing}
+    </div>
+  `;
+}
+
+/** The selected step's ontology binding, or null when nothing is selected. */
+function selectedNodeOntology(props: EnterpriseProps) {
+  const nodeId = props.selectedNodeId;
+  return nodeId
+    ? (props.treeDetail?.nodes.find((node) => node.id === nodeId)?.ontology ?? null)
+    : null;
+}
+
+/**
+ * Ancestors of the selected step that carry their OWN tool allowlist. Governance
+ * checks every node on the root->active path as an independent gate
+ * (ontologyScopeViolation in src/enterprise/governance.ts), so a grant added here is
+ * still denied unless each of these ancestors allows the tool too — the operator has
+ * to see that before believing the grant took effect.
+ */
+function constrainingAncestorIds(props: EnterpriseProps): string[] {
+  const nodes = props.treeDetail?.nodes;
+  const selectedId = props.selectedNodeId;
+  if (!nodes || !selectedId) {
+    return [];
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const ids: string[] = [];
+  let current = byId.get(selectedId)?.parentId ?? null;
+  while (current) {
+    const node = byId.get(current);
+    if (!node) {
+      break;
+    }
+    if (node.ontology.allowedTools?.length) {
+      ids.push(node.id);
+    }
+    current = node.parentId;
+  }
+  return ids;
+}
+
+function renderEnterpriseTools(props: EnterpriseProps): TemplateResult {
   return html`
     <section class="card" style="margin-top: 16px;">
       <div class="card-title">${t("enterprise.toolsTab.title")}</div>
@@ -150,20 +307,45 @@ function renderEnterpriseTools(): TemplateResult {
         ${renderEnterpriseToolList(ENTERPRISE_TOOL_IDS.write)}
       </div>
     </section>
+    <section class="card" style="margin-top: 16px;">
+      <div class="card-title">${t("enterprise.toolsTab.grantTitle")}</div>
+      <div class="card-sub">${t("enterprise.toolsTab.grantSubtitle")}</div>
+      ${(() => {
+        const allowed = selectedNodeOntology(props)?.allowedTools ?? [];
+        // No LOCAL allowlist means the step allows everything (minus its denials), so
+        // the first entry narrows it either way — a deny-only step converts too.
+        return renderOntologyEntryAdder(
+          props,
+          "allowedTools",
+          allowed,
+          "group:enterprise",
+          t("enterprise.entryDraft.toolLabel"),
+          allowed.length === 0,
+          constrainingAncestorIds(props),
+        );
+      })()}
+    </section>
   `;
 }
 
-function renderEnterpriseSkills(): TemplateResult {
+function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
   return html`
     <section class="card" style="margin-top: 16px;">
       <div class="card-title">${t("enterprise.skillsTab.title")}</div>
       <div class="card-sub">${t("enterprise.skillsTab.subtitle")}</div>
+      ${renderOntologyEntryAdder(
+        props,
+        "skills",
+        selectedNodeOntology(props)?.skills ?? [],
+        "refund-policy",
+        t("enterprise.entryDraft.skillLabel"),
+      )}
     </section>
   `;
 }
 
 export function renderEnterprise(props: EnterpriseProps) {
-  const section = resolveEnterpriseSection(props.activeSubsection);
+  const section = props.section;
   return html`
     <section class="card">
       <div class="row" style="justify-content: space-between;">
@@ -203,24 +385,6 @@ export function renderEnterprise(props: EnterpriseProps) {
         : nothing}
     </section>
 
-    <div
-      class="row"
-      style="gap: 8px; margin-top: 16px; flex-wrap: wrap;"
-      role="tablist"
-      aria-label=${t("enterprise.title")}
-    >
-      ${ENTERPRISE_SECTIONS.map(
-        (id) => html`<button
-          class="chip ${section === id ? "list-item-selected" : ""}"
-          role="tab"
-          aria-selected=${section === id ? "true" : "false"}
-          @click=${() => props.onSubsectionChange(id)}
-        >
-          ${enterpriseSectionLabel(id)}
-        </button>`,
-      )}
-    </div>
-
     ${section === "history"
       ? html`
           <section class="card" style="margin-top: 16px;">
@@ -258,8 +422,8 @@ export function renderEnterprise(props: EnterpriseProps) {
           ${renderTreeVisualization(props)}
         `
       : nothing}
-    ${section === "tools" ? renderEnterpriseTools() : nothing}
-    ${section === "skills" ? renderEnterpriseSkills() : nothing}
+    ${section === "tools" ? renderEnterpriseTools(props) : nothing}
+    ${section === "skills" ? renderEnterpriseSkills(props) : nothing}
     <!-- Outside the subsection switch: the global Remove action (shown with import
       errors on any tab) sets the confirm state, so its modal must render everywhere. -->
     ${renderTreeConfirmModal(props)}

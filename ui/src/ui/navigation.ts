@@ -7,15 +7,18 @@ export const TAB_GROUPS = [
   { label: "chat", tabs: ["chat"] },
   {
     label: "control",
+    tabs: ["overview", "activity", "workboard", "instances", "sessions", "usage", "cron"],
+  },
+  // Enterprise is its own collapsible sidebar group, not one screen with in-view
+  // chips: each surface is a real tab with its own path, so an operator can deep
+  // link to (and bookmark) a single enterprise surface.
+  {
+    label: "enterprise",
     tabs: [
-      "overview",
-      "activity",
-      "workboard",
-      "instances",
-      "sessions",
-      "usage",
-      "cron",
-      "enterprise",
+      "enterpriseWorktree",
+      "enterpriseHistory",
+      "enterpriseTools",
+      "enterpriseSkills",
       "knowledge",
     ],
   },
@@ -50,7 +53,10 @@ export type Tab =
   | "debug"
   | "logs"
   | "dreams"
-  | "enterprise"
+  | "enterpriseWorktree"
+  | "enterpriseHistory"
+  | "enterpriseTools"
+  | "enterpriseSkills"
   | "knowledge";
 
 export const SETTINGS_TABS = [
@@ -90,7 +96,12 @@ const TAB_PATHS: Record<Tab, string> = {
   debug: "/debug",
   logs: "/logs",
   dreams: "/dreaming",
-  enterprise: "/enterprise",
+  // "/enterprise" stays the workmap so existing links keep working; the other
+  // enterprise surfaces nest under it.
+  enterpriseWorktree: "/enterprise",
+  enterpriseHistory: "/enterprise/history",
+  enterpriseTools: "/enterprise/tools",
+  enterpriseSkills: "/enterprise/skills",
   knowledge: "/knowledge",
 };
 
@@ -241,8 +252,16 @@ export function iconForTab(tab: Tab): IconName {
       return "scrollText";
     case "dreams":
       return "moon";
-    case "enterprise":
-      return "book";
+    case "enterpriseWorktree":
+      // The worktree is a branching tree, so it gets the branch glyph rather than
+      // the group's generic one.
+      return "cornerDownRight";
+    case "enterpriseHistory":
+      return "clock";
+    case "enterpriseTools":
+      return "wrench";
+    case "enterpriseSkills":
+      return "zap";
     case "knowledge":
       // Not "book": it sits next to enterprise in the sidebar and the two
       // glyphs read as the same icon at that size.

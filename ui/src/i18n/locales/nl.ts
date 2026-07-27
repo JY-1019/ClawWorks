@@ -213,18 +213,39 @@ export const nl: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Beheerde workflowuitvoeringen en de geregistreerde workflowbomen.",
-    section: {
-      worktree: "Werkboom",
-      history: "Geschiedenis",
-      tools: "Tools",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Enterprise-tools",
       subtitle:
         "Opt-in tools die een beheerde run kan gebruiken; uitgesloten van de brede toolgroepen.",
       readGroup: "Lezen (group:enterprise)",
       writeGroup: "Schrijven (group:enterprise-write)",
+      grantTitle: "Een tool toekennen aan een stap",
+      grantSubtitle:
+        "Voeg een toolnaam of groep toe aan ontology.allowedTools van de geselecteerde stap. Weigeren heeft altijd voorrang.",
+    },
+    entryDraft: {
+      add: "Toevoegen",
+      forStep: "Stap: {nodeId}",
+      none: "Nog geen opgegeven.",
+      selectStep: "Selecteer eerst een stap op het tabblad Werkboom.",
+      stepUnavailable:
+        "De geselecteerde stap is niet geladen. Vernieuw de pagina of selecteer deze opnieuw op het tabblad Worktree.",
+      editorOpen:
+        "Sla de geopende boomstructuur-editor op of verwerp deze voordat u een nieuw item toevoegt.",
+      scopeNarrowing:
+        "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Zodra u de eerste vermelding toevoegt, wordt het een allowlist en blijven alleen de vermelde tools beschikbaar.",
+      toolLabel: "Toolnaam of -groep om toe te staan",
+      skillLabel: "Skillnaam om te declareren",
+      skillNameInvalid:
+        "Gebruik een skillnaam: kleine letters, cijfers en enkele koppeltekens, maximaal 64 tekens.",
+      ancestorGate:
+        "Bovenliggende stappen ({nodeIds}) hebben hun eigen lijst met toegestane tools. Governance controleert elke stap vanaf de root, dus een tool die hier wordt toegekend, wordt alsnog geweigerd tenzij die stappen het ook toestaan.",
+      reviewHint:
+        "Bij toevoegen wordt de boomeditor geopend zodat u de wijziging kunt bekijken en opslaan.",
+      empty: "Voer eerst een waarde in.",
+      duplicate: "Die vermelding is al opgegeven voor deze stap.",
+      nodeMissing: "Die stap bevindt zich niet meer in de boom; herlaad en probeer het opnieuw.",
+      exportFailed: "Kan de boomdefinitie niet laden om te bewerken.",
     },
     skillsTab: {
       title: "Enterprise-skills",
@@ -579,6 +600,7 @@ export const nl: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Control",
+    enterprise: "Enterprise",
     agent: "Agent",
     settings: "Instellingen",
     expand: "Zijbalk uitvouwen",
@@ -609,7 +631,10 @@ export const nl: TranslationMap = {
     debug: "Debuggen",
     logs: "Logs",
     dreams: "Dromen",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Werkboom",
+    enterpriseHistory: "Geschiedenis",
+    enterpriseTools: "Tools",
+    enterpriseSkills: "Skills",
     knowledge: "Kennis",
   },
   subtitles: {
@@ -636,7 +661,10 @@ export const nl: TranslationMap = {
     debug: "Momentopnamen, gebeurtenissen, RPC.",
     logs: "Live Gateway-logs.",
     dreams: "Geheugendromen, consolidatie en reflectie.",
-    enterprise: "Workflowstructuren en beheerde runs.",
+    enterpriseWorktree: "Workflowbomen en hun beheerde stappen.",
+    enterpriseHistory: "Eerdere beheerde runs en hun traces.",
+    enterpriseTools: "Tools die de enterprise-groepen beschikbaar stellen.",
+    enterpriseSkills: "Skills die workflowstappen declareren.",
     knowledge: "Geregistreerde kennisbronnen en hun status.",
   },
   skillWorkshop: {

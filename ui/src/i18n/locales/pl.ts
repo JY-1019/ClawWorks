@@ -211,18 +211,37 @@ export const pl: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Zarządzane uruchomienia workflow i zarejestrowane drzewa workflow.",
-    section: {
-      worktree: "Drzewo robocze",
-      history: "Historia",
-      tools: "Narzędzia",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Narzędzia enterprise",
       subtitle:
         "Opcjonalne narzędzia dostępne dla zarządzanego uruchomienia; wykluczone z szerokich grup narzędzi.",
       readGroup: "Odczyt (group:enterprise)",
       writeGroup: "Zapis (group:enterprise-write)",
+      grantTitle: "Przyznaj narzędzie do kroku",
+      grantSubtitle:
+        "Dodaj nazwę narzędzia lub grupę do ontology.allowedTools wybranego kroku. Odmowa zawsze ma pierwszeństwo.",
+    },
+    entryDraft: {
+      add: "Dodaj",
+      forStep: "Krok: {nodeId}",
+      none: "Brak zadeklarowanych.",
+      selectStep: "Najpierw wybierz krok na karcie Drzewo pracy.",
+      stepUnavailable:
+        "Wybrany krok nie został załadowany. Odśwież stronę lub wybierz go ponownie na karcie Worktree.",
+      editorOpen: "Zapisz lub odrzuć otwarty edytor drzewa przed dodaniem kolejnego wpisu.",
+      scopeNarrowing:
+        "Ten krok nie ma jeszcze listy dozwolonych narzędzi, więc zezwala na wszystkie narzędzia z wyjątkiem tych, które są jawnie zabronione. Dodanie pierwszego wpisu przekształca go w listę dozwolonych i tylko wymienione narzędzia pozostają dostępne.",
+      toolLabel: "Nazwa narzędzia lub grupy do zezwolenia",
+      skillLabel: "Nazwa umiejętności do zadeklarowania",
+      skillNameInvalid:
+        "Użyj nazwy umiejętności: małe litery, cyfry i pojedyncze myślniki, maksymalnie 64 znaki.",
+      ancestorGate:
+        "Kroki nadrzędne ({nodeIds}) mają własną listę dozwolonych narzędzi. Governance sprawdza każdy krok od korzenia, więc narzędzie przyznane tutaj zostanie odrzucone, jeśli te kroki go również nie dopuszczają.",
+      reviewHint: "Dodanie otworzy edytor drzewa, aby można było przejrzeć i zapisać zmianę.",
+      empty: "Najpierw wprowadź wartość.",
+      duplicate: "Ten wpis jest już zadeklarowany w tym kroku.",
+      nodeMissing: "Ten krok nie znajduje się już w drzewie; odśwież i spróbuj ponownie.",
+      exportFailed: "Nie udało się wczytać definicji drzewa do edycji.",
     },
     skillsTab: {
       title: "Skills enterprise",
@@ -578,6 +597,7 @@ export const pl: TranslationMap = {
   nav: {
     chat: "Czat",
     control: "Sterowanie",
+    enterprise: "Enterprise",
     agent: "Agent",
     settings: "Ustawienia",
     expand: "Rozwiń pasek boczny",
@@ -608,7 +628,10 @@ export const pl: TranslationMap = {
     debug: "Debug",
     logs: "Logi",
     dreams: "Sny",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Drzewo robocze",
+    enterpriseHistory: "Historia",
+    enterpriseTools: "Narzędzia",
+    enterpriseSkills: "Skills",
     knowledge: "Wiedza",
   },
   subtitles: {
@@ -635,7 +658,10 @@ export const pl: TranslationMap = {
     debug: "Migawki, zdarzenia, RPC.",
     logs: "Logi Gateway na żywo.",
     dreams: "Konsolidacja pamięci podczas snu.",
-    enterprise: "Drzewa workflow i zarządzane uruchomienia.",
+    enterpriseWorktree: "Drzewa przepływów pracy i ich zarządzane kroki.",
+    enterpriseHistory: "Poprzednie zarządzane uruchomienia i ich ślady.",
+    enterpriseTools: "Narzędzia udostępniane przez grupy przedsiębiorstwa.",
+    enterpriseSkills: "Skills deklarowane przez kroki przepływu pracy.",
     knowledge: "Zarejestrowane bazy wiedzy i ich status.",
   },
   skillWorkshop: {

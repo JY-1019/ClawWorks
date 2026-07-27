@@ -214,18 +214,38 @@ export const ja_JP: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "管理されたワークフロー実行と登録済みワークフローツリー。",
-    section: {
-      worktree: "ワークツリー",
-      history: "履歴",
-      tools: "ツール",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "エンタープライズツール",
       subtitle:
         "管理された実行で使用できるオプトインツール。広範なツールグループからは除外されます。",
       readGroup: "読み取り (group:enterprise)",
       writeGroup: "書き込み (group:enterprise-write)",
+      grantTitle: "ステップにツールを付与",
+      grantSubtitle:
+        "選択したステップの ontology.allowedTools にツール名またはグループを追加します。Deny は常に優先されます。",
+    },
+    entryDraft: {
+      add: "追加",
+      forStep: "ステップ: {nodeId}",
+      none: "まだ宣言されていません。",
+      selectStep: "先に Worktree タブでステップを選択してください。",
+      stepUnavailable:
+        "選択されたステップが読み込まれていません。更新するか、Worktreeタブで再選択してください。",
+      editorOpen:
+        "別のエントリを追加する前に、開いているツリーエディタを保存または破棄してください。",
+      scopeNarrowing:
+        "このステップにはまだツール許可リストがないため、拒否されたツール以外のすべてのツールが許可されます。最初のエントリを追加すると許可リストに切り替わり、リストに記載されたツールのみが使用可能になります。",
+      toolLabel: "許可するツール名またはグループ",
+      skillLabel: "宣言するSkill名",
+      skillNameInvalid:
+        "Skill名を使用してください：小文字の英字、数字、単独のハイフンのみ、最大64文字。",
+      ancestorGate:
+        "親ステップ（{nodeIds}）には独自のツール許可リストがあります。ガバナンスはルートから各ステップを順にチェックするため、ここで許可されたツールであっても、それらのステップでも許可されていない限り拒否されます。",
+      reviewHint: "追加するとツリーエディターが開き、変更を確認して保存できます。",
+      empty: "先に値を入力してください。",
+      duplicate: "そのエントリはこのステップで既に宣言されています。",
+      nodeMissing: "そのステップはツリーに存在しません。再読み込みしてもう一度お試しください。",
+      exportFailed: "編集するツリー定義を読み込めませんでした。",
     },
     skillsTab: {
       title: "エンタープライズ Skills",
@@ -579,6 +599,7 @@ export const ja_JP: TranslationMap = {
   nav: {
     chat: "チャット",
     control: "コントロール",
+    enterprise: "Enterprise",
     agent: "エージェント",
     settings: "設定",
     expand: "サイドバーを展開",
@@ -609,7 +630,10 @@ export const ja_JP: TranslationMap = {
     debug: "デバッグ",
     logs: "ログ",
     dreams: "Dreaming",
-    enterprise: "エンタープライズ",
+    enterpriseWorktree: "ワークツリー",
+    enterpriseHistory: "履歴",
+    enterpriseTools: "ツール",
+    enterpriseSkills: "Skills",
     knowledge: "ナレッジ",
   },
   subtitles: {
@@ -636,7 +660,10 @@ export const ja_JP: TranslationMap = {
     debug: "スナップショット、イベント、RPC。",
     logs: "ライブ Gateway ログ。",
     dreams: "スリープ中のメモリ統合。",
-    enterprise: "ワークフローツリーと管理された実行。",
+    enterpriseWorktree: "ワークフローツリーとその管理対象ステップ。",
+    enterpriseHistory: "過去のガバナンス対象の実行とそのトレース。",
+    enterpriseTools: "エンタープライズグループが公開するツール。",
+    enterpriseSkills: "ワークフローステップが宣言する Skills。",
     knowledge: "登録済みのナレッジ基盤とそのステータス。",
   },
   skillWorkshop: {

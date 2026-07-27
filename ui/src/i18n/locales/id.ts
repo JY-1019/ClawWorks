@@ -210,18 +210,38 @@ export const id: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Eksekusi alur kerja yang diatur dan pohon alur kerja yang terdaftar.",
-    section: {
-      worktree: "Worktree",
-      history: "Riwayat",
-      tools: "Alat",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Alat enterprise",
       subtitle:
         "Alat opsional yang dapat digunakan oleh eksekusi terkontrol; dikecualikan dari grup alat umum.",
       readGroup: "Baca (group:enterprise)",
       writeGroup: "Tulis (group:enterprise-write)",
+      grantTitle: "Berikan alat ke langkah",
+      grantSubtitle:
+        "Tambahkan nama alat atau grup ke ontology.allowedTools langkah yang dipilih. Deny selalu menang.",
+    },
+    entryDraft: {
+      add: "Tambah",
+      forStep: "Langkah: {nodeId}",
+      none: "Belum ada yang dideklarasikan.",
+      selectStep: "Pilih langkah di tab Worktree terlebih dahulu.",
+      stepUnavailable:
+        "Langkah yang dipilih tidak dimuat. Segarkan, atau pilih kembali di tab Worktree.",
+      editorOpen: "Simpan atau buang editor pohon yang terbuka sebelum menambahkan entri lain.",
+      scopeNarrowing:
+        "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin dan hanya alat yang tercantum yang tetap tersedia.",
+      toolLabel: "Nama alat atau grup yang diizinkan",
+      skillLabel: "Nama skill yang dideklarasikan",
+      skillNameInvalid:
+        "Gunakan nama skill: huruf kecil, angka, dan tanda hubung tunggal, maksimal 64 karakter.",
+      ancestorGate:
+        "Langkah induk ({nodeIds}) memiliki daftar izin alat mereka sendiri. Governance memeriksa setiap langkah dari root, jadi alat yang diberikan di sini tetap ditolak kecuali langkah-langkah tersebut juga mengizinkannya.",
+      reviewHint:
+        "Menambahkan akan membuka editor tree agar Anda dapat meninjau dan menyimpan perubahan.",
+      empty: "Masukkan nilai terlebih dahulu.",
+      duplicate: "Entri tersebut sudah dideklarasikan pada langkah ini.",
+      nodeMissing: "Langkah tersebut sudah tidak ada di tree; muat ulang dan coba lagi.",
+      exportFailed: "Tidak dapat memuat definisi pohon untuk diedit.",
     },
     skillsTab: {
       title: "Skills enterprise",
@@ -576,6 +596,7 @@ export const id: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Kontrol",
+    enterprise: "Enterprise",
     agent: "Agen",
     settings: "Pengaturan",
     expand: "Perluas bilah samping",
@@ -606,7 +627,10 @@ export const id: TranslationMap = {
     debug: "Debug",
     logs: "Log",
     dreams: "Mimpi",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Worktree",
+    enterpriseHistory: "Riwayat",
+    enterpriseTools: "Alat",
+    enterpriseSkills: "Skills",
     knowledge: "Pengetahuan",
   },
   subtitles: {
@@ -633,7 +657,10 @@ export const id: TranslationMap = {
     debug: "Snapshot, peristiwa, RPC.",
     logs: "Log Gateway langsung.",
     dreams: "Konsolidasi memori saat tidur.",
-    enterprise: "Workflow tree dan eksekusi yang diatur.",
+    enterpriseWorktree: "Pohon alur kerja dan langkah-langkah yang diaturnya.",
+    enterpriseHistory: "Riwayat eksekusi yang dikelola dan jejaknya.",
+    enterpriseTools: "Alat yang diekspos oleh grup enterprise.",
+    enterpriseSkills: "Skills yang dideklarasikan oleh langkah-langkah alur kerja.",
     knowledge: "Fondasi pengetahuan terdaftar dan statusnya.",
   },
   skillWorkshop: {

@@ -211,18 +211,39 @@ export const tr: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Yönetilen iş akışı çalıştırmaları ve kayıtlı iş akışı ağaçları.",
-    section: {
-      worktree: "Çalışma Ağacı",
-      history: "Geçmiş",
-      tools: "Araçlar",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Kurumsal araçlar",
       subtitle:
         "Yönetilen bir çalıştırmanın kullanabileceği isteğe bağlı araçlar; geniş araç gruplarından hariç tutulur.",
       readGroup: "Okuma (group:enterprise)",
       writeGroup: "Yazma (group:enterprise-write)",
+      grantTitle: "Bir adıma araç ver",
+      grantSubtitle:
+        "Seçili adımın ontology.allowedTools alanına bir araç adı veya grubu ekleyin. Reddet her zaman önceliklidir.",
+    },
+    entryDraft: {
+      add: "Ekle",
+      forStep: "Adım: {nodeId}",
+      none: "Henüz tanımlanmış bir şey yok.",
+      selectStep: "Önce Worktree sekmesinde bir adım seçin.",
+      stepUnavailable:
+        "Seçilen adım yüklenmedi. Sayfayı yenileyin veya Worktree sekmesinde yeniden seçin.",
+      editorOpen:
+        "Başka bir giriş eklemeden önce açık ağaç düzenleyicisini kaydedin veya iptal edin.",
+      scopeNarrowing:
+        "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında tüm araçlara izin verir. İlk girişi eklemek bunu bir izin listesine dönüştürür ve yalnızca listelenen araçlar kullanılabilir kalır.",
+      toolLabel: "İzin verilecek araç adı veya grubu",
+      skillLabel: "Tanımlanacak skill adı",
+      skillNameInvalid:
+        "Bir skill adı kullanın: küçük harfler, rakamlar ve tek tireler, en fazla 64 karakter.",
+      ancestorGate:
+        "Üst adımların ({nodeIds}) kendi araç izin listeleri var. Governance her adımı kökten itibaren kontrol eder, bu nedenle burada verilen bir araç, o adımlar tarafından da izin verilmedikçe reddedilir.",
+      reviewHint:
+        "Ekleme işlemi, değişikliği inceleyip kaydetmeniz için ağaç düzenleyicisini açar.",
+      empty: "Önce bir değer girin.",
+      duplicate: "Bu giriş zaten bu adımda tanımlanmış.",
+      nodeMissing: "Bu adım artık ağaçta yok; yeniden yükleyip tekrar deneyin.",
+      exportFailed: "Düzenlenecek ağaç tanımı yüklenemedi.",
     },
     skillsTab: {
       title: "Kurumsal skills",
@@ -576,6 +597,7 @@ export const tr: TranslationMap = {
   nav: {
     chat: "Sohbet",
     control: "Kontrol",
+    enterprise: "Enterprise",
     agent: "Aracı",
     settings: "Ayarlar",
     expand: "Kenar çubuğunu genişlet",
@@ -606,7 +628,10 @@ export const tr: TranslationMap = {
     debug: "Hata Ayıklama",
     logs: "Günlükler",
     dreams: "Düşler",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Çalışma Ağacı",
+    enterpriseHistory: "Geçmiş",
+    enterpriseTools: "Araçlar",
+    enterpriseSkills: "Skills",
     knowledge: "Bilgi",
   },
   subtitles: {
@@ -634,7 +659,10 @@ export const tr: TranslationMap = {
     debug: "Anlık görüntüler, olaylar, RPC.",
     logs: "Canlı Gateway günlükleri.",
     dreams: "Uyku sırasında bellek birleştirme.",
-    enterprise: "İş akışı ağaçları ve yönetilen çalıştırmalar.",
+    enterpriseWorktree: "İş akışı ağaçları ve yönetilen adımları.",
+    enterpriseHistory: "Geçmiş yönetilen çalıştırmalar ve izleri.",
+    enterpriseTools: "Kurumsal grupların sunduğu araçlar.",
+    enterpriseSkills: "İş akışı adımlarının bildirdiği Skills.",
     knowledge: "Kayıtlı bilgi temelleri ve durumları.",
   },
   skillWorkshop: {

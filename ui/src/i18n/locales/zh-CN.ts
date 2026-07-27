@@ -204,17 +204,33 @@ export const zh_CN: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "受管控的工作流运行和已注册的工作流树。",
-    section: {
-      worktree: "工作树",
-      history: "历史记录",
-      tools: "工具",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "企业工具",
       subtitle: "受管运行可使用的可选工具；不包含在通用工具组中。",
       readGroup: "读取 (group:enterprise)",
       writeGroup: "写入 (group:enterprise-write)",
+      grantTitle: "向步骤授予工具",
+      grantSubtitle: "将工具名称或组添加到所选步骤的 ontology.allowedTools 中。拒绝规则始终优先。",
+    },
+    entryDraft: {
+      add: "添加",
+      forStep: "步骤：{nodeId}",
+      none: "尚未声明。",
+      selectStep: "请先在工作树选项卡中选择一个步骤。",
+      stepUnavailable: "所选步骤未加载。请刷新页面，或在工作树选项卡中重新选择。",
+      editorOpen: "请先保存或丢弃已打开的树编辑器，然后再添加新条目。",
+      scopeNarrowing:
+        "此步骤尚未设置工具允许列表，因此除被拒绝的工具外，所有工具均可使用。添加第一个条目后将转为允许列表模式，仅列出的工具可用。",
+      toolLabel: "要允许的工具名称或组",
+      skillLabel: "要声明的 Skill 名称",
+      skillNameInvalid: "请使用有效的 Skill 名称：仅限小写字母、数字和单个连字符，最多 64 个字符。",
+      ancestorGate:
+        "父级步骤（{nodeIds}）拥有各自的工具允许列表。治理机制会从根节点逐步检查每个步骤，因此即使在此处授予的工具，除非这些父级步骤也允许，否则仍会被拒绝。",
+      reviewHint: "添加后将打开树编辑器，以便您查看并保存更改。",
+      empty: "请先输入一个值。",
+      duplicate: "该条目已在此步骤中声明。",
+      nodeMissing: "该步骤已不在树中，请重新加载后重试。",
+      exportFailed: "无法加载要编辑的树定义。",
     },
     skillsTab: {
       title: "企业 Skills",
@@ -564,6 +580,7 @@ export const zh_CN: TranslationMap = {
   nav: {
     chat: "聊天",
     control: "控制",
+    enterprise: "Enterprise",
     agent: "代理",
     settings: "设置",
     expand: "展开侧边栏",
@@ -594,7 +611,10 @@ export const zh_CN: TranslationMap = {
     debug: "调试",
     logs: "日志",
     dreams: "梦境",
-    enterprise: "企业版",
+    enterpriseWorktree: "工作树",
+    enterpriseHistory: "历史记录",
+    enterpriseTools: "工具",
+    enterpriseSkills: "Skills",
     knowledge: "知识库",
   },
   subtitles: {
@@ -621,7 +641,10 @@ export const zh_CN: TranslationMap = {
     debug: "快照、事件、RPC。",
     logs: "实时网关日志。",
     dreams: "睡眠时进行记忆巩固。",
-    enterprise: "工作流树与受管运行。",
+    enterpriseWorktree: "工作流树及其管控的步骤。",
+    enterpriseHistory: "过往的受管运行及其追踪记录。",
+    enterpriseTools: "企业组公开的工具。",
+    enterpriseSkills: "工作流步骤声明的 Skills。",
     knowledge: "已注册的知识基础及其状态。",
   },
   skillWorkshop: {

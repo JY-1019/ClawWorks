@@ -205,17 +205,33 @@ export const zh_TW: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "受治理的工作流程執行與已註冊的工作流程樹。",
-    section: {
-      worktree: "工作樹",
-      history: "歷史記錄",
-      tools: "工具",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "企業工具",
       subtitle: "受管控的執行可使用的選擇性加入工具；不包含在廣泛工具群組中。",
       readGroup: "讀取 (group:enterprise)",
       writeGroup: "寫入 (group:enterprise-write)",
+      grantTitle: "授予步驟一個工具",
+      grantSubtitle: "將工具名稱或群組新增至所選步驟的 ontology.allowedTools。拒絕優先。",
+    },
+    entryDraft: {
+      add: "新增",
+      forStep: "步驟：{nodeId}",
+      none: "尚未宣告。",
+      selectStep: "請先在工作樹分頁中選擇一個步驟。",
+      stepUnavailable: "所選的步驟未載入。請重新整理，或在 Worktree 分頁中重新選取。",
+      editorOpen: "請先儲存或捨棄已開啟的樹狀編輯器，再新增其他項目。",
+      scopeNarrowing:
+        "此步驟尚未設定工具允許清單，因此除了被拒絕的工具外，所有工具均可使用。新增第一個項目後，將轉為允許清單模式，僅列出的工具可供使用。",
+      toolLabel: "要允許的工具名稱或群組",
+      skillLabel: "要宣告的 Skill 名稱",
+      skillNameInvalid: "請使用有效的 Skill 名稱：僅限小寫字母、數字和單個連字號，最多 64 個字元。",
+      ancestorGate:
+        "父層步驟 ({nodeIds}) 擁有各自的工具允許清單。治理機制會從根節點逐步檢查每個步驟，因此即使在此處授予工具權限，除非這些步驟也允許，否則仍會被拒絕。",
+      reviewHint: "新增後將開啟樹狀編輯器，以便您檢閱並儲存變更。",
+      empty: "請先輸入值。",
+      duplicate: "該項目已在此步驟中宣告。",
+      nodeMissing: "該步驟已不在樹狀結構中，請重新載入後再試。",
+      exportFailed: "無法載入要編輯的樹狀結構定義。",
     },
     skillsTab: {
       title: "企業 Skills",
@@ -565,6 +581,7 @@ export const zh_TW: TranslationMap = {
   nav: {
     chat: "聊天",
     control: "控制",
+    enterprise: "Enterprise",
     agent: "代理",
     settings: "設置",
     expand: "展開側邊欄",
@@ -595,7 +612,10 @@ export const zh_TW: TranslationMap = {
     debug: "調試",
     logs: "日誌",
     dreams: "夢境",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "工作樹",
+    enterpriseHistory: "歷史記錄",
+    enterpriseTools: "工具",
+    enterpriseSkills: "Skills",
     knowledge: "知識庫",
   },
   subtitles: {
@@ -622,7 +642,10 @@ export const zh_TW: TranslationMap = {
     debug: "快照、事件、RPC。",
     logs: "實時網關日誌。",
     dreams: "睡眠期間的記憶整合。",
-    enterprise: "工作流程樹與受管控的執行。",
+    enterpriseWorktree: "工作流程樹及其管理的步驟。",
+    enterpriseHistory: "過去的受管執行及其追蹤記錄。",
+    enterpriseTools: "企業群組公開的工具。",
+    enterpriseSkills: "工作流程步驟宣告的 Skills。",
     knowledge: "已註冊的知識基礎及其狀態。",
   },
   skillWorkshop: {

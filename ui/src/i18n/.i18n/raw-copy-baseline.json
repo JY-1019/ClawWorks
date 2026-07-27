@@ -531,6 +531,13 @@
       "kind": "object-property",
       "name": "label",
       "path": "ui/src/ui/navigation.ts",
+      "text": "enterprise"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/ui/navigation.ts",
       "text": "settings"
     },
     {

@@ -86,6 +86,54 @@ export function insertChildNode(
   return { ok: true, definition: next };
 }
 
+/** Ontology list fields an operator can extend from the Tools/Skills tabs. */
+export type NodeOntologyListField = "allowedTools" | "deniedTools" | "skills";
+
+// Flat SKILL.md name contract, mirroring SkillNameSchema in src/enterprise/schema.ts
+// (the import validator rejects anything else). Kept in sync by hand, like
+// NODE_ID_PATTERN above: a name the runtime refuses must fail in the form, not as a
+// save error over an already-spliced definition.
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const SKILL_NAME_MAX_LENGTH = 64;
+
+/** True when `name` satisfies the declared-skill contract the tree import enforces. */
+export function isValidSkillName(name: string): boolean {
+  return name.length <= SKILL_NAME_MAX_LENGTH && SKILL_NAME_PATTERN.test(name);
+}
+
+export type AddNodeOntologyEntryResult =
+  | { ok: true; definition: EditableTreeDefinition }
+  | { ok: false; reason: "node-not-found" | "duplicate-entry" };
+
+/**
+ * Return a NEW definition with `entry` appended to `node.ontology[field]` on the
+ * node identified by `nodeId`. Same contract as insertChildNode: immutable
+ * (structuredClone) so a failed add leaves the caller's definition untouched, and
+ * every other field passes through verbatim. Adding a tool grant or a declared
+ * skill therefore stays a splice-then-reimport over the ONE existing write path.
+ */
+export function addNodeOntologyEntry(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  field: NodeOntologyListField,
+  entry: string,
+): AddNodeOntologyEntryResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  // `ontology` is typed unknown so unrelated keys pass through untouched; narrow to
+  // the one list this add owns and leave the rest of the binding exactly as it was.
+  const ontology = (node.ontology ?? {}) as Record<string, unknown>;
+  const current = Array.isArray(ontology[field]) ? (ontology[field] as unknown[]) : [];
+  if (current.some((value) => value === entry)) {
+    return { ok: false, reason: "duplicate-entry" };
+  }
+  node.ontology = { ...ontology, [field]: [...current, entry] };
+  return { ok: true, definition: next };
+}
+
 function findNode(node: EditableTreeNode, id: string): EditableTreeNode | null {
   if (node.id === id) {
     return node;

@@ -133,7 +133,11 @@ import {
   selectEnterpriseTree,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
+  beginAddEnterpriseOntologyEntry,
+  cancelAddEnterpriseOntologyEntry,
+  editEnterpriseOntologyEntryDraft,
   submitAddEnterpriseNode,
+  submitAddEnterpriseOntologyEntry,
 } from "./controllers/enterprise.ts";
 import {
   loadExecApprovals,
@@ -708,6 +712,14 @@ const lazyChannels = createLazyView(() => import("./views/channels.ts"), notifyL
 const lazyCron = createLazyView(() => import("./views/cron.ts"), notifyLazyViewChanged);
 const lazyDebug = createLazyView(() => import("./views/debug.ts"), notifyLazyViewChanged);
 const lazyEnterprise = createLazyView(() => import("./views/enterprise.ts"), notifyLazyViewChanged);
+// Each Enterprise sidebar tab renders the one enterprise view, pinned to its surface.
+// Keys are the only tabs that route here, so a lookup miss means "not an enterprise tab".
+const ENTERPRISE_TAB_SECTIONS = {
+  enterpriseWorktree: "worktree",
+  enterpriseHistory: "history",
+  enterpriseTools: "tools",
+  enterpriseSkills: "skills",
+} as const;
 const lazyKnowledge = createLazyView(() => import("./views/knowledge.ts"), notifyLazyViewChanged);
 const lazyInstances = createLazyView(() => import("./views/instances.ts"), notifyLazyViewChanged);
 const lazyLogs = createLazyView(() => import("./views/logs.ts"), notifyLazyViewChanged);
@@ -2881,9 +2893,10 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
-        ${state.tab === "enterprise"
+        ${ENTERPRISE_TAB_SECTIONS[state.tab as keyof typeof ENTERPRISE_TAB_SECTIONS]
           ? renderLazyView(lazyEnterprise, (m) =>
               m.renderEnterprise({
+                section: ENTERPRISE_TAB_SECTIONS[state.tab as keyof typeof ENTERPRISE_TAB_SECTIONS],
                 loading: state.enterpriseLoading,
                 runs: state.enterpriseRuns,
                 trees: state.enterpriseTrees,
@@ -2934,8 +2947,21 @@ export function renderApp(state: AppViewState) {
                 onEditNodeDraft: (patch) => editEnterpriseNodeDraft(state, patch),
                 onCancelAddNode: () => cancelAddEnterpriseNode(state),
                 onSubmitAddNode: () => void submitAddEnterpriseNode(state),
-                activeSubsection: state.enterpriseActiveSubsection,
-                onSubsectionChange: (section) => (state.enterpriseActiveSubsection = section),
+                ontologyEntryDraft: state.enterpriseOntologyEntryDraft,
+                onBeginAddOntologyEntry: (nodeId, field) =>
+                  beginAddEnterpriseOntologyEntry(state, nodeId, field),
+                onEditOntologyEntryDraft: (value) => editEnterpriseOntologyEntryDraft(state, value),
+                onCancelAddOntologyEntry: () => cancelAddEnterpriseOntologyEntry(state),
+                onSubmitAddOntologyEntry: () => {
+                  void (async () => {
+                    await submitAddEnterpriseOntologyEntry(state);
+                    // A successful add seeds the tree editor, which only renders on the
+                    // Worktree surface — follow it there so Add is not a silent no-op.
+                    if (state.enterpriseTreeEditing) {
+                      state.setTab("enterpriseWorktree");
+                    }
+                  })();
+                },
               }),
             )
           : nothing}

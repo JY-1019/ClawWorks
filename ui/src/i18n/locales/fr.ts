@@ -211,18 +211,39 @@ export const fr: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Exécutions de workflows gouvernés et arborescences de workflows enregistrées.",
-    section: {
-      worktree: "Arborescence de travail",
-      history: "Historique",
-      tools: "Outils",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Outils entreprise",
       subtitle:
         "Outils optionnels qu'une exécution gouvernée peut utiliser ; exclus des groupes d'outils généraux.",
       readGroup: "Lecture (group:enterprise)",
       writeGroup: "Écriture (group:enterprise-write)",
+      grantTitle: "Accorder un outil à une étape",
+      grantSubtitle:
+        "Ajoutez un nom d'outil ou un groupe à ontology.allowedTools de l'étape sélectionnée. Deny l'emporte toujours.",
+    },
+    entryDraft: {
+      add: "Ajouter",
+      forStep: "Étape : {nodeId}",
+      none: "Aucune déclaration pour le moment.",
+      selectStep: "Sélectionnez d'abord une étape dans l'onglet Worktree.",
+      stepUnavailable:
+        "L'étape sélectionnée n'est pas chargée. Actualisez la page ou resélectionnez-la dans l'onglet Worktree.",
+      editorOpen:
+        "Enregistrez ou annulez l'éditeur d'arborescence ouvert avant d'ajouter une autre entrée.",
+      scopeNarrowing:
+        "Cette étape n'a pas encore de liste d'outils autorisés, elle permet donc tous les outils sauf ceux qu'elle refuse. L'ajout de la première entrée la transforme en liste d'autorisation et seuls les outils listés restent disponibles.",
+      toolLabel: "Nom ou groupe d'outil à autoriser",
+      skillLabel: "Nom du skill à déclarer",
+      skillNameInvalid:
+        "Utilisez un nom de skill : lettres minuscules, chiffres et tirets simples, 64 caractères maximum.",
+      ancestorGate:
+        "Les étapes parentes ({nodeIds}) possèdent leur propre liste d'outils autorisés. La gouvernance vérifie chaque étape depuis la racine, donc un outil accordé ici sera tout de même refusé si ces étapes ne l'autorisent pas également.",
+      reviewHint:
+        "L'ajout ouvre l'éditeur d'arborescence pour vous permettre de vérifier et d'enregistrer la modification.",
+      empty: "Saisissez d'abord une valeur.",
+      duplicate: "Cette entrée est déjà déclarée sur cette étape.",
+      nodeMissing: "Cette étape ne figure plus dans l'arborescence ; rechargez et réessayez.",
+      exportFailed: "Impossible de charger la définition de l'arbre à modifier.",
     },
     skillsTab: {
       title: "Skills entreprise",
@@ -578,6 +599,7 @@ export const fr: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Contrôle",
+    enterprise: "Enterprise",
     agent: "Agent",
     settings: "Paramètres",
     expand: "Développer la barre latérale",
@@ -608,7 +630,10 @@ export const fr: TranslationMap = {
     debug: "Débogage",
     logs: "Journaux",
     dreams: "Rêves",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Arborescence de travail",
+    enterpriseHistory: "Historique",
+    enterpriseTools: "Outils",
+    enterpriseSkills: "Skills",
     knowledge: "Connaissances",
   },
   subtitles: {
@@ -636,7 +661,10 @@ export const fr: TranslationMap = {
     debug: "Captures, événements, RPC.",
     logs: "Journaux Gateway en direct.",
     dreams: "Consolidation de la mémoire pendant le sommeil.",
-    enterprise: "Arbres de workflow et exécutions gouvernées.",
+    enterpriseWorktree: "Arbres de workflow et leurs étapes gouvernées.",
+    enterpriseHistory: "Exécutions gouvernées passées et leurs traces.",
+    enterpriseTools: "Outils exposés par les groupes entreprise.",
+    enterpriseSkills: "Skills déclarées par les étapes de workflow.",
     knowledge: "Bases de connaissances enregistrées et leur statut.",
   },
   skillWorkshop: {

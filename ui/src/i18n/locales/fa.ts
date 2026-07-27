@@ -211,18 +211,38 @@ export const fa: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "اجراهای گردش کار تحت حاکمیت و درخت‌های گردش کار ثبت‌شده.",
-    section: {
-      worktree: "درخت کاری",
-      history: "تاریخچه",
-      tools: "ابزارها",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "ابزارهای سازمانی",
       subtitle:
         "ابزارهای اختیاری که یک اجرای مدیریت‌شده می‌تواند استفاده کند؛ از گروه‌های ابزار عمومی مستثنی هستند.",
       readGroup: "خواندن (group:enterprise)",
       writeGroup: "نوشتن (group:enterprise-write)",
+      grantTitle: "اعطای یک ابزار به یک مرحله",
+      grantSubtitle:
+        "یک نام ابزار یا گروه را به ontology.allowedTools مرحله انتخاب‌شده اضافه کنید. رد کردن همیشه اولویت دارد.",
+    },
+    entryDraft: {
+      add: "افزودن",
+      forStep: "مرحله: {nodeId}",
+      none: "هنوز موردی اعلام نشده است.",
+      selectStep: "ابتدا یک مرحله را در تب Worktree انتخاب کنید.",
+      stepUnavailable:
+        "مرحله انتخاب‌شده بارگذاری نشده است. صفحه را بازخوانی کنید یا آن را دوباره در تب Worktree انتخاب کنید.",
+      editorOpen: "قبل از افزودن ورودی جدید، ویرایشگر درختی باز را ذخیره یا لغو کنید.",
+      scopeNarrowing:
+        "این مرحله هنوز لیست مجاز ابزار ندارد، بنابراین همه ابزارها به‌جز موارد رد شده مجاز هستند. با افزودن اولین مورد، لیست مجاز فعال می‌شود و فقط ابزارهای فهرست‌شده در دسترس خواهند بود.",
+      toolLabel: "نام یا گروه ابزار برای مجاز کردن",
+      skillLabel: "نام Skill برای اعلام",
+      skillNameInvalid:
+        "از نام Skill استفاده کنید: حروف کوچک، اعداد و خط تیره تکی، حداکثر ۶۴ نویسه.",
+      ancestorGate:
+        "مراحل والد ({nodeIds}) لیست مجاز ابزار خود را دارند. حاکمیت هر مرحله را از ریشه بررسی می‌کند، بنابراین ابزاری که اینجا مجاز شده باز هم رد می‌شود مگر اینکه آن مراحل نیز آن را مجاز کرده باشند.",
+      reviewHint: "افزودن، ویرایشگر درخت را باز می‌کند تا بتوانید تغییر را بررسی و ذخیره کنید.",
+      empty: "ابتدا یک مقدار وارد کنید.",
+      duplicate: "این مورد قبلاً در این مرحله اعلام شده است.",
+      nodeMissing:
+        "آن مرحله دیگر در درخت وجود ندارد؛ صفحه را بارگذاری مجدد کنید و دوباره تلاش کنید.",
+      exportFailed: "تعریف درخت برای ویرایش بارگذاری نشد.",
     },
     skillsTab: {
       title: "Skills سازمانی",
@@ -576,6 +596,7 @@ export const fa: TranslationMap = {
   nav: {
     chat: "چت",
     control: "کنترل",
+    enterprise: "Enterprise",
     agent: "عامل",
     settings: "تنظیمات",
     expand: "گسترش نوار کناری",
@@ -606,7 +627,10 @@ export const fa: TranslationMap = {
     debug: "اشکال‌زدایی",
     logs: "گزارش‌ها",
     dreams: "رؤیاپردازی",
-    enterprise: "سازمانی",
+    enterpriseWorktree: "درخت کاری",
+    enterpriseHistory: "تاریخچه",
+    enterpriseTools: "ابزارها",
+    enterpriseSkills: "Skills",
     knowledge: "دانش",
   },
   subtitles: {
@@ -633,7 +657,10 @@ export const fa: TranslationMap = {
     debug: "نماهای لحظه‌ای، رویدادها، RPC.",
     logs: "گزارش‌های زنده Gateway.",
     dreams: "رؤیاپردازی حافظه، یکپارچه‌سازی و بازتاب.",
-    enterprise: "درخت‌های گردش کار و اجراهای مدیریت‌شده.",
+    enterpriseWorktree: "درخت‌های گردش کار و مراحل تحت نظارت آن‌ها.",
+    enterpriseHistory: "اجراهای مدیریت‌شده گذشته و ردیابی‌های آن‌ها.",
+    enterpriseTools: "ابزارهایی که گروه‌های سازمانی ارائه می‌دهند.",
+    enterpriseSkills: "Skills که مراحل گردش کار اعلام می‌کنند.",
     knowledge: "پایگاه‌های دانش ثبت‌شده و وضعیت آن‌ها.",
   },
   skillWorkshop: {

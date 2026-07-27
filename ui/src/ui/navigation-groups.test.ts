@@ -25,10 +25,21 @@ describe("TAB_GROUPS", () => {
       "sessions",
       "usage",
       "cron",
-      "enterprise",
-      "knowledge",
     ]);
     expect(SETTINGS_TABS).toContain("channels");
+  });
+
+  it("groups every enterprise surface under its own sidebar folder", () => {
+    // The enterprise surfaces are sidebar tabs, not in-view chips, so each one is
+    // deep linkable; knowledge foundations live here rather than under control.
+    const enterprise = TAB_GROUPS.find((group) => group.label === "enterprise");
+    expect(enterprise?.tabs).toEqual([
+      "enterpriseWorktree",
+      "enterpriseHistory",
+      "enterpriseTools",
+      "enterpriseSkills",
+      "knowledge",
+    ]);
   });
 
   it("keeps the settings group active for nested settings routes", () => {

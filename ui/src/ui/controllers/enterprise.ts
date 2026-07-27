@@ -21,9 +21,12 @@ import type {
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
+  addNodeOntologyEntry,
+  isValidSkillName,
   type EditableTreeDefinition,
   insertChildNode,
   newNodeIdIssue,
+  type NodeOntologyListField,
 } from "../views/enterprise-tree-edit.ts";
 import {
   formatMissingOperatorReadScopeMessage,
@@ -57,6 +60,28 @@ export type EnterpriseNodeDraft = {
   id: string;
   title: string;
   error: EnterpriseNodeDraftError | null;
+};
+
+export type EnterpriseOntologyEntryDraftError =
+  | "entry-empty"
+  | "entry-duplicate"
+  | "skill-name-invalid"
+  | "node-missing"
+  | "export-failed";
+
+/**
+ * An in-progress "grant a tool" / "declare a skill" form on the Tools and Skills
+ * tabs. Same contract as EnterpriseNodeDraft: bound to `treeId` + `nodeId` so it
+ * cannot be applied to a different tree, and on submit the tree is re-exported,
+ * spliced, and loaded into the raw editor for review + Save — so adding a tool
+ * grant or a skill reuses enterprise.trees.import rather than adding a write path.
+ */
+export type EnterpriseOntologyEntryDraft = {
+  treeId: string;
+  nodeId: string;
+  field: NodeOntologyListField;
+  value: string;
+  error: EnterpriseOntologyEntryDraftError | null;
 };
 
 export type EnterpriseState = {
@@ -105,6 +130,7 @@ export type EnterpriseState = {
   // P5 dynamic node creation: the open "add child node" form, or null. Splices a
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
+  enterpriseOntologyEntryDraft: EnterpriseOntologyEntryDraft | null;
   enterpriseError: string | null;
 };
 
@@ -356,6 +382,8 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
   // pruned node, or scope loss (every caller of this) invalidates it, so drop it
   // rather than let a stale form reappear under a same-named node elsewhere.
   state.enterpriseNodeDraft = null;
+  // Same for a tool-grant / skill draft: it is bound to one node in one tree.
+  state.enterpriseOntologyEntryDraft = null;
 }
 
 /**
@@ -729,6 +757,92 @@ export async function submitAddEnterpriseNode(state: EnterpriseState) {
     return;
   }
   state.enterpriseNodeDraft = null;
+  applyEditorSeed(state, seedSeq, "json", tree.id, null, {
+    ok: true,
+    content: `${JSON.stringify(spliced.definition, null, 2)}\n`,
+  });
+}
+
+/** Open the "grant a tool" / "declare a skill" form for `nodeId` on the selected tree. */
+export function beginAddEnterpriseOntologyEntry(
+  state: EnterpriseState,
+  nodeId: string,
+  field: NodeOntologyListField,
+) {
+  const treeId = state.enterpriseTreeDetail?.id;
+  if (!treeId) {
+    return;
+  }
+  state.enterpriseOntologyEntryDraft = { treeId, nodeId, field, value: "", error: null };
+}
+
+export function editEnterpriseOntologyEntryDraft(state: EnterpriseState, value: string) {
+  const draft = state.enterpriseOntologyEntryDraft;
+  if (!draft) {
+    return;
+  }
+  state.enterpriseOntologyEntryDraft = { ...draft, value, error: null };
+}
+
+export function cancelAddEnterpriseOntologyEntry(state: EnterpriseState) {
+  state.enterpriseOntologyEntryDraft = null;
+}
+
+/**
+ * Validate the draft, splice the entry into the tree's CANONICAL nested definition,
+ * and load the result into the raw editor. Mirrors submitAddEnterpriseNode exactly
+ * (same seed/identity race guards), so the operator reviews and Saves through the
+ * existing confirm -> enterprise.trees.import flow and no second write path appears.
+ */
+export async function submitAddEnterpriseOntologyEntry(state: EnterpriseState) {
+  const draft = state.enterpriseOntologyEntryDraft;
+  const tree = state.enterpriseTreeDetail;
+  if (!draft || !tree || draft.treeId !== tree.id) {
+    return;
+  }
+  const value = draft.value.trim();
+  if (value.length === 0) {
+    state.enterpriseOntologyEntryDraft = { ...draft, error: "entry-empty" };
+    return;
+  }
+  // A declared skill must satisfy the import contract; catching it here keeps the
+  // failure in the form instead of stranding the operator in the editor with a
+  // spliced definition that cannot save.
+  if (draft.field === "skills" && !isValidSkillName(value)) {
+    state.enterpriseOntologyEntryDraft = { ...draft, error: "skill-name-invalid" };
+    return;
+  }
+  if (!tree.nodes.some((node) => node.id === draft.nodeId)) {
+    state.enterpriseOntologyEntryDraft = { ...draft, error: "node-missing" };
+    return;
+  }
+  const seedSeq = ++editSeedSeq;
+  const exported = await fetchExportContent(state, tree.id, "json");
+  // Same staleness checks as the node draft: a changed form or a competing editor
+  // load supersedes this add rather than seeding the editor with stale input.
+  if (seedSeq !== editSeedSeq || state.enterpriseOntologyEntryDraft !== draft) {
+    return;
+  }
+  if (!exported.ok) {
+    if (!exported.scopeCleared) {
+      state.enterpriseOntologyEntryDraft = { ...draft, error: "export-failed" };
+    }
+    return;
+  }
+  const definition = parseTreeDefinition(exported.content);
+  if (!definition) {
+    state.enterpriseOntologyEntryDraft = { ...draft, error: "export-failed" };
+    return;
+  }
+  const spliced = addNodeOntologyEntry(definition, draft.nodeId, draft.field, value);
+  if (!spliced.ok) {
+    state.enterpriseOntologyEntryDraft = {
+      ...draft,
+      error: spliced.reason === "duplicate-entry" ? "entry-duplicate" : "node-missing",
+    };
+    return;
+  }
+  state.enterpriseOntologyEntryDraft = null;
   applyEditorSeed(state, seedSeq, "json", tree.id, null, {
     ok: true,
     content: `${JSON.stringify(spliced.definition, null, 2)}\n`,

@@ -209,18 +209,38 @@ export const pt_BR: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Execuções de workflow governadas e as árvores de workflow registradas.",
-    section: {
-      worktree: "Worktree",
-      history: "Histórico",
-      tools: "Ferramentas",
-      skills: "Skills",
-    },
     toolsTab: {
       title: "Ferramentas enterprise",
       subtitle:
         "Ferramentas opcionais que uma execução governada pode usar; excluídas dos grupos amplos de ferramentas.",
       readGroup: "Leitura (group:enterprise)",
       writeGroup: "Escrita (group:enterprise-write)",
+      grantTitle: "Conceder uma ferramenta a uma etapa",
+      grantSubtitle:
+        "Adicione um nome de ferramenta ou grupo ao ontology.allowedTools da etapa selecionada. Deny sempre prevalece.",
+    },
+    entryDraft: {
+      add: "Adicionar",
+      forStep: "Etapa: {nodeId}",
+      none: "Nenhum declarado ainda.",
+      selectStep: "Selecione uma etapa na aba Worktree primeiro.",
+      stepUnavailable:
+        "A etapa selecionada não foi carregada. Atualize a página ou selecione-a novamente na aba Worktree.",
+      editorOpen: "Salve ou descarte o editor de árvore aberto antes de adicionar outra entrada.",
+      scopeNarrowing:
+        "Esta etapa ainda não tem uma lista de ferramentas permitidas, então permite todas as ferramentas, exceto as negadas. Adicionar a primeira entrada a transforma em uma lista de permissões e apenas as ferramentas listadas permanecerão disponíveis.",
+      toolLabel: "Nome ou grupo da ferramenta a permitir",
+      skillLabel: "Nome da skill a declarar",
+      skillNameInvalid:
+        "Use um nome de skill: letras minúsculas, dígitos e hífens simples, no máximo 64 caracteres.",
+      ancestorGate:
+        "As etapas pai ({nodeIds}) possuem sua própria lista de ferramentas permitidas. A governança verifica cada etapa a partir da raiz, então uma ferramenta concedida aqui ainda será negada a menos que essas etapas também a permitam.",
+      reviewHint:
+        "Ao adicionar, o editor de árvore será aberto para que você possa revisar e salvar a alteração.",
+      empty: "Insira um valor primeiro.",
+      duplicate: "Essa entrada já está declarada nesta etapa.",
+      nodeMissing: "Essa etapa não está mais na árvore; recarregue e tente novamente.",
+      exportFailed: "Não foi possível carregar a definição da árvore para edição.",
     },
     skillsTab: {
       title: "Skills enterprise",
@@ -574,6 +594,7 @@ export const pt_BR: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Controle",
+    enterprise: "Enterprise",
     agent: "Agente",
     settings: "Configurações",
     expand: "Expandir barra lateral",
@@ -604,7 +625,10 @@ export const pt_BR: TranslationMap = {
     debug: "Depuração",
     logs: "Logs",
     dreams: "Sonhos",
-    enterprise: "Enterprise",
+    enterpriseWorktree: "Worktree",
+    enterpriseHistory: "Histórico",
+    enterpriseTools: "Ferramentas",
+    enterpriseSkills: "Skills",
     knowledge: "Conhecimento",
   },
   subtitles: {
@@ -631,7 +655,10 @@ export const pt_BR: TranslationMap = {
     debug: "Snapshots, eventos, RPC.",
     logs: "Logs ao vivo do gateway.",
     dreams: "Consolidação de memória durante o sono.",
-    enterprise: "Árvores de workflow e execuções governadas.",
+    enterpriseWorktree: "Árvores de fluxo de trabalho e suas etapas governadas.",
+    enterpriseHistory: "Execuções governadas anteriores e seus rastreamentos.",
+    enterpriseTools: "Ferramentas que os grupos empresariais expõem.",
+    enterpriseSkills: "Skills que as etapas do fluxo de trabalho declaram.",
     knowledge: "Bases de conhecimento registradas e seus status.",
   },
   skillWorkshop: {

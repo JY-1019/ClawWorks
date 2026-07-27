@@ -51,7 +51,10 @@ describe("iconForTab", () => {
       aiAgents: "brain",
       debug: "bug",
       logs: "scrollText",
-      enterprise: "book",
+      enterpriseWorktree: "cornerDownRight",
+      enterpriseHistory: "clock",
+      enterpriseTools: "wrench",
+      enterpriseSkills: "zap",
       knowledge: "archive",
     });
   });
@@ -89,7 +92,10 @@ describe("titleForTab", () => {
       aiAgents: "AI & Agents",
       debug: "Debug",
       logs: "Logs",
-      enterprise: "Enterprise",
+      enterpriseWorktree: "Worktree",
+      enterpriseHistory: "History",
+      enterpriseTools: "Tools",
+      enterpriseSkills: "Skills",
       knowledge: "Knowledge",
     });
   });
@@ -121,7 +127,10 @@ describe("subtitleForTab", () => {
       aiAgents: "Agents, models, skills, tools, memory, session.",
       debug: "Snapshots, events, RPC.",
       logs: "Live gateway logs.",
-      enterprise: "Workflow trees and governed runs.",
+      enterpriseWorktree: "Workflow trees and their governed steps.",
+      enterpriseHistory: "Past governed runs and their traces.",
+      enterpriseTools: "Tools the enterprise groups expose.",
+      enterpriseSkills: "Skills workflow steps declare.",
       knowledge: "Registered knowledge foundations and their status.",
     });
   });
@@ -231,7 +240,13 @@ describe("inferBasePathFromPathname", () => {
 
 describe("TAB_GROUPS", () => {
   it("contains all expected groups", () => {
-    expect(TAB_GROUPS.map((g) => g.label)).toEqual(["chat", "control", "agent", "settings"]);
+    expect(TAB_GROUPS.map((g) => g.label)).toEqual([
+      "chat",
+      "control",
+      "enterprise",
+      "agent",
+      "settings",
+    ]);
   });
 
   it("all tabs are unique", () => {
