@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearBundleKnowledgeFoundations,
   clearEnterpriseKnowledgeFoundations,
@@ -71,6 +71,14 @@ function foundation(...texts: string[]): InMemoryKnowledgeFoundation {
   return new InMemoryKnowledgeFoundation(docs);
 }
 
+// Also BEFORE each: under the repo's shared-worker mode another file (or a tree
+// import, which rebuilds the bundle registry with the shipped example) can leave
+// foundations registered before the first case here runs.
+beforeEach(() => {
+  clearEnterpriseKnowledgeFoundations();
+  clearBundleKnowledgeFoundations();
+});
+
 afterEach(() => {
   clearEnterpriseActiveRunsForTest();
   clearEnterpriseKnowledgeFoundations();
@@ -82,6 +90,21 @@ describe("knowledge foundation registry", () => {
     registerEnterpriseKnowledgeFoundation("acme.z", foundation("z"));
     registerEnterpriseKnowledgeFoundation("acme.a", foundation("a"));
     expect(listEnterpriseKnowledgeFoundationIds()).toEqual(["acme.a", "acme.z"]);
+  });
+
+  it("reports bundle ownership but not for a plugin-served id", () => {
+    registerBundleKnowledgeFoundation("acme.tree", "acme.bundle", foundation("bundled"));
+    registerBundleKnowledgeFoundation("acme.other", "acme.bundle", foundation("also bundled"));
+    registerEnterpriseKnowledgeFoundation("acme.plugin", foundation("plugin"));
+    const entries = listEnterpriseKnowledgeFoundationDescriptors();
+    const bundled = entries.find((entry) => entry.foundationId === "acme.bundle");
+    const plugin = entries.find((entry) => entry.foundationId === "acme.plugin");
+    // Sorted owners, so a client can scope suggestions to the tree on screen.
+    expect(bundled?.ownerTreeIds).toEqual(["acme.other", "acme.tree"]);
+    // A plugin registration is global (and outranks any bundle), so it owns no
+    // tree — reported as an EMPTY list, which is how a client tells "global" from
+    // a gateway too old to answer at all.
+    expect(plugin?.ownerTreeIds).toEqual([]);
   });
 
   it("snapshots, clears, and restores for plugin (de)activation lifecycle", () => {
@@ -367,6 +390,7 @@ describe("foundation descriptors", () => {
       {
         foundationId: "acme.kb",
         descriptor: { kind: "local", displayName: "Acme KB", detail: "http://kb:9621" },
+        ownerTreeIds: [],
       },
     ]);
   });
@@ -375,7 +399,11 @@ describe("foundation descriptors", () => {
     registerEnterpriseKnowledgeFoundation("legacy.kb", foundation("anything"));
 
     expect(listEnterpriseKnowledgeFoundationDescriptors()).toEqual([
-      { foundationId: "legacy.kb", descriptor: { kind: "remote", displayName: "legacy.kb" } },
+      {
+        foundationId: "legacy.kb",
+        descriptor: { kind: "remote", displayName: "legacy.kb" },
+        ownerTreeIds: [],
+      },
     ]);
   });
 
@@ -392,8 +420,16 @@ describe("foundation descriptors", () => {
     });
 
     expect(listEnterpriseKnowledgeFoundationDescriptors()).toEqual([
-      { foundationId: "broken.kb", descriptor: { kind: "remote", displayName: "broken.kb" } },
-      { foundationId: "healthy.kb", descriptor: { kind: "remote", displayName: "Healthy" } },
+      {
+        foundationId: "broken.kb",
+        descriptor: { kind: "remote", displayName: "broken.kb" },
+        ownerTreeIds: [],
+      },
+      {
+        foundationId: "healthy.kb",
+        descriptor: { kind: "remote", displayName: "Healthy" },
+        ownerTreeIds: [],
+      },
     ]);
   });
 });

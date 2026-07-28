@@ -172,6 +172,7 @@ import type {
   ChannelsStatusSnapshot,
   SessionCompactionCheckpoint,
   SessionsListResult,
+  SkillStatusEntry,
   SkillStatusReport,
   StatusSummary,
   NostrProfile,
@@ -522,6 +523,18 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseOntologyEntryDraft:
     | import("./controllers/enterprise.js").EnterpriseOntologyEntryDraft
     | null = null;
+  @state() enterpriseCatalogPhase: import("./controllers/enterprise.js").EnterpriseCatalogPhase =
+    "unloaded";
+  @state() enterpriseCatalogErrors: import("./controllers/enterprise.js").EnterpriseCatalogErrors =
+    {
+      tools: null,
+      skills: null,
+      foundations: null,
+    };
+  @state() enterpriseCatalogAgentId: string | null = null;
+  @state() enterpriseToolGroups: ToolsCatalogResult["groups"] = [];
+  @state() enterpriseSkills: SkillStatusEntry[] = [];
+  @state() enterpriseFoundations: EnterpriseKnowledgeFoundationSummary[] = [];
   @state() enterpriseError: string | null = null;
   @state() knowledgePhase: import("./controllers/knowledge.js").KnowledgeListPhase = "unloaded";
   @state() knowledgeFoundations: EnterpriseKnowledgeFoundationSummary[] = [];

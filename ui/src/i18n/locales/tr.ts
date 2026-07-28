@@ -212,32 +212,32 @@ export const tr: TranslationMap = {
     title: "Enterprise",
     subtitle: "Yönetilen iş akışı çalıştırmaları ve kayıtlı iş akışı ağaçları.",
     toolsTab: {
-      title: "Kurumsal araçlar",
+      title: "Araçlar",
       subtitle:
-        "Yönetilen bir çalıştırmanın kullanabileceği isteğe bağlı araçlar; geniş araç gruplarından hariç tutulur.",
-      readGroup: "Okuma (group:enterprise)",
-      writeGroup: "Yazma (group:enterprise-write)",
-      grantTitle: "Bir adıma araç ver",
-      grantSubtitle:
-        "Seçili adımın ontology.allowedTools alanına bir araç adı veya grubu ekleyin. Reddet her zaman önceliklidir.",
+        "Yapılandırılmış araç kataloğu, çalışma zamanının grupladığı şekilde gruplandırılmıştır. Bir plugin aracı, yapılandırması çözümlenmeden önce bile bildirildiğinde listelenir; kanal ve MCP araçları yalnızca canlı bir oturumda bulunur, bu nedenle burada gösterilen şu anda canlı olan değil, yapılandırılabilecek olanlardır.",
+      attachHint:
+        "Bu katalogdur. Bir adımın birini çağırmasına izin vermek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
+      empty: "Bu gateway üzerinde kullanılabilir araç yok.",
+      toolCount: "{count} araç",
+      optionalBadge: "isteğe bağlı",
+      pluginBadge: "Eklenti: {pluginId}",
     },
     entryDraft: {
       add: "Ekle",
-      forStep: "Adım: {nodeId}",
       none: "Henüz tanımlanmış bir şey yok.",
-      selectStep: "Önce Worktree sekmesinde bir adım seçin.",
-      stepUnavailable:
-        "Seçilen adım yüklenmedi. Sayfayı yenileyin veya Worktree sekmesinde yeniden seçin.",
-      editorOpen:
-        "Başka bir giriş eklemeden önce açık ağaç düzenleyicisini kaydedin veya iptal edin.",
       scopeNarrowing:
         "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında tüm araçlara izin verir. İlk girişi eklemek bunu bir izin listesine dönüştürür ve yalnızca listelenen araçlar kullanılabilir kalır.",
+      knowledgeNarrowing:
+        "Bu adımın henüz bir bilgi izin listesi yok, bu nedenle kayıtlı tüm temelleri sorgulayabilir. İlk girişi eklemek, sorgulamayı listelenen temellerle sınırlar.",
       toolLabel: "İzin verilecek araç adı veya grubu",
       skillLabel: "Tanımlanacak skill adı",
+      knowledgeLabel: "İzin verilecek bilgi temeli kimliği",
       skillNameInvalid:
         "Bir skill adı kullanın: küçük harfler, rakamlar ve tek tireler, en fazla 64 karakter.",
+      foundationIdInvalid:
+        "Bir temel kimliği kullanın: noktalı küçük harf segmentleri, örneğin acme.runbooks.",
       ancestorGate:
-        "Üst adımların ({nodeIds}) kendi araç izin listeleri var. Governance her adımı kökten itibaren kontrol eder, bu nedenle burada verilen bir araç, o adımlar tarafından da izin verilmedikçe reddedilir.",
+        "Üst adımların ({nodeIds}) bunun için kendi izin listeleri var. Yönetişim her adımı kökten kontrol eder, bu nedenle buraya eklenen bir giriş, o adımlar da izin vermedikçe yine reddedilir.",
       reviewHint:
         "Ekleme işlemi, değişikliği inceleyip kaydetmeniz için ağaç düzenleyicisini açar.",
       empty: "Önce bir değer girin.",
@@ -245,10 +245,23 @@ export const tr: TranslationMap = {
       nodeMissing: "Bu adım artık ağaçta yok; yeniden yükleyip tekrar deneyin.",
       exportFailed: "Düzenlenecek ağaç tanımı yüklenemedi.",
     },
+    catalogAgentScope:
+      "Araçlar ve beceriler ajan kapsamlıdır; bu katalog, {agentId} ajanının gördüğü katalogdur.",
+    bindings: {
+      title: "Adım bağlamaları",
+      subtitle: "Bu adımın çağırabileceği, bildirdiği uzmanlık ve alabileceği bilgiler.",
+      tools: "Araçlar — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Bilgi — ontology.knowledgeFoundations",
+      skillNotInstalled: "yüklü değil",
+      foundationNotRegistered: "kayıtlı değil",
+    },
     skillsTab: {
-      title: "Kurumsal skills",
-      subtitle:
-        "Bir iş akışı adımı, çalışmasının bağlı olduğu skills'leri adlandırmak için ontology.skills bildirebilir.",
+      title: "Skills",
+      subtitle: "Bu gateway için yüklenmiş her skill ve uygun olması için gerekenler.",
+      attachHint:
+        "Bu katalogdur. Birini bir adımın bağımlılığı olarak bildirmek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
+      empty: "Yüklü Skills yok.",
     },
     runsTitle: "Son çalıştırmalar",
     treesTitle: "İş akışı ağaçları",
@@ -661,8 +674,8 @@ export const tr: TranslationMap = {
     dreams: "Uyku sırasında bellek birleştirme.",
     enterpriseWorktree: "İş akışı ağaçları ve yönetilen adımları.",
     enterpriseHistory: "Geçmiş yönetilen çalıştırmalar ve izleri.",
-    enterpriseTools: "Kurumsal grupların sunduğu araçlar.",
-    enterpriseSkills: "İş akışı adımlarının bildirdiği Skills.",
+    enterpriseTools: "Yapılandırılmış araç kataloğu.",
+    enterpriseSkills: "Bu gateway için yüklenmiş her skill.",
     knowledge: "Kayıtlı bilgi temelleri ve durumları.",
   },
   skillWorkshop: {

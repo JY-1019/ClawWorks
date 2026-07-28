@@ -210,31 +210,32 @@ export const pt_BR: TranslationMap = {
     title: "Enterprise",
     subtitle: "Execuções de workflow governadas e as árvores de workflow registradas.",
     toolsTab: {
-      title: "Ferramentas enterprise",
+      title: "Ferramentas",
       subtitle:
-        "Ferramentas opcionais que uma execução governada pode usar; excluídas dos grupos amplos de ferramentas.",
-      readGroup: "Leitura (group:enterprise)",
-      writeGroup: "Escrita (group:enterprise-write)",
-      grantTitle: "Conceder uma ferramenta a uma etapa",
-      grantSubtitle:
-        "Adicione um nome de ferramenta ou grupo ao ontology.allowedTools da etapa selecionada. Deny sempre prevalece.",
+        "O catálogo de ferramentas configurado, agrupado da forma como o runtime os agrupa. Uma ferramenta de plugin é listada assim que declarada, mesmo antes de sua configuração ser resolvida, e ferramentas de canal e MCP só existem dentro de uma sessão ativa, então isto é o que pode ser configurado e não o que está ativo no momento.",
+      attachHint:
+        "Este é o catálogo. Para permitir que um passo chame uma ferramenta, abra o Worktree, selecione o passo e adicione-a em Vinculações do passo.",
+      empty: "Nenhuma ferramenta disponível neste gateway.",
+      toolCount: "{count} ferramenta(s)",
+      optionalBadge: "opcional",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Adicionar",
-      forStep: "Etapa: {nodeId}",
       none: "Nenhum declarado ainda.",
-      selectStep: "Selecione uma etapa na aba Worktree primeiro.",
-      stepUnavailable:
-        "A etapa selecionada não foi carregada. Atualize a página ou selecione-a novamente na aba Worktree.",
-      editorOpen: "Salve ou descarte o editor de árvore aberto antes de adicionar outra entrada.",
       scopeNarrowing:
         "Esta etapa ainda não tem uma lista de ferramentas permitidas, então permite todas as ferramentas, exceto as negadas. Adicionar a primeira entrada a transforma em uma lista de permissões e apenas as ferramentas listadas permanecerão disponíveis.",
+      knowledgeNarrowing:
+        "Este passo ainda não possui uma lista de permissões de conhecimento, portanto pode consultar todas as fundações registradas. Adicionar a primeira entrada restringe o acesso às fundações listadas.",
       toolLabel: "Nome ou grupo da ferramenta a permitir",
       skillLabel: "Nome da skill a declarar",
+      knowledgeLabel: "Id da fundação de conhecimento a permitir",
       skillNameInvalid:
         "Use um nome de skill: letras minúsculas, dígitos e hífens simples, no máximo 64 caracteres.",
+      foundationIdInvalid:
+        "Use um id de fundação: segmentos em minúsculas separados por pontos, por exemplo acme.runbooks.",
       ancestorGate:
-        "As etapas pai ({nodeIds}) possuem sua própria lista de ferramentas permitidas. A governança verifica cada etapa a partir da raiz, então uma ferramenta concedida aqui ainda será negada a menos que essas etapas também a permitam.",
+        "As etapas anteriores ({nodeIds}) possuem sua própria lista de permissões para isso. A governança verifica cada etapa a partir da raiz, então uma entrada adicionada aqui ainda será negada a menos que essas etapas também a permitam.",
       reviewHint:
         "Ao adicionar, o editor de árvore será aberto para que você possa revisar e salvar a alteração.",
       empty: "Insira um valor primeiro.",
@@ -242,10 +243,24 @@ export const pt_BR: TranslationMap = {
       nodeMissing: "Essa etapa não está mais na árvore; recarregue e tente novamente.",
       exportFailed: "Não foi possível carregar a definição da árvore para edição.",
     },
+    catalogAgentScope:
+      "Ferramentas e skills têm escopo por agente; este catálogo é o que o agente {agentId} vê.",
+    bindings: {
+      title: "Vinculações do passo",
+      subtitle: "O que este passo pode chamar, as habilidades que declara e o que pode recuperar.",
+      tools: "Ferramentas — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Conhecimento — ontology.knowledgeFoundations",
+      skillNotInstalled: "não instalada",
+      foundationNotRegistered: "não registrada",
+    },
     skillsTab: {
-      title: "Skills enterprise",
+      title: "Skills",
       subtitle:
-        "Uma etapa de workflow pode declarar ontology.skills para nomear as skills das quais seu trabalho depende.",
+        "Todas as Skills instaladas para este Gateway, com o que cada uma precisa para ser elegível.",
+      attachHint:
+        "Este é o catálogo. Para declarar uma como dependência de um passo, abra o Worktree, selecione o passo e adicione-a em Vinculações do passo.",
+      empty: "Nenhuma skill instalada.",
     },
     runsTitle: "Execuções recentes",
     treesTitle: "Árvores de workflow",
@@ -657,8 +672,8 @@ export const pt_BR: TranslationMap = {
     dreams: "Consolidação de memória durante o sono.",
     enterpriseWorktree: "Árvores de fluxo de trabalho e suas etapas governadas.",
     enterpriseHistory: "Execuções governadas anteriores e seus rastreamentos.",
-    enterpriseTools: "Ferramentas que os grupos empresariais expõem.",
-    enterpriseSkills: "Skills que as etapas do fluxo de trabalho declaram.",
+    enterpriseTools: "O catálogo de ferramentas configurado.",
+    enterpriseSkills: "Todas as Skills instaladas para este Gateway.",
     knowledge: "Bases de conhecimento registradas e seus status.",
   },
   skillWorkshop: {

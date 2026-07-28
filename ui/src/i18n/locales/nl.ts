@@ -214,32 +214,32 @@ export const nl: TranslationMap = {
     title: "Enterprise",
     subtitle: "Beheerde workflowuitvoeringen en de geregistreerde workflowbomen.",
     toolsTab: {
-      title: "Enterprise-tools",
+      title: "Tools",
       subtitle:
-        "Opt-in tools die een beheerde run kan gebruiken; uitgesloten van de brede toolgroepen.",
-      readGroup: "Lezen (group:enterprise)",
-      writeGroup: "Schrijven (group:enterprise-write)",
-      grantTitle: "Een tool toekennen aan een stap",
-      grantSubtitle:
-        "Voeg een toolnaam of groep toe aan ontology.allowedTools van de geselecteerde stap. Weigeren heeft altijd voorrang.",
+        "De geconfigureerde toolcatalogus, gegroepeerd zoals de runtime ze groepeert. Een plugin-tool wordt vermeld zodra deze is gedeclareerd, zelfs voordat de configuratie is opgelost, en channel- en MCP-tools bestaan alleen binnen een actieve sessie. Dit toont dus wat geconfigureerd kan worden in plaats van wat op dit moment actief is.",
+      attachHint:
+        "Dit is de catalogus. Om een stap een tool te laten aanroepen, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen.",
+      empty: "Er zijn geen tools beschikbaar op deze Gateway.",
+      toolCount: "{count} tool(s)",
+      optionalBadge: "optioneel",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Toevoegen",
-      forStep: "Stap: {nodeId}",
       none: "Nog geen opgegeven.",
-      selectStep: "Selecteer eerst een stap op het tabblad Werkboom.",
-      stepUnavailable:
-        "De geselecteerde stap is niet geladen. Vernieuw de pagina of selecteer deze opnieuw op het tabblad Worktree.",
-      editorOpen:
-        "Sla de geopende boomstructuur-editor op of verwerp deze voordat u een nieuw item toevoegt.",
       scopeNarrowing:
         "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Zodra u de eerste vermelding toevoegt, wordt het een allowlist en blijven alleen de vermelde tools beschikbaar.",
+      knowledgeNarrowing:
+        "Deze stap heeft nog geen kennislijst, dus kan elke geregistreerde foundation worden bevraagd. Door de eerste vermelding toe te voegen, wordt het beperkt tot de vermelde foundations.",
       toolLabel: "Toolnaam of -groep om toe te staan",
       skillLabel: "Skillnaam om te declareren",
+      knowledgeLabel: "Toe te staan kennis-foundation-id",
       skillNameInvalid:
         "Gebruik een skillnaam: kleine letters, cijfers en enkele koppeltekens, maximaal 64 tekens.",
+      foundationIdInvalid:
+        "Gebruik een foundation-id: kleine letters gescheiden door punten, bijvoorbeeld acme.runbooks.",
       ancestorGate:
-        "Bovenliggende stappen ({nodeIds}) hebben hun eigen lijst met toegestane tools. Governance controleert elke stap vanaf de root, dus een tool die hier wordt toegekend, wordt alsnog geweigerd tenzij die stappen het ook toestaan.",
+        "Bovenliggende stappen ({nodeIds}) hebben hun eigen allowlist hiervoor. Governance controleert elke stap vanaf de root, dus een vermelding die hier wordt toegevoegd wordt alsnog geweigerd tenzij die stappen het ook toestaan.",
       reviewHint:
         "Bij toevoegen wordt de boomeditor geopend zodat u de wijziging kunt bekijken en opslaan.",
       empty: "Voer eerst een waarde in.",
@@ -247,10 +247,24 @@ export const nl: TranslationMap = {
       nodeMissing: "Die stap bevindt zich niet meer in de boom; herlaad en probeer het opnieuw.",
       exportFailed: "Kan de boomdefinitie niet laden om te bewerken.",
     },
+    catalogAgentScope:
+      "Tools en skills zijn agent-gebonden; deze catalogus is wat agent {agentId} ziet.",
+    bindings: {
+      title: "Stapkoppelingen",
+      subtitle: "Wat deze stap mag aanroepen, de kennis die het declareert en wat het mag ophalen.",
+      tools: "Tools — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Kennis — ontology.knowledgeFoundations",
+      skillNotInstalled: "niet geïnstalleerd",
+      foundationNotRegistered: "niet geregistreerd",
+    },
     skillsTab: {
-      title: "Enterprise-skills",
+      title: "Skills",
       subtitle:
-        "Een workflowstap kan ontology.skills declareren om de skills te benoemen waarvan het werk afhankelijk is.",
+        "Elke skill die voor deze gateway is geïnstalleerd, met wat nodig is om in aanmerking te komen.",
+      attachHint:
+        "Dit is de catalogus. Om een skill als afhankelijkheid van een stap te declareren, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen.",
+      empty: "Er zijn geen Skills geïnstalleerd.",
     },
     runsTitle: "Recente uitvoeringen",
     treesTitle: "Workflowbomen",
@@ -663,8 +677,8 @@ export const nl: TranslationMap = {
     dreams: "Geheugendromen, consolidatie en reflectie.",
     enterpriseWorktree: "Workflowbomen en hun beheerde stappen.",
     enterpriseHistory: "Eerdere beheerde runs en hun traces.",
-    enterpriseTools: "Tools die de enterprise-groepen beschikbaar stellen.",
-    enterpriseSkills: "Skills die workflowstappen declareren.",
+    enterpriseTools: "De geconfigureerde toolcatalogus.",
+    enterpriseSkills: "Elke skill die voor deze gateway is geïnstalleerd.",
     knowledge: "Geregistreerde kennisbronnen en hun status.",
   },
   skillWorkshop: {

@@ -59,6 +59,7 @@ import type {
   SessionUsageTimeSeries,
   SessionsListResult,
   SessionCompactionCheckpoint,
+  SkillStatusEntry,
   SkillStatusReport,
   StatusSummary,
   ToolsCatalogResult,
@@ -326,6 +327,12 @@ export type AppViewState = {
   enterpriseOntologyEntryDraft:
     | import("./controllers/enterprise.js").EnterpriseOntologyEntryDraft
     | null;
+  enterpriseCatalogPhase: import("./controllers/enterprise.js").EnterpriseCatalogPhase;
+  enterpriseCatalogErrors: import("./controllers/enterprise.js").EnterpriseCatalogErrors;
+  enterpriseCatalogAgentId: string | null;
+  enterpriseToolGroups: ToolsCatalogResult["groups"];
+  enterpriseSkills: SkillStatusEntry[];
+  enterpriseFoundations: EnterpriseKnowledgeFoundationSummary[];
   enterpriseError: string | null;
   knowledgePhase: import("./controllers/knowledge.js").KnowledgeListPhase;
   knowledgeFoundations: EnterpriseKnowledgeFoundationSummary[];

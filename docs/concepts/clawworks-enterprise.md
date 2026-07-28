@@ -312,10 +312,19 @@ foundation provides one), and the tool advises the model to cite the foundation,
 plus the `source` when the snippet has one, whenever it uses a snippet.
 
 The shipped `clawworks.support` example work-map references a
-`clawworks.support-kb` foundation. That id is an allow-list reference only — no
-adapter registers it by default, so `knowledge_search` returns nothing until an
-operator registers a foundation under that id (for example a LightRAG server
-with `"id": "clawworks.support-kb"`, as above).
+`clawworks.support-kb.example` foundation, and a small example corpus (refund
+windows, shipping targets, escalation rules) ships registered under that id so
+the retrieval path works out of the box: it appears on the Knowledge screen on a
+fresh install, and `knowledge_search` returns real snippets once the example is
+imported. It is registered against that one tree, so no other workflow can
+retrieve it and stock runs are unaffected.
+
+The id is example-scoped deliberately. Register a production foundation under an
+id of your own (for example a LightRAG server with `"id": "acme.support-kb"`, as
+above) and name that id in the step's `knowledgeFoundations`. Reusing the
+example's id would mean a plugin that fails to load silently falls back to the
+shipped corpus, answering retrieval with example policy instead of reporting the
+foundation as unavailable.
 
 Each foundation declares a `kind`: `remote` (default) when someone else
 operates the server, or `local` when this deployment owns it. The distinction
@@ -353,15 +362,27 @@ event log of run lifecycle plus governance decisions.
     instances of types the current definition still addresses).
   - _History_ lists recent runs and shows a per-execution inspector with the plan
     steps, their ontology scope, and the governance trace.
-  - _Tools_ lists the enterprise tool groups, and _Skills_ the skills a step
-    declares.
-  - Operators with `operator.admin` can add a child node from the Worktree
-    inspector, grant a tool (`ontology.allowedTools`) from Tools, or declare a
-    skill (`ontology.skills`) from Skills. Each one splices into the tree
-    definition and opens the editor, so the change is reviewed and saved through
-    the same `enterprise.trees.import` whole-tree replace. Granting the first tool
-    on a step turns it into an allowlist, and every step from the root is an
-    independent gate, so the UI warns when a grant narrows scope or when an
+  - _Tools_ and _Skills_ are catalogs: every tool the gateway exposes (grouped as
+    the runtime groups them, `tools.catalog`) and every installed skill with its
+    eligibility (`skills.status`). They browse what exists; neither is scoped to a
+    step. Both are agent-scoped server-side — plugin tools resolve against an
+    agent's workspace and skills against its filter — so each screen names the
+    agent it answered for rather than implying one deployment-wide list.
+  - Binding happens on the step: selecting a node on Worktree opens **Step
+    bindings**, which shows that step's `ontology.allowedTools`,
+    `ontology.skills`, and `ontology.knowledgeFoundations`, marks declared skills
+    that agent has no install for and foundation ids this work-map cannot
+    retrieve (`enterprise.knowledge.foundations.list` reports `ownerTreeIds` for
+    bundle-owned foundations, which retrieval resolves only for their owning
+    tree), and — with `operator.admin` — adds an entry to any of the three
+    (completions come from the catalogs; free text stays valid for tool globs and
+    `group:` selectors).
+    Operators with `operator.admin` can also add a child node from the same
+    inspector. Each change splices into the tree definition and opens the editor,
+    so it is reviewed and saved through the same `enterprise.trees.import`
+    whole-tree replace. Adding the first tool (or the first foundation) on a step
+    turns that list into an allowlist, and every step from the root is an
+    independent gate, so the UI warns when an entry narrows scope or when an
     ancestor's allowlist would still deny it.
 
 ## Related

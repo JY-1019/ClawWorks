@@ -6,8 +6,9 @@
 // Dotted lowercase segments, mirroring ENTERPRISE_ID_PATTERN in
 // src/enterprise/schema.ts (the import validator rejects anything else). Kept in
 // sync by hand: if the core pattern widens, widen here too or valid ids get
-// refused in the form before they ever reach the server.
-const NODE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
+// refused in the form before they ever reach the server. Node ids and knowledge
+// foundation ids share this contract.
+const ENTERPRISE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
 
 /** A node in the nested definition. Unknown fields (ontology) pass through. */
 export interface EditableTreeNode {
@@ -49,7 +50,7 @@ export function newNodeIdIssue(id: string, existingIds: ReadonlySet<string>): No
   if (trimmed.length === 0) {
     return "empty";
   }
-  if (!NODE_ID_PATTERN.test(trimmed)) {
+  if (!ENTERPRISE_ID_PATTERN.test(trimmed)) {
     return "pattern";
   }
   if (existingIds.has(trimmed)) {
@@ -86,8 +87,17 @@ export function insertChildNode(
   return { ok: true, definition: next };
 }
 
-/** Ontology list fields an operator can extend from the Tools/Skills tabs. */
-export type NodeOntologyListField = "allowedTools" | "deniedTools" | "skills";
+/** Ontology list fields an operator can extend from the selected step. */
+export type NodeOntologyListField =
+  | "allowedTools"
+  | "deniedTools"
+  | "skills"
+  | "knowledgeFoundations";
+
+/** True when `id` satisfies the dotted-lowercase contract the tree import enforces. */
+export function isValidEnterpriseId(id: string): boolean {
+  return ENTERPRISE_ID_PATTERN.test(id);
+}
 
 // Flat SKILL.md name contract, mirroring SkillNameSchema in src/enterprise/schema.ts
 // (the import validator rejects anything else). Kept in sync by hand, like

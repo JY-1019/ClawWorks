@@ -209,38 +209,54 @@ export const hi: TranslationMap = {
     title: "Enterprise",
     subtitle: "शासित वर्कफ़्लो रन और पंजीकृत वर्कफ़्लो ट्री।",
     toolsTab: {
-      title: "एंटरप्राइज़ टूल्स",
-      subtitle: "ऑप्ट-इन टूल्स जिन्हें एक शासित रन उपयोग कर सकता है; व्यापक टूल समूहों से बाहर रखा गया है।",
-      readGroup: "Read (group:enterprise)",
-      writeGroup: "Write (group:enterprise-write)",
-      grantTitle: "किसी स्टेप को टूल प्रदान करें",
-      grantSubtitle:
-        "चयनित स्टेप के ontology.allowedTools में टूल नाम या ग्रुप जोड़ें। Deny हमेशा प्राथमिक रहता है।",
+      title: "टूल्स",
+      subtitle:
+        "कॉन्फ़िगर किया गया टूल कैटलॉग, रनटाइम जिस तरह उन्हें समूहित करता है उसी तरह समूहित। एक plugin टूल घोषित होते ही सूचीबद्ध हो जाता है, भले ही उसका config हल न हुआ हो, और channel तथा MCP टूल केवल एक लाइव सेशन के अंदर मौजूद होते हैं, इसलिए यह वह है जो कॉन्फ़िगर किया जा सकता है, न कि जो अभी लाइव है।",
+      attachHint:
+        "यह कैटलॉग है। किसी स्टेप को कॉल करने देने के लिए, Worktree खोलें, स्टेप चुनें, और इसे Step bindings के अंतर्गत जोड़ें।",
+      empty: "इस Gateway पर कोई टूल उपलब्ध नहीं है।",
+      toolCount: "{count} टूल",
+      optionalBadge: "वैकल्पिक",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "जोड़ें",
-      forStep: "स्टेप: {nodeId}",
       none: "अभी तक कोई घोषित नहीं।",
-      selectStep: "पहले Worktree टैब पर एक स्टेप चुनें।",
-      stepUnavailable: "चयनित चरण लोड नहीं हुआ है। रीफ़्रेश करें, या Worktree टैब पर इसे पुनः चुनें।",
-      editorOpen: "एक और प्रविष्टि जोड़ने से पहले खुले ट्री एडिटर को सेव या डिस्कार्ड करें।",
       scopeNarrowing:
         "इस चरण में अभी तक कोई टूल अनुमति सूची नहीं है, इसलिए यह अस्वीकृत टूल को छोड़कर हर टूल की अनुमति देता है। पहली प्रविष्टि जोड़ने पर यह अनुमति सूची में बदल जाता है और केवल सूचीबद्ध टूल उपलब्ध रहते हैं।",
+      knowledgeNarrowing:
+        "इस स्टेप में अभी तक कोई ज्ञान अनुमति सूची नहीं है, इसलिए यह हर पंजीकृत फाउंडेशन से क्वेरी कर सकता है। पहली प्रविष्टि जोड़ने पर यह केवल सूचीबद्ध फाउंडेशन तक सीमित हो जाएगा।",
       toolLabel: "अनुमति देने के लिए टूल का नाम या समूह",
       skillLabel: "घोषित करने के लिए Skill का नाम",
+      knowledgeLabel: "अनुमति देने के लिए Knowledge foundation id",
       skillNameInvalid: "Skill नाम का उपयोग करें: छोटे अक्षर, अंक, और एकल हाइफ़न, अधिकतम 64 अक्षर।",
+      foundationIdInvalid:
+        "एक foundation id का उपयोग करें: डॉटेड लोअरकेस सेगमेंट, उदाहरण के लिए acme.runbooks.",
       ancestorGate:
-        "पैरेंट स्टेप्स ({nodeIds}) की अपनी टूल allowlist है। Governance रूट से प्रत्येक स्टेप की जाँच करता है, इसलिए यहाँ दिया गया टूल तब तक अस्वीकृत रहेगा जब तक वे स्टेप्स भी इसे अनुमति नहीं देते।",
+        "पैरेंट स्टेप्स ({nodeIds}) के पास इसके लिए अपनी allowlist है। Governance रूट से प्रत्येक स्टेप की जाँच करता है, इसलिए यहाँ जोड़ी गई एंट्री तब तक अस्वीकृत रहेगी जब तक वे स्टेप्स भी इसे अनुमति न दें।",
       reviewHint: "जोड़ने पर ट्री एडिटर खुलेगा ताकि आप बदलाव की समीक्षा कर सकें और सहेज सकें।",
       empty: "पहले एक मान दर्ज करें।",
       duplicate: "यह प्रविष्टि इस स्टेप पर पहले से घोषित है।",
       nodeMissing: "वह स्टेप अब ट्री में नहीं है; पुनः लोड करें और दोबारा प्रयास करें।",
       exportFailed: "संपादन के लिए ट्री परिभाषा लोड नहीं हो सकी।",
     },
-    skillsTab: {
-      title: "एंटरप्राइज़ Skills",
+    catalogAgentScope: "टूल्स और Skills एजेंट-स्कोप्ड हैं; यह कैटलॉग वही है जो एजेंट {agentId} देखता है।",
+    bindings: {
+      title: "Step bindings",
       subtitle:
-        "एक वर्कफ़्लो चरण ontology.skills घोषित कर सकता है ताकि उन Skills का नाम दिया जा सके जिन पर उसका कार्य निर्भर करता है।",
+        "यह स्टेप क्या कॉल कर सकता है, यह कौन सी विशेषज्ञता घोषित करता है, और क्या पुनर्प्राप्त कर सकता है।",
+      tools: "Tools — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Knowledge — ontology.knowledgeFoundations",
+      skillNotInstalled: "इंस्टॉल नहीं है",
+      foundationNotRegistered: "पंजीकृत नहीं है",
+    },
+    skillsTab: {
+      title: "कौशल",
+      subtitle: "इस Gateway के लिए इंस्टॉल की गई प्रत्येक skill, और उसके पात्र होने के लिए क्या आवश्यक है।",
+      attachHint:
+        "यह कैटलॉग है। किसी को स्टेप की निर्भरता के रूप में घोषित करने के लिए, Worktree खोलें, स्टेप चुनें, और इसे Step bindings के अंतर्गत जोड़ें।",
+      empty: "कोई Skills इंस्टॉल नहीं हैं।",
     },
     runsTitle: "हाल के रन",
     treesTitle: "वर्कफ़्लो ट्री",
@@ -651,8 +667,8 @@ export const hi: TranslationMap = {
     dreams: "मेमोरी ड्रीमिंग, कंसॉलिडेशन, और रिफ्लेक्शन।",
     enterpriseWorktree: "वर्कफ़्लो ट्री और उनके नियंत्रित चरण।",
     enterpriseHistory: "पिछले शासित रन और उनके ट्रेस।",
-    enterpriseTools: "एंटरप्राइज़ समूहों द्वारा उपलब्ध कराए गए टूल।",
-    enterpriseSkills: "Skills जो वर्कफ़्लो स्टेप्स घोषित करते हैं।",
+    enterpriseTools: "कॉन्फ़िगर किया गया टूल कैटलॉग।",
+    enterpriseSkills: "इस Gateway के लिए इंस्टॉल की गई प्रत्येक skill।",
     knowledge: "पंजीकृत नॉलेज फाउंडेशन और उनकी स्थिति।",
   },
   skillWorkshop: {

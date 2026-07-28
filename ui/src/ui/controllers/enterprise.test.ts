@@ -11,6 +11,7 @@ import {
   type EnterpriseState,
   exportEnterpriseTree,
   loadEnterprise,
+  loadEnterpriseCatalogs,
   loadEnterpriseRunDetail,
   loadEnterpriseTreeDetail,
   loadEnterpriseTreeVersion,
@@ -65,6 +66,12 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeVersionsLoading: false,
     enterpriseNodeDraft: null,
     enterpriseOntologyEntryDraft: null,
+    enterpriseCatalogPhase: "unloaded",
+    enterpriseCatalogErrors: { tools: null, skills: null, foundations: null },
+    enterpriseCatalogAgentId: null,
+    enterpriseToolGroups: [],
+    enterpriseSkills: [],
+    enterpriseFoundations: [],
     enterpriseError: null,
   };
   return { state, request };
@@ -1570,12 +1577,152 @@ describe("enterprise ontology entry drafts (tool grants / declared skills)", () 
     expect(state.enterpriseOntologyEntryDraft?.error).toBe("entry-duplicate");
   });
 
+  it("allows a knowledge foundation on the selected step", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockResolvedValue({ content: supportExportContent() });
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "knowledgeFoundations");
+    editEnterpriseOntologyEntryDraft(state, "acme.runbooks");
+
+    await submitAddEnterpriseOntologyEntry(state);
+
+    const parsed = JSON.parse(state.enterpriseTreeEditContent);
+    expect(parsed.root.ontology.knowledgeFoundations).toEqual(["acme.runbooks"]);
+  });
+
+  it("rejects a foundation id the import contract would refuse", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "knowledgeFoundations");
+    editEnterpriseOntologyEntryDraft(state, "Acme Runbooks");
+
+    await submitAddEnterpriseOntologyEntry(state);
+
+    expect(state.enterpriseOntologyEntryDraft?.error).toBe("foundation-id-invalid");
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("cancel clears the draft", () => {
     const { state } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
     beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
     cancelAddEnterpriseOntologyEntry(state);
     expect(state.enterpriseOntologyEntryDraft).toBeNull();
+  });
+});
+
+describe("enterprise catalogs", () => {
+  function mockCatalogs(request: ReturnType<typeof vi.fn<TestRequest>>) {
+    request.mockImplementation(async (method) => {
+      if (method === "tools.catalog") {
+        return {
+          agentId: "main",
+          profiles: [],
+          groups: [{ id: "enterprise", label: "Enterprise", source: "core", tools: [] }],
+        };
+      }
+      if (method === "skills.status") {
+        return {
+          workspaceDir: "/w",
+          managedSkillsDir: "/w/skills",
+          skills: [{ name: "summarize" }],
+        };
+      }
+      return { foundations: [{ id: "clawworks.support-kb" }] };
+    });
+  }
+
+  it("loads tools, skills, and foundations for the enterprise surfaces", async () => {
+    const { state, request } = createState();
+    mockCatalogs(request);
+
+    await loadEnterpriseCatalogs(state);
+
+    // No agent id: these are deployment-wide reference lists, not one agent's
+    // effective set.
+    expect(request).toHaveBeenCalledWith("tools.catalog", { includePlugins: true });
+    expect(request).toHaveBeenCalledWith("skills.status", {});
+    expect(state.enterpriseToolGroups.map((group) => group.id)).toEqual(["enterprise"]);
+    expect(state.enterpriseSkills.map((skill) => skill.name)).toEqual(["summarize"]);
+    expect(state.enterpriseFoundations.map((entry) => entry.id)).toEqual(["clawworks.support-kb"]);
+    expect(state.enterpriseCatalogPhase).toBe("ready");
+    expect(state.enterpriseCatalogErrors).toEqual({ tools: null, skills: null, foundations: null });
+    // Both catalogs are agent-scoped server-side; keep whose they are so the
+    // surfaces can say so instead of implying one deployment-wide list.
+    expect(state.enterpriseCatalogAgentId).toBe("main");
+  });
+
+  it("keeps the other catalogs usable when one fails", async () => {
+    const { state, request } = createState();
+    mockCatalogs(request);
+    request.mockImplementation(async (method) => {
+      if (method === "skills.status") {
+        throw new Error("skill probe failed");
+      }
+      if (method === "tools.catalog") {
+        return {
+          agentId: "main",
+          profiles: [],
+          groups: [{ id: "fs", label: "Files", source: "core", tools: [] }],
+        };
+      }
+      return { foundations: [] };
+    });
+
+    await loadEnterpriseCatalogs(state);
+
+    expect(state.enterpriseToolGroups).toHaveLength(1);
+    expect(state.enterpriseSkills).toEqual([]);
+    // The failure lands only on the surface that asked for it.
+    expect(state.enterpriseCatalogErrors.skills).toContain("skill probe failed");
+    expect(state.enterpriseCatalogErrors.tools).toBeNull();
+    expect(state.enterpriseCatalogPhase).toBe("ready");
+  });
+
+  it("reloads after a tree import, which can prune bundled foundations", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeEditContent = "{}";
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: "acme.support" };
+      }
+      if (method === "enterprise.knowledge.foundations.list") {
+        return { foundations: [] };
+      }
+      if (method === "tools.catalog") {
+        return { agentId: "main", profiles: [], groups: [] };
+      }
+      if (method === "skills.status") {
+        return { workspaceDir: "/w", managedSkillsDir: "/w/skills", skills: [] };
+      }
+      return { runs: [], trees: [], importErrors: [] };
+    });
+    requestSaveEnterpriseTree(state);
+
+    await confirmEnterpriseTreeAction(state);
+    // The import rebuilds the server's bundle knowledge registry, so a catalog
+    // kept from before the save would keep suggesting a pruned foundation.
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith("enterprise.knowledge.foundations.list", {}),
+    );
+  });
+
+  it("drops a superseded load so two generations cannot mix", async () => {
+    const { state, request } = createState();
+    let releaseFirst: (() => void) | undefined;
+    request.mockImplementationOnce(
+      async () =>
+        new Promise((resolve) => {
+          releaseFirst = () => resolve({ agentId: "main", profiles: [], groups: [] });
+        }),
+    );
+    const stale = loadEnterpriseCatalogs(state);
+    mockCatalogs(request);
+    await loadEnterpriseCatalogs(state);
+    releaseFirst?.();
+    await stale;
+
+    expect(state.enterpriseToolGroups.map((group) => group.id)).toEqual(["enterprise"]);
   });
 });
 

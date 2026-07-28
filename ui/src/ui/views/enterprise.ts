@@ -2,6 +2,7 @@
 // runs, a per-execution step/trace inspector, and the workflow-tree registry.
 import { html, nothing, type TemplateResult } from "lit";
 import type {
+  EnterpriseKnowledgeFoundationSummary,
   EnterpriseOntologyObject,
   EnterpriseRunDetail,
   EnterpriseRunSummary,
@@ -10,6 +11,7 @@ import type {
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
   EnterpriseTreeVersionSummary,
+  ToolsCatalogResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
 import type { OntologyEntity } from "../components/ontology-graph.ts";
@@ -17,6 +19,8 @@ import "../components/modal-dialog.ts";
 import "../components/ontology-graph.ts";
 import "../components/workflow-tree-graph.ts";
 import type {
+  EnterpriseCatalogErrors,
+  EnterpriseCatalogPhase,
   EnterpriseNodeDraft,
   EnterpriseNodeDraftError,
   EnterpriseOntologyEntryDraft,
@@ -24,12 +28,14 @@ import type {
   EnterpriseTreeConfirm,
   EnterpriseTreeEditFormat,
 } from "../controllers/enterprise.ts";
+import type { SkillStatusEntry } from "../types.ts";
 import {
   collectNodeOntologyGraph,
   collectOntologyGraph,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
 import type { NodeOntologyListField } from "./enterprise-tree-edit.ts";
+import { renderSkillStatusChips } from "./skills-shared.ts";
 
 export type EnterpriseProps = {
   loading: boolean;
@@ -88,13 +94,24 @@ export type EnterpriseProps = {
   onEditNodeDraft: (patch: { id?: string; title?: string }) => void;
   onCancelAddNode: () => void;
   onSubmitAddNode: () => void;
-  // The open "grant a tool" / "declare a skill" form on the Tools/Skills tabs, or
-  // null. Submit splices the entry into the selected step and loads the editor for Save.
+  // The open "grant a tool" / "declare a skill" / "allow a knowledge foundation"
+  // form on the selected step, or null. Submit splices the entry into that step
+  // and loads the editor for Save.
   ontologyEntryDraft: EnterpriseOntologyEntryDraft | null;
   onBeginAddOntologyEntry: (nodeId: string, field: NodeOntologyListField) => void;
   onEditOntologyEntryDraft: (value: string) => void;
   onCancelAddOntologyEntry: () => void;
   onSubmitAddOntologyEntry: () => void;
+  // What a step can be bound TO: every tool the gateway exposes, every installed
+  // skill, and every registered knowledge foundation. The Tools/Skills tabs browse
+  // these, and the step binding forms suggest from them.
+  catalogPhase: EnterpriseCatalogPhase;
+  catalogErrors: EnterpriseCatalogErrors;
+  /** The agent whose tools/skills the catalogs describe; both are agent-scoped. */
+  catalogAgentId: string | null;
+  toolGroups: ToolsCatalogResult["groups"];
+  skills: SkillStatusEntry[];
+  foundations: EnterpriseKnowledgeFoundationSummary[];
   /** Which enterprise surface to render; chosen by the active sidebar tab. */
   section: EnterpriseSection;
 };
@@ -111,74 +128,73 @@ function formatTime(ms: number): string {
 export const ENTERPRISE_SECTIONS = ["worktree", "history", "tools", "skills"] as const;
 export type EnterpriseSection = (typeof ENTERPRISE_SECTIONS)[number];
 
-/**
- * Enterprise tool catalog shown, read-only, in the Tools sub-tab. Grouped like
- * the runtime: `group:enterprise` reads, `group:enterprise-write` the lone write
- * tool. Pinned to the server catalog (tool-catalog.ts) by a unit test, so it
- * cannot silently drift from the tools the runtime actually exposes.
- */
-export const ENTERPRISE_TOOL_IDS = {
-  read: ["compute_function", "get_neighbors", "knowledge_search", "search_objects"],
-  write: ["invoke_action"],
-} as const;
-
-function renderEnterpriseToolList(ids: readonly string[]): TemplateResult {
-  return html`<div class="list" style="margin-top: 8px;">
-    ${ids.map((id) => html`<div class="list-item"><code>${id}</code></div>`)}
-  </div>`;
-}
-
+/** i18n message for a rejected step-binding draft. */
 function ontologyEntryErrorMessage(error: EnterpriseOntologyEntryDraftError): string {
-  switch (error) {
-    case "entry-empty":
-      return t("enterprise.entryDraft.empty");
-    case "entry-duplicate":
-      return t("enterprise.entryDraft.duplicate");
-    case "skill-name-invalid":
-      return t("enterprise.entryDraft.skillNameInvalid");
-    case "node-missing":
-      return t("enterprise.entryDraft.nodeMissing");
-    case "export-failed":
-      return t("enterprise.entryDraft.exportFailed");
-  }
+  const messages: Record<EnterpriseOntologyEntryDraftError, string> = {
+    "entry-empty": t("enterprise.entryDraft.empty"),
+    "entry-duplicate": t("enterprise.entryDraft.duplicate"),
+    "skill-name-invalid": t("enterprise.entryDraft.skillNameInvalid"),
+    "foundation-id-invalid": t("enterprise.entryDraft.foundationIdInvalid"),
+    "node-missing": t("enterprise.entryDraft.nodeMissing"),
+    "export-failed": t("enterprise.entryDraft.exportFailed"),
+  };
+  return messages[error];
 }
 
 /**
- * The shared "add an entry to the selected step" affordance for the Tools and Skills
- * tabs. The step is chosen on the Worktree tab, so without a selection this only
- * points the operator there rather than silently editing an arbitrary node.
+ * Message for a catalog that has nothing to show: distinguishes "still loading"
+ * and "the load failed" from the real claim that the deployment has none, which
+ * can only be made once an answer arrived.
+ */
+function renderCatalogEmpty(
+  phase: EnterpriseCatalogPhase,
+  error: string | null,
+  emptyMessage: string,
+): TemplateResult | typeof nothing {
+  if (error) {
+    return html`<div class="callout danger" style="margin-top: 12px;">${error}</div>`;
+  }
+  if (phase !== "ready") {
+    return html`<div class="muted" style="margin-top: 12px;">${t("common.loading")}</div>`;
+  }
+  return html`<div class="muted" style="margin-top: 12px;">${emptyMessage}</div>`;
+}
+
+/** One step-binding row: the field's current values plus the add affordance. */
+type OntologyEntryAdder = {
+  /** The step being bound. Callers render this inside that node's inspector. */
+  nodeId: string;
+  field: NodeOntologyListField;
+  values: readonly string[];
+  /** Row heading, e.g. "Tools — ontology.allowedTools". */
+  title: string;
+  /** Accessible name for the text input; the placeholder is only an example value. */
+  inputLabel: string;
+  placeholder: string;
+  /** Catalog ids offered as completions. Free text stays valid (tool globs/groups). */
+  suggestions: readonly string[];
+  /**
+   * Warning shown when adding the first entry FLIPS this step into an allow-list:
+   * with no local list the step allows everything, so the first entry silently
+   * revokes the rest. Told before they do it, not after.
+   */
+  scopeWarning?: string | null;
+  /** Ancestor steps whose own allow-list still gates what is added here. */
+  constrainingAncestors?: readonly string[];
+  /** Per-value annotation (e.g. a declared skill no install provides), or null. */
+  valueNote?: (value: string) => string | null;
+};
+
+/**
+ * The "add an entry to this step" affordance, rendered inside the selected node's
+ * inspector on Worktree. The Tools/Skills tabs browse the whole catalog instead,
+ * so the step a change lands on is always the one on screen.
  */
 function renderOntologyEntryAdder(
   props: EnterpriseProps,
-  field: NodeOntologyListField,
-  values: readonly string[],
-  placeholder: string,
-  /** Accessible name for the text input; the placeholder is only an example value. */
-  inputLabel: string,
-  /**
-   * True when adding the first entry FLIPS this step into an allowlist: with no
-   * local allowedTools the step allows every tool (minus any denials), so the first
-   * grant silently revokes the rest. Told before they do it, not after.
-   */
-  restrictsScope = false,
-  /** Ancestor steps whose own allowlist can still deny the tool granted here. */
-  constrainingAncestors: readonly string[] = [],
+  adder: OntologyEntryAdder,
 ): TemplateResult {
-  const nodeId = props.selectedNodeId;
-  if (!nodeId) {
-    return html`<div class="muted" style="margin-top: 12px;">
-      ${t("enterprise.entryDraft.selectStep")}
-    </div>`;
-  }
-  // The selection outlives the tree detail: loadEnterpriseTreeDetail clears the
-  // detail while reloading (and leaves it null after a failed refresh) but keeps
-  // enterpriseSelectedNodeId. Rendering the form then would show empty values, the
-  // scope warning, and an Add that silently no-ops, so require the loaded node.
-  if (!props.treeDetail?.nodes.some((node) => node.id === nodeId)) {
-    return html`<div class="muted" style="margin-top: 12px;">
-      ${props.treeLoading ? t("common.loading") : t("enterprise.entryDraft.stepUnavailable")}
-    </div>`;
-  }
+  const { field, nodeId } = adder;
   // Match on treeId too: a different tree can hold a node with the same id, and a
   // draft carries its own tree, so an id-only match would show a stale form.
   const draft =
@@ -187,31 +203,28 @@ function renderOntologyEntryAdder(
     props.ontologyEntryDraft.field === field
       ? props.ontologyEntryDraft
       : null;
-  // An open editor already holds unsaved content; a second add re-exports the SAVED
-  // definition and would seed over it, dropping that edit. Send the operator to
-  // save (or discard) first instead.
-  if (props.treeEditing) {
-    return html`<div class="muted" style="margin-top: 12px;">
-      ${t("enterprise.entryDraft.editorOpen")}
-    </div>`;
-  }
+  const suggestionsId = `enterprise-suggest-${field}`;
   return html`
     <div style="margin-top: 12px;">
-      <div class="muted">${t("enterprise.entryDraft.forStep", { nodeId })}</div>
+      <div class="muted">${adder.title}</div>
       <div class="list" style="margin-top: 8px;">
-        ${values.length === 0
+        ${adder.values.length === 0
           ? html`<div class="list-item muted">${t("enterprise.entryDraft.none")}</div>`
-          : values.map((value) => html`<div class="list-item"><code>${value}</code></div>`)}
+          : adder.values.map((value) => {
+              const note = adder.valueNote?.(value) ?? null;
+              return html`<div class="list-item">
+                <code>${value}</code>
+                ${note ? html`<span class="chip chip-warn">${note}</span>` : nothing}
+              </div>`;
+            })}
       </div>
-      ${restrictsScope
-        ? html`<div class="callout" style="margin-top: 8px;">
-            ${t("enterprise.entryDraft.scopeNarrowing")}
-          </div>`
+      ${adder.scopeWarning
+        ? html`<div class="callout" style="margin-top: 8px;">${adder.scopeWarning}</div>`
         : nothing}
-      ${constrainingAncestors.length
+      ${adder.constrainingAncestors?.length
         ? html`<div class="callout" style="margin-top: 8px;">
             ${t("enterprise.entryDraft.ancestorGate", {
-              nodeIds: constrainingAncestors.join(", "),
+              nodeIds: adder.constrainingAncestors.join(", "),
             })}
           </div>`
         : nothing}
@@ -222,11 +235,17 @@ function renderOntologyEntryAdder(
                 <input
                   type="text"
                   .value=${draft.value}
-                  aria-label=${inputLabel}
-                  placeholder=${placeholder}
+                  aria-label=${adder.inputLabel}
+                  placeholder=${adder.placeholder}
+                  list=${suggestionsId}
                   @input=${(event: Event) =>
                     props.onEditOntologyEntryDraft((event.target as HTMLInputElement).value)}
                 />
+                <datalist id=${suggestionsId}>
+                  ${adder.suggestions.map(
+                    (suggestion) => html`<option value=${suggestion}></option>`,
+                  )}
+                </datalist>
                 <button type="button" class="btn primary" @click=${props.onSubmitAddOntologyEntry}>
                   ${t("enterprise.entryDraft.add")}
                 </button>
@@ -256,36 +275,32 @@ function renderOntologyEntryAdder(
   `;
 }
 
-/** The selected step's ontology binding, or null when nothing is selected. */
-function selectedNodeOntology(props: EnterpriseProps) {
-  const nodeId = props.selectedNodeId;
-  return nodeId
-    ? (props.treeDetail?.nodes.find((node) => node.id === nodeId)?.ontology ?? null)
-    : null;
-}
-
 /**
- * Ancestors of the selected step that carry their OWN tool allowlist. Governance
+ * Ancestors of `nodeId` that carry their OWN allow-list for `field`. Governance
  * checks every node on the root->active path as an independent gate
- * (ontologyScopeViolation in src/enterprise/governance.ts), so a grant added here is
- * still denied unless each of these ancestors allows the tool too — the operator has
- * to see that before believing the grant took effect.
+ * (ontologyScopeViolation in src/enterprise/governance.ts for tools,
+ * foundationAllowedByPath in knowledge.ts for foundations), so an entry added here
+ * is still denied unless each of these ancestors allows it too — the operator has
+ * to see that before believing the change took effect.
  */
-function constrainingAncestorIds(props: EnterpriseProps): string[] {
+function constrainingAncestorIds(
+  props: EnterpriseProps,
+  nodeId: string,
+  field: "allowedTools" | "knowledgeFoundations",
+): string[] {
   const nodes = props.treeDetail?.nodes;
-  const selectedId = props.selectedNodeId;
-  if (!nodes || !selectedId) {
+  if (!nodes) {
     return [];
   }
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const ids: string[] = [];
-  let current = byId.get(selectedId)?.parentId ?? null;
+  let current = byId.get(nodeId)?.parentId ?? null;
   while (current) {
     const node = byId.get(current);
     if (!node) {
       break;
     }
-    if (node.ontology.allowedTools?.length) {
+    if (node.ontology[field]?.length) {
       ids.push(node.id);
     }
     current = node.parentId;
@@ -293,53 +308,114 @@ function constrainingAncestorIds(props: EnterpriseProps): string[] {
   return ids;
 }
 
+/**
+ * Which agent the catalogs answered for. Plugin tools resolve against an agent's
+ * workspace and skills against its filter, so a deployment with several agents
+ * does not have one catalog — say whose this is instead of implying it is global.
+ */
+function renderCatalogAgentScope(agentId: string | null): TemplateResult | typeof nothing {
+  return agentId
+    ? html`<div class="muted" style="margin-top: 4px;">
+        ${t("enterprise.catalogAgentScope", { agentId })}
+      </div>`
+    : nothing;
+}
+
+/**
+ * Every tool the gateway exposes, grouped as the runtime groups them. This is a
+ * catalog to browse, not a step's scope: which of these a step may call is set
+ * per node on Worktree.
+ */
 function renderEnterpriseTools(props: EnterpriseProps): TemplateResult {
   return html`
     <section class="card" style="margin-top: 16px;">
       <div class="card-title">${t("enterprise.toolsTab.title")}</div>
       <div class="card-sub">${t("enterprise.toolsTab.subtitle")}</div>
-      <div style="margin-top: 12px;">
-        <div class="muted">${t("enterprise.toolsTab.readGroup")}</div>
-        ${renderEnterpriseToolList(ENTERPRISE_TOOL_IDS.read)}
-      </div>
-      <div style="margin-top: 12px;">
-        <div class="muted">${t("enterprise.toolsTab.writeGroup")}</div>
-        ${renderEnterpriseToolList(ENTERPRISE_TOOL_IDS.write)}
-      </div>
-    </section>
-    <section class="card" style="margin-top: 16px;">
-      <div class="card-title">${t("enterprise.toolsTab.grantTitle")}</div>
-      <div class="card-sub">${t("enterprise.toolsTab.grantSubtitle")}</div>
-      ${(() => {
-        const allowed = selectedNodeOntology(props)?.allowedTools ?? [];
-        // No LOCAL allowlist means the step allows everything (minus its denials), so
-        // the first entry narrows it either way — a deny-only step converts too.
-        return renderOntologyEntryAdder(
-          props,
-          "allowedTools",
-          allowed,
-          "group:enterprise",
-          t("enterprise.entryDraft.toolLabel"),
-          allowed.length === 0,
-          constrainingAncestorIds(props),
-        );
-      })()}
+      ${renderCatalogAgentScope(props.catalogAgentId)}
+      <div class="muted" style="margin-top: 8px;">${t("enterprise.toolsTab.attachHint")}</div>
+      ${props.toolGroups.length === 0
+        ? renderCatalogEmpty(
+            props.catalogPhase,
+            props.catalogErrors.tools,
+            t("enterprise.toolsTab.empty"),
+          )
+        : html`<div class="list" style="margin-top: 12px;">
+            ${props.toolGroups.map((group) => renderToolCatalogGroup(group))}
+          </div>`}
     </section>
   `;
 }
 
+function renderToolCatalogGroup(group: ToolsCatalogResult["groups"][number]): TemplateResult {
+  return html`
+    <details class="list-item">
+      <summary style="cursor: pointer;">
+        <span class="list-title">${group.label}</span>
+        <span class="chip"
+          >${t("enterprise.toolsTab.toolCount", { count: String(group.tools.length) })}</span
+        >
+        <!-- Only core sections have a group: selector (CORE_TOOL_GROUPS is built from
+          them), so a plugin group shows its owner instead of a selector that would
+          not resolve in an allow-list. -->
+        ${group.source === "core"
+          ? html`<code>group:${group.id}</code>`
+          : html`<span class="chip"
+              >${t("enterprise.toolsTab.pluginBadge", {
+                pluginId: group.pluginId ?? group.id,
+              })}</span
+            >`}
+      </summary>
+      <div class="list" style="margin-top: 8px;">
+        ${group.tools.map(
+          (tool) => html`<div class="list-item">
+            <div class="list-main">
+              <div class="list-title">
+                <code>${tool.id}</code>
+                <!-- Declared but conditional: an optional plugin tool is cataloged
+                  before its config resolves, so it may not bind at runtime. -->
+                ${tool.optional
+                  ? html`<span class="chip">${t("enterprise.toolsTab.optionalBadge")}</span>`
+                  : nothing}
+              </div>
+              ${tool.description ? html`<div class="list-sub">${tool.description}</div>` : nothing}
+            </div>
+          </div>`,
+        )}
+      </div>
+    </details>
+  `;
+}
+
+/**
+ * Every installed skill. Like Tools this is the catalog, not a step's
+ * declaration: a step names the skills its work depends on from Worktree.
+ */
 function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
   return html`
     <section class="card" style="margin-top: 16px;">
       <div class="card-title">${t("enterprise.skillsTab.title")}</div>
       <div class="card-sub">${t("enterprise.skillsTab.subtitle")}</div>
-      ${renderOntologyEntryAdder(
-        props,
-        "skills",
-        selectedNodeOntology(props)?.skills ?? [],
-        "refund-policy",
-        t("enterprise.entryDraft.skillLabel"),
-      )}
+      ${renderCatalogAgentScope(props.catalogAgentId)}
+      <div class="muted" style="margin-top: 8px;">${t("enterprise.skillsTab.attachHint")}</div>
+      ${props.skills.length === 0
+        ? renderCatalogEmpty(
+            props.catalogPhase,
+            props.catalogErrors.skills,
+            t("enterprise.skillsTab.empty"),
+          )
+        : html`<div class="list" style="margin-top: 12px;">
+            ${props.skills.map(
+              (skill) => html`<div class="list-item">
+                <div class="list-main">
+                  <div class="list-title"><code>${skill.name}</code></div>
+                  ${skill.description
+                    ? html`<div class="list-sub">${skill.description}</div>`
+                    : nothing}
+                  ${renderSkillStatusChips({ skill, showBundledBadge: skill.bundled === true })}
+                </div>
+              </div>`,
+            )}
+          </div>`}
     </section>
   `;
 }
@@ -971,9 +1047,156 @@ function renderNodeInspector(
             ></openclaw-ontology-graph>
             ${renderNodeObjects(objectEntities, props)}
           `}
+      ${renderNodeBindings(node, props)}
       ${props.canEdit ? renderAddNode(tree.id, nodeId, props) : nothing}
     </section>
   `;
+}
+
+/**
+ * What this step is bound to: its tool scope, the skills it declares, and the
+ * knowledge foundations it may query. Read-only without operator.admin; with it,
+ * each row can add an entry, which splices into the tree definition and opens the
+ * editor for review + Save (the single enterprise.trees.import write path).
+ */
+function renderNodeBindings(
+  node: EnterpriseTreeDetail["nodes"][number],
+  props: EnterpriseProps,
+): TemplateResult {
+  const ontology = node.ontology;
+  const allowedTools = ontology.allowedTools ?? [];
+  const foundations = ontology.knowledgeFoundations ?? [];
+  const installedSkills = new Set(props.skills.map((skill) => skill.name));
+  const { ids: retrievableIds, ownershipKnown } = retrievableFoundations(props);
+  // Only claim something is missing once ITS catalog answered without error:
+  // a failed request also leaves an empty list, which would otherwise mark every
+  // declared value unresolved.
+  const skillsKnown = props.catalogPhase === "ready" && !props.catalogErrors.skills;
+  // Ownership is part of the claim: without it a value cannot be called
+  // unavailable, only unverified.
+  const foundationsKnown =
+    props.catalogPhase === "ready" && !props.catalogErrors.foundations && ownershipKnown;
+  const catalogAgentId = props.catalogAgentId;
+  return html`
+    <div class="card-title" style="margin-top: 16px;">${t("enterprise.bindings.title")}</div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.bindings.subtitle")}</div>
+    ${renderCatalogAgentScope(catalogAgentId)}${renderBindingCatalogIssues(props)}
+    ${renderOntologyEntryAdder(props, {
+      nodeId: node.id,
+      field: "allowedTools",
+      values: allowedTools,
+      title: t("enterprise.bindings.tools"),
+      inputLabel: t("enterprise.entryDraft.toolLabel"),
+      placeholder: "group:enterprise",
+      suggestions: toolSuggestions(props),
+      // No LOCAL allowlist means the step allows everything (minus its denials),
+      // so the first entry narrows it either way — a deny-only step converts too.
+      scopeWarning: allowedTools.length === 0 ? t("enterprise.entryDraft.scopeNarrowing") : null,
+      constrainingAncestors: constrainingAncestorIds(props, node.id, "allowedTools"),
+    })}
+    ${renderOntologyEntryAdder(props, {
+      nodeId: node.id,
+      field: "skills",
+      values: ontology.skills ?? [],
+      title: t("enterprise.bindings.skills"),
+      inputLabel: t("enterprise.entryDraft.skillLabel"),
+      placeholder: "refund-policy",
+      suggestions: props.skills.map((skill) => skill.name),
+      // A declared skill is an annotation, so naming one no install provides is
+      // legal — but the operator has to see which declarations resolve today.
+      // Named per agent: the skill set is agent-scoped, and a tree can govern a
+      // different agent than the one this catalog answered for.
+      valueNote: (value) =>
+        skillsKnown && !installedSkills.has(value)
+          ? t("enterprise.bindings.skillNotInstalled")
+          : null,
+    })}
+    ${renderOntologyEntryAdder(props, {
+      nodeId: node.id,
+      field: "knowledgeFoundations",
+      values: foundations,
+      title: t("enterprise.bindings.knowledge"),
+      inputLabel: t("enterprise.entryDraft.knowledgeLabel"),
+      placeholder: "acme.runbooks",
+      suggestions: [...retrievableIds],
+      // Same path-gate shape as tools: an omitted list lets the step query every
+      // registered foundation, so the first entry restricts it.
+      scopeWarning: foundations.length === 0 ? t("enterprise.entryDraft.knowledgeNarrowing") : null,
+      constrainingAncestors: constrainingAncestorIds(props, node.id, "knowledgeFoundations"),
+      valueNote: (value) =>
+        foundationsKnown && !retrievableIds.has(value)
+          ? t("enterprise.bindings.foundationNotRegistered")
+          : null,
+    })}
+  `;
+}
+
+/**
+ * Foundation ids the SELECTED tree can actually retrieve: plugin-registered ones
+ * (global, reported as an EMPTY owner list) plus the bundle foundations this tree
+ * owns. The registry list is deployment-wide, but retrieval resolves a bundle
+ * foundation only for its owning tree (resolveRetrievalAdapter in
+ * src/enterprise/knowledge.ts), so suggesting or accepting another workflow's id
+ * would promise a `knowledge_search` that returns nothing here.
+ *
+ * A gateway older than `ownerTreeIds` omits it entirely, which is UNKNOWN, not
+ * global: nothing can be scoped or contradicted, so every id stays suggestible
+ * (as before the field existed) and `ownershipKnown` is false so no value is
+ * labelled unavailable on a guess.
+ */
+function retrievableFoundations(props: EnterpriseProps): {
+  ids: Set<string>;
+  ownershipKnown: boolean;
+} {
+  const treeId = props.treeDetail?.id;
+  const ownershipKnown = props.foundations.every(
+    (foundation) => foundation.ownerTreeIds !== undefined,
+  );
+  const usable = ownershipKnown
+    ? props.foundations.filter((foundation) => {
+        const owners = foundation.ownerTreeIds ?? [];
+        return owners.length === 0 || (treeId ? owners.includes(treeId) : false);
+      })
+    : props.foundations;
+  return { ids: new Set(usable.map((foundation) => foundation.id)), ownershipKnown };
+}
+
+/**
+ * Catalog failures the binding rows depend on. Without this the operator sees
+ * empty completions and unverified declarations with no hint that a load failed —
+ * the Tools and Skills tabs show their own errors, so this surface must too.
+ */
+function renderBindingCatalogIssues(props: EnterpriseProps): TemplateResult | typeof nothing {
+  const messages = [
+    props.catalogErrors.tools,
+    props.catalogErrors.skills,
+    props.catalogErrors.foundations,
+  ].filter((message): message is string => Boolean(message));
+  if (messages.length === 0) {
+    return nothing;
+  }
+  return html`<div class="callout danger" style="margin-top: 8px;">
+    ${messages.map((message) => html`<div>${message}</div>`)}
+  </div>`;
+}
+
+/**
+ * Completions for a tool grant: every catalog tool id, plus the `group:` selector
+ * of each core section. Plugin groups have no selector (CORE_TOOL_GROUPS is built
+ * from core sections only), so offering one would suggest an entry that matches
+ * nothing.
+ */
+function toolSuggestions(props: EnterpriseProps): string[] {
+  const suggestions: string[] = [];
+  for (const group of props.toolGroups) {
+    if (group.source === "core") {
+      suggestions.push(`group:${group.id}`);
+    }
+    for (const tool of group.tools) {
+      suggestions.push(tool.id);
+    }
+  }
+  return suggestions;
 }
 
 /** i18n message for a rejected node-add draft. */

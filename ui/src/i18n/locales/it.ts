@@ -211,31 +211,32 @@ export const it: TranslationMap = {
     title: "Enterprise",
     subtitle: "Esecuzioni di workflow governate e alberi di workflow registrati.",
     toolsTab: {
-      title: "Strumenti enterprise",
+      title: "Strumenti",
       subtitle:
-        "Strumenti opzionali utilizzabili da un'esecuzione governata; esclusi dai gruppi di strumenti generici.",
-      readGroup: "Lettura (group:enterprise)",
-      writeGroup: "Scrittura (group:enterprise-write)",
-      grantTitle: "Concedi uno strumento a uno step",
-      grantSubtitle:
-        "Aggiungi un nome di strumento o un gruppo a ontology.allowedTools dello step selezionato. Deny ha sempre la priorità.",
+        "Il catalogo strumenti configurato, raggruppato come li raggruppa il runtime. Uno strumento plugin viene elencato non appena dichiarato, anche prima che la sua configurazione venga risolta, mentre gli strumenti channel e MCP esistono solo all'interno di una sessione attiva, quindi questo rappresenta ciò che può essere configurato anziché ciò che è attivo in questo momento.",
+      attachHint:
+        "Questo è il catalogo. Per consentire a uno step di chiamarne uno, apri Worktree, seleziona lo step e aggiungilo in Step bindings.",
+      empty: "Nessuno strumento disponibile su questo Gateway.",
+      toolCount: "{count} strumento/i",
+      optionalBadge: "opzionale",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Aggiungi",
-      forStep: "Step: {nodeId}",
       none: "Nessuno dichiarato finora.",
-      selectStep: "Seleziona prima uno step nella scheda Worktree.",
-      stepUnavailable:
-        "Il passaggio selezionato non è caricato. Aggiorna la pagina o riselezionalo nella scheda Worktree.",
-      editorOpen: "Salva o elimina l'editor ad albero aperto prima di aggiungere un'altra voce.",
       scopeNarrowing:
         "Questo passaggio non ha ancora una lista di strumenti consentiti, quindi permette tutti gli strumenti tranne quelli negati. Aggiungendo la prima voce, si trasforma in una lista consentiti e solo gli strumenti elencati restano disponibili.",
+      knowledgeNarrowing:
+        "Questo step non ha ancora una allowlist di conoscenze, quindi può interrogare ogni foundation registrata. Aggiungendo la prima voce, verrà limitato alle foundation elencate.",
       toolLabel: "Nome o gruppo dello strumento da consentire",
       skillLabel: "Nome della skill da dichiarare",
+      knowledgeLabel: "Id della knowledge foundation da consentire",
       skillNameInvalid:
         "Usa un nome di skill: lettere minuscole, cifre e trattini singoli, massimo 64 caratteri.",
+      foundationIdInvalid:
+        "Usa un id di foundation: segmenti minuscoli separati da punti, ad esempio acme.runbooks.",
       ancestorGate:
-        "I passaggi padre ({nodeIds}) hanno la propria lista di strumenti consentiti. La governance verifica ogni passaggio dalla radice, quindi uno strumento concesso qui viene comunque negato se anche quei passaggi non lo consentono.",
+        "I passaggi padre ({nodeIds}) hanno una propria allowlist per questo. La governance controlla ogni passaggio dalla radice, quindi una voce aggiunta qui viene comunque negata a meno che anche quei passaggi non la consentano.",
       reviewHint:
         "L'aggiunta apre l'editor dell'albero per consentirti di rivedere e salvare la modifica.",
       empty: "Inserisci prima un valore.",
@@ -243,10 +244,24 @@ export const it: TranslationMap = {
       nodeMissing: "Quello step non è più presente nell'albero; ricarica e riprova.",
       exportFailed: "Impossibile caricare la definizione dell'albero da modificare.",
     },
+    catalogAgentScope:
+      "Strumenti e skills sono associati all'agente; questo catalogo è quello che l'agente {agentId} vede.",
+    bindings: {
+      title: "Step bindings",
+      subtitle: "Cosa questo step può chiamare, le competenze che dichiara e cosa può recuperare.",
+      tools: "Strumenti — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Conoscenze — ontology.knowledgeFoundations",
+      skillNotInstalled: "non installata",
+      foundationNotRegistered: "non registrata",
+    },
     skillsTab: {
-      title: "Skills enterprise",
+      title: "Skills",
       subtitle:
-        "Un passaggio del workflow può dichiarare ontology.skills per indicare le skills da cui dipende il suo lavoro.",
+        "Ogni skill installata per questo gateway, con i requisiti necessari per essere idonea.",
+      attachHint:
+        "Questo è il catalogo. Per dichiararne una come dipendenza di uno step, apri Worktree, seleziona lo step e aggiungila in Step bindings.",
+      empty: "Nessuna skill installata.",
     },
     runsTitle: "Esecuzioni recenti",
     treesTitle: "Alberi di workflow",
@@ -662,8 +677,8 @@ export const it: TranslationMap = {
     dreams: "Sogni della memoria, consolidamento e riflessione.",
     enterpriseWorktree: "Alberi di workflow e i relativi passaggi governati.",
     enterpriseHistory: "Esecuzioni governate passate e le relative tracce.",
-    enterpriseTools: "Strumenti esposti dai gruppi enterprise.",
-    enterpriseSkills: "Skills dichiarate dai passaggi del workflow.",
+    enterpriseTools: "Il catalogo strumenti configurato.",
+    enterpriseSkills: "Ogni skill installata per questo gateway.",
     knowledge: "Basi di conoscenza registrate e relativo stato.",
   },
   skillWorkshop: {

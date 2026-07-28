@@ -123,6 +123,7 @@ import {
   confirmEnterpriseTreeAction,
   editEnterpriseNodeDraft,
   exportEnterpriseTree,
+  loadEnterpriseCatalogs,
   loadEnterpriseRunDetail,
   loadEnterpriseTreeVersion,
   refreshEnterprise,
@@ -2925,8 +2926,17 @@ export function renderApp(state: AppViewState) {
                 treeVersionsLoading: state.enterpriseTreeVersionsLoading,
                 canEdit: hasOperatorAdminAccess(state.hello?.auth ?? null),
                 nodeDraft: state.enterpriseNodeDraft,
+                catalogPhase: state.enterpriseCatalogPhase,
+                catalogErrors: state.enterpriseCatalogErrors,
+                catalogAgentId: state.enterpriseCatalogAgentId,
+                toolGroups: state.enterpriseToolGroups,
+                skills: state.enterpriseSkills,
+                foundations: state.enterpriseFoundations,
                 error: state.enterpriseError,
-                onRefresh: () => void refreshEnterprise(state),
+                onRefresh: () => {
+                  void refreshEnterprise(state);
+                  void loadEnterpriseCatalogs(state);
+                },
                 onSelectRun: (executionId) => void loadEnterpriseRunDetail(state, executionId),
                 onSelectTree: (treeId) => selectEnterpriseTree(state, treeId),
                 onBeginEdit: () => void beginEditEnterpriseTree(state),
@@ -2952,16 +2962,9 @@ export function renderApp(state: AppViewState) {
                   beginAddEnterpriseOntologyEntry(state, nodeId, field),
                 onEditOntologyEntryDraft: (value) => editEnterpriseOntologyEntryDraft(state, value),
                 onCancelAddOntologyEntry: () => cancelAddEnterpriseOntologyEntry(state),
-                onSubmitAddOntologyEntry: () => {
-                  void (async () => {
-                    await submitAddEnterpriseOntologyEntry(state);
-                    // A successful add seeds the tree editor, which only renders on the
-                    // Worktree surface — follow it there so Add is not a silent no-op.
-                    if (state.enterpriseTreeEditing) {
-                      state.setTab("enterpriseWorktree");
-                    }
-                  })();
-                },
+                // The binding forms live in the Worktree node inspector, which is also
+                // where the seeded editor renders, so a successful add needs no tab move.
+                onSubmitAddOntologyEntry: () => void submitAddEnterpriseOntologyEntry(state),
               }),
             )
           : nothing}

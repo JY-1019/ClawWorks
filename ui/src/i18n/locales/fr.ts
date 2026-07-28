@@ -212,32 +212,32 @@ export const fr: TranslationMap = {
     title: "Enterprise",
     subtitle: "Exécutions de workflows gouvernés et arborescences de workflows enregistrées.",
     toolsTab: {
-      title: "Outils entreprise",
+      title: "Outils",
       subtitle:
-        "Outils optionnels qu'une exécution gouvernée peut utiliser ; exclus des groupes d'outils généraux.",
-      readGroup: "Lecture (group:enterprise)",
-      writeGroup: "Écriture (group:enterprise-write)",
-      grantTitle: "Accorder un outil à une étape",
-      grantSubtitle:
-        "Ajoutez un nom d'outil ou un groupe à ontology.allowedTools de l'étape sélectionnée. Deny l'emporte toujours.",
+        "Le catalogue d'outils configuré, regroupé comme le runtime les regroupe. Un outil de plugin est listé dès qu'il est déclaré, même avant que sa configuration ne soit résolue, et les outils de canal et MCP n'existent que dans une session active. Ceci représente donc ce qui peut être configuré plutôt que ce qui est actif en ce moment.",
+      attachHint:
+        "Ceci est le catalogue. Pour qu'une étape en appelle un, ouvrez Worktree, sélectionnez l'étape et ajoutez-le sous Liaisons de l'étape.",
+      empty: "Aucun outil n'est disponible sur ce Gateway.",
+      toolCount: "{count} outil(s)",
+      optionalBadge: "optionnel",
+      pluginBadge: "Plugin : {pluginId}",
     },
     entryDraft: {
       add: "Ajouter",
-      forStep: "Étape : {nodeId}",
       none: "Aucune déclaration pour le moment.",
-      selectStep: "Sélectionnez d'abord une étape dans l'onglet Worktree.",
-      stepUnavailable:
-        "L'étape sélectionnée n'est pas chargée. Actualisez la page ou resélectionnez-la dans l'onglet Worktree.",
-      editorOpen:
-        "Enregistrez ou annulez l'éditeur d'arborescence ouvert avant d'ajouter une autre entrée.",
       scopeNarrowing:
         "Cette étape n'a pas encore de liste d'outils autorisés, elle permet donc tous les outils sauf ceux qu'elle refuse. L'ajout de la première entrée la transforme en liste d'autorisation et seuls les outils listés restent disponibles.",
+      knowledgeNarrowing:
+        "Cette étape n'a pas encore de liste d'autorisation de connaissances, elle peut donc interroger toutes les fondations enregistrées. L'ajout de la première entrée la restreint aux fondations listées.",
       toolLabel: "Nom ou groupe d'outil à autoriser",
       skillLabel: "Nom du skill à déclarer",
+      knowledgeLabel: "Id de fondation de connaissances à autoriser",
       skillNameInvalid:
         "Utilisez un nom de skill : lettres minuscules, chiffres et tirets simples, 64 caractères maximum.",
+      foundationIdInvalid:
+        "Utilisez un id de fondation : segments en minuscules séparés par des points, par exemple acme.runbooks.",
       ancestorGate:
-        "Les étapes parentes ({nodeIds}) possèdent leur propre liste d'outils autorisés. La gouvernance vérifie chaque étape depuis la racine, donc un outil accordé ici sera tout de même refusé si ces étapes ne l'autorisent pas également.",
+        "Les étapes parentes ({nodeIds}) ont leur propre liste d'autorisation pour ceci. La gouvernance vérifie chaque étape depuis la racine, donc une entrée ajoutée ici sera refusée si ces étapes ne l'autorisent pas également.",
       reviewHint:
         "L'ajout ouvre l'éditeur d'arborescence pour vous permettre de vérifier et d'enregistrer la modification.",
       empty: "Saisissez d'abord une valeur.",
@@ -245,10 +245,25 @@ export const fr: TranslationMap = {
       nodeMissing: "Cette étape ne figure plus dans l'arborescence ; rechargez et réessayez.",
       exportFailed: "Impossible de charger la définition de l'arbre à modifier.",
     },
-    skillsTab: {
-      title: "Skills entreprise",
+    catalogAgentScope:
+      "Les outils et les Skills sont limités à l'agent ; ce catalogue est celui que l'agent {agentId} voit.",
+    bindings: {
+      title: "Liaisons de l'étape",
       subtitle:
-        "Une étape de workflow peut déclarer ontology.skills pour nommer les skills dont son travail dépend.",
+        "Ce que cette étape peut appeler, le savoir-faire qu'elle déclare et ce qu'elle peut récupérer.",
+      tools: "Outils — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Connaissances — ontology.knowledgeFoundations",
+      skillNotInstalled: "non installé",
+      foundationNotRegistered: "non enregistré",
+    },
+    skillsTab: {
+      title: "Skills",
+      subtitle:
+        "Chaque skill installé pour ce gateway, avec les conditions requises pour être éligible.",
+      attachHint:
+        "Ceci est le catalogue. Pour en déclarer un comme dépendance d'une étape, ouvrez Worktree, sélectionnez l'étape et ajoutez-le sous Liaisons de l'étape.",
+      empty: "Aucun skill n'est installé.",
     },
     runsTitle: "Exécutions récentes",
     treesTitle: "Arborescences de workflows",
@@ -663,8 +678,8 @@ export const fr: TranslationMap = {
     dreams: "Consolidation de la mémoire pendant le sommeil.",
     enterpriseWorktree: "Arbres de workflow et leurs étapes gouvernées.",
     enterpriseHistory: "Exécutions gouvernées passées et leurs traces.",
-    enterpriseTools: "Outils exposés par les groupes entreprise.",
-    enterpriseSkills: "Skills déclarées par les étapes de workflow.",
+    enterpriseTools: "Le catalogue d'outils configuré.",
+    enterpriseSkills: "Chaque skill installé pour ce gateway.",
     knowledge: "Bases de connaissances enregistrées et leur statut.",
   },
   skillWorkshop: {

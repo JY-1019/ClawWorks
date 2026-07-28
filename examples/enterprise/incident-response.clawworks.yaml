@@ -60,6 +60,10 @@ root:
             tools: [memory_search, knowledge_search]
         allowedTools: [memory_search, knowledge_search]
         knowledgeFoundations: [acme.runbooks]
+        # Declared skills name the know-how a step depends on. They are recorded
+        # for operators and travel with a workflow bundle; they never widen tool
+        # scope and never load skill content by themselves.
+        skills: [incident-triage]
         expectedOutput: A severity classification and the affected service.
         audit: true
     - id: incident.diagnose
@@ -93,6 +97,7 @@ root:
             description: Apply a recovery action from the runbook
             tools: [exec, process]
         allowedTools: [exec, process, message]
+        skills: [runbook-execution]
         # Human approval for high-risk remediation is NOT a tree constraint
         # (constraints are prompt guidance only). Enforce it with a config
         # governance policy, e.g. under enterprise.governance.policies:
@@ -105,4 +110,7 @@ root:
       description: Summarize the incident and notify stakeholders.
       ontology:
         allowedTools: [message, memory_search]
+        # `summarize` ships as a bundled skill, so this dependency resolves on a
+        # stock install; the two above are placeholders an adopter would provide.
+        skills: [summarize]
         expectedOutput: A postmortem-ready incident summary.

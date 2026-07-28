@@ -39,7 +39,9 @@ export type BundledKnowledgeFoundationRecord = {
 
 export type BundledKnowledgeFoundationReadResult = {
   records: BundledKnowledgeFoundationRecord[];
-  rowErrors: Array<{ foundationId: string; message: string }>;
+  /** Rows that failed to parse. `treeId` is kept so a caller can tell WHICH
+   *  (tree, foundation) tuple an operator owns even when its content is unreadable. */
+  rowErrors: Array<{ treeId: string; foundationId: string; message: string }>;
 };
 
 type EnterpriseKnowledgeDatabase = Pick<
@@ -186,12 +188,13 @@ export function listBundledKnowledgeFoundations(
       .orderBy("tree_id", "asc"),
   ).rows as BundledFoundationRow[];
   const records: BundledKnowledgeFoundationRecord[] = [];
-  const rowErrors: Array<{ foundationId: string; message: string }> = [];
+  const rowErrors: BundledKnowledgeFoundationReadResult["rowErrors"] = [];
   for (const row of rows) {
     try {
       records.push({ treeId: row.tree_id, foundation: rowToRecord(row) });
     } catch (err) {
       rowErrors.push({
+        treeId: row.tree_id,
         foundationId: row.foundation_id,
         message: err instanceof Error ? err.message : String(err),
       });

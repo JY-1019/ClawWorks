@@ -209,40 +209,57 @@ export const vi: TranslationMap = {
     title: "Enterprise",
     subtitle: "Các lần chạy quy trình được quản trị và cây quy trình đã đăng ký.",
     toolsTab: {
-      title: "Công cụ doanh nghiệp",
+      title: "Công cụ",
       subtitle:
-        "Các công cụ tùy chọn mà một lần chạy được quản lý có thể sử dụng; được loại trừ khỏi các nhóm công cụ chung.",
-      readGroup: "Đọc (group:enterprise)",
-      writeGroup: "Ghi (group:enterprise-write)",
-      grantTitle: "Cấp công cụ cho một bước",
-      grantSubtitle:
-        "Thêm tên công cụ hoặc nhóm vào ontology.allowedTools của bước đã chọn. Deny luôn được ưu tiên.",
+        "Danh mục công cụ đã cấu hình, được nhóm theo cách runtime phân nhóm. Một công cụ plugin được liệt kê ngay khi khai báo, ngay cả trước khi cấu hình của nó được giải quyết, và các công cụ channel và MCP chỉ tồn tại trong phiên hoạt động, vì vậy đây là những gì có thể được cấu hình chứ không phải những gì đang hoạt động ngay lúc này.",
+      attachHint:
+        "Đây là danh mục. Để cho phép một bước gọi công cụ, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
+      empty: "Không có công cụ nào khả dụng trên gateway này.",
+      toolCount: "{count} công cụ",
+      optionalBadge: "tùy chọn",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Thêm",
-      forStep: "Bước: {nodeId}",
       none: "Chưa có khai báo nào.",
-      selectStep: "Chọn một bước trên tab Worktree trước.",
-      stepUnavailable: "Bước đã chọn chưa được tải. Hãy làm mới hoặc chọn lại trên tab Worktree.",
-      editorOpen: "Lưu hoặc hủy trình chỉnh sửa cây đang mở trước khi thêm mục khác.",
       scopeNarrowing:
         "Bước này chưa có danh sách công cụ được phép, nên nó cho phép mọi công cụ trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển thành danh sách cho phép và chỉ các công cụ được liệt kê mới khả dụng.",
+      knowledgeNarrowing:
+        "Bước này chưa có danh sách cho phép kiến thức, vì vậy nó có thể truy vấn mọi foundation đã đăng ký. Thêm mục đầu tiên sẽ giới hạn nó chỉ trong các foundation được liệt kê.",
       toolLabel: "Tên công cụ hoặc nhóm được phép",
       skillLabel: "Tên skill cần khai báo",
+      knowledgeLabel: "ID foundation kiến thức được cho phép",
       skillNameInvalid:
         "Sử dụng tên skill: chữ cái thường, chữ số và dấu gạch ngang đơn, tối đa 64 ký tự.",
+      foundationIdInvalid:
+        "Sử dụng ID foundation: các phân đoạn chữ thường phân cách bằng dấu chấm, ví dụ acme.runbooks.",
       ancestorGate:
-        "Các bước cha ({nodeIds}) có danh sách công cụ cho phép riêng. Governance kiểm tra từng bước từ gốc, vì vậy một công cụ được cấp ở đây vẫn bị từ chối trừ khi các bước đó cũng cho phép.",
+        "Các bước cha ({nodeIds}) có danh sách cho phép riêng cho mục này. Governance kiểm tra từng bước từ gốc, vì vậy một mục được thêm ở đây vẫn bị từ chối trừ khi các bước đó cũng cho phép.",
       reviewHint: "Thao tác thêm sẽ mở trình chỉnh sửa cây để bạn có thể xem lại và lưu thay đổi.",
       empty: "Nhập giá trị trước.",
       duplicate: "Mục đó đã được khai báo trên bước này.",
       nodeMissing: "Bước đó không còn trong cây; tải lại và thử lại.",
       exportFailed: "Không thể tải định nghĩa cây để chỉnh sửa.",
     },
-    skillsTab: {
-      title: "Skills doanh nghiệp",
+    catalogAgentScope:
+      "Công cụ và skills được giới hạn theo agent; danh mục này là những gì agent {agentId} nhìn thấy.",
+    bindings: {
+      title: "Step bindings",
       subtitle:
-        "Một bước quy trình có thể khai báo ontology.skills để đặt tên các skills mà công việc của nó phụ thuộc vào.",
+        "Những gì bước này có thể gọi, chuyên môn mà nó khai báo và những gì nó có thể truy xuất.",
+      tools: "Công cụ — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Kiến thức — ontology.knowledgeFoundations",
+      skillNotInstalled: "chưa cài đặt",
+      foundationNotRegistered: "chưa đăng ký",
+    },
+    skillsTab: {
+      title: "Skills",
+      subtitle:
+        "Mọi skill được cài đặt cho gateway này, cùng với những gì cần thiết để đủ điều kiện.",
+      attachHint:
+        "Đây là danh mục. Để khai báo một skill là phụ thuộc của bước, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
+      empty: "Không có skill nào được cài đặt.",
     },
     runsTitle: "Lần chạy gần đây",
     treesTitle: "Cây quy trình",
@@ -655,8 +672,8 @@ export const vi: TranslationMap = {
     dreams: "Mơ bộ nhớ, hợp nhất và phản chiếu.",
     enterpriseWorktree: "Cây quy trình và các bước được quản lý của chúng.",
     enterpriseHistory: "Các lần chạy được quản lý trước đây và dấu vết của chúng.",
-    enterpriseTools: "Các công cụ mà nhóm doanh nghiệp cung cấp.",
-    enterpriseSkills: "Các Skills mà bước quy trình công việc khai báo.",
+    enterpriseTools: "Danh mục công cụ đã cấu hình.",
+    enterpriseSkills: "Mọi skill được cài đặt cho gateway này.",
     knowledge: "Các nền tảng kiến thức đã đăng ký và trạng thái của chúng.",
   },
   skillWorkshop: {

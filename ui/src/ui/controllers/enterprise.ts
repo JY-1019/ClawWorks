@@ -1,5 +1,7 @@
 // Control UI controller manages the enterprise inspection gateway state.
 import type {
+  EnterpriseKnowledgeFoundationsListResult,
+  EnterpriseKnowledgeFoundationSummary,
   EnterpriseObjectsListResult,
   EnterpriseOntologyObject,
   EnterpriseRunDetail,
@@ -17,11 +19,14 @@ import type {
   EnterpriseTreesRemoveResult,
   EnterpriseTreeSummary,
   EnterpriseTreeVersionSummary,
+  ToolsCatalogResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
   addNodeOntologyEntry,
+  isValidEnterpriseId,
   isValidSkillName,
   type EditableTreeDefinition,
   insertChildNode,
@@ -66,15 +71,17 @@ export type EnterpriseOntologyEntryDraftError =
   | "entry-empty"
   | "entry-duplicate"
   | "skill-name-invalid"
+  | "foundation-id-invalid"
   | "node-missing"
   | "export-failed";
 
 /**
- * An in-progress "grant a tool" / "declare a skill" form on the Tools and Skills
- * tabs. Same contract as EnterpriseNodeDraft: bound to `treeId` + `nodeId` so it
- * cannot be applied to a different tree, and on submit the tree is re-exported,
- * spliced, and loaded into the raw editor for review + Save — so adding a tool
- * grant or a skill reuses enterprise.trees.import rather than adding a write path.
+ * An in-progress step-binding form (a tool grant, a declared skill, or an allowed
+ * knowledge foundation) on the step selected in the Worktree inspector. Same
+ * contract as EnterpriseNodeDraft: bound to `treeId` + `nodeId` so it cannot be
+ * applied to a different tree, and on submit the tree is re-exported, spliced, and
+ * loaded into the raw editor for review + Save — so binding a step reuses
+ * enterprise.trees.import rather than adding a write path.
  */
 export type EnterpriseOntologyEntryDraft = {
   treeId: string;
@@ -82,6 +89,20 @@ export type EnterpriseOntologyEntryDraft = {
   field: NodeOntologyListField;
   value: string;
   error: EnterpriseOntologyEntryDraftError | null;
+};
+
+/** Load state of the tool/skill/knowledge catalogs the enterprise screens browse. */
+export type EnterpriseCatalogPhase = "unloaded" | "loading" | "ready";
+
+/**
+ * Per-catalog load failure. Kept separate rather than one shared message because
+ * the three come from independent gateway methods and land on different surfaces:
+ * a failed skill probe must not put an error banner on the Tools tab.
+ */
+export type EnterpriseCatalogErrors = {
+  tools: string | null;
+  skills: string | null;
+  foundations: string | null;
 };
 
 export type EnterpriseState = {
@@ -131,6 +152,20 @@ export type EnterpriseState = {
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
   enterpriseOntologyEntryDraft: EnterpriseOntologyEntryDraft | null;
+  // Catalogs of what a step can be bound TO: every tool the gateway exposes,
+  // every installed skill, and every registered knowledge foundation. Read-only
+  // reference data, loaded independently of the run/tree state.
+  enterpriseCatalogPhase: EnterpriseCatalogPhase;
+  enterpriseCatalogErrors: EnterpriseCatalogErrors;
+  /**
+   * The agent the tool/skill catalogs describe. Both are agent-scoped server-side
+   * (plugin tools resolve against an agent's workspace, skills against its filter),
+   * so the surfaces must name it rather than imply a deployment-wide list.
+   */
+  enterpriseCatalogAgentId: string | null;
+  enterpriseToolGroups: ToolsCatalogResult["groups"];
+  enterpriseSkills: SkillStatusEntry[];
+  enterpriseFoundations: EnterpriseKnowledgeFoundationSummary[];
   enterpriseError: string | null;
 };
 
@@ -170,6 +205,69 @@ export async function loadEnterprise(state: EnterpriseState) {
       state.enterpriseLoading = false;
     }
   }
+}
+
+// Separate token: the catalogs race independently from the run/tree loads.
+let catalogRequestSeq = 0;
+
+/** Turn a catalog rejection into the message its surface shows. */
+function catalogErrorMessage(err: unknown, feature: string): string {
+  return isMissingOperatorReadScopeError(err)
+    ? formatMissingOperatorReadScopeMessage(feature)
+    : String(err);
+}
+
+/**
+ * Load the three catalogs the enterprise screens browse and bind FROM: every tool
+ * the gateway exposes, every installed skill, and every registered knowledge
+ * foundation. No agent id is sent, so each answers for the default agent — these
+ * are deployment-wide reference lists, not an agent's effective set.
+ *
+ * Settled independently: one failing catalog leaves the other two usable, because
+ * a step can be bound to any of the three and a dead skill probe must not take the
+ * tool list down with it.
+ */
+export async function loadEnterpriseCatalogs(state: EnterpriseState) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const client = state.client;
+  const requestSeq = ++catalogRequestSeq;
+  state.enterpriseCatalogPhase = "loading";
+  const [tools, skills, foundations] = await Promise.allSettled([
+    client.request<ToolsCatalogResult>("tools.catalog", { includePlugins: true }),
+    client.request<SkillStatusReport | undefined>("skills.status", {}),
+    client.request<EnterpriseKnowledgeFoundationsListResult>(
+      "enterprise.knowledge.foundations.list",
+      {},
+    ),
+  ]);
+  // A newer load (tab switch, Refresh) supersedes this one; dropping the whole
+  // result keeps the three catalogs from mixing two generations.
+  if (requestSeq !== catalogRequestSeq) {
+    return;
+  }
+  state.enterpriseToolGroups = tools.status === "fulfilled" ? tools.value.groups : [];
+  state.enterpriseSkills = skills.status === "fulfilled" ? (skills.value?.skills ?? []) : [];
+  // Both handlers resolve the default agent when none is sent, and both report
+  // which one they answered for; keep it so the surfaces can say whose catalog
+  // this is instead of implying every agent sees the same tools and skills.
+  state.enterpriseCatalogAgentId =
+    (tools.status === "fulfilled" ? tools.value.agentId : null) ??
+    (skills.status === "fulfilled" ? (skills.value?.agentId ?? null) : null);
+  state.enterpriseFoundations =
+    foundations.status === "fulfilled" ? foundations.value.foundations : [];
+  state.enterpriseCatalogErrors = {
+    tools:
+      tools.status === "rejected" ? catalogErrorMessage(tools.reason, "the tool catalog") : null,
+    skills:
+      skills.status === "rejected" ? catalogErrorMessage(skills.reason, "installed skills") : null,
+    foundations:
+      foundations.status === "rejected"
+        ? catalogErrorMessage(foundations.reason, "knowledge foundations")
+        : null,
+  };
+  state.enterpriseCatalogPhase = "ready";
 }
 
 // Monotonic token so only the latest detail request wins. The selected id alone
@@ -763,7 +861,7 @@ export async function submitAddEnterpriseNode(state: EnterpriseState) {
   });
 }
 
-/** Open the "grant a tool" / "declare a skill" form for `nodeId` on the selected tree. */
+/** Open the step-binding form for `field` on `nodeId` in the selected tree. */
 export function beginAddEnterpriseOntologyEntry(
   state: EnterpriseState,
   nodeId: string,
@@ -805,11 +903,16 @@ export async function submitAddEnterpriseOntologyEntry(state: EnterpriseState) {
     state.enterpriseOntologyEntryDraft = { ...draft, error: "entry-empty" };
     return;
   }
-  // A declared skill must satisfy the import contract; catching it here keeps the
-  // failure in the form instead of stranding the operator in the editor with a
-  // spliced definition that cannot save.
+  // A declared skill or foundation must satisfy the import contract; catching it
+  // here keeps the failure in the form instead of stranding the operator in the
+  // editor with a spliced definition that cannot save. Tool entries are globs
+  // (`group:enterprise`, `memory_*`), so only non-blank is required of them.
   if (draft.field === "skills" && !isValidSkillName(value)) {
     state.enterpriseOntologyEntryDraft = { ...draft, error: "skill-name-invalid" };
+    return;
+  }
+  if (draft.field === "knowledgeFoundations" && !isValidEnterpriseId(value)) {
+    state.enterpriseOntologyEntryDraft = { ...draft, error: "foundation-id-invalid" };
     return;
   }
   if (!tree.nodes.some((node) => node.id === draft.nodeId)) {
@@ -985,6 +1088,7 @@ async function saveEnterpriseTree(state: EnterpriseState) {
       // The operator started a different selection/draft; the tree is still
       // saved, so just refresh the registry list in the background.
       await loadEnterprise(state);
+      void loadEnterpriseCatalogs(state);
       return;
     }
     // resetTreeEditing bumps editSeedSeq; capture a fresh intent to detect the
@@ -993,6 +1097,11 @@ async function saveEnterpriseTree(state: EnterpriseState) {
     const openIntent = editSeedSeq;
     // A new tree can change the registry list; reload it, then open the saved tree.
     await loadEnterprise(state);
+    // An import rebuilds the server's bundle knowledge registry (a tree that drops
+    // its last reference to a bundled foundation prunes it), so the foundation
+    // catalog this screen suggests from is stale until reloaded. Fire-and-forget:
+    // it is reference data, and its own token drops a superseded response.
+    void loadEnterpriseCatalogs(state);
     // A failed list reload set the banner; opening the saved tree would clear
     // enterpriseError at request start and hide that failure with stale lists.
     if (state.enterpriseError) {
@@ -1047,6 +1156,9 @@ async function removeEnterpriseTree(state: EnterpriseState, treeId: string) {
       state.enterpriseTreeVersions = [];
     }
     await loadEnterprise(state);
+    // Removing a tree drops the bundle foundations it owned; reload so the
+    // catalog stops offering ids nothing can retrieve anymore.
+    void loadEnterpriseCatalogs(state);
   } catch (err) {
     state.enterpriseError = String(err);
   }
@@ -1149,6 +1261,9 @@ function applyError(state: EnterpriseState, err: unknown) {
     detailRequestSeq++;
     treeRequestSeq++;
     versionsRequestSeq++;
+    // The knowledge catalog is governed by the same scope, and a load started
+    // before the loss must not repopulate the lists cleared below.
+    catalogRequestSeq++;
     // Also drop the node inspector: clearing bumps nodeObjectsRequestSeq so an
     // in-flight enterprise.objects.list cannot write governed rows back after
     // the scope loss, the same invariant the other tokens above enforce.
@@ -1172,6 +1287,12 @@ function applyError(state: EnterpriseState, err: unknown) {
     state.enterpriseTreeIssue = null;
     state.enterpriseTreeVersions = [];
     state.enterpriseTreeVersionsLoading = false;
+    state.enterpriseCatalogPhase = "unloaded";
+    state.enterpriseCatalogErrors = { tools: null, skills: null, foundations: null };
+    state.enterpriseCatalogAgentId = null;
+    state.enterpriseToolGroups = [];
+    state.enterpriseSkills = [];
+    state.enterpriseFoundations = [];
     resetTreeEditing(state);
     state.enterpriseError = formatMissingOperatorReadScopeMessage("enterprise runs");
     return;

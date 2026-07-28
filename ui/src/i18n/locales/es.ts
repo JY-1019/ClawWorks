@@ -210,31 +210,32 @@ export const es: TranslationMap = {
     title: "Enterprise",
     subtitle: "Ejecuciones de flujos de trabajo gobernados y los árboles de flujos registrados.",
     toolsTab: {
-      title: "Herramientas empresariales",
+      title: "Herramientas",
       subtitle:
-        "Herramientas opcionales que una ejecución gobernada puede usar; excluidas de los grupos amplios de herramientas.",
-      readGroup: "Lectura (group:enterprise)",
-      writeGroup: "Escritura (group:enterprise-write)",
-      grantTitle: "Otorgar una herramienta a un paso",
-      grantSubtitle:
-        "Añade un nombre de herramienta o grupo a ontology.allowedTools del paso seleccionado. Denegar siempre prevalece.",
+        "El catálogo de herramientas configurado, agrupado de la forma en que el runtime los agrupa. Una herramienta de plugin aparece en la lista una vez declarada, incluso antes de que su configuración se resuelva, y las herramientas de canal y MCP solo existen dentro de una sesión activa, por lo que esto es lo que se puede configurar en lugar de lo que está activo en este momento.",
+      attachHint:
+        "Este es el catálogo. Para permitir que un paso llame a una herramienta, abra Worktree, seleccione el paso y agréguela en Step bindings.",
+      empty: "No hay herramientas disponibles en este Gateway.",
+      toolCount: "{count} herramienta(s)",
+      optionalBadge: "opcional",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Añadir",
-      forStep: "Paso: {nodeId}",
       none: "Ninguno declarado aún.",
-      selectStep: "Selecciona primero un paso en la pestaña Worktree.",
-      stepUnavailable:
-        "El paso seleccionado no se ha cargado. Actualice la página o vuelva a seleccionarlo en la pestaña Worktree.",
-      editorOpen: "Guarda o descarta el editor de árbol abierto antes de agregar otra entrada.",
       scopeNarrowing:
         "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Al agregar la primera entrada, se convierte en una lista de permitidas y solo las herramientas listadas permanecen disponibles.",
+      knowledgeNarrowing:
+        "Este paso aún no tiene una lista de conocimientos permitidos, por lo que puede consultar todas las fundaciones registradas. Agregar la primera entrada lo restringe a las fundaciones enumeradas.",
       toolLabel: "Nombre o grupo de herramienta a permitir",
       skillLabel: "Nombre del skill a declarar",
+      knowledgeLabel: "Id de fundación de conocimiento a permitir",
       skillNameInvalid:
         "Use un nombre de skill: letras minúsculas, dígitos y guiones simples, máximo 64 caracteres.",
+      foundationIdInvalid:
+        "Use un id de fundación: segmentos en minúsculas separados por puntos, por ejemplo acme.runbooks.",
       ancestorGate:
-        "Los pasos padre ({nodeIds}) tienen su propia lista de herramientas permitidas. La gobernanza verifica cada paso desde la raíz, por lo que una herramienta concedida aquí seguirá siendo denegada a menos que esos pasos también la permitan.",
+        "Los pasos superiores ({nodeIds}) tienen su propia lista de permitidos para esto. Governance verifica cada paso desde la raíz, por lo que una entrada añadida aquí será denegada a menos que esos pasos también la permitan.",
       reviewHint:
         "Al añadir se abre el editor de árbol para que puedas revisar y guardar el cambio.",
       empty: "Introduce un valor primero.",
@@ -242,10 +243,24 @@ export const es: TranslationMap = {
       nodeMissing: "Ese paso ya no está en el árbol; recarga e inténtalo de nuevo.",
       exportFailed: "No se pudo cargar la definición del árbol para editar.",
     },
-    skillsTab: {
-      title: "Skills empresariales",
+    catalogAgentScope:
+      "Las herramientas y Skills tienen alcance por agente; este catálogo es el que ve el agente {agentId}.",
+    bindings: {
+      title: "Step bindings",
       subtitle:
-        "Un paso del flujo de trabajo puede declarar ontology.skills para nombrar las skills de las que depende su trabajo.",
+        "Lo que este paso puede llamar, el conocimiento que declara y lo que puede recuperar.",
+      tools: "Herramientas — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Conocimiento — ontology.knowledgeFoundations",
+      skillNotInstalled: "no instalado",
+      foundationNotRegistered: "no registrada",
+    },
+    skillsTab: {
+      title: "Skills",
+      subtitle: "Cada skill instalado para este gateway, con lo que necesita para ser elegible.",
+      attachHint:
+        "Este es el catálogo. Para declarar una como dependencia de un paso, abra Worktree, seleccione el paso y agréguela en Step bindings.",
+      empty: "No hay Skills instalados.",
     },
     runsTitle: "Ejecuciones recientes",
     treesTitle: "Árboles de flujos de trabajo",
@@ -660,8 +675,8 @@ export const es: TranslationMap = {
     dreams: "Consolidación de la memoria durante el sueño.",
     enterpriseWorktree: "Árboles de flujo de trabajo y sus pasos gobernados.",
     enterpriseHistory: "Ejecuciones gobernadas anteriores y sus trazas.",
-    enterpriseTools: "Herramientas que exponen los grupos empresariales.",
-    enterpriseSkills: "Skills que declaran los pasos del flujo de trabajo.",
+    enterpriseTools: "El catálogo de herramientas configurado.",
+    enterpriseSkills: "Cada skill instalado para este gateway.",
     knowledge: "Bases de conocimiento registradas y su estado.",
   },
   skillWorkshop: {

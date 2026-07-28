@@ -601,6 +601,14 @@ export const EnterpriseKnowledgeFoundationSummarySchema = Type.Object(
     detail: Type.Optional(Type.String()),
     /** Non-secret one-line summary of what the foundation covers. */
     description: Type.Optional(Type.String()),
+    /**
+     * Trees whose imported bundle owns this foundation. Retrieval resolves a
+     * bundle foundation only for its OWNING tree, so a client must not read the
+     * registry as deployment-wide: two workflows can carry the same id with
+     * different content. Omitted when a plugin registered the id, which is
+     * global and therefore retrievable by every tree.
+     */
+    ownerTreeIds: Type.Optional(Type.Array(NonEmptyString)),
     /** Nodes whose ontology allow-list names this foundation. */
     referencedBy: Type.Array(EnterpriseKnowledgeFoundationReferenceSchema),
   },

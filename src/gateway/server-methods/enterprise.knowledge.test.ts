@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES } from "../../../packages/gateway-protocol/src/index.js";
+import { registerBuiltinExampleKnowledgeFoundations } from "../../enterprise/builtin-knowledge.js";
 import {
+  clearBundleKnowledgeFoundations,
   clearEnterpriseKnowledgeFoundations,
   registerEnterpriseKnowledgeFoundation,
 } from "../../enterprise/knowledge.js";
@@ -62,10 +64,15 @@ beforeAll(() => {
   invalidateWorkflowTreeRegistry();
   expect(importWorkflowTreeContent({ content: REFERENCING_TREE, format: "json" }).ok).toBe(true);
   invalidateWorkflowTreeRegistry();
+  // The import rebuilt the bundle registry, which registers the shipped example
+  // foundation. These cases assert the projection of what they register
+  // themselves, so start from an empty registry (one case opts back in).
+  clearBundleKnowledgeFoundations();
 });
 
 afterEach(() => {
   clearEnterpriseKnowledgeFoundations();
+  clearBundleKnowledgeFoundations();
 });
 
 afterAll(() => {
@@ -135,6 +142,23 @@ describe("enterprise.knowledge.foundations.list", () => {
       foundations: Array<{ id: string; referencedBy: unknown[] }>;
     };
     expect(foundations[0]).toMatchObject({ id: "orphan.kb", referencedBy: [] });
+  });
+
+  it("lists the shipped example foundation with the example steps that reference it", async () => {
+    // What a fresh install shows on the Knowledge screen: the example corpus is
+    // registered, so its id is not a dangling allow-list reference.
+    registerBuiltinExampleKnowledgeFoundations();
+
+    const { payload } = await invoke("enterprise.knowledge.foundations.list", {});
+    const { foundations } = payload as {
+      foundations: Array<{ id: string; kind: string; referencedBy: Array<{ treeId: string }> }>;
+    };
+    const example = foundations.find((entry) => entry.id === "clawworks.support-kb.example");
+    // Read-only: the content ships with the install, so no document management.
+    expect(example?.kind).toBe("remote");
+    expect(example?.referencedBy.map((reference) => reference.treeId)).toContain(
+      "clawworks.support",
+    );
   });
 
   it("lists foundations in sorted id order for a stable inspector view", async () => {

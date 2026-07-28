@@ -216,32 +216,32 @@ export const de: TranslationMap = {
     title: "Enterprise",
     subtitle: "Überwachte Workflow-Ausführungen und registrierte Workflow-Bäume.",
     toolsTab: {
-      title: "Enterprise-Tools",
+      title: "Tools",
       subtitle:
-        "Opt-in-Tools, die ein gesteuerter Lauf verwenden kann; von den allgemeinen Tool-Gruppen ausgeschlossen.",
-      readGroup: "Lesen (group:enterprise)",
-      writeGroup: "Schreiben (group:enterprise-write)",
-      grantTitle: "Einem Schritt ein Tool zuweisen",
-      grantSubtitle:
-        "Fügen Sie einen Tool-Namen oder eine Gruppe zu ontology.allowedTools des ausgewählten Schritts hinzu. Deny hat immer Vorrang.",
+        "Der konfigurierte Tool-Katalog, gruppiert wie die Laufzeitumgebung sie gruppiert. Ein Plugin-Tool wird aufgelistet, sobald es deklariert ist, auch bevor seine Konfiguration aufgelöst wird. Channel- und MCP-Tools existieren nur innerhalb einer aktiven Sitzung – daher zeigt dies, was konfiguriert werden kann, und nicht, was gerade aktiv ist.",
+      attachHint:
+        "Dies ist der Katalog. Um einem Schritt ein Tool zuzuweisen, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie es unter Schrittbindungen hinzu.",
+      empty: "Auf diesem Gateway sind keine Tools verfügbar.",
+      toolCount: "{count} Tool(s)",
+      optionalBadge: "optional",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Hinzufügen",
-      forStep: "Schritt: {nodeId}",
       none: "Noch keine Einträge vorhanden.",
-      selectStep: "Wählen Sie zuerst einen Schritt im Worktree-Tab aus.",
-      stepUnavailable:
-        "Der ausgewählte Schritt ist nicht geladen. Aktualisieren Sie die Seite oder wählen Sie ihn erneut auf dem Worktree-Tab aus.",
-      editorOpen:
-        "Speichern oder verwerfen Sie den geöffneten Baumeditor, bevor Sie einen weiteren Eintrag hinzufügen.",
       scopeNarrowing:
         "Dieser Schritt hat noch keine Tool-Erlaubnisliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Sobald der erste Eintrag hinzugefügt wird, wird er zu einer Erlaubnisliste und nur die aufgeführten Tools bleiben verfügbar.",
+      knowledgeNarrowing:
+        "Dieser Schritt hat noch keine Wissens-Allowlist, daher kann er jede registrierte Foundation abfragen. Der erste Eintrag beschränkt ihn auf die aufgeführten Foundations.",
       toolLabel: "Tool-Name oder -Gruppe zum Erlauben",
       skillLabel: "Zu deklarierender Skill-Name",
+      knowledgeLabel: "Zu erlaubende Wissens-Foundation-ID",
       skillNameInvalid:
         "Verwenden Sie einen Skill-Namen: Kleinbuchstaben, Ziffern und einzelne Bindestriche, maximal 64 Zeichen.",
+      foundationIdInvalid:
+        "Verwenden Sie eine Foundation-ID: kleingeschriebene, durch Punkte getrennte Segmente, zum Beispiel acme.runbooks.",
       ancestorGate:
-        "Übergeordnete Schritte ({nodeIds}) haben ihre eigene Tool-Allowlist. Die Governance prüft jeden Schritt ab dem Root, sodass ein hier gewährtes Tool dennoch abgelehnt wird, wenn diese Schritte es nicht ebenfalls erlauben.",
+        "Übergeordnete Schritte ({nodeIds}) haben eigene Zulassungslisten dafür. Die Governance prüft jeden Schritt vom Ursprung aus, sodass ein hier hinzugefügter Eintrag weiterhin abgelehnt wird, wenn diese Schritte ihn nicht ebenfalls zulassen.",
       reviewHint:
         "Beim Hinzufügen wird der Baum-Editor geöffnet, damit Sie die Änderung überprüfen und speichern können.",
       empty: "Geben Sie zuerst einen Wert ein.",
@@ -250,10 +250,24 @@ export const de: TranslationMap = {
         "Dieser Schritt ist nicht mehr im Baum vorhanden. Laden Sie die Seite neu und versuchen Sie es erneut.",
       exportFailed: "Die Baumdefinition konnte nicht zum Bearbeiten geladen werden.",
     },
-    skillsTab: {
-      title: "Enterprise-Skills",
+    catalogAgentScope:
+      "Tools und Skills sind agentenbezogen; dieser Katalog ist derjenige, den Agent {agentId} sieht.",
+    bindings: {
+      title: "Schrittbindungen",
       subtitle:
-        "Ein Workflow-Schritt kann ontology.skills deklarieren, um die Skills zu benennen, von denen seine Arbeit abhängt.",
+        "Was dieser Schritt aufrufen darf, welches Know-how er deklariert und was er abrufen darf.",
+      tools: "Tools — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Wissen — ontology.knowledgeFoundations",
+      skillNotInstalled: "nicht installiert",
+      foundationNotRegistered: "nicht registriert",
+    },
+    skillsTab: {
+      title: "Skills",
+      subtitle: "Alle für dieses Gateway installierten Skills mit den jeweiligen Voraussetzungen.",
+      attachHint:
+        "Dies ist der Katalog. Um einen Skill als Abhängigkeit eines Schritts zu deklarieren, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie ihn unter Schrittbindungen hinzu.",
+      empty: "Es sind keine Skills installiert.",
     },
     runsTitle: "Letzte Ausführungen",
     treesTitle: "Workflow-Bäume",
@@ -671,8 +685,8 @@ export const de: TranslationMap = {
     dreams: "Speicherkonsolidierung im Schlaf.",
     enterpriseWorktree: "Workflow-Bäume und ihre verwalteten Schritte.",
     enterpriseHistory: "Vergangene verwaltete Ausführungen und ihre Traces.",
-    enterpriseTools: "Tools, die die Unternehmensgruppen bereitstellen.",
-    enterpriseSkills: "Skills, die Workflow-Schritte deklarieren.",
+    enterpriseTools: "Der konfigurierte Tool-Katalog.",
+    enterpriseSkills: "Alle für dieses Gateway installierten Skills.",
     knowledge: "Registrierte Wissensgrundlagen und ihr Status.",
   },
   skillWorkshop: {

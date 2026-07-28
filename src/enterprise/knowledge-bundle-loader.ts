@@ -5,6 +5,7 @@
  * re-hydrates the in-memory registry.
  */
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { registerBuiltinExampleKnowledgeFoundations } from "./builtin-knowledge.js";
 import {
   listBundledKnowledgeFoundations,
   type EnterpriseKnowledgeStoreOptions,
@@ -52,12 +53,20 @@ export function loadPersistedBundleFoundations(
   } catch (err) {
     // A store read fault must not block runtime startup: the persisted
     // foundations are simply absent until repaired (knowledge_search returns
-    // nothing for them), rather than failing the whole plugin-load path.
+    // nothing for them), rather than failing the whole plugin-load path. The
+    // shipped examples stay unregistered too — an unreadable store may hold an
+    // operator's own content for the same tuple, and serving example policy in
+    // its place would answer retrieval with the wrong corpus.
     log.warn(
       `failed to load persisted bundle knowledge foundations: ${err instanceof Error ? err.message : String(err)}`,
     );
     return;
   }
+  // (tree, foundation) tuples an operator's import owns, healthy or corrupt.
+  const claimed = new Set<string>();
+  // A space cannot appear in either id (both are dotted-lowercase), so it is an
+  // unambiguous separator — and unlike a NUL byte it keeps this file text for git.
+  const claimKey = (treeId: string, foundationId: string) => `${treeId} ${foundationId}`;
   for (const record of result.records) {
     // Register scoped to the owning tree so bundle knowledge stays workflow-local.
     // Re-imports are idempotent (content keyed by id, ownership accumulates). The
@@ -72,12 +81,23 @@ export function loadPersistedBundleFoundations(
         kind: "remote",
       }),
     );
+    claimed.add(claimKey(record.treeId, record.foundation.id));
   }
   for (const rowError of result.rowErrors) {
+    // Claimed as well: the tuple belongs to the operator even though its content
+    // is unreadable, so the shipped example must not quietly stand in for it.
+    claimed.add(claimKey(rowError.treeId, rowError.foundationId));
     log.warn(
       `skipped corrupt persisted bundle knowledge foundation "${rowError.foundationId}": ${rowError.message}`,
     );
   }
+  // Shipped examples belong to the same registry and the same clear-then-rebuild
+  // lifecycle as the persisted rows, so they are registered here rather than at
+  // import time — reload() would otherwise drop them. Last, and only for tuples
+  // no import owns.
+  registerBuiltinExampleKnowledgeFoundations((treeId, foundationId) =>
+    claimed.has(claimKey(treeId, foundationId)),
+  );
 }
 
 /**

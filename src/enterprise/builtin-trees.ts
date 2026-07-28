@@ -89,12 +89,14 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
       // KB allow-list at the root too, or an omitted list would let the root scope
       // (used by non-advancing CLI/ACP runs) query every registered foundation.
       //
-      // `clawworks.support-kb` is an allow-list reference, not a registration: no
-      // adapter ships under this id, so knowledge_search returns nothing until an
-      // operator registers a foundation with this id (e.g. a LightRAG server — see
-      // docs/concepts/clawworks-enterprise).
+      // `clawworks.support-kb.example` ships with example content registered
+      // against THIS tree id (src/enterprise/builtin-knowledge.ts), so retrieval
+      // returns real snippets once the example is imported. The id is
+      // example-scoped: a production foundation (e.g. a LightRAG server) registers
+      // under an id of your own and this step's list names that instead, so the
+      // example corpus can never stand in for it. See docs/concepts/clawworks-enterprise.
       allowedTools: ["memory_search", "memory_get", "message", "knowledge_search"],
-      knowledgeFoundations: ["clawworks.support-kb"],
+      knowledgeFoundations: ["clawworks.support-kb.example"],
       constraints: [
         { id: "no-card-numbers", description: "Never repeat full payment card numbers." },
       ],
@@ -110,6 +112,11 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
         title: "Triage the request",
         ontology: {
           allowedTools: ["memory_search", "message"],
+          // Declared skills name the know-how a step needs; they never widen tool
+          // scope. `ticket-triage` is deliberately an id no install ships, so the
+          // inspector shows what an unresolved dependency looks like next to the
+          // resolved one on support.escalate.
+          skills: ["ticket-triage"],
           actions: [
             {
               id: "classify",
@@ -131,7 +138,7 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
         title: "Investigate account and order history",
         ontology: {
           allowedTools: ["memory_search", "memory_get", "message", "knowledge_search"],
-          knowledgeFoundations: ["clawworks.support-kb"],
+          knowledgeFoundations: ["clawworks.support-kb.example"],
           actions: [
             {
               id: "lookup-history",
@@ -147,6 +154,7 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
         title: "Resolve the request or issue a refund",
         ontology: {
           allowedTools: ["memory_get", "message"],
+          skills: ["refund-policy"],
           actions: [
             {
               id: "reply",
@@ -169,6 +177,9 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
         title: "Escalate to a human agent",
         ontology: {
           allowedTools: ["message"],
+          // `summarize` is a bundled skill, so this dependency resolves on a
+          // stock install.
+          skills: ["summarize"],
           actions: [
             {
               id: "handoff",

@@ -51,7 +51,7 @@ const DEFAULTED_OPTIONAL_INIT_PARAM_ENTRIES: readonly [string, readonly string[]
   ["EnterpriseRunDetail", ["route", "treeHash"]],
   ["EnterpriseTreeDetail", ["hash"]],
   ["EnterpriseTreeOntology", ["guidance", "skills"]],
-  ["EnterpriseKnowledgeFoundationSummary", ["description"]],
+  ["EnterpriseKnowledgeFoundationSummary", ["description", "ownerTreeIds"]],
   ["SessionOperationEvent", ["agentId"]],
   ["SessionsCompactionListParams", ["agentId"]],
   ["SessionsCompactionGetParams", ["agentId"]],

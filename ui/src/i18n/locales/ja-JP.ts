@@ -215,42 +215,56 @@ export const ja_JP: TranslationMap = {
     title: "Enterprise",
     subtitle: "管理されたワークフロー実行と登録済みワークフローツリー。",
     toolsTab: {
-      title: "エンタープライズツール",
+      title: "ツール",
       subtitle:
-        "管理された実行で使用できるオプトインツール。広範なツールグループからは除外されます。",
-      readGroup: "読み取り (group:enterprise)",
-      writeGroup: "書き込み (group:enterprise-write)",
-      grantTitle: "ステップにツールを付与",
-      grantSubtitle:
-        "選択したステップの ontology.allowedTools にツール名またはグループを追加します。Deny は常に優先されます。",
+        "ランタイムがグループ化する方法に従って整理された、設定済みのツールカタログです。プラグインツールは設定が解決される前でも宣言された時点で表示されます。チャネルツールと MCP ツールはライブセッション内でのみ存在するため、ここに表示されるのは現在ライブのものではなく、設定可能なものです。",
+      attachHint:
+        "これはカタログです。ステップからツールを呼び出すには、Worktreeを開き、ステップを選択して、Step bindingsに追加してください。",
+      empty: "このGatewayで利用可能なツールはありません。",
+      toolCount: "{count} 件のツール",
+      optionalBadge: "任意",
+      pluginBadge: "プラグイン: {pluginId}",
     },
     entryDraft: {
       add: "追加",
-      forStep: "ステップ: {nodeId}",
       none: "まだ宣言されていません。",
-      selectStep: "先に Worktree タブでステップを選択してください。",
-      stepUnavailable:
-        "選択されたステップが読み込まれていません。更新するか、Worktreeタブで再選択してください。",
-      editorOpen:
-        "別のエントリを追加する前に、開いているツリーエディタを保存または破棄してください。",
       scopeNarrowing:
         "このステップにはまだツール許可リストがないため、拒否されたツール以外のすべてのツールが許可されます。最初のエントリを追加すると許可リストに切り替わり、リストに記載されたツールのみが使用可能になります。",
+      knowledgeNarrowing:
+        "このステップにはまだナレッジ許可リストがないため、登録されたすべてのファウンデーションにクエリできます。最初のエントリを追加すると、リストされたファウンデーションに制限されます。",
       toolLabel: "許可するツール名またはグループ",
       skillLabel: "宣言するSkill名",
+      knowledgeLabel: "許可するナレッジファウンデーションID",
       skillNameInvalid:
         "Skill名を使用してください：小文字の英字、数字、単独のハイフンのみ、最大64文字。",
+      foundationIdInvalid:
+        "ファウンデーションIDを使用してください: ドット区切りの小文字セグメント（例: acme.runbooks）。",
       ancestorGate:
-        "親ステップ（{nodeIds}）には独自のツール許可リストがあります。ガバナンスはルートから各ステップを順にチェックするため、ここで許可されたツールであっても、それらのステップでも許可されていない限り拒否されます。",
+        "親ステップ ({nodeIds}) にはこれに対する独自の許可リストがあります。ガバナンスはルートから各ステップを確認するため、ここに追加されたエントリは、それらのステップでも許可されていない限り拒否されます。",
       reviewHint: "追加するとツリーエディターが開き、変更を確認して保存できます。",
       empty: "先に値を入力してください。",
       duplicate: "そのエントリはこのステップで既に宣言されています。",
       nodeMissing: "そのステップはツリーに存在しません。再読み込みしてもう一度お試しください。",
       exportFailed: "編集するツリー定義を読み込めませんでした。",
     },
+    catalogAgentScope:
+      "ツールとSkillsはエージェントスコープです。このカタログはエージェント {agentId} に表示されるものです。",
+    bindings: {
+      title: "Step bindings",
+      subtitle: "このステップが呼び出せるもの、宣言するノウハウ、取得できるもの。",
+      tools: "ツール — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "ナレッジ — ontology.knowledgeFoundations",
+      skillNotInstalled: "未インストール",
+      foundationNotRegistered: "未登録",
+    },
     skillsTab: {
-      title: "エンタープライズ Skills",
+      title: "Skills",
       subtitle:
-        "ワークフローステップは ontology.skills を宣言して、作業が依存する Skills を指定できます。",
+        "この Gateway にインストールされたすべての Skills と、有効になるために必要な条件です。",
+      attachHint:
+        "これはカタログです。ステップの依存関係として宣言するには、Worktreeを開き、ステップを選択して、Step bindingsに追加してください。",
+      empty: "インストールされたSkillsはありません。",
     },
     runsTitle: "最近の実行",
     treesTitle: "ワークフローツリー",
@@ -662,8 +676,8 @@ export const ja_JP: TranslationMap = {
     dreams: "スリープ中のメモリ統合。",
     enterpriseWorktree: "ワークフローツリーとその管理対象ステップ。",
     enterpriseHistory: "過去のガバナンス対象の実行とそのトレース。",
-    enterpriseTools: "エンタープライズグループが公開するツール。",
-    enterpriseSkills: "ワークフローステップが宣言する Skills。",
+    enterpriseTools: "設定済みのツールカタログ。",
+    enterpriseSkills: "この Gateway にインストールされたすべての Skills。",
     knowledge: "登録済みのナレッジ基盤とそのステータス。",
   },
   skillWorkshop: {

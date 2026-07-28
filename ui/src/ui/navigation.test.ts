@@ -129,8 +129,8 @@ describe("subtitleForTab", () => {
       logs: "Live gateway logs.",
       enterpriseWorktree: "Workflow trees and their governed steps.",
       enterpriseHistory: "Past governed runs and their traces.",
-      enterpriseTools: "Tools the enterprise groups expose.",
-      enterpriseSkills: "Skills workflow steps declare.",
+      enterpriseTools: "The configured tool catalog.",
+      enterpriseSkills: "Every skill installed for this gateway.",
       knowledge: "Registered knowledge foundations and their status.",
     });
   });

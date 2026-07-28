@@ -184,7 +184,27 @@ function errorMessage(err: unknown): string {
 export type EnterpriseKnowledgeFoundationEntry = {
   foundationId: string;
   descriptor: KnowledgeFoundationDescriptor;
+  /**
+   * Trees whose bundle owns this id, sorted. EMPTY means a plugin registered it —
+   * that registry is global, so every tree can retrieve it. Always populated here;
+   * omission is reserved for clients talking to a gateway too old to report it, so
+   * they can tell "global" from "unknown". Retrieval is tree-scoped
+   * (resolveRetrievalAdapter), so a caller reading the flat id list as
+   * deployment-wide would report another workflow's foundation as available here.
+   */
+  ownerTreeIds: string[];
 };
+
+/** Trees whose bundle registry holds `foundationId`, sorted. */
+function bundleOwnerTreeIds(foundationId: string): string[] {
+  const treeIds: string[] = [];
+  for (const [treeId, perTree] of bundleFoundationsByTree()) {
+    if (perTree.has(foundationId)) {
+      treeIds.push(treeId);
+    }
+  }
+  return treeIds.toSorted();
+}
 
 /**
  * Every registered foundation with a descriptor, in the same sorted order as
@@ -193,10 +213,15 @@ export type EnterpriseKnowledgeFoundationEntry = {
  * inspector lists them rather than hiding what it cannot introspect.
  */
 export function listEnterpriseKnowledgeFoundationDescriptors(): EnterpriseKnowledgeFoundationEntry[] {
-  return listEnterpriseKnowledgeFoundationIds().map((foundationId) => ({
-    foundationId,
-    descriptor: describeFoundation(foundationId),
-  }));
+  return listEnterpriseKnowledgeFoundationIds().map((foundationId) => {
+    // A plugin registration is global and outranks any bundle for the same id
+    // (resolveRetrievalAdapter checks it first), so it reports no owning tree.
+    return {
+      foundationId,
+      descriptor: describeFoundation(foundationId),
+      ownerTreeIds: foundations().has(foundationId) ? [] : bundleOwnerTreeIds(foundationId),
+    };
+  });
 }
 
 // The adapter defaults to the global lookup (inspector view); callers with a

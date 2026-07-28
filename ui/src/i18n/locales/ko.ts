@@ -209,41 +209,55 @@ export const ko: TranslationMap = {
     title: "Enterprise",
     subtitle: "관리되는 워크플로 실행 및 등록된 워크플로 트리입니다.",
     toolsTab: {
-      title: "엔터프라이즈 도구",
+      title: "도구",
       subtitle:
-        "관리된 실행에서 사용할 수 있는 옵트인 도구로, 광범위한 도구 그룹에서는 제외됩니다.",
-      readGroup: "읽기 (group:enterprise)",
-      writeGroup: "쓰기 (group:enterprise-write)",
-      grantTitle: "단계에 도구 부여",
-      grantSubtitle:
-        "선택한 단계의 ontology.allowedTools에 도구 이름 또는 그룹을 추가합니다. Deny가 항상 우선합니다.",
+        "런타임이 그룹화하는 방식으로 정리된 구성된 도구 카탈로그입니다. 플러그인 도구는 선언되면 구성이 확인되기 전에도 나열되며, 채널 및 MCP 도구는 라이브 세션 내에서만 존재하므로 현재 라이브 상태가 아닌 구성 가능한 항목을 보여줍니다.",
+      attachHint:
+        "이것은 카탈로그입니다. 단계에서 도구를 호출하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요.",
+      empty: "이 Gateway에서 사용 가능한 도구가 없습니다.",
+      toolCount: "{count}개 도구",
+      optionalBadge: "선택 사항",
+      pluginBadge: "플러그인: {pluginId}",
     },
     entryDraft: {
       add: "추가",
-      forStep: "단계: {nodeId}",
       none: "아직 선언된 항목이 없습니다.",
-      selectStep: "먼저 Worktree 탭에서 단계를 선택하세요.",
-      stepUnavailable:
-        "선택한 단계가 로드되지 않았습니다. 새로고침하거나 Worktree 탭에서 다시 선택하세요.",
-      editorOpen: "다른 항목을 추가하기 전에 열려 있는 트리 편집기를 저장하거나 취소하세요.",
       scopeNarrowing:
         "이 단계에는 아직 도구 허용 목록이 없으므로 거부된 도구를 제외한 모든 도구를 허용합니다. 첫 번째 항목을 추가하면 허용 목록으로 전환되며 나열된 도구만 사용할 수 있습니다.",
+      knowledgeNarrowing:
+        "이 단계에는 아직 지식 허용 목록이 없으므로 등록된 모든 파운데이션을 쿼리할 수 있습니다. 첫 번째 항목을 추가하면 나열된 파운데이션으로 제한됩니다.",
       toolLabel: "허용할 도구 이름 또는 그룹",
       skillLabel: "선언할 Skill 이름",
+      knowledgeLabel: "허용할 지식 파운데이션 ID",
       skillNameInvalid:
         "Skill 이름을 사용하세요: 소문자, 숫자, 단일 하이픈만 허용되며 최대 64자입니다.",
+      foundationIdInvalid:
+        "파운데이션 ID를 사용하세요: 점으로 구분된 소문자 세그먼트(예: acme.runbooks).",
       ancestorGate:
-        "상위 단계({nodeIds})에 자체 도구 허용 목록이 있습니다. 거버넌스는 루트부터 각 단계를 검사하므로, 여기서 허용된 도구라도 해당 상위 단계에서 허용하지 않으면 거부됩니다.",
+        "상위 단계({nodeIds})에 이 항목에 대한 자체 허용 목록이 있습니다. 거버넌스는 루트부터 각 단계를 확인하므로, 여기에 추가된 항목도 해당 단계에서 허용하지 않으면 거부됩니다.",
       reviewHint: "추가하면 트리 편집기가 열려 변경 사항을 검토하고 저장할 수 있습니다.",
       empty: "먼저 값을 입력하세요.",
       duplicate: "해당 항목은 이미 이 단계에 선언되어 있습니다.",
       nodeMissing: "해당 단계가 더 이상 트리에 없습니다. 새로고침 후 다시 시도하세요.",
       exportFailed: "편집할 트리 정의를 불러올 수 없습니다.",
     },
+    catalogAgentScope:
+      "도구와 Skills는 에이전트 범위로 적용됩니다. 이 카탈로그는 에이전트 {agentId}에게 표시되는 카탈로그입니다.",
+    bindings: {
+      title: "Step bindings",
+      subtitle: "이 단계가 호출할 수 있는 항목, 선언하는 노하우, 검색할 수 있는 항목입니다.",
+      tools: "도구 — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "지식 — ontology.knowledgeFoundations",
+      skillNotInstalled: "설치되지 않음",
+      foundationNotRegistered: "등록되지 않음",
+    },
     skillsTab: {
-      title: "엔터프라이즈 Skills",
-      subtitle:
-        "워크플로 단계에서 ontology.skills를 선언하여 작업에 필요한 Skills의 이름을 지정할 수 있습니다.",
+      title: "Skills",
+      subtitle: "이 Gateway에 설치된 모든 Skills과 자격 요건입니다.",
+      attachHint:
+        "이것은 카탈로그입니다. 단계의 종속성으로 선언하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요.",
+      empty: "설치된 Skills이 없습니다.",
     },
     runsTitle: "최근 실행",
     treesTitle: "워크플로 트리",
@@ -655,8 +669,8 @@ export const ko: TranslationMap = {
     dreams: "수면 중 메모리 통합.",
     enterpriseWorktree: "워크플로 트리와 관리되는 단계입니다.",
     enterpriseHistory: "과거 관리된 실행 및 해당 트레이스.",
-    enterpriseTools: "엔터프라이즈 그룹이 노출하는 도구.",
-    enterpriseSkills: "Skills 워크플로 단계가 선언하는 항목.",
+    enterpriseTools: "구성된 도구 카탈로그입니다.",
+    enterpriseSkills: "이 Gateway에 설치된 모든 Skills입니다.",
     knowledge: "등록된 지식 기반 및 상태입니다.",
   },
   skillWorkshop: {

@@ -44,7 +44,11 @@ import {
   loadWikiMemoryPalace,
   type DreamingState,
 } from "./controllers/dreaming.ts";
-import { refreshEnterprise, type EnterpriseState } from "./controllers/enterprise.ts";
+import {
+  loadEnterpriseCatalogs,
+  refreshEnterprise,
+  type EnterpriseState,
+} from "./controllers/enterprise.ts";
 import { loadExecApprovals, type ExecApprovalsState } from "./controllers/exec-approvals.ts";
 import { loadKnowledgeFoundations, type KnowledgeState } from "./controllers/knowledge.ts";
 import { loadLogs, type LogsState } from "./controllers/logs.ts";
@@ -474,7 +478,9 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
       case "enterpriseHistory":
       case "enterpriseTools":
       case "enterpriseSkills":
-        await refreshEnterprise(app);
+        // The catalogs feed the Tools/Skills surfaces AND the Worktree binding
+        // forms, so every enterprise tab needs them alongside the run/tree data.
+        await Promise.all([refreshEnterprise(app), loadEnterpriseCatalogs(app)]);
         break;
       case "knowledge":
         await loadKnowledgeFoundations(app);

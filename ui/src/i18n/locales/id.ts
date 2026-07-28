@@ -211,31 +211,31 @@ export const id: TranslationMap = {
     title: "Enterprise",
     subtitle: "Eksekusi alur kerja yang diatur dan pohon alur kerja yang terdaftar.",
     toolsTab: {
-      title: "Alat enterprise",
+      title: "Alat",
       subtitle:
-        "Alat opsional yang dapat digunakan oleh eksekusi terkontrol; dikecualikan dari grup alat umum.",
-      readGroup: "Baca (group:enterprise)",
-      writeGroup: "Tulis (group:enterprise-write)",
-      grantTitle: "Berikan alat ke langkah",
-      grantSubtitle:
-        "Tambahkan nama alat atau grup ke ontology.allowedTools langkah yang dipilih. Deny selalu menang.",
+        "Katalog alat yang dikonfigurasi, dikelompokkan sesuai cara runtime mengelompokkannya. Alat plugin terdaftar begitu dideklarasikan, bahkan sebelum konfigurasinya terselesaikan, dan alat channel serta MCP hanya ada dalam sesi aktif, jadi ini adalah apa yang dapat dikonfigurasi, bukan apa yang sedang aktif saat ini.",
+      attachHint:
+        "Ini adalah katalog. Untuk mengizinkan sebuah langkah memanggilnya, buka Worktree, pilih langkah tersebut, dan tambahkan di bawah Step bindings.",
+      empty: "Tidak ada alat yang tersedia di gateway ini.",
+      toolCount: "{count} alat",
+      optionalBadge: "opsional",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Tambah",
-      forStep: "Langkah: {nodeId}",
       none: "Belum ada yang dideklarasikan.",
-      selectStep: "Pilih langkah di tab Worktree terlebih dahulu.",
-      stepUnavailable:
-        "Langkah yang dipilih tidak dimuat. Segarkan, atau pilih kembali di tab Worktree.",
-      editorOpen: "Simpan atau buang editor pohon yang terbuka sebelum menambahkan entri lain.",
       scopeNarrowing:
         "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin dan hanya alat yang tercantum yang tetap tersedia.",
+      knowledgeNarrowing:
+        "Langkah ini belum memiliki daftar izin pengetahuan, sehingga dapat mengkueri setiap fondasi yang terdaftar. Menambahkan entri pertama akan membatasinya hanya pada fondasi yang tercantum.",
       toolLabel: "Nama alat atau grup yang diizinkan",
       skillLabel: "Nama skill yang dideklarasikan",
+      knowledgeLabel: "Id fondasi pengetahuan yang diizinkan",
       skillNameInvalid:
         "Gunakan nama skill: huruf kecil, angka, dan tanda hubung tunggal, maksimal 64 karakter.",
+      foundationIdInvalid: "Gunakan id fondasi: segmen huruf kecil bertitik, contoh acme.runbooks.",
       ancestorGate:
-        "Langkah induk ({nodeIds}) memiliki daftar izin alat mereka sendiri. Governance memeriksa setiap langkah dari root, jadi alat yang diberikan di sini tetap ditolak kecuali langkah-langkah tersebut juga mengizinkannya.",
+        "Langkah induk ({nodeIds}) memiliki allowlist sendiri untuk ini. Governance memeriksa setiap langkah dari root, jadi entri yang ditambahkan di sini tetap ditolak kecuali langkah-langkah tersebut juga mengizinkannya.",
       reviewHint:
         "Menambahkan akan membuka editor tree agar Anda dapat meninjau dan menyimpan perubahan.",
       empty: "Masukkan nilai terlebih dahulu.",
@@ -243,10 +243,25 @@ export const id: TranslationMap = {
       nodeMissing: "Langkah tersebut sudah tidak ada di tree; muat ulang dan coba lagi.",
       exportFailed: "Tidak dapat memuat definisi pohon untuk diedit.",
     },
-    skillsTab: {
-      title: "Skills enterprise",
+    catalogAgentScope:
+      "Alat dan skills dicakupkan per agen; katalog ini adalah yang dilihat oleh agen {agentId}.",
+    bindings: {
+      title: "Step bindings",
       subtitle:
-        "Langkah alur kerja dapat mendeklarasikan ontology.skills untuk menamai skills yang dibutuhkan oleh pekerjaannya.",
+        "Apa yang boleh dipanggil langkah ini, keahlian yang dideklarasikannya, dan apa yang boleh diambilnya.",
+      tools: "Alat — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Pengetahuan — ontology.knowledgeFoundations",
+      skillNotInstalled: "tidak terinstal",
+      foundationNotRegistered: "tidak terdaftar",
+    },
+    skillsTab: {
+      title: "Skills",
+      subtitle:
+        "Setiap skill yang terinstal untuk gateway ini, beserta persyaratan agar memenuhi syarat.",
+      attachHint:
+        "Ini adalah katalog. Untuk mendeklarasikan salah satu sebagai dependensi langkah, buka Worktree, pilih langkah tersebut, dan tambahkan di bawah Step bindings.",
+      empty: "Tidak ada skills yang terinstal.",
     },
     runsTitle: "Eksekusi terbaru",
     treesTitle: "Pohon alur kerja",
@@ -659,8 +674,8 @@ export const id: TranslationMap = {
     dreams: "Konsolidasi memori saat tidur.",
     enterpriseWorktree: "Pohon alur kerja dan langkah-langkah yang diaturnya.",
     enterpriseHistory: "Riwayat eksekusi yang dikelola dan jejaknya.",
-    enterpriseTools: "Alat yang diekspos oleh grup enterprise.",
-    enterpriseSkills: "Skills yang dideklarasikan oleh langkah-langkah alur kerja.",
+    enterpriseTools: "Katalog alat yang dikonfigurasi.",
+    enterpriseSkills: "Setiap skill yang terinstal untuk gateway ini.",
     knowledge: "Fondasi pengetahuan terdaftar dan statusnya.",
   },
   skillWorkshop: {

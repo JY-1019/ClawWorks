@@ -212,41 +212,55 @@ export const pl: TranslationMap = {
     title: "Enterprise",
     subtitle: "Zarządzane uruchomienia workflow i zarejestrowane drzewa workflow.",
     toolsTab: {
-      title: "Narzędzia enterprise",
+      title: "Narzędzia",
       subtitle:
-        "Opcjonalne narzędzia dostępne dla zarządzanego uruchomienia; wykluczone z szerokich grup narzędzi.",
-      readGroup: "Odczyt (group:enterprise)",
-      writeGroup: "Zapis (group:enterprise-write)",
-      grantTitle: "Przyznaj narzędzie do kroku",
-      grantSubtitle:
-        "Dodaj nazwę narzędzia lub grupę do ontology.allowedTools wybranego kroku. Odmowa zawsze ma pierwszeństwo.",
+        "Skonfigurowany katalog narzędzi, pogrupowany tak, jak grupuje je środowisko uruchomieniowe. Narzędzie wtyczki jest wyświetlane od momentu zadeklarowania, nawet zanim jego konfiguracja zostanie rozwiązana, a narzędzia kanałów i MCP istnieją tylko w aktywnej sesji, więc jest to widok tego, co można skonfigurować, a nie tego, co jest aktualnie aktywne.",
+      attachHint:
+        "To jest katalog. Aby umożliwić krokowi wywołanie narzędzia, otwórz Worktree, wybierz krok i dodaj je w sekcji Powiązania kroku.",
+      empty: "Brak dostępnych narzędzi na tym Gateway.",
+      toolCount: "{count} narzędzi(e)",
+      optionalBadge: "opcjonalne",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Dodaj",
-      forStep: "Krok: {nodeId}",
       none: "Brak zadeklarowanych.",
-      selectStep: "Najpierw wybierz krok na karcie Drzewo pracy.",
-      stepUnavailable:
-        "Wybrany krok nie został załadowany. Odśwież stronę lub wybierz go ponownie na karcie Worktree.",
-      editorOpen: "Zapisz lub odrzuć otwarty edytor drzewa przed dodaniem kolejnego wpisu.",
       scopeNarrowing:
         "Ten krok nie ma jeszcze listy dozwolonych narzędzi, więc zezwala na wszystkie narzędzia z wyjątkiem tych, które są jawnie zabronione. Dodanie pierwszego wpisu przekształca go w listę dozwolonych i tylko wymienione narzędzia pozostają dostępne.",
+      knowledgeNarrowing:
+        "Ten krok nie ma jeszcze listy dozwolonych źródeł wiedzy, więc może odpytywać każdą zarejestrowaną podstawę. Dodanie pierwszego wpisu ogranicza go do wymienionych podstaw.",
       toolLabel: "Nazwa narzędzia lub grupy do zezwolenia",
       skillLabel: "Nazwa umiejętności do zadeklarowania",
+      knowledgeLabel: "ID podstawy wiedzy do zezwolenia",
       skillNameInvalid:
         "Użyj nazwy umiejętności: małe litery, cyfry i pojedyncze myślniki, maksymalnie 64 znaki.",
+      foundationIdInvalid:
+        "Użyj ID podstawy: małe litery oddzielone kropkami, na przykład acme.runbooks.",
       ancestorGate:
-        "Kroki nadrzędne ({nodeIds}) mają własną listę dozwolonych narzędzi. Governance sprawdza każdy krok od korzenia, więc narzędzie przyznane tutaj zostanie odrzucone, jeśli te kroki go również nie dopuszczają.",
+        "Kroki nadrzędne ({nodeIds}) mają własną listę dozwolonych. Governance sprawdza każdy krok od korzenia, więc wpis dodany tutaj nadal zostanie odrzucony, jeśli te kroki go nie dopuszczą.",
       reviewHint: "Dodanie otworzy edytor drzewa, aby można było przejrzeć i zapisać zmianę.",
       empty: "Najpierw wprowadź wartość.",
       duplicate: "Ten wpis jest już zadeklarowany w tym kroku.",
       nodeMissing: "Ten krok nie znajduje się już w drzewie; odśwież i spróbuj ponownie.",
       exportFailed: "Nie udało się wczytać definicji drzewa do edycji.",
     },
+    catalogAgentScope:
+      "Narzędzia i skills są przypisane do agenta; ten katalog jest tym, co widzi agent {agentId}.",
+    bindings: {
+      title: "Powiązania kroku",
+      subtitle: "Co ten krok może wywoływać, jakie kompetencje deklaruje i co może pobierać.",
+      tools: "Narzędzia — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Wiedza — ontology.knowledgeFoundations",
+      skillNotInstalled: "niezainstalowany",
+      foundationNotRegistered: "niezarejestrowany",
+    },
     skillsTab: {
-      title: "Skills enterprise",
-      subtitle:
-        "Krok przepływu pracy może zadeklarować ontology.skills, aby wskazać Skills, od których zależy jego działanie.",
+      title: "Skills",
+      subtitle: "Każdy skill zainstalowany dla tego gateway, wraz z wymaganiami kwalifikacji.",
+      attachHint:
+        "To jest katalog. Aby zadeklarować element jako zależność kroku, otwórz Worktree, wybierz krok i dodaj go w sekcji Powiązania kroku.",
+      empty: "Brak zainstalowanych Skills.",
     },
     runsTitle: "Ostatnie uruchomienia",
     treesTitle: "Drzewa workflow",
@@ -660,8 +674,8 @@ export const pl: TranslationMap = {
     dreams: "Konsolidacja pamięci podczas snu.",
     enterpriseWorktree: "Drzewa przepływów pracy i ich zarządzane kroki.",
     enterpriseHistory: "Poprzednie zarządzane uruchomienia i ich ślady.",
-    enterpriseTools: "Narzędzia udostępniane przez grupy przedsiębiorstwa.",
-    enterpriseSkills: "Skills deklarowane przez kroki przepływu pracy.",
+    enterpriseTools: "Skonfigurowany katalog narzędzi.",
+    enterpriseSkills: "Każdy skill zainstalowany dla tego gateway.",
     knowledge: "Zarejestrowane bazy wiedzy i ich status.",
   },
   skillWorkshop: {

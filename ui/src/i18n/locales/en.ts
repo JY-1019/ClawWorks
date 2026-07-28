@@ -208,40 +208,55 @@ export const en: TranslationMap = {
     title: "Enterprise",
     subtitle: "Governed workflow runs and the registered workflow trees.",
     toolsTab: {
-      title: "Enterprise tools",
-      subtitle: "Opt-in tools a governed run can use; excluded from the broad tool groups.",
-      readGroup: "Read (group:enterprise)",
-      writeGroup: "Write (group:enterprise-write)",
-      grantTitle: "Grant a tool to a step",
-      grantSubtitle:
-        "Add a tool name or group to the selected step's ontology.allowedTools. Deny always wins.",
+      title: "Tools",
+      subtitle:
+        "The configured tool catalog, grouped the way the runtime groups them. A plugin tool is listed once declared, even before its config resolves, and channel and MCP tools only exist inside a live session, so this is what can be configured rather than what is live right now.",
+      attachHint:
+        "This is the catalog. To let a step call one, open Worktree, select the step, and add it under Step bindings.",
+      empty: "No tools are available on this gateway.",
+      toolCount: "{count} tool(s)",
+      optionalBadge: "optional",
+      pluginBadge: "Plugin: {pluginId}",
     },
     entryDraft: {
       add: "Add",
-      forStep: "Step: {nodeId}",
       none: "None declared yet.",
-      selectStep: "Select a step on the Worktree tab first.",
-      stepUnavailable:
-        "The selected step is not loaded. Refresh, or reselect it on the Worktree tab.",
-      editorOpen: "Save or discard the open tree editor before adding another entry.",
       scopeNarrowing:
         "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist and only the listed tools stay available.",
+      knowledgeNarrowing:
+        "This step has no knowledge allowlist yet, so it can query every registered foundation. Adding the first entry restricts it to the listed foundations.",
       toolLabel: "Tool name or group to allow",
       skillLabel: "Skill name to declare",
+      knowledgeLabel: "Knowledge foundation id to allow",
       skillNameInvalid:
         "Use a skill name: lowercase letters, digits, and single hyphens, at most 64 characters.",
+      foundationIdInvalid:
+        "Use a foundation id: dotted lowercase segments, for example acme.runbooks.",
       ancestorGate:
-        "Parent steps ({nodeIds}) have their own tool allowlist. Governance checks each step from the root, so a tool granted here is still denied unless those steps allow it too.",
+        "Parent steps ({nodeIds}) have their own allowlist for this. Governance checks each step from the root, so an entry added here is still denied unless those steps allow it too.",
       reviewHint: "Adding opens the tree editor so you can review and save the change.",
       empty: "Enter a value first.",
       duplicate: "That entry is already declared on this step.",
       nodeMissing: "That step is no longer in the tree; reload and try again.",
       exportFailed: "Could not load the tree definition to edit.",
     },
+    catalogAgentScope:
+      "Tools and skills are agent-scoped; this catalog is the one agent {agentId} sees.",
+    bindings: {
+      title: "Step bindings",
+      subtitle: "What this step may call, the know-how it declares, and what it may retrieve.",
+      tools: "Tools — ontology.allowedTools",
+      skills: "Skills — ontology.skills",
+      knowledge: "Knowledge — ontology.knowledgeFoundations",
+      skillNotInstalled: "not installed",
+      foundationNotRegistered: "not retrievable by this work-map",
+    },
     skillsTab: {
-      title: "Enterprise skills",
-      subtitle:
-        "A workflow step can declare ontology.skills to name the skills its work depends on.",
+      title: "Skills",
+      subtitle: "Every skill installed for this gateway, with what it needs to be eligible.",
+      attachHint:
+        "This is the catalog. To declare one as a step's dependency, open Worktree, select the step, and add it under Step bindings.",
+      empty: "No skills are installed.",
     },
     runsTitle: "Recent runs",
     treesTitle: "Workflow trees",
@@ -652,8 +667,8 @@ export const en: TranslationMap = {
     dreams: "Memory dreaming, consolidation, and reflection.",
     enterpriseWorktree: "Workflow trees and their governed steps.",
     enterpriseHistory: "Past governed runs and their traces.",
-    enterpriseTools: "Tools the enterprise groups expose.",
-    enterpriseSkills: "Skills workflow steps declare.",
+    enterpriseTools: "The configured tool catalog.",
+    enterpriseSkills: "Every skill installed for this gateway.",
     knowledge: "Registered knowledge foundations and their status.",
   },
   skillWorkshop: {
