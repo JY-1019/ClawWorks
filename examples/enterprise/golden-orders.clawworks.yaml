@@ -114,12 +114,11 @@ root:
       description: Classify the complaint and find the order it is about.
       ontology:
         allowedTools: [search_objects, get_neighbors]
-        # A declared skill names know-how this step depends on. It is an
-        # annotation: it never widens the tool scope above, it is not rendered
-        # into the step digest, and it does not load skill content — skills load
-        # through the normal eligibility path. `taskflow-inbox-triage` is bundled
-        # with OpenClaw and needs no binary, so this dependency resolves on a
-        # stock install rather than being a dangling id. enterprise-golden.ts
+        # A declared skill names know-how this step depends on. Advisory: it
+        # reaches the model through the step digest but never widens the tool
+        # scope above and never installs anything. `taskflow-inbox-triage` is
+        # bundled with OpenClaw and needs no binary, so this dependency resolves
+        # on a stock install rather than being a dangling id. enterprise-golden.ts
         # pins every one of those properties.
         skills: [taskflow-inbox-triage]
         expectedOutput: The ticket id, the order id, and the reason.
@@ -161,4 +160,7 @@ root:
       description: Summarize for a human when the shop cannot resolve it.
       ontology:
         allowedTools: [message]
+        # A second declaration, on a different step: the digest names each step's
+        # own dependency rather than pooling them.
+        skills: [summarize]
         expectedOutput: A handoff note naming the order and what was tried.

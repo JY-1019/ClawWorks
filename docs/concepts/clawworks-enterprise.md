@@ -92,9 +92,32 @@ root:
 
 A node's `ontology.skills` names the [skills](/tools/skills) whose know-how the
 step depends on, using flat SKILL.md names (lowercase letters, digits, hyphens).
-It is an operator-facing annotation for inspection and bundle portability; it
-does not load skill content into the run, which stays with the normal skill
-system.
+The step digest renders them under that step, so the model working a step is
+told which know-how that step depends on and prefers it over improvising.
+
+It stays in the advisory lane. Naming a skill points the model at know-how it
+already has; it never installs one and never grants a tool the step's
+`allowedTools` withholds, so enforcement still wins on conflict. Skills load
+through the normal skill system, and availability stays agent-wide — the digest
+names what a step depends on, it does not change which skills exist. A declared
+name no install provides is an authoring mistake, reported on the Skills screen
+rather than at run time.
+
+The digest names the dependency; it does not order a load. How a skill is loaded
+belongs to whichever runtime is dispatching — the embedded loop reads its
+`SKILL.md` with the `read` tool from the skills catalog, while a `claude-cli` run
+resolves it natively through a plugin directory — and those rules, including
+"one skill up front max", stay where they are.
+
+Two limits worth knowing. Whether the model can actually open a named skill
+depends on the dispatching runtime and its tool filter, which the digest cannot
+see: on a step whose scope withholds `read`, an embedded run may find the skill
+unopenable even though the line names it. And ACP runs never see the line at
+all — they own their prompt channel, so the whole step digest is discarded there
+and `ontology.skills` stays operator-facing, alongside the same limitation on
+`contextHints` and `expectedOutput`. Making a declared skill's instructions
+available regardless of tool scope or runtime means resolving and inlining them
+when the run starts, which is not implemented yet.
 
 Manage trees with the CLI (see [`openclaw enterprise`](/cli/enterprise)):
 

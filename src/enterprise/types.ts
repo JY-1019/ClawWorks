@@ -190,15 +190,27 @@ export type OntologyBinding = {
    */
   guidance?: string;
   /**
-   * Skill ids this step depends on, recorded for operators. A declarative
-   * annotation: it is projected to the enterprise inspector and carried in a
-   * workflow bundle as a portability dependency, so a tree names the know-how a
-   * step needs. It never widens the step's tool scope or overrides governance,
-   * and it does not itself inject skill content into the run — skills load through
-   * OpenClaw's own (session-level, allowlist-gated) skill system. Wiring a step's
-   * declared skills into that eligible snapshot is a separate follow-up, so this
-   * stays out of the model-facing digest until then (a digest line promising a
-   * skill the run may have stripped would be a broken instruction).
+   * Skill ids this step depends on. Carried in a workflow bundle as a
+   * portability dependency, and rendered under the step in the run digest as a
+   * PREFERENCE — "when one of these applies, prefer it over improvising" — not
+   * as an order to load. Advisory lane, like `guidance`: it points the model at
+   * know-how it already has, never widens the step's tool scope, never overrides
+   * governance, and never installs a skill or changes which skills the run has
+   * (those stay with OpenClaw's own agent-wide, allowlist-gated skill system).
+   *
+   * The line is UNCONDITIONAL, and deliberately so. Whether the model can open a
+   * named skill depends on the dispatching runtime — the embedded loop reads
+   * SKILL.md with `read`, a `claude-cli` run resolves natively through a plugin
+   * directory, ACP discards this digest entirely — plus an attempt-level tool
+   * filter. The plan carries none of that, so gating on it would guess, and a
+   * wrong guess silently drops a declaration the operator wrote. A step whose
+   * scope withholds `read` can therefore name a skill an embedded run cannot
+   * open; the cost is bounded by the base prompt's own "if none clearly apply,
+   * read none".
+   *
+   * No availability claim either: whether an install provides a declared name is
+   * a runtime fact the digest is built without, and an unresolved declaration is
+   * reported on the Skills screen.
    */
   skills?: string[];
   /** Expected output shape/summary for this step. */

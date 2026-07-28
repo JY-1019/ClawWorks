@@ -344,17 +344,19 @@ async function main(): Promise<number> {
     endEnterpriseRun({ runId, status: "completed" });
   }
 
-  // ---- 8. A declared skill is an ANNOTATION, not an activation. It travels
-  // with the work-map and shows up in the operator surfaces, but it must not
-  // widen the step's tool scope and must not enter the model's digest — skills
-  // load through the normal eligibility path, never through the ontology.
-  // Pinning all three keeps a future "wire declared skills into the run" change
-  // deliberate and visible instead of arriving as a silent prompt/scope change.
+  // ---- 8. A declared skill REACHES THE MODEL, in the advisory lane. It travels
+  // with the work-map, shows up in the operator surfaces, and is named under its
+  // step in the run digest as a preference — but it must never widen the step's
+  // tool scope, because guidance that grants capability is not guidance. The
+  // rendering is unconditional: whether the skill can actually be opened depends
+  // on the dispatching runtime, which the plan cannot see. These checks pin both
+  // halves so neither can drift without being noticed.
   {
     const { collectReferencedSkills } = await import("../src/enterprise/tree-references.js");
     const entry = listWorkflowTreeRegistryEntries().find((row) => row.tree.id === TREE_ID);
     const declaredSkills = entry ? collectReferencedSkills(entry.tree) : [];
     expectEqual("the work-map's declared skills travel with it", declaredSkills, [
+      "summarize",
       "taskflow-inbox-triage",
     ]);
     // Resolve whatever the FIXTURE declares, not a name repeated here: a check
@@ -388,17 +390,27 @@ async function main(): Promise<number> {
     });
     setEnterpriseStepForTurn(runId);
     const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
-    // Assert the digest DID render this step's other ontology, or an empty
-    // digest would satisfy "the skill is absent" without proving anything.
-    const renderedOtherOntology = digest.includes("search_objects") && digest.includes("Triage");
     record(
-      "a declared skill stays out of the model digest",
-      renderedOtherOntology && !digest.includes("taskflow-inbox-triage"),
-      !renderedOtherOntology
-        ? "the digest rendered no ontology for this step, so absence proves nothing"
-        : digest.includes("taskflow-inbox-triage")
-          ? "the skill name reached the prompt; declaring is not supposed to"
-          : "step ontology rendered, skill name absent — the annotation contract",
+      "a declared skill reaches the model digest",
+      digest.includes("Skills: taskflow-inbox-triage"),
+      digest.includes("taskflow-inbox-triage")
+        ? "rendered under its step"
+        : "the declaration never reached the prompt, so it cannot change a turn",
+    );
+    // The names alone are trivia; the one-time gloss says what to do with them.
+    // It must stay a PREFERENCE and must restate containment — an instruction to
+    // load would be unexecutable on a step whose scope withholds `read`, which is
+    // every skills-bearing step in the shipped examples.
+    record(
+      "the digest says what to do with a declared skill, without ordering an unexecutable load",
+      digest.includes("prefer it over improvising") &&
+        digest.includes("never grant a tool the step's scope withholds") &&
+        !/load (those|these) skills/i.test(digest),
+      /load (those|these) skills/i.test(digest)
+        ? "the digest orders a skill load the step's tool scope cannot perform"
+        : digest.includes("prefer it over improvising")
+          ? "preference gloss present with the containment clause"
+          : "skills are named but nothing tells the model what to do with them",
     );
     // golden.triage declares the skill AND a two-tool allow-list. If declaring
     // ever started granting tools, this is the assertion that would catch it.
@@ -408,6 +420,32 @@ async function main(): Promise<number> {
       true,
     );
     endEnterpriseRun({ runId, status: "completed" });
+
+    // Rendering is UNCONDITIONAL, including on a step whose scope withholds
+    // `read`. Whether a skill can be opened depends on the dispatching runtime
+    // (embedded reads SKILL.md, claude-cli resolves natively, ACP drops the
+    // digest) and the plan cannot see which — so gating would guess and silently
+    // drop an operator's declaration. golden.escalate is exactly that step.
+    const noReadId = "golden-skills-noread";
+    const noRead = await beginEnterpriseRun({
+      runId: noReadId,
+      prompt: "사람에게 넘겨줘",
+      routePlanner: async () => ({
+        kind: "decided",
+        treeId: TREE_ID,
+        routes: ["golden.escalate"],
+        rationale: "no-read",
+      }),
+    });
+    const noReadDigest = noRead.kind === "mediated" ? noRead.promptSection : "";
+    record(
+      "a step that declares a skill names it even without read in scope",
+      noReadDigest.includes("Skills: summarize"),
+      noReadDigest.includes("Skills:")
+        ? "declared and rendered; loadability is the runtime's business"
+        : "the declaration was dropped, which no plan-level fact can justify",
+    );
+    endEnterpriseRun({ runId: noReadId, status: "completed" });
   }
 
   // ---- 9. Knowledge foundations, through the bundle an operator actually

@@ -297,6 +297,99 @@ describe("buildEnterprisePromptSection", () => {
     expect(buildEnterprisePromptSection(plan)).toBe("");
   });
 
+  it("renders a step's declared skills and says what to do with them", () => {
+    // Declaring a skill used to reach no runtime surface at all: the operator saw
+    // it in the Control UI and the bundle carried it, but the model never heard
+    // of it, so the declaration could not change a single turn.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-skills",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { allowedTools: ["message", "read"] },
+          children: [
+            {
+              id: "desk.triage",
+              title: "Triage",
+              // Unsorted on purpose: the rendered order must be stable for the
+              // prompt cache regardless of authoring order.
+              ontology: { skills: ["summarize", "taskflow-inbox-triage"] },
+            },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).toContain("Skills: summarize, taskflow-inbox-triage");
+    // Names alone read as trivia; the one-time gloss says what to do with them.
+    expect(section).toContain("prefer it over improvising");
+    // It must restate containment, since the model is being pointed at
+    // instructions that could ask for a tool this step withholds.
+    expect(section).toContain("never grant a tool the step's scope withholds");
+    // And it must NOT order a load: loading means reading SKILL.md with `read`,
+    // which a governed step's allowedTools routinely withholds — this step's does.
+    expect(section).not.toMatch(/load (those|these) skills/i);
+  });
+
+  it("names a step's skills even when its scope withholds read", () => {
+    // Gating on `read` would guess: the embedded loop opens a SKILL.md with it,
+    // a claude-cli run resolves natively through a plugin directory, and ACP
+    // drops the digest entirely. The plan sees none of that, so a gate here
+    // would silently drop declarations on the backends that do not need `read`.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-skills-noread",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-noread",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { allowedTools: ["message"] },
+          children: [
+            {
+              id: "desk.triage",
+              title: "Triage",
+              ontology: { allowedTools: ["message"], skills: ["summarize"] },
+            },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    expect(buildEnterprisePromptSection(plan)).toContain("Skills: summarize");
+  });
+
+  it("keeps the prompt unchanged for a workflow that declares no skills", () => {
+    // The skills instruction is conditional: a tree without skills must not gain
+    // prompt bytes, or every existing workflow's cached prefix is invalidated.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-noskills",
+      requestText: "refund",
+      mode: "enforce",
+      tree: REFUND_TREE,
+      matchedBy: "planner",
+    });
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).not.toContain("Skills:");
+    expect(section).not.toContain("load those skills");
+  });
+
   it("renders the ids the ontology tools take as arguments", () => {
     // Without these the model has the tools but no vocabulary for them: it cannot
     // know this step addresses a "claim", that it links to a "policy", or that a
@@ -682,6 +775,10 @@ describe("ontologyHasGuidance / planTracksSteps", () => {
     // A node whose only guidance is a `guidance` field must still count, or the
     // step loop never advances into it and its digest stays empty.
     expect(ontologyHasGuidance({ guidance: "confirm the order id first" })).toBe(true);
+    // Same for a skills-only node: without this the step loop never enters it, so
+    // the declaration could not reach a turn no matter what the digest renders.
+    expect(ontologyHasGuidance({ skills: ["taskflow-inbox-triage"] })).toBe(true);
+    expect(ontologyHasGuidance({ skills: [] })).toBe(false);
   });
 
   it("tracks steps only for governed trees with a leaf to advance into", () => {

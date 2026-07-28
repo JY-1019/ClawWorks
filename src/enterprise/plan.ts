@@ -281,6 +281,11 @@ export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
     ontology.constraints?.length ||
     ontology.contextHints?.length ||
     ontology.guidance ||
+    // A step whose ONLY binding is `skills` still has something to tell the
+    // model. Omitting it here would leave that node guidance-free, so the step
+    // loop would never advance into it and the declaration could never reach a
+    // turn — the same footgun the object-graph checks below guard against.
+    ontology.skills?.length ||
     ontology.allowedTools?.length ||
     ontology.deniedTools?.length ||
     ontology.actions?.length ||
@@ -314,6 +319,23 @@ export function planTracksSteps(plan: EnterpriseRunPlan): boolean {
     (node) => ontologyHasGuidance(node.ontology) || node.ontology.audit === true,
   );
 }
+
+/*
+ * NOT gated on whether the step could open the skill.
+ *
+ * That looks tempting — loading a skill means reading its SKILL.md, so a step
+ * without `read` seems unable to use one — but it is not knowable here and is
+ * wrong for at least one shipped backend. `claude-cli` runs supply skills through
+ * Claude's own `--plugin-dir` resolver rather than the OpenClaw `read` tool
+ * (src/agents/cli-runner/prepare.ts), embedded runs can narrow tools again at the
+ * attempt layer, and ACP discards this digest entirely. The plan carries none of
+ * that, so any gate here guesses — and a wrong guess silently withholds a
+ * declaration the operator wrote.
+ *
+ * So the line states the dependency and nothing more. It is a preference, not a
+ * load order, which keeps the cost of an unopenable skill bounded to the base
+ * prompt's own "if none clearly apply, read none".
+ */
 
 /** Append one node's ontology guidance to the digest, indented under its step. */
 function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, indent: string): void {
@@ -410,6 +432,16 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
   if (ontology.guidance) {
     lines.push(`${indent}Instructions: ${ontology.guidance}`);
   }
+  // Same advisory lane as `guidance`: naming a skill points the model at know-how
+  // it already has, it does not install or authorize anything. Names only — no
+  // availability claim, because whether an install provides a declared name is a
+  // RUNTIME fact this digest is built without. Sorted for prompt-cache stability.
+  //
+  // Rendered whatever the step's tool scope is; see the note above this file's
+  // digest builder for why gating on `read` was rejected.
+  if (ontology.skills?.length) {
+    lines.push(`${indent}Skills: ${ontology.skills.toSorted().join(", ")}`);
+  }
   if (ontology.allowedTools?.length) {
     lines.push(`${indent}Allowed tools: ${ontology.allowedTools.toSorted().join(", ")}`);
   }
@@ -445,8 +477,22 @@ export function buildEnterprisePromptSection(plan: EnterpriseRunPlan): string {
   const lines: string[] = [
     "## Enterprise workflow",
     `This run is governed by workflow "${plan.treeName}" (${plan.treeId}@${plan.treeVersion}). Work the steps in order and respect each step's constraints and tool scope.`,
-    "Steps:",
   ];
+  // One-time gloss for a step's `Skills:` line, added only when some step
+  // declares one — conditional so a workflow without skills keeps the exact
+  // prompt bytes it had before (prompt cache, stock parity).
+  //
+  // Deliberately a PREFERENCE, not a load order. Loading a skill means reading
+  // its SKILL.md with `read` at the exact location the skills catalog gives
+  // (system-prompt.ts) under rules that runtime already owns — including "one
+  // skill up front max", which an instruction to load several would contradict.
+  // So this points at relevance and leaves the loading rules where they are.
+  if (plan.nodes.some((node) => node.ontology.skills?.length)) {
+    lines.push(
+      "A step's Skills line names the know-how that step depends on: when one of them applies and is available to you, prefer it over improvising. Skills teach how to do the work; they never grant a tool the step's scope withholds.",
+    );
+  }
+  lines.push("Steps:");
   // Render every step: governance advances into and enforces each one, so a
   // later step must not have its rules omitted (only per-category hint lists are
   // bounded). Trees are operator-authored, so total size stays reasonable.
