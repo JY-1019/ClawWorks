@@ -1,0 +1,163 @@
+# ClawWorks example workflow BUNDLE — the runnable one.
+#
+#   pnpm openclaw enterprise bundle import examples/enterprise/support-desk.clawworks-bundle.yaml
+#   pnpm openclaw gateway restart
+#
+# The restart is not optional: a running gateway holds its tree registry for the
+# life of the process, so a CLI import is invisible to the Control UI and to runs
+# until it reloads.
+#
+# The other files here are TREES. A tree cannot carry its own knowledge, and the
+# skills they name are mostly placeholder ids no install provides, so importing
+# one leaves `knowledge_search` with nothing to retrieve and most declared skills
+# unresolved. A BUNDLE closes both gaps: the corpus below is inlined and
+# registered by the import, and the one skill this work-map declares ships with
+# OpenClaw and needs no binary, so every axis the enterprise layer governs is
+# live once the gateway comes back:
+#
+#   tools               per-step `allowedTools`, narrowing within the root scope
+#   skills              `desk.triage` declares `taskflow-inbox-triage` (bundled)
+#   knowledge           `acme.support-desk-handbook`, inlined below
+#
+# After importing, open Enterprise → Worktree and select "Support desk", then
+# Tools/Skills: each catalog entry this work-map binds is chipped with the steps
+# that bind it.
+schema: clawworks.workflow-bundle
+schemaVersion: 1
+trees:
+  - schema: clawworks.workflow-tree
+    schemaVersion: 1
+    id: acme.support-desk
+    version: 1.0.0
+    name: Support desk (runnable example)
+    description: >-
+      Answer an inbound support request from a handbook, or hand it to a human.
+      Example work-map whose tool scopes, declared skill, and knowledge
+      foundation all resolve on a stock install.
+    match:
+      # A model judges whether a request belongs here, so the name, description,
+      # and step titles are what earn it one. `triggers` is the hard gate on
+      # which run classes may bind at all — user-initiated requests only, so an
+      # imported example can never capture heartbeat or cron traffic.
+      triggers: [user]
+      priority: 10
+    root:
+      id: desk
+      title: Handle an inbound support request
+      description: Classify the request, answer it from the handbook, or escalate.
+      ontology:
+        entities:
+          - { id: request, description: An inbound message from a customer }
+          - { id: handbook-answer, description: A handbook passage that answers a request }
+        relationships:
+          - id: request-answered-by
+            from: request
+            to: handbook-answer
+            description: The handbook passage that resolves the request
+        # Root scope is inherited and is the backstop for runtimes that stay on
+        # the root (CLI/ACP never advance into child steps). Keep it a superset
+        # of every child scope so children narrow within it; without it, a
+        # root-scoped run would fall back to allow-all.
+        allowedTools: [memory_search, knowledge_search, message]
+        knowledgeFoundations: [acme.support-desk-handbook]
+        constraints:
+          - id: no-card-numbers
+            description: Never repeat a full payment card number.
+          - id: no-invented-policy
+            description: State only what the handbook says; escalate when it does not cover the case.
+        contextHints:
+          - Cite the handbook passage you answered from.
+        audit: true
+      children:
+        - id: desk.triage
+          title: Triage the request
+          ontology:
+            allowedTools: [memory_search, message]
+            # A declared skill names know-how the step depends on; it never
+            # widens tool scope. This one is bundled with OpenClaw and requires
+            # no binary, so it resolves on a stock install — the Skills tab
+            # shows it under "Declared by Support desk (runnable example)".
+            skills: [taskflow-inbox-triage]
+            actions:
+              - id: classify
+                description: Set the request's intent and urgency.
+                tools: [memory_search]
+            expectedOutput: An intent, an urgency, and whether the handbook can answer it.
+        - id: desk.answer
+          title: Answer from the handbook
+          ontology:
+            # Narrower than the root on purpose: this step retrieves and replies,
+            # it does not read memory.
+            allowedTools: [knowledge_search, message]
+            knowledgeFoundations: [acme.support-desk-handbook]
+            actions:
+              - id: reply
+                description: Send the handbook-backed answer to the customer.
+                tools: [message]
+            constraints:
+              - id: quote-the-source
+                description: Name the handbook section the answer came from.
+            expectedOutput: A reply that answers the request, naming the handbook section used.
+        - id: desk.escalate
+          title: Escalate to a human agent
+          ontology:
+            # No knowledge_search: escalation summarizes what is already known
+            # rather than retrieving more, and no memory_search either.
+            allowedTools: [message]
+            actions:
+              - id: handoff
+                description: Summarize the request and hand it to a human.
+                tools: [message]
+            expectedOutput: A short handoff summary for the human queue.
+knowledgeFoundations:
+  - id: acme.support-desk-handbook
+    descriptor:
+      # "local": this deployment administers the corpus after import. "remote"
+      # would claim someone else operates it read-only, which is not true of
+      # content that ships inside the bundle.
+      kind: local
+      displayName: Support desk handbook (example)
+      detail: inlined in support-desk.clawworks-bundle.yaml
+      description: Response-time targets, refund limits, and escalation rules for the support desk example.
+    snippets:
+      - foundationId: acme.support-desk-handbook
+        title: Response targets
+        source: handbook/response-times.md
+        text: >-
+          Acknowledge every request within one business day. A request marked
+          urgent is acknowledged within two business hours. If the answer will
+          take longer than the acknowledgement window, send the acknowledgement
+          first and the answer when it is ready.
+      - foundationId: acme.support-desk-handbook
+        title: Refund limits
+        source: handbook/refunds.md
+        text: >-
+          Refunds up to $200 are issued without approval when the order is
+          within 30 days of delivery. Past 30 days offer store credit. Any
+          refund over $200 goes to a human regardless of the order date.
+      - foundationId: acme.support-desk-handbook
+        title: Escalation path
+        source: handbook/escalation.md
+        text: >-
+          Escalate when the customer asks for a human, when the refund exceeds
+          $200, when the same request has been reopened three times, or when the
+          message mentions a chargeback or legal action. Escalation is never a
+          failure state; it is the correct answer for these cases.
+      - foundationId: acme.support-desk-handbook
+        title: Payment data handling
+        source: handbook/privacy.md
+        text: >-
+          Never repeat a full payment card number back to a customer or into a
+          ticket. The last four digits are enough to identify which card was
+          charged.
+      - foundationId: acme.support-desk-handbook
+        title: Tone
+        source: handbook/replies.md
+        text: >-
+          Open by naming what went wrong in the customer's own terms, say what
+          you did about it, then say what happens next and when. Keep replies
+          short and apologize at most once.
+# Derived from the tree above. Import recomputes both from the tree rather than
+# trusting these, so they are a manifest for the reader, not a contract.
+requiredTools: [knowledge_search, memory_search, message]
+requiredSkills: [taskflow-inbox-triage]

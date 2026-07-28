@@ -252,6 +252,18 @@ export const de: TranslationMap = {
     },
     catalogAgentScope:
       "Tools und Skills sind agentenbezogen; dieser Katalog ist derjenige, den Agent {agentId} sieht.",
+    catalogUsage: {
+      scope:
+        "Die unten angezeigte Schrittnutzung wird anhand der ausgewählten Work-Map {treeName} gemessen.",
+      noWorkMap:
+        "Es ist keine Work-Map ausgewählt, daher wird keine Schrittnutzung angezeigt. Wählen Sie eine im Worktree aus, um zu sehen, welche Schritte jeden Eintrag verwenden.",
+      usedBy: "Verwendet von {treeName}:",
+      declaredBy: "Deklariert von {treeName}:",
+      treeIssue:
+        "Die ausgewählte Work-Map konnte nicht geladen werden, daher stammen die folgenden Schritte aus der Fallback-Definition, die das Gateway stattdessen zurückgegeben hat: {message}. Im Enforce-Modus steuert die fehlgeschlagene Work-Map nichts, bis sie geladen ist.",
+      treeUnavailable:
+        "Die ausgewählte Work-Map konnte nicht geladen werden, daher wird keine Schrittnutzung angezeigt: {message}.",
+    },
     bindings: {
       title: "Schrittbindungen",
       subtitle:
@@ -268,6 +280,8 @@ export const de: TranslationMap = {
       attachHint:
         "Dies ist der Katalog. Um einen Skill als Abhängigkeit eines Schritts zu deklarieren, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie ihn unter Schrittbindungen hinzu.",
       empty: "Es sind keine Skills installiert.",
+      declaredSection: "Deklariert von {treeName}",
+      otherSection: "Andere installierte Skills",
     },
     runsTitle: "Letzte Ausführungen",
     treesTitle: "Workflow-Bäume",

@@ -243,6 +243,17 @@ export const vi: TranslationMap = {
     },
     catalogAgentScope:
       "Công cụ và skills được giới hạn theo agent; danh mục này là những gì agent {agentId} nhìn thấy.",
+    catalogUsage: {
+      scope: "Mức sử dụng bước bên dưới được đo dựa trên work-map đã chọn, {treeName}.",
+      noWorkMap:
+        "Chưa chọn work-map nào, nên không có mức sử dụng bước nào được hiển thị. Chọn một work-map trên Worktree để xem các bước nào sử dụng từng mục.",
+      usedBy: "Được sử dụng bởi {treeName}:",
+      declaredBy: "Được khai báo bởi {treeName}:",
+      treeIssue:
+        "Bản đồ công việc đã chọn không tải được, vì vậy các bước bên dưới được lấy từ định nghĩa dự phòng mà Gateway trả về: {message}. Ở chế độ thực thi, bản đồ công việc bị lỗi sẽ không kiểm soát gì cho đến khi nó được tải.",
+      treeUnavailable:
+        "Không thể tải work-map đã chọn, do đó không có thông tin sử dụng bước nào được hiển thị: {message}.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -260,6 +271,8 @@ export const vi: TranslationMap = {
       attachHint:
         "Đây là danh mục. Để khai báo một skill là phụ thuộc của bước, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
       empty: "Không có skill nào được cài đặt.",
+      declaredSection: "Được khai báo bởi {treeName}",
+      otherSection: "Các Skills đã cài đặt khác",
     },
     runsTitle: "Lần chạy gần đây",
     treesTitle: "Cây quy trình",

@@ -245,6 +245,18 @@ export const pt_BR: TranslationMap = {
     },
     catalogAgentScope:
       "Ferramentas e skills têm escopo por agente; este catálogo é o que o agente {agentId} vê.",
+    catalogUsage: {
+      scope:
+        "O uso de etapas abaixo é medido em relação ao mapa de trabalho selecionado, {treeName}.",
+      noWorkMap:
+        "Nenhum mapa de trabalho está selecionado, então nenhum uso de etapas é exibido. Selecione um em Worktree para ver quais etapas usam cada entrada.",
+      usedBy: "Usado por {treeName}:",
+      declaredBy: "Declarado por {treeName}:",
+      treeIssue:
+        "O mapa de trabalho selecionado não foi carregado, portanto as etapas abaixo vêm da definição de fallback que o Gateway retornou: {message}. No modo de imposição, o mapa de trabalho com falha não governa nada até ser carregado.",
+      treeUnavailable:
+        "O work-map selecionado não pôde ser carregado, portanto nenhum uso de etapa é exibido: {message}.",
+    },
     bindings: {
       title: "Vinculações do passo",
       subtitle: "O que este passo pode chamar, as habilidades que declara e o que pode recuperar.",
@@ -261,6 +273,8 @@ export const pt_BR: TranslationMap = {
       attachHint:
         "Este é o catálogo. Para declarar uma como dependência de um passo, abra o Worktree, selecione o passo e adicione-a em Vinculações do passo.",
       empty: "Nenhuma skill instalada.",
+      declaredSection: "Declarado por {treeName}",
+      otherSection: "Outras skills instaladas",
     },
     runsTitle: "Execuções recentes",
     treesTitle: "Árvores de workflow",

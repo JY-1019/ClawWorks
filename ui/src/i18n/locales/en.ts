@@ -242,6 +242,17 @@ export const en: TranslationMap = {
     },
     catalogAgentScope:
       "Tools and skills are agent-scoped; this catalog is the one agent {agentId} sees.",
+    catalogUsage: {
+      scope: "Step usage below is measured against the selected work-map, {treeName}.",
+      noWorkMap:
+        "No work-map is selected, so no step usage is shown. Pick one on Worktree to see which steps use each entry.",
+      usedBy: "Used by {treeName}:",
+      declaredBy: "Declared by {treeName}:",
+      treeIssue:
+        "The selected work-map did not load, so the steps below come from the fallback definition the gateway returned instead: {message}. In enforce mode the failed work-map governs nothing until it loads.",
+      treeUnavailable:
+        "The selected work-map could not be loaded, so no step usage is shown: {message}.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "What this step may call, the know-how it declares, and what it may retrieve.",
@@ -257,6 +268,8 @@ export const en: TranslationMap = {
       attachHint:
         "This is the catalog. To declare one as a step's dependency, open Worktree, select the step, and add it under Step bindings.",
       empty: "No skills are installed.",
+      declaredSection: "Declared by {treeName}",
+      otherSection: "Other installed skills",
     },
     runsTitle: "Recent runs",
     treesTitle: "Workflow trees",

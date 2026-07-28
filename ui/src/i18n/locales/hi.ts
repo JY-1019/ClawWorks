@@ -241,6 +241,17 @@ export const hi: TranslationMap = {
       exportFailed: "संपादन के लिए ट्री परिभाषा लोड नहीं हो सकी।",
     },
     catalogAgentScope: "टूल्स और Skills एजेंट-स्कोप्ड हैं; यह कैटलॉग वही है जो एजेंट {agentId} देखता है।",
+    catalogUsage: {
+      scope: "नीचे दिखाया गया स्टेप उपयोग चयनित work-map, {treeName} के अनुसार मापा गया है।",
+      noWorkMap:
+        "कोई work-map चयनित नहीं है, इसलिए कोई स्टेप उपयोग नहीं दिखाया गया है। यह देखने के लिए कि कौन से स्टेप किस एंट्री का उपयोग करते हैं, Worktree पर एक चुनें।",
+      usedBy: "{treeName} द्वारा उपयोग किया गया:",
+      declaredBy: "{treeName} द्वारा घोषित:",
+      treeIssue:
+        "चयनित वर्क-मैप लोड नहीं हुआ, इसलिए नीचे दिए गए चरण Gateway द्वारा लौटाई गई फ़ॉलबैक परिभाषा से आए हैं: {message}। enforce मोड में विफल वर्क-मैप लोड होने तक किसी चीज़ को नियंत्रित नहीं करता।",
+      treeUnavailable:
+        "चयनित वर्क-मैप लोड नहीं हो सका, इसलिए कोई स्टेप उपयोग नहीं दिखाया गया है: {message}।",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -257,6 +268,8 @@ export const hi: TranslationMap = {
       attachHint:
         "यह कैटलॉग है। किसी को स्टेप की निर्भरता के रूप में घोषित करने के लिए, Worktree खोलें, स्टेप चुनें, और इसे Step bindings के अंतर्गत जोड़ें।",
       empty: "कोई Skills इंस्टॉल नहीं हैं।",
+      declaredSection: "{treeName} द्वारा घोषित",
+      otherSection: "अन्य इंस्टॉल किए गए skills",
     },
     runsTitle: "हाल के रन",
     treesTitle: "वर्कफ़्लो ट्री",

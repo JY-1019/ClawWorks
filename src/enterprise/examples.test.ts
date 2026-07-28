@@ -1,10 +1,12 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parseWorkflowBundleContent } from "./bundle-io.js";
 import { parseWorkflowTreeContent } from "./tree-io.js";
 import type { WorkflowNodeDefinition } from "./types.js";
 
 const EXAMPLES_DIR = join(process.cwd(), "examples", "enterprise");
+const BUNDLE_SUFFIX = "-bundle.yaml";
 
 function exampleFiles(): string[] {
   return readdirSync(EXAMPLES_DIR).filter((file) => file.endsWith(".yaml"));
@@ -61,14 +63,71 @@ describe("shipped enterprise example trees", () => {
     const files = exampleFiles();
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      const result = parseWorkflowTreeContent(
-        readFileSync(join(EXAMPLES_DIR, file), "utf8"),
-        "yaml",
-      );
+      const content = readFileSync(join(EXAMPLES_DIR, file), "utf8");
+      // A bundle is a tree PLUS its inlined knowledge, so it needs the bundle
+      // schema. Route on the filename suffix rather than skipping unknown
+      // shapes: a mis-named bundle then fails this test loudly instead of
+      // going unvalidated.
+      const result = file.endsWith(BUNDLE_SUFFIX)
+        ? parseWorkflowBundleContent(content, "yaml")
+        : parseWorkflowTreeContent(content, "yaml");
       if (!result.ok) {
         throw new Error(`${file} failed to validate: ${JSON.stringify(result.issues, null, 2)}`);
       }
       expect(result.ok).toBe(true);
+    }
+  });
+
+  it("ships a bundle whose tools, skills, and knowledge all resolve on a stock install", () => {
+    // The tree examples declare all three axes but none of them runs as shipped:
+    // a tree cannot carry knowledge, and the skills they name are ids no install
+    // provides. This bundle is the one an operator can import and actually run,
+    // so guard each axis — an example that quietly goes inert reads to an
+    // operator as the enterprise layer being broken.
+    const bundles = exampleFiles().filter((file) => file.endsWith(BUNDLE_SUFFIX));
+    expect(bundles.length).toBeGreaterThan(0);
+    for (const file of bundles) {
+      const parsed = parseWorkflowBundleContent(
+        readFileSync(join(EXAMPLES_DIR, file), "utf8"),
+        "yaml",
+      );
+      if (!parsed.ok) {
+        throw new Error(`${file} failed to validate: ${JSON.stringify(parsed.issues, null, 2)}`);
+      }
+      const bundle = parsed.bundle;
+      const nodes = bundle.trees.flatMap((tree) => flatten(tree.root));
+
+      // Tools: at least one step narrows scope rather than inheriting allow-all.
+      expect(nodes.some((node) => node.ontology?.allowedTools?.length)).toBe(true);
+
+      // Knowledge: referenced AND inlined with content, so `knowledge_search`
+      // returns snippets right after import instead of silently finding nothing.
+      const referenced = new Set(
+        nodes.flatMap((node) => node.ontology?.knowledgeFoundations ?? []),
+      );
+      expect(referenced.size).toBeGreaterThan(0);
+      for (const foundation of bundle.knowledgeFoundations) {
+        expect(referenced, `${file} inlines an unreferenced foundation`).toContain(foundation.id);
+        expect(
+          foundation.snippets.length,
+          `${file}: ${foundation.id} has no content`,
+        ).toBeGreaterThan(0);
+      }
+      expect(
+        bundle.knowledgeFoundations.map((foundation) => foundation.id).toSorted(),
+        `${file} references a foundation it does not inline`,
+      ).toEqual([...referenced].toSorted());
+
+      // Skills: every declared name must be a skill this repo actually bundles,
+      // or the dependency is unresolvable for anyone who imports the example.
+      const declared = nodes.flatMap((node) => node.ontology?.skills ?? []);
+      expect(declared.length).toBeGreaterThan(0);
+      for (const name of declared) {
+        expect(
+          existsSync(join(process.cwd(), "skills", name, "SKILL.md")),
+          `${file} declares skill "${name}", which this repo does not bundle`,
+        ).toBe(true);
+      }
     }
   });
 

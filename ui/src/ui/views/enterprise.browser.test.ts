@@ -1,9 +1,31 @@
 // Control UI tests cover the enterprise Tools/Skills catalogs and step bindings.
 import { render } from "lit";
 import { describe, expect, it } from "vitest";
-import type { EnterpriseTreeDetail } from "../../../../packages/gateway-protocol/src/index.js";
+import type {
+  EnterpriseTreeDetail,
+  ToolsCatalogResult,
+} from "../../../../packages/gateway-protocol/src/index.js";
 import type { SkillStatusEntry } from "../types.ts";
 import { renderEnterprise, type EnterpriseProps } from "./enterprise.ts";
+
+function toolGroup(
+  id: string,
+  label: string,
+  toolIds: string[],
+): ToolsCatalogResult["groups"][number] {
+  return {
+    id,
+    label,
+    source: "core",
+    tools: toolIds.map((toolId) => ({
+      id: toolId,
+      label: toolId,
+      description: "",
+      source: "core",
+      defaultProfiles: [],
+    })),
+  };
+}
 
 function skill(name: string): SkillStatusEntry {
   return {
@@ -184,6 +206,221 @@ describe("enterprise Tools tab (browser)", () => {
     // Browsing only: attaching happens on the step selected in Worktree.
     expect(container.querySelector("input")).toBeNull();
   });
+
+  it("puts the enterprise groups first, ahead of the stock ones", () => {
+    // CORE_TOOL_SECTION_ORDER sorts them last, so the groups that only exist for
+    // governed steps were the ones an operator had to scroll furthest to reach.
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [
+          toolGroup("fs", "Files", ["read"]),
+          toolGroup("memory", "Memory", ["memory_search"]),
+          toolGroup("enterprise", "Enterprise", ["search_objects"]),
+          toolGroup("enterprise-write", "Enterprise (write)", ["invoke_action"]),
+        ],
+      }),
+    );
+    const labels = [...container.querySelectorAll("details > summary .list-title")].map(
+      (node) => node.textContent?.trim() ?? "",
+    );
+    expect(labels.slice(0, 2)).toEqual(["Enterprise", "Enterprise (write)"]);
+    expect(labels).toEqual(["Enterprise", "Enterprise (write)", "Files", "Memory"]);
+  });
+
+  it("keeps catalog rows out of the reserved meta column", () => {
+    // Regression: .list-item reserves a 200-260px second column for .list-meta.
+    // These rows have none, so the two-column grid put the expanded group body
+    // into that narrow column and squeezed every tool into a sliver on the left.
+    const container = renderInto(
+      createProps({ section: "tools", toolGroups: [toolGroup("fs", "Files", ["read"])] }),
+    );
+    for (const row of container.querySelectorAll(".list-item")) {
+      expect(row.classList.contains("list-item-stacked")).toBe(true);
+    }
+  });
+
+  it("chips the steps that put a tool in scope, expanding group: selectors", () => {
+    // The runtime gate expands `group:enterprise`, so a literal id match would
+    // report this step as not using search_objects while the runtime lets it call.
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [toolGroup("enterprise", "Enterprise", ["search_objects"])],
+        treeDetail: {
+          ...TREE,
+          name: "Support",
+          nodes: [
+            {
+              id: "support.investigate",
+              parentId: null,
+              depth: 0,
+              title: "Investigate",
+              ontology: { allowedTools: ["group:enterprise"] },
+            },
+          ],
+        } as EnterpriseTreeDetail,
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Used by Support");
+    expect(text).toContain("support.investigate");
+  });
+
+  it("does not chip a step for a tool an ancestor's allowlist denies it", () => {
+    // Governance gates on every node from the root down, so a step listing
+    // memory_search under a root that allows only message can never call it.
+    // Chipping it would tell the operator a binding works that is denied at run.
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [toolGroup("memory", "Memory", ["memory_search"])],
+        treeDetail: {
+          ...TREE,
+          name: "Gated",
+          nodes: [
+            {
+              id: "root",
+              parentId: null,
+              depth: 0,
+              title: "Root",
+              ontology: { allowedTools: ["message"] },
+            },
+            {
+              id: "leaf",
+              parentId: "root",
+              depth: 1,
+              title: "Leaf",
+              ontology: { allowedTools: ["memory_search"] },
+            },
+          ],
+        } as EnterpriseTreeDetail,
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("memory_search");
+    expect(text).not.toContain("leaf");
+  });
+
+  it("does not claim a wildcard allowlist grants ontology writes", () => {
+    // ONTOLOGY_WRITE_OPT_INS (src/enterprise/runtime.ts): only naming
+    // invoke_action or group:enterprise-write consents to writes. `*` has not
+    // thought about writes, so a step under it is denied at call time.
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [
+          toolGroup("enterprise-write", "Enterprise (write)", ["invoke_action"]),
+          toolGroup("memory", "Memory", ["memory_search"]),
+        ],
+        treeDetail: {
+          ...TREE,
+          name: "Wildcard",
+          nodes: [
+            {
+              id: "wide",
+              parentId: null,
+              depth: 0,
+              title: "Wide",
+              ontology: { allowedTools: ["*"] },
+            },
+          ],
+        } as EnterpriseTreeDetail,
+      }),
+    );
+    const text = container.textContent ?? "";
+    // The wildcard does reach ordinary tools...
+    expect(text).toContain("memory_search");
+    expect(text).toContain("Used by Wildcard");
+    // ...but invoke_action must not be chipped for it.
+    const writeRow = [...container.querySelectorAll(".list-item")].find((row) =>
+      row.querySelector("code")?.textContent?.includes("invoke_action"),
+    );
+    expect(writeRow).toBeDefined();
+    expect(writeRow?.textContent ?? "").not.toContain("wide");
+  });
+
+  it("chips a step that explicitly opts into ontology writes", () => {
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [toolGroup("enterprise-write", "Enterprise (write)", ["invoke_action"])],
+        treeDetail: {
+          ...TREE,
+          name: "Writer",
+          nodes: [
+            {
+              id: "settle",
+              parentId: null,
+              depth: 0,
+              title: "Settle",
+              ontology: { allowedTools: ["group:enterprise-write"] },
+            },
+          ],
+        } as EnterpriseTreeDetail,
+      }),
+    );
+    expect(container.textContent ?? "").toContain("settle");
+  });
+
+  it("flags a work-map that failed to load without hiding what the fallback binds", () => {
+    // enterprise.trees.get returns a fallback built-in when an import or store
+    // read fails. Under enterprise.mode "observe" that built-in is what actually
+    // runs, so the chips stay; the banner is what stops them being read as the
+    // selected work-map, which governs nothing under enforce until it loads.
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [toolGroup("memory", "Memory", ["memory_search"])],
+        treeDetail: {
+          ...TREE,
+          nodes: [
+            {
+              id: "support",
+              parentId: null,
+              depth: 0,
+              title: "Support",
+              ontology: { allowedTools: ["memory_search"] },
+            },
+          ],
+        } as EnterpriseTreeDetail,
+        treeIssue: "import failed",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("did not load");
+    expect(text).toContain("import failed");
+    expect(text).toContain("support");
+    // The plain "measured against X" line must give way to the failure banner.
+    expect(text).not.toContain("Step usage below is measured against");
+  });
+
+  it("does not claim a fallback exists when the tree load returned nothing", () => {
+    // enterprise.trees.get may answer `tree: null` beside an error, and a rejected
+    // request leaves nothing at all. There are no fallback rows to explain then,
+    // so the fallback wording would describe steps that are not on screen.
+    const container = renderInto(
+      createProps({
+        section: "tools",
+        toolGroups: [toolGroup("memory", "Memory", ["memory_search"])],
+        treeDetail: null,
+        treeIssue: "request failed",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("could not be loaded");
+    expect(text).toContain("request failed");
+    expect(text).not.toContain("fallback definition");
+  });
+
+  it("says no work-map is selected instead of implying nothing uses these tools", () => {
+    const container = renderInto(
+      createProps({ section: "tools", toolGroups: [toolGroup("fs", "Files", ["read"])] }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("No work-map is selected");
+    expect(text).not.toContain("Used by");
+  });
 });
 
 describe("enterprise Skills tab (browser)", () => {
@@ -195,6 +432,78 @@ describe("enterprise Skills tab (browser)", () => {
     expect(text).toContain("summarize");
     expect(text).toContain("weather");
     expect(container.querySelector("input")).toBeNull();
+  });
+
+  it("lifts the skills the work-map declares above the rest of the catalog", () => {
+    const container = renderInto(
+      createProps({
+        section: "skills",
+        skills: [skill("weather"), skill("summarize"), skill("clawhub")],
+        treeDetail: TREE,
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Declared by Support");
+    expect(text).toContain("Other installed skills");
+    // support.triage declares summarize, so it moves out of the alphabet soup and
+    // is chipped with the step that depends on it.
+    const names = [...container.querySelectorAll(".list-item code")].map(
+      (node) => node.textContent?.trim() ?? "",
+    );
+    expect(names[0]).toBe("summarize");
+    expect(text).toContain("support.triage");
+    // "Declared by", not "Used by": ontology.skills does not load or scope skill
+    // content to the step, so usage wording would imply an activation it is not.
+    expect(text).toContain("Declared by Support:");
+    expect(text).not.toContain("Used by Support:");
+    // Declared-but-absent stays visible: the work-map depends on it either way.
+    expect(text).toContain("ticket-triage");
+    expect(text).toContain("not installed");
+  });
+
+  it("omits the other-skills heading when the work-map declares every installed skill", () => {
+    const container = renderInto(
+      createProps({
+        section: "skills",
+        skills: [skill("summarize")],
+        treeDetail: TREE,
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Declared by Support");
+    expect(text).not.toContain("Other installed skills");
+  });
+
+  it("keeps declared skills listed while the install catalog is unknown", () => {
+    // The work-map declares these whether or not skills.status answered, so the
+    // rows stay; only the "not installed" verdict waits for a clean load, since
+    // an empty catalog during loading means unknown rather than absent.
+    const container = renderInto(
+      createProps({
+        section: "skills",
+        skills: [],
+        treeDetail: TREE,
+        catalogPhase: "loading",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("ticket-triage");
+    expect(text).toContain("summarize");
+    expect(text).not.toContain("not installed");
+  });
+
+  it("marks a declared skill missing once the catalog answered cleanly", () => {
+    const container = renderInto(
+      createProps({
+        section: "skills",
+        skills: [skill("summarize")],
+        treeDetail: TREE,
+        catalogPhase: "ready",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("ticket-triage");
+    expect(text).toContain("not installed");
   });
 });
 

@@ -236,6 +236,16 @@ export const zh_CN: TranslationMap = {
       exportFailed: "无法加载要编辑的树定义。",
     },
     catalogAgentScope: "工具和 Skills 的作用域为智能体级别；此目录是智能体 {agentId} 所看到的。",
+    catalogUsage: {
+      scope: "以下步骤用量基于所选工作地图 {treeName} 进行统计。",
+      noWorkMap:
+        "未选择工作地图，因此未显示步骤用量。请在工作树中选择一个，以查看每个条目使用了哪些步骤。",
+      usedBy: "被 {treeName} 使用：",
+      declaredBy: "由 {treeName} 声明：",
+      treeIssue:
+        "所选工作地图未能加载，因此以下步骤来自 Gateway 返回的备用定义：{message}。在强制模式下，加载失败的工作地图在成功加载之前不会生效。",
+      treeUnavailable: "无法加载所选的工作地图，因此未显示步骤使用情况：{message}。",
+    },
     bindings: {
       title: "步骤绑定",
       subtitle: "此步骤可调用的内容、声明的技能以及可检索的知识。",
@@ -251,6 +261,8 @@ export const zh_CN: TranslationMap = {
       attachHint:
         "这是技能目录。要将其声明为步骤的依赖项，请打开工作树，选择该步骤，然后在步骤绑定下添加。",
       empty: "未安装任何 Skills。",
+      declaredSection: "由 {treeName} 声明",
+      otherSection: "其他已安装的 Skills",
     },
     runsTitle: "最近运行",
     treesTitle: "工作流树",

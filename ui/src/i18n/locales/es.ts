@@ -245,6 +245,18 @@ export const es: TranslationMap = {
     },
     catalogAgentScope:
       "Las herramientas y Skills tienen alcance por agente; este catálogo es el que ve el agente {agentId}.",
+    catalogUsage: {
+      scope:
+        "El uso de pasos a continuación se mide con respecto al mapa de trabajo seleccionado, {treeName}.",
+      noWorkMap:
+        "No hay un mapa de trabajo seleccionado, por lo que no se muestra el uso de pasos. Selecciona uno en Worktree para ver qué pasos usa cada entrada.",
+      usedBy: "Usado por {treeName}:",
+      declaredBy: "Declarado por {treeName}:",
+      treeIssue:
+        "El mapa de trabajo seleccionado no se cargó, por lo que los pasos a continuación provienen de la definición de respaldo que el Gateway devolvió en su lugar: {message}. En modo de aplicación, el mapa de trabajo fallido no gobierna nada hasta que se cargue.",
+      treeUnavailable:
+        "No se pudo cargar el mapa de trabajo seleccionado, por lo que no se muestra el uso de pasos: {message}.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -261,6 +273,8 @@ export const es: TranslationMap = {
       attachHint:
         "Este es el catálogo. Para declarar una como dependencia de un paso, abra Worktree, seleccione el paso y agréguela en Step bindings.",
       empty: "No hay Skills instalados.",
+      declaredSection: "Declarado por {treeName}",
+      otherSection: "Otras skills instaladas",
     },
     runsTitle: "Ejecuciones recientes",
     treesTitle: "Árboles de flujos de trabajo",

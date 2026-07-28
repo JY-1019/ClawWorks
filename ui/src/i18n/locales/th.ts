@@ -238,6 +238,16 @@ export const th: TranslationMap = {
     },
     catalogAgentScope:
       "เครื่องมือและ Skills ถูกกำหนดขอบเขตตาม Agent โดยแค็ตตาล็อกนี้คือสิ่งที่ Agent {agentId} เห็น",
+    catalogUsage: {
+      scope: "การใช้งานขั้นตอนด้านล่างวัดจาก work-map ที่เลือก {treeName}",
+      noWorkMap:
+        "ไม่ได้เลือก work-map จึงไม่แสดงการใช้งานขั้นตอน เลือก work-map ใน Worktree เพื่อดูว่าขั้นตอนใดใช้แต่ละรายการ",
+      usedBy: "ใช้โดย {treeName}:",
+      declaredBy: "ประกาศโดย {treeName}:",
+      treeIssue:
+        "แผนผังงานที่เลือกไม่สามารถโหลดได้ ดังนั้นขั้นตอนด้านล่างจึงมาจากคำจำกัดความสำรองที่ Gateway ส่งกลับมาแทน: {message} ในโหมดบังคับใช้ แผนผังงานที่โหลดไม่สำเร็จจะไม่ควบคุมสิ่งใดจนกว่าจะโหลดได้สำเร็จ",
+      treeUnavailable: "ไม่สามารถโหลด work-map ที่เลือกได้ จึงไม่แสดงการใช้งานขั้นตอน: {message}",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "สิ่งที่ขั้นตอนนี้สามารถเรียกใช้ ความสามารถที่ประกาศ และสิ่งที่สามารถดึงข้อมูลได้",
@@ -253,6 +263,8 @@ export const th: TranslationMap = {
       attachHint:
         "นี่คือแค็ตตาล็อก หากต้องการประกาศเป็นส่วนที่ขั้นตอนต้องพึ่งพา ให้เปิด Worktree เลือกขั้นตอน แล้วเพิ่มภายใต้ Step bindings",
       empty: "ไม่มี Skills ที่ติดตั้งไว้",
+      declaredSection: "ประกาศโดย {treeName}",
+      otherSection: "Skills อื่นที่ติดตั้งแล้ว",
     },
     runsTitle: "การรันล่าสุด",
     treesTitle: "แผนผังเวิร์กโฟลว์",

@@ -249,6 +249,18 @@ export const ja_JP: TranslationMap = {
     },
     catalogAgentScope:
       "ツールとSkillsはエージェントスコープです。このカタログはエージェント {agentId} に表示されるものです。",
+    catalogUsage: {
+      scope:
+        "以下のステップ使用状況は、選択されたワークマップ {treeName} に基づいて測定されています。",
+      noWorkMap:
+        "ワークマップが選択されていないため、ステップの使用状況は表示されません。Worktree でワークマップを選択すると、各エントリを使用しているステップを確認できます。",
+      usedBy: "{treeName} で使用中:",
+      declaredBy: "{treeName} による宣言:",
+      treeIssue:
+        "選択されたワークマップを読み込めなかったため、以下のステップは Gateway が返したフォールバック定義から取得されています: {message}。強制モードでは、読み込みに失敗したワークマップは読み込まれるまで何も制御しません。",
+      treeUnavailable:
+        "選択されたワークマップを読み込めなかったため、ステップの使用状況は表示されません: {message}。",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "このステップが呼び出せるもの、宣言するノウハウ、取得できるもの。",
@@ -265,6 +277,8 @@ export const ja_JP: TranslationMap = {
       attachHint:
         "これはカタログです。ステップの依存関係として宣言するには、Worktreeを開き、ステップを選択して、Step bindingsに追加してください。",
       empty: "インストールされたSkillsはありません。",
+      declaredSection: "{treeName} で宣言済み",
+      otherSection: "その他のインストール済み Skills",
     },
     runsTitle: "最近の実行",
     treesTitle: "ワークフローツリー",

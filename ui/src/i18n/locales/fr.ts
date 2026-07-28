@@ -247,6 +247,18 @@ export const fr: TranslationMap = {
     },
     catalogAgentScope:
       "Les outils et les Skills sont limités à l'agent ; ce catalogue est celui que l'agent {agentId} voit.",
+    catalogUsage: {
+      scope:
+        "L'utilisation des étapes ci-dessous est mesurée par rapport à la carte de travail sélectionnée, {treeName}.",
+      noWorkMap:
+        "Aucune carte de travail n'est sélectionnée, donc aucune utilisation d'étapes n'est affichée. Choisissez-en une dans Worktree pour voir quelles étapes utilisent chaque entrée.",
+      usedBy: "Utilisé par {treeName} :",
+      declaredBy: "Déclaré par {treeName} :",
+      treeIssue:
+        "La carte de travail sélectionnée n'a pas pu être chargée, les étapes ci-dessous proviennent donc de la définition de secours renvoyée par le Gateway : {message}. En mode application, la carte de travail en échec ne régit rien tant qu'elle n'est pas chargée.",
+      treeUnavailable:
+        "L'arborescence sélectionnée n'a pas pu être chargée, aucune utilisation des étapes n'est affichée : {message}.",
+    },
     bindings: {
       title: "Liaisons de l'étape",
       subtitle:
@@ -264,6 +276,8 @@ export const fr: TranslationMap = {
       attachHint:
         "Ceci est le catalogue. Pour en déclarer un comme dépendance d'une étape, ouvrez Worktree, sélectionnez l'étape et ajoutez-le sous Liaisons de l'étape.",
       empty: "Aucun skill n'est installé.",
+      declaredSection: "Déclaré par {treeName}",
+      otherSection: "Autres Skills installés",
     },
     runsTitle: "Exécutions récentes",
     treesTitle: "Arborescences de workflows",

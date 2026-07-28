@@ -247,6 +247,17 @@ export const tr: TranslationMap = {
     },
     catalogAgentScope:
       "Araçlar ve beceriler ajan kapsamlıdır; bu katalog, {agentId} ajanının gördüğü katalogdur.",
+    catalogUsage: {
+      scope: "Aşağıdaki adım kullanımı seçili çalışma haritası {treeName} için ölçülmektedir.",
+      noWorkMap:
+        "Çalışma haritası seçilmediğinden adım kullanımı gösterilmiyor. Her girişi hangi adımların kullandığını görmek için Worktree üzerinden bir tane seçin.",
+      usedBy: "{treeName} tarafından kullanılıyor:",
+      declaredBy: "{treeName} tarafından bildirildi:",
+      treeIssue:
+        "Seçilen çalışma haritası yüklenemedi, bu nedenle aşağıdaki adımlar Gateway'in döndürdüğü yedek tanımdan gelmektedir: {message}. Zorunlu modda, başarısız çalışma haritası yüklenene kadar hiçbir şeyi yönetmez.",
+      treeUnavailable:
+        "Seçilen çalışma haritası yüklenemedi, bu nedenle adım kullanımı gösterilmiyor: {message}.",
+    },
     bindings: {
       title: "Adım bağlamaları",
       subtitle: "Bu adımın çağırabileceği, bildirdiği uzmanlık ve alabileceği bilgiler.",
@@ -262,6 +273,8 @@ export const tr: TranslationMap = {
       attachHint:
         "Bu katalogdur. Birini bir adımın bağımlılığı olarak bildirmek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
       empty: "Yüklü Skills yok.",
+      declaredSection: "{treeName} tarafından tanımlanan",
+      otherSection: "Diğer yüklü Skills",
     },
     runsTitle: "Son çalıştırmalar",
     treesTitle: "İş akışı ağaçları",

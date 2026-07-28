@@ -245,6 +245,17 @@ export const id: TranslationMap = {
     },
     catalogAgentScope:
       "Alat dan skills dicakupkan per agen; katalog ini adalah yang dilihat oleh agen {agentId}.",
+    catalogUsage: {
+      scope: "Penggunaan langkah di bawah diukur terhadap work-map yang dipilih, {treeName}.",
+      noWorkMap:
+        "Tidak ada work-map yang dipilih, sehingga tidak ada penggunaan langkah yang ditampilkan. Pilih satu di Worktree untuk melihat langkah mana yang menggunakan setiap entri.",
+      usedBy: "Digunakan oleh {treeName}:",
+      declaredBy: "Dideklarasikan oleh {treeName}:",
+      treeIssue:
+        "Peta kerja yang dipilih tidak berhasil dimuat, sehingga langkah-langkah di bawah berasal dari definisi fallback yang dikembalikan oleh Gateway: {message}. Dalam mode enforce, peta kerja yang gagal tidak mengatur apa pun hingga berhasil dimuat.",
+      treeUnavailable:
+        "Work-map yang dipilih tidak dapat dimuat, sehingga penggunaan langkah tidak ditampilkan: {message}.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -262,6 +273,8 @@ export const id: TranslationMap = {
       attachHint:
         "Ini adalah katalog. Untuk mendeklarasikan salah satu sebagai dependensi langkah, buka Worktree, pilih langkah tersebut, dan tambahkan di bawah Step bindings.",
       empty: "Tidak ada skills yang terinstal.",
+      declaredSection: "Dideklarasikan oleh {treeName}",
+      otherSection: "Skills terinstal lainnya",
     },
     runsTitle: "Eksekusi terbaru",
     treesTitle: "Pohon alur kerja",

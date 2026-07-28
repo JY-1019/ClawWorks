@@ -249,6 +249,18 @@ export const nl: TranslationMap = {
     },
     catalogAgentScope:
       "Tools en skills zijn agent-gebonden; deze catalogus is wat agent {agentId} ziet.",
+    catalogUsage: {
+      scope:
+        "Stapgebruik hieronder wordt gemeten ten opzichte van de geselecteerde werkkaart, {treeName}.",
+      noWorkMap:
+        "Er is geen werkkaart geselecteerd, dus er wordt geen stapgebruik getoond. Kies er een in Worktree om te zien welke stappen elk item gebruiken.",
+      usedBy: "Gebruikt door {treeName}:",
+      declaredBy: "Gedeclareerd door {treeName}:",
+      treeIssue:
+        "De geselecteerde werkkaart kon niet worden geladen, dus de onderstaande stappen komen uit de terugvaldefinitie die de Gateway in plaats daarvan heeft geretourneerd: {message}. In afdwingmodus beheert de mislukte werkkaart niets totdat deze is geladen.",
+      treeUnavailable:
+        "De geselecteerde werkkaart kon niet worden geladen, dus er wordt geen stapgebruik weergegeven: {message}.",
+    },
     bindings: {
       title: "Stapkoppelingen",
       subtitle: "Wat deze stap mag aanroepen, de kennis die het declareert en wat het mag ophalen.",
@@ -265,6 +277,8 @@ export const nl: TranslationMap = {
       attachHint:
         "Dit is de catalogus. Om een skill als afhankelijkheid van een stap te declareren, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen.",
       empty: "Er zijn geen Skills geïnstalleerd.",
+      declaredSection: "Gedeclareerd door {treeName}",
+      otherSection: "Andere geïnstalleerde skills",
     },
     runsTitle: "Recente uitvoeringen",
     treesTitle: "Workflowbomen",

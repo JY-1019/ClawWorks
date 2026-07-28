@@ -246,6 +246,17 @@ export const pl: TranslationMap = {
     },
     catalogAgentScope:
       "Narzędzia i skills są przypisane do agenta; ten katalog jest tym, co widzi agent {agentId}.",
+    catalogUsage: {
+      scope: "Poniższe użycie kroków jest mierzone względem wybranej mapy pracy, {treeName}.",
+      noWorkMap:
+        "Nie wybrano mapy pracy, więc użycie kroków nie jest wyświetlane. Wybierz mapę w Worktree, aby zobaczyć, które kroki używają poszczególnych wpisów.",
+      usedBy: "Używane przez {treeName}:",
+      declaredBy: "Zadeklarowane przez {treeName}:",
+      treeIssue:
+        "Wybrana mapa pracy nie została załadowana, więc poniższe kroki pochodzą z definicji zastępczej zwróconej przez Gateway: {message}. W trybie wymuszania nieudana mapa pracy nie kontroluje niczego, dopóki się nie załaduje.",
+      treeUnavailable:
+        "Nie udało się załadować wybranej mapy pracy, dlatego nie jest wyświetlane użycie kroków: {message}.",
+    },
     bindings: {
       title: "Powiązania kroku",
       subtitle: "Co ten krok może wywoływać, jakie kompetencje deklaruje i co może pobierać.",
@@ -261,6 +272,8 @@ export const pl: TranslationMap = {
       attachHint:
         "To jest katalog. Aby zadeklarować element jako zależność kroku, otwórz Worktree, wybierz krok i dodaj go w sekcji Powiązania kroku.",
       empty: "Brak zainstalowanych Skills.",
+      declaredSection: "Zadeklarowane przez {treeName}",
+      otherSection: "Inne zainstalowane Skills",
     },
     runsTitle: "Ostatnie uruchomienia",
     treesTitle: "Drzewa workflow",

@@ -117,6 +117,32 @@ a source checkout, import it with:
 pnpm openclaw enterprise trees import examples/enterprise/incident-response.clawworks.yaml
 ```
 
+That example, like the other tree files, is a declaration rather than something
+that runs as shipped: a tree cannot carry its own knowledge, so `knowledge_search`
+retrieves nothing until you register `acme.runbooks` yourself, and its
+placeholder skills (`incident-triage`, `runbook-execution`) are ids no install
+provides — only `summarize` resolves, because that one ships with OpenClaw.
+
+For an example where all three governed axes are live, import the bundle
+instead. It inlines its knowledge foundation and declares only a bundled skill,
+so nothing else has to be configured:
+
+```bash
+pnpm openclaw enterprise bundle import examples/enterprise/support-desk.clawworks-bundle.yaml
+pnpm openclaw gateway restart
+```
+
+The restart is required: a running gateway holds its tree registry for the life
+of the process, so an import made from the CLI is not visible to the Control UI
+or to runs until it reloads.
+
+Then open Enterprise and select the work-map on Worktree. The Tools and Skills
+screens list the catalog for the gateway's default agent — tools resolve against
+an agent's workspace and skills against its filter, so a multi-agent install has
+no single catalog, and the screens name the agent they answered for. Each entry
+the selected work-map binds is tagged with the steps that use it; a skill a step
+declares but no install provides is listed too, marked "not installed".
+
 ### Ontology bindings
 
 Each node carries executable metadata in its `ontology`:

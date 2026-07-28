@@ -237,6 +237,16 @@ export const zh_TW: TranslationMap = {
       exportFailed: "無法載入要編輯的樹狀結構定義。",
     },
     catalogAgentScope: "工具和 Skills 的範圍限定於代理；此目錄是代理 {agentId} 所看到的。",
+    catalogUsage: {
+      scope: "以下步驟用量是根據所選的工作地圖 {treeName} 計算。",
+      noWorkMap:
+        "未選擇工作地圖，因此不顯示步驟用量。請在 Worktree 中選擇一個，以查看每個項目使用了哪些步驟。",
+      usedBy: "由 {treeName} 使用：",
+      declaredBy: "由 {treeName} 宣告：",
+      treeIssue:
+        "所選的工作地圖未能載入，因此以下步驟來自 Gateway 回傳的備用定義：{message}。在強制模式下，載入失敗的工作地圖在成功載入之前不會管控任何內容。",
+      treeUnavailable: "無法載入所選的工作地圖，因此未顯示步驟使用情況：{message}。",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "此步驟可呼叫的工具、宣告的專業知識，以及可擷取的內容。",
@@ -252,6 +262,8 @@ export const zh_TW: TranslationMap = {
       attachHint:
         "這是目錄。若要將其宣告為步驟的依賴項，請開啟 Worktree，選取步驟，然後在「Step bindings」下新增。",
       empty: "尚未安裝任何 Skills。",
+      declaredSection: "由 {treeName} 宣告",
+      otherSection: "其他已安裝的 Skills",
     },
     runsTitle: "最近的執行",
     treesTitle: "工作流程樹",

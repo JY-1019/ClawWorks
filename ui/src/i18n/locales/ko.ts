@@ -243,6 +243,17 @@ export const ko: TranslationMap = {
     },
     catalogAgentScope:
       "도구와 Skills는 에이전트 범위로 적용됩니다. 이 카탈로그는 에이전트 {agentId}에게 표시되는 카탈로그입니다.",
+    catalogUsage: {
+      scope: "아래 단계 사용량은 선택된 작업 맵 {treeName}을 기준으로 측정됩니다.",
+      noWorkMap:
+        "작업 맵이 선택되지 않아 단계 사용량이 표시되지 않습니다. Worktree에서 작업 맵을 선택하여 각 항목을 사용하는 단계를 확인하세요.",
+      usedBy: "{treeName}에서 사용 중:",
+      declaredBy: "{treeName}에 의해 선언됨:",
+      treeIssue:
+        "선택한 작업 맵을 불러오지 못하여, 아래 단계는 Gateway가 대신 반환한 대체 정의에서 가져온 것입니다: {message}. 적용 모드에서는 실패한 작업 맵이 로드될 때까지 아무것도 제어하지 않습니다.",
+      treeUnavailable:
+        "선택한 작업 맵을 불러올 수 없어 단계 사용량이 표시되지 않습니다: {message}.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "이 단계가 호출할 수 있는 항목, 선언하는 노하우, 검색할 수 있는 항목입니다.",
@@ -258,6 +269,8 @@ export const ko: TranslationMap = {
       attachHint:
         "이것은 카탈로그입니다. 단계의 종속성으로 선언하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요.",
       empty: "설치된 Skills이 없습니다.",
+      declaredSection: "{treeName}에서 선언됨",
+      otherSection: "기타 설치된 Skills",
     },
     runsTitle: "최근 실행",
     treesTitle: "워크플로 트리",

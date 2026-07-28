@@ -2330,6 +2330,41 @@
   box-shadow: var(--focus-ring);
 }
 
+/*
+ * Rows with no .list-meta second child. .list-item always reserves 200-260px for
+ * meta, so a meta-less row renders against a dead gutter — and a <details> row
+ * is worse: auto-placement drops its expanded body INTO that narrow column,
+ * where the content collapses to a few characters wide. Catalog rows opt out.
+ */
+.list-item-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * Catalog group header. The <summary> keeps its native display: list-item so the
+ * browser still draws the disclosure triangle — most groups render collapsed, and
+ * without the marker they read as static rows with no hint that they open. The
+ * flex row that lays out label, count, and selector goes on an inner wrapper.
+ */
+.catalog-summary {
+  cursor: pointer;
+}
+
+.catalog-summary-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+/* Expanded group body, indented so its rows read as children of the group. */
+.catalog-children {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
 .list-main {
   display: grid;
   gap: 4px;

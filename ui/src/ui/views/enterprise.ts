@@ -8,11 +8,13 @@ import type {
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
   EnterpriseTreeImportIssue,
+  EnterpriseTreeNode,
   EnterpriseTreesListResult,
   EnterpriseTreeSummary,
   EnterpriseTreeVersionSummary,
   ToolsCatalogResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
+import { isToolAllowedByPolicies } from "../../../../src/agents/tool-policy-match.js";
 import { t } from "../../i18n/index.ts";
 import type { OntologyEntity } from "../components/ontology-graph.ts";
 import "../components/modal-dialog.ts";
@@ -309,6 +311,203 @@ function constrainingAncestorIds(
 }
 
 /**
+ * Core tool sections that exist only for governed steps. CORE_TOOL_SECTION_ORDER
+ * (src/agents/tool-catalog.ts) sorts them LAST, so an operator who opens Tools to
+ * see what a step can bind scrolls past every stock group to reach the two this
+ * product added. Reordered for display only — the catalog order every other
+ * surface reads is untouched.
+ */
+const ENTERPRISE_TOOL_SECTION_IDS: ReadonlySet<string> = new Set([
+  "enterprise",
+  "enterprise-write",
+]);
+
+function isEnterpriseToolGroup(group: ToolsCatalogResult["groups"][number]): boolean {
+  return group.source === "core" && ENTERPRISE_TOOL_SECTION_IDS.has(group.id);
+}
+
+/** Enterprise groups first; every other group keeps its catalog order. */
+function enterpriseToolGroupsFirst(
+  groups: ToolsCatalogResult["groups"],
+): ToolsCatalogResult["groups"] {
+  const enterprise = groups.filter((group) => isEnterpriseToolGroup(group));
+  const stock = groups.filter((group) => !isEnterpriseToolGroup(group));
+  return [...enterprise, ...stock];
+}
+
+/** A step of the selected work-map that binds one catalog entry. */
+type CatalogUsage = { nodeId: string; title: string };
+
+function addUsage(usage: Map<string, CatalogUsage[]>, key: string, node: EnterpriseTreeNode): void {
+  const steps = usage.get(key);
+  const step = { nodeId: node.id, title: node.title };
+  if (steps) {
+    steps.push(step);
+    return;
+  }
+  usage.set(key, [step]);
+}
+
+/**
+ * Every tool policy on the root->node path, nearest first. Governance treats each
+ * scoped node on that path as an INDEPENDENT gate (ontologyScopeViolation in
+ * src/enterprise/governance.ts), so a step that lists `memory_search` under a root
+ * that allows only `message` can never call it. Unscoped ancestors contribute no
+ * policy — an empty allow-list means "allow everything not denied", which would
+ * wrongly widen the composition.
+ */
+function toolPolicyPath(
+  node: EnterpriseTreeNode,
+  byId: Map<string, EnterpriseTreeNode>,
+): { path: EnterpriseTreeNode[]; policies: Array<{ allow: string[]; deny: string[] }> } {
+  const path: EnterpriseTreeNode[] = [];
+  const policies: Array<{ allow: string[]; deny: string[] }> = [];
+  const seen = new Set<string>();
+  let current: EnterpriseTreeNode | undefined = node;
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    path.push(current);
+    const allow = current.ontology.allowedTools ?? [];
+    const deny = current.ontology.deniedTools ?? [];
+    if (allow.length > 0 || deny.length > 0) {
+      policies.push({ allow: [...allow], deny: [...deny] });
+    }
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return { path, policies };
+}
+
+/**
+ * `invoke_action` is the one tool the allow-list alone does not grant: governance
+ * additionally requires a node on the path to NAME it or `group:enterprise-write`
+ * (ONTOLOGY_WRITE_OPT_INS in src/enterprise/runtime.ts). A `*` allow-list has not
+ * thought about writes and `group:enterprise` has only ever meant read, so a
+ * matcher-only answer would advertise write access every such step is denied.
+ * Path-wide `some`, matching activePathAllowsWrites, not the per-node `every` the
+ * allow-list uses.
+ */
+const ONTOLOGY_WRITE_TOOL = "invoke_action";
+const ONTOLOGY_WRITE_OPT_INS: ReadonlySet<string> = new Set([
+  "invoke_action",
+  "group:enterprise-write",
+]);
+
+function pathAllowsOntologyWrites(path: readonly EnterpriseTreeNode[]): boolean {
+  return path.some((node) =>
+    (node.ontology.allowedTools ?? []).some((tool) =>
+      ONTOLOGY_WRITE_OPT_INS.has(tool.trim().toLowerCase()),
+    ),
+  );
+}
+
+/**
+ * Which steps of the selected work-map put each catalog tool in scope. Delegates
+ * to the runtime gate (isToolAllowedByPolicies, the same matcher governance calls)
+ * so `group:` selectors and `*` globs resolve to exactly the tools they resolve to
+ * at call time — a literal "is this id in the array" check would report a step as
+ * unbound while the runtime lets it call, and an own-scope-only check would claim
+ * a step can call a tool an ancestor denies it.
+ *
+ * Steps with no `allowedTools` of their own are skipped: governance leaves them
+ * unscoped, so they allow everything their ancestors do, and listing them under
+ * every tool would drown the steps that actually made a choice.
+ */
+function collectToolUsage(
+  nodes: readonly EnterpriseTreeNode[] | undefined,
+  groups: ToolsCatalogResult["groups"],
+): Map<string, CatalogUsage[]> {
+  const usage = new Map<string, CatalogUsage[]>();
+  const all = nodes ?? [];
+  const scoped = all.filter((node) => node.ontology.allowedTools?.length);
+  if (scoped.length === 0) {
+    return usage;
+  }
+  const byId = new Map(all.map((node) => [node.id, node]));
+  const resolved = new Map(scoped.map((node) => [node.id, toolPolicyPath(node, byId)]));
+  for (const group of groups) {
+    for (const tool of group.tools) {
+      for (const node of scoped) {
+        const gate = resolved.get(node.id);
+        if (!gate || !isToolAllowedByPolicies(tool.id, gate.policies)) {
+          continue;
+        }
+        if (tool.id === ONTOLOGY_WRITE_TOOL && !pathAllowsOntologyWrites(gate.path)) {
+          continue;
+        }
+        addUsage(usage, tool.id, node);
+      }
+    }
+  }
+  return usage;
+}
+
+/**
+ * Which steps declare each skill. Unlike tools this is an exact-name match: the
+ * schema validates every entry with SkillNameSchema (src/enterprise/schema.ts),
+ * so a skill list holds names only — no groups and no globs to expand.
+ */
+function collectSkillUsage(
+  nodes: readonly EnterpriseTreeNode[] | undefined,
+): Map<string, CatalogUsage[]> {
+  const usage = new Map<string, CatalogUsage[]>();
+  for (const node of nodes ?? []) {
+    for (const name of node.ontology.skills ?? []) {
+      addUsage(usage, name, node);
+    }
+  }
+  return usage;
+}
+
+/**
+ * Where a catalog entry is already used. The catalogs are deployment-wide, so
+ * without this the operator cannot tell an entry their work-map depends on from
+ * one nothing has bound — which is the only question the catalog cannot answer
+ * by itself. Titles go in the tooltip; step ids are what the bindings show.
+ */
+function renderCatalogUsage(
+  usage: readonly CatalogUsage[] | undefined,
+  label: string | null,
+): TemplateResult | typeof nothing {
+  if (!usage?.length || !label) {
+    return nothing;
+  }
+  return html`<div class="chip-row" style="margin-top: 6px;">
+    <span class="muted">${label}</span>
+    ${usage.map((step) => html`<span class="chip" title=${step.title}>${step.nodeId}</span>`)}
+  </div>`;
+}
+
+/**
+ * Says which work-map the chips are measured against, or why there are none.
+ * Silence would read as "nothing uses this" rather than "nothing was asked".
+ *
+ * A `treeIssue` means enterprise.trees.get fell back to a built-in after an
+ * import or store read failed. The chips still come from that fallback and stay
+ * shown — under `enterprise.mode: "observe"` the built-in is what runs, so hiding
+ * them would be wrong — but the banner says the selection did not load, because
+ * under enforce the failed tree governs nothing.
+ */
+function renderCatalogUsageScope(props: EnterpriseProps): TemplateResult {
+  if (props.treeIssue) {
+    // A failed load may or may not come with a fallback definition (the protocol
+    // allows `tree: null` beside an error, and a rejected request leaves nothing
+    // at all). Only the first case has steps on screen to explain, so claiming a
+    // fallback in the second would describe rows that are not there.
+    return html`<div class="callout" style="margin-top: 8px;">
+      ${props.treeDetail
+        ? t("enterprise.catalogUsage.treeIssue", { message: props.treeIssue })
+        : t("enterprise.catalogUsage.treeUnavailable", { message: props.treeIssue })}
+    </div>`;
+  }
+  const treeName = props.treeDetail?.name ?? null;
+  return html`<div class="muted" style="margin-top: 4px;">
+    ${treeName
+      ? t("enterprise.catalogUsage.scope", { treeName })
+      : t("enterprise.catalogUsage.noWorkMap")}
+  </div>`;
+}
+
+/**
  * Which agent the catalogs answered for. Plugin tools resolve against an agent's
  * workspace and skills against its filter, so a deployment with several agents
  * does not have one catalog — say whose this is instead of implying it is global.
@@ -327,11 +526,14 @@ function renderCatalogAgentScope(agentId: string | null): TemplateResult | typeo
  * per node on Worktree.
  */
 function renderEnterpriseTools(props: EnterpriseProps): TemplateResult {
+  const treeName = props.treeDetail?.name ?? null;
+  const usage = collectToolUsage(props.treeDetail?.nodes, props.toolGroups);
+  const usageLabel = treeName ? t("enterprise.catalogUsage.usedBy", { treeName }) : null;
   return html`
     <section class="card" style="margin-top: 16px;">
       <div class="card-title">${t("enterprise.toolsTab.title")}</div>
       <div class="card-sub">${t("enterprise.toolsTab.subtitle")}</div>
-      ${renderCatalogAgentScope(props.catalogAgentId)}
+      ${renderCatalogAgentScope(props.catalogAgentId)}${renderCatalogUsageScope(props)}
       <div class="muted" style="margin-top: 8px;">${t("enterprise.toolsTab.attachHint")}</div>
       ${props.toolGroups.length === 0
         ? renderCatalogEmpty(
@@ -340,34 +542,44 @@ function renderEnterpriseTools(props: EnterpriseProps): TemplateResult {
             t("enterprise.toolsTab.empty"),
           )
         : html`<div class="list" style="margin-top: 12px;">
-            ${props.toolGroups.map((group) => renderToolCatalogGroup(group))}
+            ${enterpriseToolGroupsFirst(props.toolGroups).map((group) =>
+              renderToolCatalogGroup(group, usage, usageLabel),
+            )}
           </div>`}
     </section>
   `;
 }
 
-function renderToolCatalogGroup(group: ToolsCatalogResult["groups"][number]): TemplateResult {
+function renderToolCatalogGroup(
+  group: ToolsCatalogResult["groups"][number],
+  usage: Map<string, CatalogUsage[]>,
+  usageLabel: string | null,
+): TemplateResult {
   return html`
-    <details class="list-item">
-      <summary style="cursor: pointer;">
-        <span class="list-title">${group.label}</span>
-        <span class="chip"
-          >${t("enterprise.toolsTab.toolCount", { count: String(group.tools.length) })}</span
-        >
-        <!-- Only core sections have a group: selector (CORE_TOOL_GROUPS is built from
-          them), so a plugin group shows its owner instead of a selector that would
-          not resolve in an allow-list. -->
-        ${group.source === "core"
-          ? html`<code>group:${group.id}</code>`
-          : html`<span class="chip"
-              >${t("enterprise.toolsTab.pluginBadge", {
-                pluginId: group.pluginId ?? group.id,
-              })}</span
-            >`}
+    <!-- list-item-stacked: this row has no .list-meta, and the default two-column
+      .list-item grid would place the expanded body in the 200-260px meta column. -->
+    <details class="list-item list-item-stacked" ?open=${isEnterpriseToolGroup(group)}>
+      <summary class="catalog-summary">
+        <span class="catalog-summary-row">
+          <span class="list-title">${group.label}</span>
+          <span class="chip"
+            >${t("enterprise.toolsTab.toolCount", { count: String(group.tools.length) })}</span
+          >
+          <!-- Only core sections have a group: selector (CORE_TOOL_GROUPS is built from
+            them), so a plugin group shows its owner instead of a selector that would
+            not resolve in an allow-list. -->
+          ${group.source === "core"
+            ? html`<code>group:${group.id}</code>`
+            : html`<span class="chip"
+                >${t("enterprise.toolsTab.pluginBadge", {
+                  pluginId: group.pluginId ?? group.id,
+                })}</span
+              >`}
+        </span>
       </summary>
-      <div class="list" style="margin-top: 8px;">
+      <div class="list catalog-children">
         ${group.tools.map(
-          (tool) => html`<div class="list-item">
+          (tool) => html`<div class="list-item list-item-stacked">
             <div class="list-main">
               <div class="list-title">
                 <code>${tool.id}</code>
@@ -378,6 +590,7 @@ function renderToolCatalogGroup(group: ToolsCatalogResult["groups"][number]): Te
                   : nothing}
               </div>
               ${tool.description ? html`<div class="list-sub">${tool.description}</div>` : nothing}
+              ${renderCatalogUsage(usage.get(tool.id), usageLabel)}
             </div>
           </div>`,
         )}
@@ -386,36 +599,110 @@ function renderToolCatalogGroup(group: ToolsCatalogResult["groups"][number]): Te
   `;
 }
 
+/** One catalog row for an installed skill, with where the work-map declares it. */
+function renderSkillCatalogRow(
+  skill: SkillStatusEntry,
+  usage: Map<string, CatalogUsage[]>,
+  usageLabel: string | null,
+): TemplateResult {
+  return html`<div class="list-item list-item-stacked">
+    <div class="list-main">
+      <div class="list-title"><code>${skill.name}</code></div>
+      ${skill.description ? html`<div class="list-sub">${skill.description}</div>` : nothing}
+      ${renderSkillStatusChips({ skill, showBundledBadge: skill.bundled === true })}
+      ${renderCatalogUsage(usage.get(skill.name), usageLabel)}
+    </div>
+  </div>`;
+}
+
+/**
+ * A skill the work-map declares that the catalog did not return. The row itself
+ * is driven by the tree, which is authoritative on its own — without it the tab
+ * would show the work-map as fully covered while the step it is declared on can
+ * never load it.
+ *
+ * `installStatusKnown` gates only the verdict: until skills.status answers, an
+ * absent entry means unknown, not missing, and a red badge would accuse an
+ * install that may well provide it.
+ */
+function renderDeclaredOnlySkillRow(
+  name: string,
+  usage: Map<string, CatalogUsage[]>,
+  usageLabel: string | null,
+  installStatusKnown: boolean,
+): TemplateResult {
+  return html`<div class="list-item list-item-stacked">
+    <div class="list-main">
+      <div class="list-title">
+        <code>${name}</code>
+        ${installStatusKnown
+          ? html`<span class="chip chip-warn">${t("enterprise.bindings.skillNotInstalled")}</span>`
+          : nothing}
+      </div>
+      ${renderCatalogUsage(usage.get(name), usageLabel)}
+    </div>
+  </div>`;
+}
+
 /**
  * Every installed skill. Like Tools this is the catalog, not a step's
- * declaration: a step names the skills its work depends on from Worktree.
+ * declaration: a step names the skills its work depends on from Worktree. The
+ * ones the selected work-map declares are lifted out of the alphabet soup into
+ * their own section — that is the set an operator came here to check.
  */
 function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
+  const treeName = props.treeDetail?.name ?? null;
+  const usage = collectSkillUsage(props.treeDetail?.nodes);
+  // "Declared by", not "Used by": ontology.skills is an inspection/bundle
+  // annotation. It does not load skill content or scope it to the step — skill
+  // availability stays agent-wide — so "used by" would imply an activation that
+  // declaring never performs.
+  const usageLabel = treeName ? t("enterprise.catalogUsage.declaredBy", { treeName }) : null;
+  const declared = props.skills.filter((skill) => usage.has(skill.name));
+  const rest = props.skills.filter((skill) => !usage.has(skill.name));
+  // Declared names the catalog did not return. Listed whatever the catalog did:
+  // the work-map declares them either way, and dropping them while skills.status
+  // is loading or failed would hide a real dependency behind a transient error.
+  // Only the "not installed" verdict waits for a clean answer (same rule as the
+  // binding rows): before that, absent means unknown rather than missing.
+  const skillsKnown = props.catalogPhase === "ready" && !props.catalogErrors.skills;
+  const installed = new Set(props.skills.map((skill) => skill.name));
+  const declaredOnly = [...usage.keys()].filter((name) => !installed.has(name));
+  const hasDeclaredSection = treeName !== null && declared.length + declaredOnly.length > 0;
   return html`
     <section class="card" style="margin-top: 16px;">
       <div class="card-title">${t("enterprise.skillsTab.title")}</div>
       <div class="card-sub">${t("enterprise.skillsTab.subtitle")}</div>
-      ${renderCatalogAgentScope(props.catalogAgentId)}
+      ${renderCatalogAgentScope(props.catalogAgentId)}${renderCatalogUsageScope(props)}
       <div class="muted" style="margin-top: 8px;">${t("enterprise.skillsTab.attachHint")}</div>
+      ${hasDeclaredSection
+        ? html`<div class="card-title" style="margin-top: 16px;">
+              ${t("enterprise.skillsTab.declaredSection", { treeName: treeName ?? "" })}
+            </div>
+            <div class="list" style="margin-top: 8px;">
+              ${declared.map((skill) => renderSkillCatalogRow(skill, usage, usageLabel))}
+              ${declaredOnly.map((name) =>
+                renderDeclaredOnlySkillRow(name, usage, usageLabel, skillsKnown),
+              )}
+            </div>`
+        : nothing}
       ${props.skills.length === 0
         ? renderCatalogEmpty(
             props.catalogPhase,
             props.catalogErrors.skills,
             t("enterprise.skillsTab.empty"),
           )
-        : html`<div class="list" style="margin-top: 12px;">
-            ${props.skills.map(
-              (skill) => html`<div class="list-item">
-                <div class="list-main">
-                  <div class="list-title"><code>${skill.name}</code></div>
-                  ${skill.description
-                    ? html`<div class="list-sub">${skill.description}</div>`
-                    : nothing}
-                  ${renderSkillStatusChips({ skill, showBundledBadge: skill.bundled === true })}
-                </div>
-              </div>`,
-            )}
-          </div>`}
+        : nothing}
+      ${rest.length === 0
+        ? nothing
+        : html`${hasDeclaredSection
+              ? html`<div class="card-title" style="margin-top: 16px;">
+                  ${t("enterprise.skillsTab.otherSection")}
+                </div>`
+              : nothing}
+            <div class="list" style="margin-top: 8px;">
+              ${rest.map((skill) => renderSkillCatalogRow(skill, usage, usageLabel))}
+            </div>`}
     </section>
   `;
 }
