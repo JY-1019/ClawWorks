@@ -653,10 +653,10 @@ function renderDeclaredOnlySkillRow(
 function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
   const treeName = props.treeDetail?.name ?? null;
   const usage = collectSkillUsage(props.treeDetail?.nodes);
-  // "Declared by", not "Used by": ontology.skills is an inspection/bundle
-  // annotation. It does not load skill content or scope it to the step — skill
-  // availability stays agent-wide — so "used by" would imply an activation that
-  // declaring never performs.
+  // "Declared by", not "Used by": a step's `skills` entry reaches the model (the
+  // digest names it under that step as a preference), but it does not install a
+  // skill or scope availability — that stays agent-wide. "Used by" would imply
+  // this step is where the skill becomes available, which declaring never does.
   const usageLabel = treeName ? t("enterprise.catalogUsage.declaredBy", { treeName }) : null;
   const declared = props.skills.filter((skill) => usage.has(skill.name));
   const rest = props.skills.filter((skill) => !usage.has(skill.name));
