@@ -375,6 +375,87 @@ describe("buildEnterprisePromptSection", () => {
     expect(buildEnterprisePromptSection(plan)).toContain("Skills: summarize");
   });
 
+  it("carries the declared skill's instructions in the digest", () => {
+    // The point of the feature: the model gets the know-how itself, so it does
+    // not have to open a SKILL.md the step's tool scope may forbid.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-skill-body",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-body",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          // No `read`: the instructions still arrive.
+          ontology: { allowedTools: ["message"] },
+          children: [
+            {
+              id: "desk.triage",
+              title: "Triage",
+              ontology: { allowedTools: ["message"], skills: ["triage-playbook"] },
+            },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    const section = buildEnterprisePromptSection(plan, [
+      { name: "triage-playbook", instructions: "Always confirm the order id first." },
+    ]);
+    expect(section).toContain("Skills: triage-playbook");
+    expect(section).toContain("Skill instructions for the steps above (triage-playbook):");
+    expect(section).toContain("### triage-playbook");
+    // No host path: mediation runs before sandbox prep, so a location rendered
+    // here would be one a sandboxed run cannot use.
+    expect(section).not.toContain("/skills/triage-playbook/SKILL.md");
+    expect(section).toContain("Always confirm the order id first.");
+    // With the text present there is nothing to open, so the gloss says follow
+    // rather than sending the model to find it.
+    expect(section).toContain("are at the end of this section");
+    expect(section).toContain("never grant a tool the step's scope withholds");
+  });
+
+  it("falls back to naming the skill when no instructions came with the run", () => {
+    // A run with no skills snapshot (or an agent without the skill) must still
+    // show the declaration, just without promising text that is not there.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-skill-nobody",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-nobody",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { allowedTools: ["message"] },
+          children: [
+            {
+              id: "desk.triage",
+              title: "Triage",
+              ontology: { skills: ["triage-playbook"] },
+            },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).toContain("Skills: triage-playbook");
+    expect(section).not.toContain("Skill instructions for the steps above");
+    expect(section).toContain("prefer it over improvising");
+  });
+
   it("keeps the prompt unchanged for a workflow that declares no skills", () => {
     // The skills instruction is conditional: a tree without skills must not gain
     // prompt bytes, or every existing workflow's cached prefix is invalidated.

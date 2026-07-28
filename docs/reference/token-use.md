@@ -19,6 +19,12 @@ OpenClaw assembles its own system prompt on every run. It includes:
   collaboration developer instructions; other harnesses receive it in the normal
   prompt surface. It is bounded by `skills.limits.maxSkillsPromptChars`, with
   optional per-agent override at `agents.list[].skillsLimits.maxSkillsPromptChars`.
+  One exception: in enterprise mode, a workflow step that declares
+  `ontology.skills` has those skills' `SKILL.md` bodies inlined into the step
+  digest, so a governed step can follow them without `read`. That appendix draws
+  on what is left of the same cap after the skills list, and is additionally
+  bounded at 4,000 characters per skill and 12,000 in total. See
+  [ClawWorks Enterprise](/concepts/clawworks-enterprise).
 - Self-update instructions
 - Workspace + bootstrap files (`AGENTS.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `BOOTSTRAP.md` when new, plus `MEMORY.md` when present). Native Codex turns do not paste raw `MEMORY.md` from the configured agent workspace when memory tools are available for that workspace; they include a small memory pointer in turn-scoped collaboration developer instructions and use memory tools on demand. If tools are disabled, memory search is unavailable, or the active workspace differs from the agent memory workspace, `MEMORY.md` uses the normal bounded turn-context path. Lowercase root `memory.md` is not injected; it is legacy repair input for `openclaw doctor --fix` when paired with `MEMORY.md`. Large injected files are truncated by `agents.defaults.bootstrapMaxChars` (default: 20000), and total bootstrap injection is capped by `agents.defaults.bootstrapTotalMaxChars` (default: 60000). `memory/*.md` daily files are not part of the normal bootstrap prompt; they remain on-demand via memory tools on ordinary turns, but reset/startup model runs can prepend a one-shot startup-context block with recent daily memory for that first turn. Bare chat `/new` and `/reset` commands are acknowledged without invoking the model. The startup prelude is controlled by `agents.defaults.startupContext`. Post-compaction AGENTS.md excerpts are separate and require explicit `agents.defaults.compaction.postCompactionSections` opt-in.
 - Time (UTC + user timezone)

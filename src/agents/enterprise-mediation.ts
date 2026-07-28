@@ -11,6 +11,12 @@ import { beginEnterpriseRun, endEnterpriseRun } from "../enterprise/run-mediatio
 import { resolveEnterpriseMode } from "../enterprise/runtime.js";
 import type { EnterpriseRunStatus } from "../enterprise/types.js";
 import { hasGlobalHooks } from "../plugins/hook-runner-global.js";
+import { resolveEffectiveAgentSkillsLimits } from "../skills/discovery/agent-filter.js";
+import {
+  DEFAULT_MAX_SKILL_FILE_BYTES,
+  DEFAULT_MAX_SKILLS_IN_PROMPT,
+  DEFAULT_MAX_SKILLS_PROMPT_CHARS,
+} from "../skills/limits-defaults.js";
 import { buildAgentRunTerminalOutcome } from "./agent-run-terminal-outcome.js";
 import type { EmbeddedAgentRunResult } from "./embedded-agent-runner/types.js";
 
@@ -53,6 +59,21 @@ export type EnterpriseMediatedRunParams = {
   externalDispatch?: boolean;
   /** The auth profile the run dispatches with (account/tenant boundary). */
   authProfileId?: string;
+  /**
+   * The skills this run already resolved for its agent. Passed through so a
+   * step's declared skills can have their instructions inlined into the step
+   * digest; reusing the runner's snapshot keeps this off the discovery path.
+   *
+   * `resolvedSkills` is runtime-only: a persisted session snapshot keeps the
+   * catalog but drops it, and a reusing caller (cron) does not re-hydrate. Those
+   * runs still name their steps' skills, they just carry no bodies — resolving
+   * them there would rebuild the skill set on every scheduled turn, which is the
+   * cost reuse exists to avoid.
+   */
+  skillsSnapshot?: {
+    prompt?: string;
+    resolvedSkills?: Array<{ name: string; filePath: string; baseDir: string }>;
+  };
 };
 
 /**
@@ -191,6 +212,30 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
           return planner ? await planner(plannerParams) : { kind: "unavailable" };
         }
       : undefined;
+  const agentSkillsLimits = resolveEffectiveAgentSkillsLimits(config, params.agentId);
+  // Defaults matter: the loader applies them whether or not an operator set the
+  // key, so reading only the configured value would hand the appendix a second
+  // independent budget on every stock install. Mirrors resolveSkillsLimits.
+  const configuredSkillPromptChars =
+    agentSkillsLimits?.maxSkillsPromptChars ??
+    config?.skills?.limits?.maxSkillsPromptChars ??
+    DEFAULT_MAX_SKILLS_PROMPT_CHARS;
+  const configuredMaxSkillsInPrompt =
+    config?.skills?.limits?.maxSkillsInPrompt ?? DEFAULT_MAX_SKILLS_IN_PROMPT;
+  // What is LEFT of the cap after the catalog the model already gets. Passing the
+  // full cap would hand the appendix a second independent budget, so a small
+  // context could receive the catalog plus another catalog's worth of bodies.
+  // The snapshot's catalog is the best proxy available here: mediation runs
+  // before the attempt layer may drop the catalog (toolsAllow) or a sandbox
+  // rebuilds it from materialized paths, so this can be slightly off in either
+  // direction. It is a budget, not a gate, and erring toward the pre-run catalog
+  // keeps the appendix from claiming a second full allowance.
+  const catalogPrompt = params.skillsSnapshot?.prompt ?? "";
+  const skillPromptCharCap = Math.max(0, configuredSkillPromptChars - catalogPrompt.length);
+  // Count is shared too: the catalog already spent part of the allowance, and
+  // `resolvedSkills` is pre-limit, so a work-map must not get a fresh quota.
+  const catalogSkillCount = (catalogPrompt.match(/<name>/g) ?? []).length;
+  const skillCountCap = Math.max(0, configuredMaxSkillsInPrompt - catalogSkillCount);
   const mediation = await beginEnterpriseRun({
     runId: params.runId,
     prompt: params.prompt,
@@ -204,6 +249,17 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
     // Cancelling the turn must cancel route planning with it; otherwise the
     // planner runs to its timeout and traces a route for an aborted run.
     ...(params.abortSignal ? { signal: params.abortSignal } : {}),
+    // Only the already-resolved set: mediation must not trigger skill discovery.
+    ...(params.skillsSnapshot?.resolvedSkills?.length
+      ? { availableSkills: params.skillsSnapshot.resolvedSkills }
+      : {}),
+    // The inlined bodies are model-facing skill text, so the operator's catalog
+    // limits govern them too — including a per-agent override, which takes
+    // precedence over the global cap exactly as the snapshot builder applies it
+    // (resolveSkillsLimits in src/skills/loading/workspace.ts).
+    maxSkillPromptChars: skillPromptCharCap,
+    maxSkillsInPrompt: skillCountCap,
+    maxSkillFileBytes: config?.skills?.limits?.maxSkillFileBytes ?? DEFAULT_MAX_SKILL_FILE_BYTES,
   });
   if (mediation.kind === "off") {
     return { params, mediated: false };

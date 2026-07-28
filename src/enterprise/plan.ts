@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { countTreeNodes, type EnterpriseRouteSelection } from "@openclaw/enterprise-planner";
 import { redactSecrets } from "../logging/redact.js";
 import { BUILTIN_ASSIST_TREE, BUILTIN_SYSTEM_TREE } from "./builtin-trees.js";
+import type { ResolvedSkillInstructions } from "./skill-instructions.js";
 import type {
   EnterpriseRoutePlan,
   EnterpriseMode,
@@ -433,12 +434,9 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
     lines.push(`${indent}Instructions: ${ontology.guidance}`);
   }
   // Same advisory lane as `guidance`: naming a skill points the model at know-how
-  // it already has, it does not install or authorize anything. Names only — no
-  // availability claim, because whether an install provides a declared name is a
-  // RUNTIME fact this digest is built without. Sorted for prompt-cache stability.
-  //
-  // Rendered whatever the step's tool scope is; see the note above this file's
-  // digest builder for why gating on `read` was rejected.
+  // it depends on, it does not install or authorize anything. Names only here —
+  // the instructions themselves are inlined once at the end, so two steps naming
+  // the same skill do not pay for it twice. Sorted for prompt-cache stability.
   if (ontology.skills?.length) {
     lines.push(`${indent}Skills: ${ontology.skills.toSorted().join(", ")}`);
   }
@@ -470,7 +468,16 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
  * Returns an empty string when no node carries guidance so the built-in
  * permissive trees add zero prompt bytes (prompt-cache/back-compat).
  */
-export function buildEnterprisePromptSection(plan: EnterpriseRunPlan): string {
+export function buildEnterprisePromptSection(
+  plan: EnterpriseRunPlan,
+  /**
+   * SKILL.md bodies for the skills the plan declares, already intersected with
+   * what the agent has (see resolveEnterpriseSkillInstructions). Empty when the
+   * caller had no skills snapshot — the digest then names the skills without
+   * carrying them.
+   */
+  skillInstructions: readonly ResolvedSkillInstructions[] = [],
+): string {
   if (!plan.nodes.some((node) => ontologyHasGuidance(node.ontology))) {
     return "";
   }
@@ -482,14 +489,19 @@ export function buildEnterprisePromptSection(plan: EnterpriseRunPlan): string {
   // declares one — conditional so a workflow without skills keeps the exact
   // prompt bytes it had before (prompt cache, stock parity).
   //
-  // Deliberately a PREFERENCE, not a load order. Loading a skill means reading
-  // its SKILL.md with `read` at the exact location the skills catalog gives
-  // (system-prompt.ts) under rules that runtime already owns — including "one
-  // skill up front max", which an instruction to load several would contradict.
-  // So this points at relevance and leaves the loading rules where they are.
-  if (plan.nodes.some((node) => node.ontology.skills?.length)) {
+  // Which sentence depends on whether any instructions came with the run. When
+  // some did there is nothing to open for those — they are below. The wording
+  // stays true under PARTIAL resolution (a declared skill the agent lacks, or one
+  // the size budget dropped, is still named on its step but has no body): it
+  // points at what is actually included rather than promising every name has
+  // text. With none resolved the line is a pointer and nothing more, because an
+  // instruction to load would be unexecutable on a step that withholds `read`.
+  const declaresSkills = plan.nodes.some((node) => node.ontology.skills?.length);
+  if (declaresSkills) {
     lines.push(
-      "A step's Skills line names the know-how that step depends on: when one of them applies and is available to you, prefer it over improvising. Skills teach how to do the work; they never grant a tool the step's scope withholds.",
+      skillInstructions.length > 0
+        ? "A step's Skills line names the know-how that step depends on. The instructions that came with this run are at the end of this section — follow the ones for the step you are working. Paths they mention are relative to that skill's own directory. They teach how to do the work; they never grant a tool the step's scope withholds."
+        : "A step's Skills line names the know-how that step depends on: when one of them applies and is available to you, prefer it over improvising. Skills teach how to do the work; they never grant a tool the step's scope withholds.",
     );
   }
   lines.push("Steps:");
@@ -499,6 +511,20 @@ export function buildEnterprisePromptSection(plan: EnterpriseRunPlan): string {
   for (const node of plan.nodes) {
     lines.push(`${node.seq}. ${node.title}${node.description ? ` — ${node.description}` : ""}`);
     appendOntologyGuidance(lines, node.ontology, "   ");
+  }
+  // The instructions themselves, once, after the steps that name them. Kept out
+  // of the per-step blocks so a skill two steps depend on is not duplicated, and
+  // last so the workflow structure is read first.
+  if (skillInstructions.length > 0) {
+    // Named explicitly so a partially resolved set is self-describing: the model
+    // can see which declarations have text here and which only have a name.
+    lines.push(
+      "",
+      `Skill instructions for the steps above (${skillInstructions.map((skill) => skill.name).join(", ")}):`,
+    );
+    for (const skill of skillInstructions) {
+      lines.push(`### ${skill.name}`, skill.instructions);
+    }
   }
   return lines.join("\n");
 }

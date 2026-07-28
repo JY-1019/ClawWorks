@@ -296,6 +296,13 @@ The skills list budget is owned by the skills subsystem:
 - Global default: `skills.limits.maxSkillsPromptChars`
 - Per-agent override: `agents.list[].skillsLimits.maxSkillsPromptChars`
 
+In enterprise mode a workflow step may declare `ontology.skills`, and those
+skills' `SKILL.md` bodies are appended to the step digest rather than left for
+the model to open — a governed step often cannot call `read`. The appendix draws
+on what remains of the cap above after the skills list, and is additionally
+bounded at 4,000 characters per skill and 12,000 in total. See
+[ClawWorks Enterprise](/concepts/clawworks-enterprise).
+
 Generic bounded runtime excerpts use a different surface:
 
 - `agents.defaults.contextLimits.*`

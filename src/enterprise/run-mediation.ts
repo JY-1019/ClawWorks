@@ -32,6 +32,11 @@ import {
   type EnterpriseActiveRun,
 } from "./runtime.js";
 import {
+  resolveEnterpriseSkillInstructions,
+  type AvailableSkill,
+  type ResolvedSkillInstructions,
+} from "./skill-instructions.js";
+import {
   appendEnterpriseRunEvent,
   finalizeEnterpriseRun,
   persistEnterpriseRunStart,
@@ -50,6 +55,11 @@ const log = createSubsystemLogger("enterprise");
 type MediatedRunState = EnterpriseActiveRun & {
   executionId: string;
   allocateSeq: () => number;
+  /**
+   * Instructions inlined into this run's digest. Held so a nested begin rebuilds
+   * the SAME prompt instead of re-reading (or silently dropping) them.
+   */
+  skillInstructions?: readonly ResolvedSkillInstructions[];
 };
 
 // Active executions only, keyed by runId (the gate looks runs up by the
@@ -88,6 +98,18 @@ export type BeginEnterpriseRunParams = {
   routePlanner?: WorkflowPlanner;
   /** Cancels the planning call when the agent run is aborted. */
   signal?: AbortSignal;
+  /**
+   * Skills the runner already resolved for this agent. Used only to inline a
+   * declared skill's instructions into the digest, and it is the containment
+   * boundary: a step can surface a skill from this set, never add one to it.
+   */
+  availableSkills?: readonly AvailableSkill[];
+  /** Effective `maxSkillsPromptChars`; the inlined bodies answer to it too. */
+  maxSkillPromptChars?: number;
+  /** Effective `maxSkillsInPrompt`; caps how many bodies may be inlined. */
+  maxSkillsInPrompt?: number;
+  /** Effective `maxSkillFileBytes`; a skill the loader accepted must be readable. */
+  maxSkillFileBytes?: number;
 };
 
 /** Begin enterprise mediation for one agent execution. */
@@ -122,7 +144,7 @@ async function beginEnterpriseRunInternal(
     return {
       kind: "mediated",
       plan: existing.plan,
-      promptSection: buildEnterprisePromptSection(existing.plan),
+      promptSection: buildEnterprisePromptSection(existing.plan, existing.skillInstructions),
     };
   }
 
@@ -218,6 +240,7 @@ async function beginEnterpriseRunInternal(
         ...(params.routePlanner ? { planner: params.routePlanner } : {}),
         ...(params.signal ? { signal: params.signal } : {}),
       });
+
   const plan = buildPlanFor({
     tree: selection.tree,
     matchedBy: selection.treeSource,
@@ -233,6 +256,34 @@ async function beginEnterpriseRunInternal(
   // in flight, the runner is already tearing the run down — persisting
   // run.started/route.selected now would leave a trace claiming a route for a
   // turn that never ran. Nothing is registered, so nothing needs finalizing.
+  if (params.signal?.aborted) {
+    return { kind: "off" };
+  }
+
+  // Read the declared skills' instructions here: after the cancel guard and the
+  // deny shortcut, so a stopped or denied turn never waits on file I/O for a
+  // prompt that will not be sent, and before anything is persisted or
+  // registered, so a cancellation during the read cannot strand an active run
+  // with its trace stuck on "running".
+  const skillInstructions = skipPlanning
+    ? []
+    : await resolveEnterpriseSkillInstructions({
+        plan,
+        ...(params.availableSkills ? { available: params.availableSkills } : {}),
+        ...(params.maxSkillPromptChars !== undefined
+          ? { maxPromptChars: params.maxSkillPromptChars }
+          : {}),
+        ...(params.maxSkillsInPrompt !== undefined ? { maxSkills: params.maxSkillsInPrompt } : {}),
+        ...(params.maxSkillFileBytes !== undefined
+          ? { maxSkillFileBytes: params.maxSkillFileBytes }
+          : {}),
+      });
+
+  // Those reads awaited, so a Stop can have arrived since the guard above. Bail
+  // before anything is persisted or registered: the CLI runner throws at its own
+  // post-mediation abort check before installing its finish handler, which would
+  // otherwise leave this run active and its trace stuck on "running" — and a
+  // later reuse of the same run id would inherit the stale plan.
   if (params.signal?.aborted) {
     return { kind: "off" };
   }
@@ -333,7 +384,12 @@ async function beginEnterpriseRunInternal(
   // hook (the only runtime that advances), so mediation stays timeline-free.
   // CLI/ACP runs never advance and therefore never claim leaf steps they
   // skipped; the sink still re-persists the plan whenever a step is entered.
-  return { kind: "mediated", plan, promptSection: buildEnterprisePromptSection(plan) };
+  run.skillInstructions = skillInstructions;
+  return {
+    kind: "mediated",
+    plan,
+    promptSection: buildEnterprisePromptSection(plan, skillInstructions),
+  };
 }
 
 /** Finish the active execution for a runId with its terminal outcome. */

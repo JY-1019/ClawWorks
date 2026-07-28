@@ -198,19 +198,16 @@ export type OntologyBinding = {
    * governance, and never installs a skill or changes which skills the run has
    * (those stay with OpenClaw's own agent-wide, allowlist-gated skill system).
    *
-   * The line is UNCONDITIONAL, and deliberately so. Whether the model can open a
-   * named skill depends on the dispatching runtime — the embedded loop reads
-   * SKILL.md with `read`, a `claude-cli` run resolves natively through a plugin
-   * directory, ACP discards this digest entirely — plus an attempt-level tool
-   * filter. The plan carries none of that, so gating on it would guess, and a
-   * wrong guess silently drops a declaration the operator wrote. A step whose
-   * scope withholds `read` can therefore name a skill an embedded run cannot
-   * open; the cost is bounded by the base prompt's own "if none clearly apply,
-   * read none".
+   * The instructions travel WITH the digest: resolveEnterpriseSkillInstructions
+   * reads each declared SKILL.md once at run start and the section carries the
+   * bodies, so a step whose `allowedTools` withholds `read` still gets the
+   * know-how, and it works the same whichever runtime dispatches the turn.
    *
-   * No availability claim either: whether an install provides a declared name is
-   * a runtime fact the digest is built without, and an unresolved declaration is
-   * reported on the Skills screen.
+   * Candidates come from the skills the run already resolved for its agent, so a
+   * declaration narrows what the model is pointed at and can never add a skill
+   * the agent's own filter excluded. A name the agent does not have is still
+   * shown on the step (the operator declared it) but carries no body — the
+   * Skills screen is where that gap is reported.
    */
   skills?: string[];
   /** Expected output shape/summary for this step. */

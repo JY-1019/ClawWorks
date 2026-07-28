@@ -421,6 +421,80 @@ async function main(): Promise<number> {
     );
     endEnterpriseRun({ runId, status: "completed" });
 
+    // ---- The instructions themselves, inlined. golden.escalate declares
+    // `summarize` and withholds `read`, so this is the case that used to be
+    // unreachable: with the body in the prompt the step needs no tool to use it.
+    const inlinedId = "golden-skill-instructions";
+    const inlined = await beginEnterpriseRun({
+      runId: inlinedId,
+      prompt: "사람에게 넘겨줘",
+      routePlanner: async () => ({
+        kind: "decided",
+        treeId: TREE_ID,
+        routes: ["golden.escalate"],
+        rationale: "inline",
+      }),
+      // The runner's already-resolved set; the real one comes from the session
+      // skills snapshot. Pointing at the repo's own bundled SKILL.md keeps this
+      // honest — it is the same file a run would load.
+      availableSkills: [
+        {
+          name: "summarize",
+          filePath: path.resolve("skills", "summarize", "SKILL.md"),
+          baseDir: path.resolve("skills", "summarize"),
+        },
+      ],
+    });
+    const inlinedDigest = inlined.kind === "mediated" ? inlined.promptSection : "";
+    record(
+      "a declared skill's instructions are inlined into the digest",
+      inlinedDigest.includes("Skill instructions for the steps above (summarize):") &&
+        inlinedDigest.includes("### summarize"),
+      inlinedDigest.includes("### summarize")
+        ? "body carried in the prompt, so the step needs no read to use it"
+        : "only the name reached the prompt; the model would still have to open the file",
+    );
+    record(
+      "the inlined body is the SKILL.md content, not its frontmatter",
+      inlinedDigest.includes("# Summarize") && !inlinedDigest.includes("homepage:"),
+      inlinedDigest.includes("# Summarize")
+        ? "frontmatter stripped, body kept"
+        : "the body did not survive frontmatter stripping",
+    );
+    // Containment: naming a skill must not hand the step a tool it lacks.
+    setEnterpriseStepForTurn(inlinedId);
+    expectEqual(
+      "inlining instructions does not widen the step's tool scope",
+      evaluateEnterpriseToolCall({ runId: inlinedId, toolName: "read" })?.blocked ?? false,
+      true,
+    );
+    endEnterpriseRun({ runId: inlinedId, status: "completed" });
+
+    // A step can only surface a skill the AGENT already has: the work-map
+    // declaration narrows the runner's set, it can never add to it.
+    const unknownId = "golden-skill-unknown";
+    const unknown = await beginEnterpriseRun({
+      runId: unknownId,
+      prompt: "사람에게 넘겨줘",
+      routePlanner: async () => ({
+        kind: "decided",
+        treeId: TREE_ID,
+        routes: ["golden.escalate"],
+        rationale: "unknown",
+      }),
+      availableSkills: [],
+    });
+    const unknownDigest = unknown.kind === "mediated" ? unknown.promptSection : "";
+    record(
+      "a skill the agent does not have is named but never inlined",
+      unknownDigest.includes("Skills: summarize") &&
+        !unknownDigest.includes("Skill instructions for the steps above"),
+      unknownDigest.includes("Skill instructions for the steps above")
+        ? "instructions appeared for a skill the agent does not have"
+        : "declaration shown, nothing fabricated",
+    );
+    endEnterpriseRun({ runId: unknownId, status: "completed" });
+
     // Rendering is UNCONDITIONAL, including on a step whose scope withholds
     // `read`. Whether a skill can be opened depends on the dispatching runtime
     // (embedded reads SKILL.md, claude-cli resolves natively, ACP drops the

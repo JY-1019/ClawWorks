@@ -103,21 +103,44 @@ names what a step depends on, it does not change which skills exist. A declared
 name no install provides is an authoring mistake, reported on the Skills screen
 rather than at run time.
 
-The digest names the dependency; it does not order a load. How a skill is loaded
-belongs to whichever runtime is dispatching — the embedded loop reads its
-`SKILL.md` with the `read` tool from the skills catalog, while a `claude-cli` run
-resolves it natively through a plugin directory — and those rules, including
-"one skill up front max", stay where they are.
+The instructions come with the run. At run start the declared skills' `SKILL.md`
+bodies are read once and appended to the step digest under "Skill instructions
+for the steps above", so the model already has the know-how when it reaches the
+step: a step whose `allowedTools` withholds `read` gets the instructions all the
+same, on embedded and CLI-backed runs alike. (ACP is the exception; see below.)
 
-Two limits worth knowing. Whether the model can actually open a named skill
-depends on the dispatching runtime and its tool filter, which the digest cannot
-see: on a step whose scope withholds `read`, an embedded run may find the skill
-unopenable even though the line names it. And ACP runs never see the line at
-all — they own their prompt channel, so the whole step digest is discarded there
-and `ontology.skills` stays operator-facing, alongside the same limitation on
-`contextHints` and `expectedOutput`. Making a declared skill's instructions
-available regardless of tool scope or runtime means resolving and inlining them
-when the run starts, which is not implemented yet.
+What is inlined is the `SKILL.md` itself, without a path — mediation runs before
+a sandboxed run materializes its own copies, so a location rendered here would be
+one that run cannot use. A skill that delegates detail to support files next to
+it (`references/…`, `scripts/…`) therefore needs both `read` in the step's scope
+and the skill's own entry in the normal skills catalog, which is where its
+location comes from. For a governed step, keep the detail it depends on in the
+`SKILL.md`.
+
+Candidates come from the skills the run already resolved for its agent, which is
+the containment boundary — a step can surface a skill the agent has, never add
+one the agent's skill filter excluded, and instructions are text that still
+cannot call a tool the step withholds. A declared name the agent does not have is
+named in the step's Skills line but carries no body; it is an authoring gap,
+reported on the Skills screen. Bodies are frontmatter-stripped, ordered by name,
+and size-bounded so a long skill cannot crowd out the workflow guidance.
+
+Three limits remain. Two apply to the whole step digest rather than to skills:
+ACP runs never see it, because they own their prompt channel, so the digest is
+discarded there and `ontology.skills` stays operator-facing alongside the same
+limitation on `contextHints` and `expectedOutput`; and a CLI-backed session
+running with `systemPromptWhen: "first"` sends its system prompt once, so a
+resumed session keeps the digest it started with and a later turn that binds a
+different work-map does not resend one (start a new session to rebind).
+
+The third is specific to inlining: bodies are only carried when the run reached
+mediation with resolved skills to read from. A recurring cron turn that reuses a
+persisted session snapshot has none, because persistence keeps the catalog but
+drops the runtime-only resolved entries, and some entry points (voice consults,
+for instance) resolve their skills after mediation rather than before. Those runs
+still name the step's skills and still get every other binding; they just do not
+carry the bodies. Resolving them there would mean rebuilding the skill set on the
+run path, which is the cost that snapshot reuse exists to avoid.
 
 Manage trees with the CLI (see [`openclaw enterprise`](/cli/enterprise)):
 
