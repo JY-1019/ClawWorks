@@ -19,7 +19,7 @@
  *   node --import tsx scripts/enterprise-golden.ts          # run the checks
  *   node --import tsx scripts/enterprise-golden.ts --verbose
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -342,6 +342,167 @@ async function main(): Promise<number> {
       TREE_ID,
     );
     endEnterpriseRun({ runId, status: "completed" });
+  }
+
+  // ---- 8. A declared skill is an ANNOTATION, not an activation. It travels
+  // with the work-map and shows up in the operator surfaces, but it must not
+  // widen the step's tool scope and must not enter the model's digest — skills
+  // load through the normal eligibility path, never through the ontology.
+  // Pinning all three keeps a future "wire declared skills into the run" change
+  // deliberate and visible instead of arriving as a silent prompt/scope change.
+  {
+    const { collectReferencedSkills } = await import("../src/enterprise/tree-references.js");
+    const entry = listWorkflowTreeRegistryEntries().find((row) => row.tree.id === TREE_ID);
+    const declaredSkills = entry ? collectReferencedSkills(entry.tree) : [];
+    expectEqual("the work-map's declared skills travel with it", declaredSkills, [
+      "taskflow-inbox-triage",
+    ]);
+    // Resolve whatever the FIXTURE declares, not a name repeated here: a check
+    // against a constant stays green when the fixture drifts to an id nothing
+    // provides, which is the exact regression worth catching. A dangling skill
+    // is unresolvable for anyone who imports the work-map and is invisible at
+    // runtime — only the operator surfaces show it.
+    const unbundled = declaredSkills.filter(
+      (name) => !existsSync(path.resolve("skills", name, "SKILL.md")),
+    );
+    record(
+      "every declared skill is one this repo actually bundles",
+      declaredSkills.length > 0 && unbundled.length === 0,
+      declaredSkills.length === 0
+        ? "the fixture declares no skills, so this proves nothing"
+        : unbundled.length > 0
+          ? `no SKILL.md for: ${unbundled.join(", ")}`
+          : declaredSkills.map((name) => `skills/${name}/SKILL.md`).join(", "),
+    );
+
+    const runId = "golden-skills";
+    const mediation = await beginEnterpriseRun({
+      runId,
+      prompt: "TKT-77 티켓 분류해줘",
+      routePlanner: async () => ({
+        kind: "decided",
+        treeId: TREE_ID,
+        routes: ["golden.triage"],
+        rationale: "skills",
+      }),
+    });
+    setEnterpriseStepForTurn(runId);
+    const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
+    // Assert the digest DID render this step's other ontology, or an empty
+    // digest would satisfy "the skill is absent" without proving anything.
+    const renderedOtherOntology = digest.includes("search_objects") && digest.includes("Triage");
+    record(
+      "a declared skill stays out of the model digest",
+      renderedOtherOntology && !digest.includes("taskflow-inbox-triage"),
+      !renderedOtherOntology
+        ? "the digest rendered no ontology for this step, so absence proves nothing"
+        : digest.includes("taskflow-inbox-triage")
+          ? "the skill name reached the prompt; declaring is not supposed to"
+          : "step ontology rendered, skill name absent — the annotation contract",
+    );
+    // golden.triage declares the skill AND a two-tool allow-list. If declaring
+    // ever started granting tools, this is the assertion that would catch it.
+    expectEqual(
+      "declaring a skill does not widen the step's tool scope",
+      evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" })?.blocked ?? false,
+      true,
+    );
+    endEnterpriseRun({ runId, status: "completed" });
+  }
+
+  // ---- 9. Knowledge foundations, through the bundle an operator actually
+  // imports. A tree cannot carry knowledge, so this is the only shipped path
+  // where `knowledge_search` returns anything without the operator standing up a
+  // retrieval server first — which makes it the only one a golden check can
+  // cover end to end.
+  {
+    const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
+    const { createKnowledgeSearchTool } =
+      await import("../src/agents/tools/knowledge-search-tool.js");
+    const BUNDLE_TREE_ID = "acme.support-desk";
+    const FOUNDATION_ID = "acme.support-desk-handbook";
+    const bundlePath = path.resolve("examples/enterprise/support-desk.clawworks-bundle.yaml");
+    const bundle = importWorkflowBundle({
+      content: readFileSync(bundlePath, "utf8"),
+      format: "yaml",
+    });
+    record(
+      "the shipped bundle imports cleanly",
+      bundle.ok,
+      bundle.ok ? bundle.trees.map((tree) => tree.id).join(", ") : JSON.stringify(bundle.issues),
+    );
+    if (bundle.ok) {
+      expectEqual("its knowledge foundation is inlined and registered", bundle.foundations, [
+        FOUNDATION_ID,
+      ]);
+      // A referenced-but-not-inlined id means the recipient has to configure it
+      // separately; for a self-contained example that is a broken promise.
+      expectEqual("it leaves no foundation unconfigured", bundle.missingFoundations, []);
+      invalidateWorkflowTreeRegistry();
+
+      const runId = "golden-knowledge";
+      await beginEnterpriseRun({
+        runId,
+        prompt: "환불 한도가 얼마야?",
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: BUNDLE_TREE_ID,
+          routes: ["desk.answer"],
+          rationale: "knowledge",
+        }),
+      });
+      setEnterpriseStepForTurn(runId);
+      const knowledge = createKnowledgeSearchTool({ runId });
+
+      const hit = await knowledge.execute("k1", { query: "refund limit approval" });
+      const hitText = JSON.stringify(hit);
+      record(
+        "knowledge_search returns the inlined corpus on a scoped step",
+        hitText.includes("$200") && hitText.includes(FOUNDATION_ID),
+        hitText.slice(0, 140),
+      );
+
+      // Model-supplied targeting is a narrowing, never an authority: an id the
+      // step does not allow must be reported as skipped rather than queried.
+      const offScope = await knowledge.execute("k2", {
+        query: "refund limit",
+        foundations: ["acme.not-in-this-scope"],
+      });
+      const offScopeText = JSON.stringify(offScope);
+      record(
+        "an out-of-scope foundation is skipped, not queried",
+        offScopeText.includes("acme.not-in-this-scope") && offScopeText.includes('"snippets":[]'),
+        offScopeText.slice(0, 140),
+      );
+      endEnterpriseRun({ runId, status: "completed" });
+
+      // The escalation step drops knowledge_search from its allow-list, so the
+      // tool gate closes it even though the root still scopes the foundation.
+      const escalateRunId = "golden-knowledge-escalate";
+      await beginEnterpriseRun({
+        runId: escalateRunId,
+        prompt: "사람에게 넘겨줘",
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: BUNDLE_TREE_ID,
+          routes: ["desk.escalate"],
+          rationale: "escalate",
+        }),
+      });
+      setEnterpriseStepForTurn(escalateRunId);
+      expectEqual(
+        "a step that drops knowledge_search cannot retrieve at all",
+        evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "knowledge_search" })
+          ?.blocked ?? false,
+        true,
+      );
+      expectEqual(
+        "that same step keeps the tool it does allow",
+        evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "message" })?.blocked ?? false,
+        false,
+      );
+      endEnterpriseRun({ runId: escalateRunId, status: "completed" });
+    }
   }
 
   printSummary();
