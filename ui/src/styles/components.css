@@ -6801,3 +6801,126 @@ details[open] > .ov-expandable-toggle::after {
     gap: 4px;
   }
 }
+
+/* ===========================================
+   Enterprise step bindings + binding picker
+   =========================================== */
+
+/*
+ * The three binding kinds (tools / skills / knowledge) as separate cards. They
+ * obey different rules and an operator scans them for different questions, so
+ * running them together as one list made the boundaries invisible.
+ */
+.binding-groups {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.binding-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.binding-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-accent, var(--secondary));
+}
+
+.binding-group__title {
+  font-weight: 550;
+  flex: 1 1 auto;
+}
+
+.binding-group__body {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+/*
+ * Structural edits (adding a sub-step) sit below a rule so they do not read as a
+ * fourth binding kind: they change the work-map's shape, not the step's scope.
+ */
+.node-structure {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-strong);
+}
+
+/*
+ * openclaw-modal-dialog is deliberately a transparent shell over a dark backdrop,
+ * so every caller brings its own surface. Without one this renders light-theme
+ * text straight onto the scrim.
+ */
+.binding-picker {
+  display: grid;
+  gap: 12px;
+  min-width: min(34rem, 80vw);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--fg);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 28%));
+  /* The dialog does not scroll, so on a short viewport (mobile landscape) the
+     header, search, custom field and action row would push Cancel/Add off-screen
+     with the modal still trapping focus. Scroll inside instead. */
+  /* Dynamic viewport: on mobile the surrounding modal is capped with dvh, and a
+     vh cap here would extend past the visible screen with browser chrome shown,
+     putting the action row out of reach. */
+  max-height: 85dvh;
+  overflow-y: auto;
+}
+
+.binding-picker__head {
+  display: grid;
+  gap: 2px;
+}
+
+.binding-picker__search {
+  width: 100%;
+}
+
+/* Scrolls inside the dialog: the tool catalog runs to hundreds of entries. */
+.binding-picker__list {
+  display: grid;
+  gap: 2px;
+  max-height: min(35dvh, 22rem);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+}
+
+.binding-picker__option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.binding-picker__option:hover {
+  background: var(--secondary);
+}
+
+.binding-picker__option-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.binding-picker__custom {
+  display: grid;
+  gap: 4px;
+}

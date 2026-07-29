@@ -215,6 +215,23 @@ export const zh_CN: TranslationMap = {
       optionalBadge: "可选",
       pluginBadge: "插件：{pluginId}",
     },
+    picker: {
+      subtitle: "搜索目录并选择此步骤可使用的内容。",
+      step: "步骤：{nodeId}",
+      searchLabel: "搜索",
+      noQueryMatches: "没有匹配该搜索的结果。",
+      allAdded: "此目录中的所有内容已添加到此步骤。",
+      emptyCatalog: "此部署没有可提供的内容。",
+      customToolLabel: "或输入工具名称、组或 glob",
+      customNameLabel: "或输入名称",
+      groupOption: "{label} — 整个分区（{count} 个工具）",
+      confirm: "添加 {count} 项",
+      close: "关闭",
+      saving: "保存中。关闭此对话框不会撤销操作——保存完成后工作地图将自动刷新。",
+    },
+    addNodeSectionTitle: "工作流结构",
+    addNodeSectionSubtitle:
+      "在此步骤下添加子步骤。这会改变工作流图的结构，而非此步骤可调用的内容。",
     entryDraft: {
       add: "添加",
       none: "尚未声明。",
@@ -222,18 +239,20 @@ export const zh_CN: TranslationMap = {
         "此步骤尚未设置工具允许列表，因此除被拒绝的工具外，所有工具均可使用。添加第一个条目后将转为允许列表模式，仅列出的工具可用。",
       knowledgeNarrowing:
         "此步骤尚未设置知识允许列表，因此可以查询所有已注册的知识基础。添加第一个条目后，将仅限于列出的知识基础。",
-      toolLabel: "要允许的工具名称或组",
-      skillLabel: "要声明的 Skill 名称",
-      knowledgeLabel: "允许的知识基础 ID",
       skillNameInvalid: "请使用有效的 Skill 名称：仅限小写字母、数字和单个连字符，最多 64 个字符。",
       foundationIdInvalid: "请使用知识基础 ID：小写点分段格式，例如 acme.runbooks。",
       ancestorGate:
         "父级步骤（{nodeIds}）对此有各自的允许列表。治理机制会从根节点逐步检查每个步骤，因此即使在此处添加了条目，除非那些步骤也允许，否则仍会被拒绝。",
-      reviewHint: "添加后将打开树编辑器，以便您查看并保存更改。",
       empty: "请先输入一个值。",
       duplicate: "该条目已在此步骤中声明。",
       nodeMissing: "该步骤已不在树中，请重新加载后重试。",
       exportFailed: "无法加载要编辑的树定义。",
+      importFailed:
+        "保存未确认。更改可能已应用也可能未应用——请刷新工作地图查看实际状态，然后再重试。",
+      importNotSent: "未保存任何内容：此内容发送前 Gateway 连接已断开。请重新连接后重试。",
+      importRefused: "服务器拒绝了此更改，未保存任何内容：{message}",
+      importRejected: "服务器拒绝了此更改，因此未保存任何内容。",
+      importRejectedDetail: "服务器拒绝了此更改，因此未保存任何内容：{issues}",
     },
     catalogAgentScope: "工具和 Skills 的作用域为智能体级别；此目录是智能体 {agentId} 所看到的。",
     catalogUsage: {

@@ -55,6 +55,19 @@ export type GatewayErrorInfo = {
   retryAfterMs?: number;
 };
 
+/**
+ * A request that never reached the socket. Distinct from a transport loss AFTER
+ * the frame went out: a caller mutating server state can only say "nothing was
+ * written" for this one, and a bare Error cannot carry that difference. The
+ * message is unchanged because other surfaces match on it.
+ */
+export class GatewayNotConnectedError extends Error {
+  constructor() {
+    super("gateway not connected");
+    this.name = "GatewayNotConnectedError";
+  }
+}
+
 export class GatewayRequestError extends Error {
   readonly gatewayCode: string;
   readonly details?: unknown;
@@ -1028,7 +1041,7 @@ export class GatewayBrowserClient {
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("gateway not connected"));
+      return Promise.reject(new GatewayNotConnectedError());
     }
     return this.requestOnSocket(this.ws, method, params);
   }
@@ -1039,7 +1052,7 @@ export class GatewayBrowserClient {
     params?: unknown,
   ): Promise<T> {
     if (this.ws !== ws || ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("gateway not connected"));
+      return Promise.reject(new GatewayNotConnectedError());
     }
     const id = generateUUID();
     const frame = { type: "req", id, method, params };

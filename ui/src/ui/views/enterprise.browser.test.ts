@@ -121,11 +121,13 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     onEditNodeDraft: () => undefined,
     onCancelAddNode: () => undefined,
     onSubmitAddNode: () => undefined,
-    ontologyEntryDraft: null,
-    onBeginAddOntologyEntry: () => undefined,
-    onEditOntologyEntryDraft: () => undefined,
-    onCancelAddOntologyEntry: () => undefined,
-    onSubmitAddOntologyEntry: () => undefined,
+    bindingPicker: null,
+    onOpenBindingPicker: () => undefined,
+    onBindingPickerQuery: () => undefined,
+    onBindingPickerCustom: () => undefined,
+    onToggleBindingPickerValue: () => undefined,
+    onCancelBindingPicker: () => undefined,
+    onSubmitBindingPicker: () => undefined,
     catalogPhase: "ready",
     catalogErrors: { tools: null, skills: null, foundations: null },
     catalogAgentId: "main",
@@ -626,6 +628,196 @@ describe("enterprise Worktree step bindings (browser)", () => {
     );
     // The root declares allowedTools, so a grant on the child is still gated by it.
     expect(container.textContent ?? "").toContain("Parent steps (support)");
+  });
+
+  it("offers Add per binding kind and no inline text field", () => {
+    // The old flow put a text input under each row; picking from a catalog of
+    // hundreds belongs in a dialog, so the inspector only carries the buttons.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        skills: [skill("summarize")],
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Tools");
+    expect(text).toContain("Skills");
+    expect(text).toContain("Knowledge");
+    expect(container.querySelectorAll(".binding-group").length).toBe(3);
+    expect(container.querySelector(".binding-group input")).toBeNull();
+    // Structural edits live in their own block, not as a fourth binding.
+    expect(container.querySelector(".node-structure")).not.toBeNull();
+  });
+
+  it("searches the catalog in a dialog and confirms the picks", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        skills: [skill("summarize"), skill("weather")],
+        bindingPicker: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "skills",
+          query: "weath",
+          selected: ["weather"],
+          custom: "",
+          phase: "idle",
+          failure: null,
+        },
+      }),
+    );
+    const dialog = container.querySelector("openclaw-modal-dialog");
+    expect(dialog).not.toBeNull();
+    const text = dialog?.textContent ?? "";
+    // Filtered by the query, and the already-declared summarize is not offered
+    // again — adding a duplicate is what the import rejects.
+    expect(text).toContain("weather");
+    expect(text).not.toContain("summarize");
+    expect(text).toContain("Add 1");
+  });
+
+  it("shows the server's rejection paths inside the dialog", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        bindingPicker: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "skills",
+          query: "",
+          selected: ["weather"],
+          custom: "",
+          phase: "idle",
+          failure: {
+            kind: "import-rejected",
+            issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
+          },
+        },
+      }),
+    );
+    const text = container.querySelector("openclaw-modal-dialog")?.textContent ?? "";
+    // The path is the actionable part; a rejection without it leaves the operator
+    // with a refusal and nothing to change.
+    expect(text).toContain("root.ontology.skills.0");
+    expect(text).toContain("unknown skill");
+  });
+
+  it("closes the dialog when the session loses admin access", () => {
+    // An import is admin-only. A reconnect can drop operator.admin while this is
+    // open, and leaving it up offers a Confirm the server can only refuse.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        canEdit: false,
+        bindingPicker: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "skills",
+          query: "",
+          selected: ["weather"],
+          custom: "",
+          phase: "idle",
+          failure: null,
+        },
+      }),
+    );
+    expect(container.querySelector("openclaw-modal-dialog")).toBeNull();
+  });
+
+  it("counts a custom tool value in the confirm button", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        bindingPicker: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "allowedTools",
+          query: "",
+          selected: [],
+          custom: "memory_*",
+          phase: "idle",
+          failure: null,
+        },
+      }),
+    );
+    // A glob-only submit still adds one entry, so the button must not say "Add 0".
+    expect(container.querySelector("openclaw-modal-dialog")?.textContent ?? "").toContain("Add 1");
+  });
+
+  it("keeps a typed entry for every binding kind", () => {
+    const withField = (field: "allowedTools" | "skills") =>
+      renderInto(
+        createProps({
+          section: "worktree",
+          selectedTreeId: TREE.id,
+          treeDetail: TREE,
+          selectedNodeId: "support.triage",
+          bindingPicker: {
+            treeId: TREE.id,
+            nodeId: "support.triage",
+            field,
+            query: "",
+            selected: [],
+            custom: "",
+            phase: "idle",
+            failure: null,
+          },
+        }),
+      );
+    // Tools need it for globs and groups; skills and foundations need it because
+    // this catalog answered for one agent and a work-map can govern others.
+    expect(withField("allowedTools").querySelector(".binding-picker__custom")).not.toBeNull();
+    expect(withField("skills").querySelector(".binding-picker__custom")).not.toBeNull();
+  });
+
+  it("tells the operator which empty state they are in", () => {
+    const pick = (over: Partial<EnterpriseProps>) =>
+      renderInto(
+        createProps({
+          section: "worktree",
+          selectedTreeId: TREE.id,
+          treeDetail: TREE,
+          selectedNodeId: "support.triage",
+          bindingPicker: {
+            treeId: TREE.id,
+            nodeId: "support.triage",
+            field: "skills",
+            query: "",
+            selected: [],
+            custom: "",
+            phase: "idle",
+            failure: null,
+          },
+          ...over,
+        }),
+      ).querySelector("openclaw-modal-dialog")?.textContent ?? "";
+
+    // A still-loading catalog must not be reported as an exhausted one.
+    expect(pick({ catalogPhase: "loading", skills: [] })).toContain("Loading");
+    // Nor must a failed one — the banner behind the modal is not visible.
+    expect(
+      pick({
+        skills: [],
+        catalogErrors: { tools: null, skills: "skills unavailable", foundations: null },
+      }),
+    ).toContain("skills unavailable");
+    // A ready but empty deployment is different from "already added".
+    expect(pick({ skills: [] })).toContain("none to offer");
   });
 
   it("renders no binding form without a selected step", () => {

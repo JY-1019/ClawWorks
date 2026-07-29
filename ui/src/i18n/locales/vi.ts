@@ -219,6 +219,24 @@ export const vi: TranslationMap = {
       optionalBadge: "tùy chọn",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Tìm kiếm trong danh mục và chọn những gì bước này có thể sử dụng.",
+      step: "Bước: {nodeId}",
+      searchLabel: "Tìm kiếm",
+      noQueryMatches: "Không có kết quả phù hợp với tìm kiếm đó.",
+      allAdded: "Mọi thứ trong danh mục này đã có trong bước này.",
+      emptyCatalog: "Triển khai này không có mục nào để cung cấp.",
+      customToolLabel: "Hoặc nhập tên công cụ, nhóm hoặc glob",
+      customNameLabel: "Hoặc nhập một tên",
+      groupOption: "{label} — toàn bộ phần ({count} công cụ)",
+      confirm: "Thêm {count}",
+      close: "Đóng",
+      saving:
+        "Đang lưu. Đóng hộp thoại này sẽ không hoàn tác — bản đồ công việc sẽ làm mới khi hoàn tất.",
+    },
+    addNodeSectionTitle: "Cấu trúc quy trình",
+    addNodeSectionSubtitle:
+      "Thêm một bước con bên dưới bước này. Điều này thay đổi hình dạng của sơ đồ công việc, không phải những gì bước này có thể gọi.",
     entryDraft: {
       add: "Thêm",
       none: "Chưa có khai báo nào.",
@@ -226,20 +244,24 @@ export const vi: TranslationMap = {
         "Bước này chưa có danh sách công cụ được phép, nên nó cho phép mọi công cụ trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển thành danh sách cho phép và chỉ các công cụ được liệt kê mới khả dụng.",
       knowledgeNarrowing:
         "Bước này chưa có danh sách cho phép kiến thức, vì vậy nó có thể truy vấn mọi foundation đã đăng ký. Thêm mục đầu tiên sẽ giới hạn nó chỉ trong các foundation được liệt kê.",
-      toolLabel: "Tên công cụ hoặc nhóm được phép",
-      skillLabel: "Tên skill cần khai báo",
-      knowledgeLabel: "ID foundation kiến thức được cho phép",
       skillNameInvalid:
         "Sử dụng tên skill: chữ cái thường, chữ số và dấu gạch ngang đơn, tối đa 64 ký tự.",
       foundationIdInvalid:
         "Sử dụng ID foundation: các phân đoạn chữ thường phân cách bằng dấu chấm, ví dụ acme.runbooks.",
       ancestorGate:
         "Các bước cha ({nodeIds}) có danh sách cho phép riêng cho mục này. Governance kiểm tra từng bước từ gốc, vì vậy một mục được thêm ở đây vẫn bị từ chối trừ khi các bước đó cũng cho phép.",
-      reviewHint: "Thao tác thêm sẽ mở trình chỉnh sửa cây để bạn có thể xem lại và lưu thay đổi.",
       empty: "Nhập giá trị trước.",
       duplicate: "Mục đó đã được khai báo trên bước này.",
       nodeMissing: "Bước đó không còn trong cây; tải lại và thử lại.",
       exportFailed: "Không thể tải định nghĩa cây để chỉnh sửa.",
+      importFailed:
+        "Lưu không được xác nhận. Thay đổi có thể đã hoặc chưa được áp dụng — hãy làm mới work-map để kiểm tra trước khi thử lại.",
+      importNotSent:
+        "Không có gì được lưu: kết nối Gateway đã bị ngắt trước khi gửi. Hãy kết nối lại và thử lại.",
+      importRefused: "Máy chủ đã từ chối thay đổi này, vì vậy không có gì được lưu: {message}",
+      importRejected: "Máy chủ đã từ chối thay đổi này, vì vậy không có gì được lưu.",
+      importRejectedDetail:
+        "Máy chủ đã từ chối thay đổi này, vì vậy không có gì được lưu: {issues}",
     },
     catalogAgentScope:
       "Công cụ và skills được giới hạn theo agent; danh mục này là những gì agent {agentId} nhìn thấy.",

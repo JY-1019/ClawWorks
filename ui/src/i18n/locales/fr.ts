@@ -222,6 +222,24 @@ export const fr: TranslationMap = {
       optionalBadge: "optionnel",
       pluginBadge: "Plugin : {pluginId}",
     },
+    picker: {
+      subtitle: "Recherchez dans le catalogue et choisissez ce que cette étape peut utiliser.",
+      step: "Étape : {nodeId}",
+      searchLabel: "Rechercher",
+      noQueryMatches: "Aucun résultat ne correspond à cette recherche.",
+      allAdded: "Tout le contenu de ce catalogue est déjà ajouté à cette étape.",
+      emptyCatalog: "Ce déploiement n'en propose aucun.",
+      customToolLabel: "Ou saisissez un nom d'outil, un groupe ou un glob",
+      customNameLabel: "Ou saisissez un nom",
+      groupOption: "{label} — la section entière ({count} outils)",
+      confirm: "Ajouter {count}",
+      close: "Fermer",
+      saving:
+        "Enregistrement en cours. Fermer cette boîte de dialogue n'annulera pas l'opération — la carte de travail se rafraîchira une fois terminé.",
+    },
+    addNodeSectionTitle: "Structure du workflow",
+    addNodeSectionSubtitle:
+      "Ajoutez une sous-étape sous celle-ci. Cela modifie la forme de la carte de travail, pas ce que cette étape peut appeler.",
     entryDraft: {
       add: "Ajouter",
       none: "Aucune déclaration pour le moment.",
@@ -229,21 +247,24 @@ export const fr: TranslationMap = {
         "Cette étape n'a pas encore de liste d'outils autorisés, elle permet donc tous les outils sauf ceux qu'elle refuse. L'ajout de la première entrée la transforme en liste d'autorisation et seuls les outils listés restent disponibles.",
       knowledgeNarrowing:
         "Cette étape n'a pas encore de liste d'autorisation de connaissances, elle peut donc interroger toutes les fondations enregistrées. L'ajout de la première entrée la restreint aux fondations listées.",
-      toolLabel: "Nom ou groupe d'outil à autoriser",
-      skillLabel: "Nom du skill à déclarer",
-      knowledgeLabel: "Id de fondation de connaissances à autoriser",
       skillNameInvalid:
         "Utilisez un nom de skill : lettres minuscules, chiffres et tirets simples, 64 caractères maximum.",
       foundationIdInvalid:
         "Utilisez un id de fondation : segments en minuscules séparés par des points, par exemple acme.runbooks.",
       ancestorGate:
         "Les étapes parentes ({nodeIds}) ont leur propre liste d'autorisation pour ceci. La gouvernance vérifie chaque étape depuis la racine, donc une entrée ajoutée ici sera refusée si ces étapes ne l'autorisent pas également.",
-      reviewHint:
-        "L'ajout ouvre l'éditeur d'arborescence pour vous permettre de vérifier et d'enregistrer la modification.",
       empty: "Saisissez d'abord une valeur.",
       duplicate: "Cette entrée est déjà déclarée sur cette étape.",
       nodeMissing: "Cette étape ne figure plus dans l'arborescence ; rechargez et réessayez.",
       exportFailed: "Impossible de charger la définition de l'arbre à modifier.",
+      importFailed:
+        "La sauvegarde n'a pas été confirmée. Elle a pu être appliquée ou non — rafraîchissez la carte de travail pour vérifier avant de réessayer.",
+      importNotSent:
+        "Rien n'a été enregistré : la connexion au Gateway a été interrompue avant l'envoi. Reconnectez-vous et réessayez.",
+      importRefused: "Le serveur a refusé cette modification, rien n'a été enregistré : {message}",
+      importRejected: "Le serveur a rejeté cette modification, rien n'a été enregistré.",
+      importRejectedDetail:
+        "Le serveur a rejeté cette modification, rien n'a été enregistré : {issues}",
     },
     catalogAgentScope:
       "Les outils et les Skills sont limités à l'agent ; ce catalogue est celui que l'agent {agentId} voit.",

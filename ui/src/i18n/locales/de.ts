@@ -226,6 +226,25 @@ export const de: TranslationMap = {
       optionalBadge: "optional",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle:
+        "Durchsuchen Sie den Katalog und wählen Sie aus, was dieser Schritt verwenden darf.",
+      step: "Schritt: {nodeId}",
+      searchLabel: "Suchen",
+      noQueryMatches: "Keine Übereinstimmungen für diese Suche.",
+      allAdded: "Alles in diesem Katalog ist bereits in diesem Schritt enthalten.",
+      emptyCatalog: "Diese Bereitstellung hat keine Einträge verfügbar.",
+      customToolLabel: "Oder einen Toolnamen, eine Gruppe oder ein Glob eingeben",
+      customNameLabel: "Oder einen Namen eingeben",
+      groupOption: "{label} — der gesamte Abschnitt ({count} Tools)",
+      confirm: "{count} hinzufügen",
+      close: "Schließen",
+      saving:
+        "Wird gespeichert. Das Schließen dieses Dialogs macht den Vorgang nicht rückgängig – die Work-Map wird aktualisiert, sobald die Änderung übernommen wurde.",
+    },
+    addNodeSectionTitle: "Workflow-Struktur",
+    addNodeSectionSubtitle:
+      "Fügen Sie einen Unterschritt unter diesem hinzu. Dies ändert die Struktur der Arbeitskarte, nicht was dieser Schritt aufrufen darf.",
     entryDraft: {
       add: "Hinzufügen",
       none: "Noch keine Einträge vorhanden.",
@@ -233,22 +252,26 @@ export const de: TranslationMap = {
         "Dieser Schritt hat noch keine Tool-Erlaubnisliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Sobald der erste Eintrag hinzugefügt wird, wird er zu einer Erlaubnisliste und nur die aufgeführten Tools bleiben verfügbar.",
       knowledgeNarrowing:
         "Dieser Schritt hat noch keine Wissens-Allowlist, daher kann er jede registrierte Foundation abfragen. Der erste Eintrag beschränkt ihn auf die aufgeführten Foundations.",
-      toolLabel: "Tool-Name oder -Gruppe zum Erlauben",
-      skillLabel: "Zu deklarierender Skill-Name",
-      knowledgeLabel: "Zu erlaubende Wissens-Foundation-ID",
       skillNameInvalid:
         "Verwenden Sie einen Skill-Namen: Kleinbuchstaben, Ziffern und einzelne Bindestriche, maximal 64 Zeichen.",
       foundationIdInvalid:
         "Verwenden Sie eine Foundation-ID: kleingeschriebene, durch Punkte getrennte Segmente, zum Beispiel acme.runbooks.",
       ancestorGate:
         "Übergeordnete Schritte ({nodeIds}) haben eigene Zulassungslisten dafür. Die Governance prüft jeden Schritt vom Ursprung aus, sodass ein hier hinzugefügter Eintrag weiterhin abgelehnt wird, wenn diese Schritte ihn nicht ebenfalls zulassen.",
-      reviewHint:
-        "Beim Hinzufügen wird der Baum-Editor geöffnet, damit Sie die Änderung überprüfen und speichern können.",
       empty: "Geben Sie zuerst einen Wert ein.",
       duplicate: "Dieser Eintrag ist für diesen Schritt bereits vorhanden.",
       nodeMissing:
         "Dieser Schritt ist nicht mehr im Baum vorhanden. Laden Sie die Seite neu und versuchen Sie es erneut.",
       exportFailed: "Die Baumdefinition konnte nicht zum Bearbeiten geladen werden.",
+      importFailed:
+        "Das Speichern wurde nicht bestätigt. Es wurde möglicherweise angewendet oder auch nicht — aktualisieren Sie die Arbeitskarte, um dies zu prüfen, bevor Sie es erneut versuchen.",
+      importNotSent:
+        "Nichts wurde gespeichert: Die Gateway-Verbindung wurde unterbrochen, bevor dies gesendet wurde. Verbinden Sie sich erneut und versuchen Sie es noch einmal.",
+      importRefused:
+        "Der Server hat diese Änderung abgelehnt, daher wurde nichts gespeichert: {message}",
+      importRejected: "Der Server hat diese Änderung abgelehnt, daher wurde nichts gespeichert.",
+      importRejectedDetail:
+        "Der Server hat diese Änderung abgelehnt, daher wurde nichts gespeichert: {issues}",
     },
     catalogAgentScope:
       "Tools und Skills sind agentenbezogen; dieser Katalog ist derjenige, den Agent {agentId} sieht.",

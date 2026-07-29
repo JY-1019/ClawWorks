@@ -1,6 +1,6 @@
 // Control UI tests cover enterprise inspection controller behavior.
 import { describe, expect, it, vi } from "vitest";
-import { GatewayRequestError } from "../gateway.ts";
+import { GatewayNotConnectedError, GatewayRequestError } from "../gateway.ts";
 import {
   beginAddEnterpriseNode,
   beginEditEnterpriseTree,
@@ -22,11 +22,12 @@ import {
   selectEnterpriseTree,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
-  beginAddEnterpriseOntologyEntry,
-  cancelAddEnterpriseOntologyEntry,
-  editEnterpriseOntologyEntryDraft,
+  cancelEnterpriseBindingPicker,
+  openEnterpriseBindingPicker,
+  setEnterpriseBindingPickerCustom,
   submitAddEnterpriseNode,
-  submitAddEnterpriseOntologyEntry,
+  submitEnterpriseBindingPicker,
+  toggleEnterpriseBindingPickerValue,
 } from "./enterprise.ts";
 
 type TestRequest = (method: string, payload?: unknown) => Promise<unknown>;
@@ -65,7 +66,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeVersions: [],
     enterpriseTreeVersionsLoading: false,
     enterpriseNodeDraft: null,
-    enterpriseOntologyEntryDraft: null,
+    enterpriseBindingPicker: null,
     enterpriseCatalogPhase: "unloaded",
     enterpriseCatalogErrors: { tools: null, skills: null, foundations: null },
     enterpriseCatalogAgentId: null,
@@ -1504,110 +1505,366 @@ describe("add child node (P5)", () => {
   });
 });
 
-describe("enterprise ontology entry drafts (tool grants / declared skills)", () => {
-  it("splices an allowedTools grant into a fresh export and opens the editor", async () => {
+describe("enterprise binding picker (tool grants / declared skills)", () => {
+  const exportThenImport = (request: ReturnType<typeof createState>["request"]) => {
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: "acme.support" };
+      }
+      return {};
+    });
+  };
+
+  it("applies the picked tool grants directly, without routing through the editor", async () => {
     const { state, request } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: supportExportContent() });
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "allowedTools");
-    editEnterpriseOntologyEntryDraft(state, "group:enterprise");
+    exportThenImport(request);
+    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
+    toggleEnterpriseBindingPickerValue(state, "group:enterprise");
 
-    await submitAddEnterpriseOntologyEntry(state);
+    await submitEnterpriseBindingPicker(state);
 
-    // Same canonical-JSON round trip as node creation, so both reuse trees.import.
     expect(request).toHaveBeenCalledWith("enterprise.trees.export", {
       treeId: "acme.support",
       format: "json",
     });
-    expect(state.enterpriseOntologyEntryDraft).toBeNull();
-    expect(state.enterpriseTreeEditing).toBe(true);
-    const parsed = JSON.parse(state.enterpriseTreeEditContent);
+    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
+    if (!importCall) {
+      throw new Error("expected an enterprise.trees.import call");
+    }
+    const parsed = JSON.parse((importCall[1] as { content: string }).content);
     expect(parsed.root.ontology.allowedTools).toContain("group:enterprise");
-    // Nothing is written until the operator saves.
-    expect(request).not.toHaveBeenCalledWith("enterprise.trees.import", expect.anything());
+    // The operator picked it; there is nothing to review, so no editor opens.
+    expect(state.enterpriseTreeEditing).toBe(false);
+    expect(state.enterpriseBindingPicker).toBeNull();
+  });
+
+  it("writes several picks as one revision", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    exportThenImport(request);
+    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
+    toggleEnterpriseBindingPickerValue(state, "memory_search");
+    toggleEnterpriseBindingPickerValue(state, "message");
+
+    await submitEnterpriseBindingPicker(state);
+
+    const imports = request.mock.calls.filter(([method]) => method === "enterprise.trees.import");
+    expect(imports).toHaveLength(1);
+    const parsed = JSON.parse((imports[0][1] as { content: string }).content);
+    expect(parsed.root.ontology.allowedTools).toEqual(
+      expect.arrayContaining(["memory_search", "message"]),
+    );
+  });
+
+  it("untick removes a pick", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    exportThenImport(request);
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+
+    await submitEnterpriseBindingPicker(state);
+
+    expect(state.enterpriseBindingPicker?.failure?.kind).toBe("entry-empty");
+    expect(request).not.toHaveBeenCalled();
   });
 
   it("declares a skill on the selected step", async () => {
     const { state, request } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: supportExportContent() });
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
-    editEnterpriseOntologyEntryDraft(state, "refund-policy");
+    exportThenImport(request);
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
 
-    await submitAddEnterpriseOntologyEntry(state);
+    await submitEnterpriseBindingPicker(state);
 
-    const parsed = JSON.parse(state.enterpriseTreeEditContent);
+    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
+    if (!importCall) {
+      throw new Error("expected an enterprise.trees.import call");
+    }
+    const parsed = JSON.parse((importCall[1] as { content: string }).content);
     expect(parsed.root.ontology.skills).toEqual(["refund-policy"]);
   });
 
-  it("rejects a blank entry without re-exporting", async () => {
+  it("rejects an empty selection without re-exporting", async () => {
     const { state, request } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
-    editEnterpriseOntologyEntryDraft(state, "   ");
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
 
-    await submitAddEnterpriseOntologyEntry(state);
+    await submitEnterpriseBindingPicker(state);
 
-    expect(state.enterpriseOntologyEntryDraft?.error).toBe("entry-empty");
+    expect(state.enterpriseBindingPicker?.failure?.kind).toBe("entry-empty");
     expect(request).not.toHaveBeenCalled();
   });
 
-  it("rejects an entry already declared on the step", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: supportExportContent() });
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
-    editEnterpriseOntologyEntryDraft(state, "refund-policy");
-    await submitAddEnterpriseOntologyEntry(state);
+  it("keeps the skill-name contract on the free-text escape hatch", async () => {
+    // Tools accept globs, so the custom field is theirs; a skill or foundation
+    // typed there must still satisfy what the import will accept.
+    for (const bad of ["Refund Policy", "refund--policy", "-refund", "a".repeat(65)]) {
+      const { state, request } = createState();
+      state.enterpriseTreeDetail = treeDetail("acme.support");
+      openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+      setEnterpriseBindingPickerCustom(state, bad);
 
-    // Re-add the same skill against the (unchanged) exported definition.
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
-    editEnterpriseOntologyEntryDraft(state, "refund-policy");
-    request.mockResolvedValue({
-      content: JSON.stringify({
-        ...JSON.parse(supportExportContent()),
-        root: {
-          ...JSON.parse(supportExportContent()).root,
-          ontology: { skills: ["refund-policy"] },
-        },
-      }),
-    });
-    await submitAddEnterpriseOntologyEntry(state);
+      await submitEnterpriseBindingPicker(state);
 
-    expect(state.enterpriseOntologyEntryDraft?.error).toBe("entry-duplicate");
+      expect(state.enterpriseBindingPicker?.failure?.kind).toBe("skill-name-invalid");
+      expect(request).not.toHaveBeenCalled();
+    }
   });
 
-  it("allows a knowledge foundation on the selected step", async () => {
+  it("does not apply the skill contract to tool grants", async () => {
     const { state, request } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: supportExportContent() });
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "knowledgeFoundations");
-    editEnterpriseOntologyEntryDraft(state, "acme.runbooks");
+    exportThenImport(request);
+    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
+    setEnterpriseBindingPickerCustom(state, "memory_*");
 
-    await submitAddEnterpriseOntologyEntry(state);
+    await submitEnterpriseBindingPicker(state);
 
-    const parsed = JSON.parse(state.enterpriseTreeEditContent);
-    expect(parsed.root.ontology.knowledgeFoundations).toEqual(["acme.runbooks"]);
+    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
+    if (!importCall) {
+      throw new Error("expected an enterprise.trees.import call");
+    }
+    const parsed = JSON.parse((importCall[1] as { content: string }).content);
+    expect(parsed.root.ontology.allowedTools).toContain("memory_*");
   });
 
   it("rejects a foundation id the import contract would refuse", async () => {
     const { state, request } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "knowledgeFoundations");
-    editEnterpriseOntologyEntryDraft(state, "Acme Runbooks");
+    openEnterpriseBindingPicker(state, "acme.support.root", "knowledgeFoundations");
+    setEnterpriseBindingPickerCustom(state, "Acme Runbooks");
 
-    await submitAddEnterpriseOntologyEntry(state);
+    await submitEnterpriseBindingPicker(state);
 
-    expect(state.enterpriseOntologyEntryDraft?.error).toBe("foundation-id-invalid");
+    expect(state.enterpriseBindingPicker?.failure?.kind).toBe("foundation-id-invalid");
     expect(request).not.toHaveBeenCalled();
   });
 
-  it("cancel clears the draft", () => {
+  it("keeps a rejected write open with the issue paths the server sent", async () => {
+    // A rejection is a definite refusal that wrote nothing, and its paths name the
+    // value to change. Collapsing it into the generic "the save did not confirm"
+    // would leave the operator with no way to correct the entry.
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return {
+          ok: false,
+          issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
+        };
+      }
+      return {};
+    });
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+
+    await submitEnterpriseBindingPicker(state);
+
+    expect(state.enterpriseBindingPicker?.failure).toEqual({
+      kind: "import-rejected",
+      issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
+    });
+    expect(state.enterpriseBindingPicker?.phase).toBe("idle");
+    // The editor owns that field; writing it here would show these issues against
+    // a draft they do not describe.
+    expect(state.enterpriseTreeSaveIssues).toBeNull();
+  });
+
+  it("reports a rejection that lands after the dialog was closed", async () => {
+    // Closing during the write says the save still lands. When it does not, the
+    // dismissed dialog cannot carry the failure, so the tree banner has to.
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let rejectImport: ((value: unknown) => void) | null = null;
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return new Promise((resolve) => {
+          rejectImport = resolve;
+        });
+      }
+      return {};
+    });
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+    const submitted = submitEnterpriseBindingPicker(state);
+    await vi.waitFor(() => expect(state.enterpriseBindingPicker?.phase).toBe("writing"));
+
+    cancelEnterpriseBindingPicker(state);
+    if (!rejectImport) {
+      throw new Error("expected the import to be in flight");
+    }
+    (rejectImport as (value: unknown) => void)({
+      ok: false,
+      issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
+    });
+    await submitted;
+
+    expect(state.enterpriseBindingPicker).toBeNull();
+    expect(state.enterpriseTreeSaveError).toContain("root.ontology.skills.0: unknown skill");
+  });
+
+  it("drops a late failure once the operator moved to another tree", async () => {
+    // The banner renders beside whichever tree is selected, so posting this one
+    // there would report a failure of the work-map now on screen.
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let finishImport: ((value: unknown) => void) | null = null;
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return new Promise((resolve) => {
+          finishImport = resolve;
+        });
+      }
+      return {};
+    });
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+    const submitted = submitEnterpriseBindingPicker(state);
+    await vi.waitFor(() => expect(state.enterpriseBindingPicker?.phase).toBe("writing"));
+
+    cancelEnterpriseBindingPicker(state);
+    state.enterpriseSelectedTreeId = "acme.billing";
+    if (!finishImport) {
+      throw new Error("expected the import to be in flight");
+    }
+    (finishImport as (value: unknown) => void)({ ok: false, issues: [] });
+    await submitted;
+
+    expect(state.enterpriseTreeSaveError).toBeNull();
+  });
+
+  it("says nothing was written when the import never left the client", async () => {
+    // GatewayBrowserClient rejects before ws.send when the socket is not open, so
+    // this is a definite non-write — telling the operator it may have applied
+    // would send them to check a tree that never changed.
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        throw new GatewayNotConnectedError();
+      }
+      return {};
+    });
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+
+    await submitEnterpriseBindingPicker(state);
+
+    expect(state.enterpriseBindingPicker?.failure).toEqual({ kind: "import-not-sent" });
+  });
+
+  it("keeps the gateway's message when the server refuses the write", async () => {
+    // An error frame is a definite refusal whose message names the reason; the
+    // generic "may have applied" copy would discard it.
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        throw new GatewayRequestError({ code: "FORBIDDEN", message: "operator.admin required" });
+      }
+      return {};
+    });
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+
+    await submitEnterpriseBindingPicker(state);
+
+    const failure = state.enterpriseBindingPicker?.failure;
+    expect(failure?.kind).toBe("import-refused");
+    expect(failure?.kind === "import-refused" && failure.message).toContain(
+      "operator.admin required",
+    );
+  });
+
+  it("drops a late failure once a newer draft owns the editor", async () => {
+    // New Tree keeps the selection but replaces the draft, and the banner renders
+    // inside that editor — so this failure would read as a problem with the tree
+    // the operator is now writing.
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let finishImport: ((value: unknown) => void) | null = null;
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return new Promise((resolve) => {
+          finishImport = resolve;
+        });
+      }
+      return {};
+    });
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+    const submitted = submitEnterpriseBindingPicker(state);
+    await vi.waitFor(() => expect(state.enterpriseBindingPicker?.phase).toBe("writing"));
+
+    cancelEnterpriseBindingPicker(state);
+    beginNewEnterpriseTree(state);
+    if (!finishImport) {
+      throw new Error("expected the import to be in flight");
+    }
+    (finishImport as (value: unknown) => void)({ ok: false, issues: [] });
+    await submitted;
+
+    expect(state.enterpriseTreeSaveError).toBeNull();
+  });
+
+  it("cancel works while an import is pending", () => {
+    // The client has no per-request timeout, so refusing to close while busy
+    // would trap the operator behind a native modal with every control disabled.
+    // A late result cannot resurrect it: submit only writes back when this exact
+    // picker object is still the one on screen.
     const { state } = createState();
     state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
-    cancelAddEnterpriseOntologyEntry(state);
-    expect(state.enterpriseOntologyEntryDraft).toBeNull();
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    const picker = state.enterpriseBindingPicker;
+    if (!picker) {
+      throw new Error("expected an open picker");
+    }
+    state.enterpriseBindingPicker = { ...picker, phase: "writing" };
+
+    cancelEnterpriseBindingPicker(state);
+
+    expect(state.enterpriseBindingPicker).toBeNull();
+  });
+
+  it("cancel clears the picker", () => {
+    const { state } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+
+    cancelEnterpriseBindingPicker(state);
+
+    expect(state.enterpriseBindingPicker).toBeNull();
   });
 });
 
@@ -1723,37 +1980,5 @@ describe("enterprise catalogs", () => {
     await stale;
 
     expect(state.enterpriseToolGroups.map((group) => group.id)).toEqual(["enterprise"]);
-  });
-});
-
-describe("declared skill name validation", () => {
-  it.each(["Refund Policy", "refund--policy", "-refund", "a".repeat(65)])(
-    "rejects %s without re-exporting",
-    async (name) => {
-      const { state, request } = createState();
-      state.enterpriseTreeDetail = treeDetail("acme.support");
-      beginAddEnterpriseOntologyEntry(state, "acme.support.root", "skills");
-      editEnterpriseOntologyEntryDraft(state, name);
-
-      await submitAddEnterpriseOntologyEntry(state);
-
-      // The import contract would refuse it, so the form fails before the splice.
-      expect(state.enterpriseOntologyEntryDraft?.error).toBe("skill-name-invalid");
-      expect(request).not.toHaveBeenCalled();
-    },
-  );
-
-  it("does not apply the skill contract to tool grants", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: supportExportContent() });
-    beginAddEnterpriseOntologyEntry(state, "acme.support.root", "allowedTools");
-    // Group selectors carry a colon, which the skill-name pattern forbids.
-    editEnterpriseOntologyEntryDraft(state, "group:enterprise-write");
-
-    await submitAddEnterpriseOntologyEntry(state);
-
-    expect(state.enterpriseOntologyEntryDraft).toBeNull();
-    expect(state.enterpriseTreeEditing).toBe(true);
   });
 });

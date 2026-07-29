@@ -221,6 +221,24 @@ export const id: TranslationMap = {
       optionalBadge: "opsional",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Cari katalog dan pilih apa yang boleh digunakan langkah ini.",
+      step: "Langkah: {nodeId}",
+      searchLabel: "Cari",
+      noQueryMatches: "Tidak ada yang cocok dengan pencarian tersebut.",
+      allAdded: "Semua item dalam katalog ini sudah ada di langkah ini.",
+      emptyCatalog: "Deployment ini tidak memiliki apa pun untuk ditawarkan.",
+      customToolLabel: "Atau masukkan nama tool, grup, atau glob",
+      customNameLabel: "Atau masukkan nama",
+      groupOption: "{label} — seluruh bagian ({count} alat)",
+      confirm: "Tambahkan {count}",
+      close: "Tutup",
+      saving:
+        "Menyimpan. Menutup dialog ini tidak akan membatalkannya — peta kerja akan diperbarui setelah selesai.",
+    },
+    addNodeSectionTitle: "Struktur alur kerja",
+    addNodeSectionSubtitle:
+      "Tambahkan sub-langkah di bawah langkah ini. Ini mengubah bentuk peta kerja, bukan apa yang boleh dipanggil langkah ini.",
     entryDraft: {
       add: "Tambah",
       none: "Belum ada yang dideklarasikan.",
@@ -228,20 +246,23 @@ export const id: TranslationMap = {
         "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin dan hanya alat yang tercantum yang tetap tersedia.",
       knowledgeNarrowing:
         "Langkah ini belum memiliki daftar izin pengetahuan, sehingga dapat mengkueri setiap fondasi yang terdaftar. Menambahkan entri pertama akan membatasinya hanya pada fondasi yang tercantum.",
-      toolLabel: "Nama alat atau grup yang diizinkan",
-      skillLabel: "Nama skill yang dideklarasikan",
-      knowledgeLabel: "Id fondasi pengetahuan yang diizinkan",
       skillNameInvalid:
         "Gunakan nama skill: huruf kecil, angka, dan tanda hubung tunggal, maksimal 64 karakter.",
       foundationIdInvalid: "Gunakan id fondasi: segmen huruf kecil bertitik, contoh acme.runbooks.",
       ancestorGate:
         "Langkah induk ({nodeIds}) memiliki allowlist sendiri untuk ini. Governance memeriksa setiap langkah dari root, jadi entri yang ditambahkan di sini tetap ditolak kecuali langkah-langkah tersebut juga mengizinkannya.",
-      reviewHint:
-        "Menambahkan akan membuka editor tree agar Anda dapat meninjau dan menyimpan perubahan.",
       empty: "Masukkan nilai terlebih dahulu.",
       duplicate: "Entri tersebut sudah dideklarasikan pada langkah ini.",
       nodeMissing: "Langkah tersebut sudah tidak ada di tree; muat ulang dan coba lagi.",
       exportFailed: "Tidak dapat memuat definisi pohon untuk diedit.",
+      importFailed:
+        "Penyimpanan tidak terkonfirmasi. Perubahan mungkin atau mungkin tidak diterapkan — muat ulang work-map untuk memeriksanya, sebelum mencoba lagi.",
+      importNotSent:
+        "Tidak ada yang disimpan: koneksi Gateway terputus sebelum ini terkirim. Sambungkan kembali dan coba lagi.",
+      importRefused: "Server menolak perubahan ini, jadi tidak ada yang disimpan: {message}",
+      importRejected: "Server menolak perubahan ini, sehingga tidak ada yang disimpan.",
+      importRejectedDetail:
+        "Server menolak perubahan ini, sehingga tidak ada yang disimpan: {issues}",
     },
     catalogAgentScope:
       "Alat dan skills dicakupkan per agen; katalog ini adalah yang dilihat oleh agen {agentId}.",

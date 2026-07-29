@@ -222,6 +222,24 @@ export const tr: TranslationMap = {
       optionalBadge: "isteğe bağlı",
       pluginBadge: "Eklenti: {pluginId}",
     },
+    picker: {
+      subtitle: "Kataloğu arayın ve bu adımın kullanabileceği öğeleri seçin.",
+      step: "Adım: {nodeId}",
+      searchLabel: "Ara",
+      noQueryMatches: "Aramayla eşleşen bir şey bulunamadı.",
+      allAdded: "Bu katalogdaki her şey zaten bu adımda mevcut.",
+      emptyCatalog: "Bu dağıtımda sunulacak bir şey yok.",
+      customToolLabel: "Veya bir araç adı, grup veya glob girin",
+      customNameLabel: "Veya bir ad girin",
+      groupOption: "{label} — tüm bölüm ({count} araç)",
+      confirm: "{count} ekle",
+      close: "Kapat",
+      saving:
+        "Kaydediliyor. Bu iletişim kutusunu kapatmak işlemi geri almaz — iş haritası tamamlandığında yenilenir.",
+    },
+    addNodeSectionTitle: "İş akışı yapısı",
+    addNodeSectionSubtitle:
+      "Bu adımın altına bir alt adım ekleyin. Bu, iş haritasının yapısını değiştirir; bu adımın neyi çağırabileceğini değil.",
     entryDraft: {
       add: "Ekle",
       none: "Henüz tanımlanmış bir şey yok.",
@@ -229,21 +247,24 @@ export const tr: TranslationMap = {
         "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında tüm araçlara izin verir. İlk girişi eklemek bunu bir izin listesine dönüştürür ve yalnızca listelenen araçlar kullanılabilir kalır.",
       knowledgeNarrowing:
         "Bu adımın henüz bir bilgi izin listesi yok, bu nedenle kayıtlı tüm temelleri sorgulayabilir. İlk girişi eklemek, sorgulamayı listelenen temellerle sınırlar.",
-      toolLabel: "İzin verilecek araç adı veya grubu",
-      skillLabel: "Tanımlanacak skill adı",
-      knowledgeLabel: "İzin verilecek bilgi temeli kimliği",
       skillNameInvalid:
         "Bir skill adı kullanın: küçük harfler, rakamlar ve tek tireler, en fazla 64 karakter.",
       foundationIdInvalid:
         "Bir temel kimliği kullanın: noktalı küçük harf segmentleri, örneğin acme.runbooks.",
       ancestorGate:
         "Üst adımların ({nodeIds}) bunun için kendi izin listeleri var. Yönetişim her adımı kökten kontrol eder, bu nedenle buraya eklenen bir giriş, o adımlar da izin vermedikçe yine reddedilir.",
-      reviewHint:
-        "Ekleme işlemi, değişikliği inceleyip kaydetmeniz için ağaç düzenleyicisini açar.",
       empty: "Önce bir değer girin.",
       duplicate: "Bu giriş zaten bu adımda tanımlanmış.",
       nodeMissing: "Bu adım artık ağaçta yok; yeniden yükleyip tekrar deneyin.",
       exportFailed: "Düzenlenecek ağaç tanımı yüklenemedi.",
+      importFailed:
+        "Kaydetme işlemi onaylanmadı. Değişiklik uygulanmış olabilir veya olmayabilir — tekrar denemeden önce çalışma haritasını yenileyerek durumu kontrol edin.",
+      importNotSent:
+        "Hiçbir şey kaydedilmedi: bu gönderilmeden önce Gateway bağlantısı kesildi. Yeniden bağlanıp tekrar deneyin.",
+      importRefused: "Sunucu bu değişikliği reddetti, bu yüzden hiçbir şey kaydedilmedi: {message}",
+      importRejected: "Sunucu bu değişikliği reddetti, bu yüzden hiçbir şey kaydedilmedi.",
+      importRejectedDetail:
+        "Sunucu bu değişikliği reddetti, bu yüzden hiçbir şey kaydedilmedi: {issues}",
     },
     catalogAgentScope:
       "Araçlar ve beceriler ajan kapsamlıdır; bu katalog, {agentId} ajanının gördüğü katalogdur.",

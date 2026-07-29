@@ -222,6 +222,24 @@ export const pl: TranslationMap = {
       optionalBadge: "opcjonalne",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Przeszukaj katalog i wybierz, z czego ten krok może korzystać.",
+      step: "Krok: {nodeId}",
+      searchLabel: "Szukaj",
+      noQueryMatches: "Nic nie pasuje do tego wyszukiwania.",
+      allAdded: "Wszystko z tego katalogu zostało już dodane do tego kroku.",
+      emptyCatalog: "To wdrożenie nie ma nic do zaoferowania.",
+      customToolLabel: "Lub wprowadź nazwę narzędzia, grupę lub glob",
+      customNameLabel: "Lub wprowadź nazwę",
+      groupOption: "{label} — cała sekcja ({count} narzędzi)",
+      confirm: "Dodaj {count}",
+      close: "Zamknij",
+      saving:
+        "Zapisywanie. Zamknięcie tego okna nie cofnie operacji — mapa pracy odświeży się po jej zakończeniu.",
+    },
+    addNodeSectionTitle: "Struktura przepływu pracy",
+    addNodeSectionSubtitle:
+      "Dodaj podkrok pod tym krokiem. Zmienia to kształt mapy pracy, a nie to, co ten krok może wywoływać.",
     entryDraft: {
       add: "Dodaj",
       none: "Brak zadeklarowanych.",
@@ -229,20 +247,23 @@ export const pl: TranslationMap = {
         "Ten krok nie ma jeszcze listy dozwolonych narzędzi, więc zezwala na wszystkie narzędzia z wyjątkiem tych, które są jawnie zabronione. Dodanie pierwszego wpisu przekształca go w listę dozwolonych i tylko wymienione narzędzia pozostają dostępne.",
       knowledgeNarrowing:
         "Ten krok nie ma jeszcze listy dozwolonych źródeł wiedzy, więc może odpytywać każdą zarejestrowaną podstawę. Dodanie pierwszego wpisu ogranicza go do wymienionych podstaw.",
-      toolLabel: "Nazwa narzędzia lub grupy do zezwolenia",
-      skillLabel: "Nazwa umiejętności do zadeklarowania",
-      knowledgeLabel: "ID podstawy wiedzy do zezwolenia",
       skillNameInvalid:
         "Użyj nazwy umiejętności: małe litery, cyfry i pojedyncze myślniki, maksymalnie 64 znaki.",
       foundationIdInvalid:
         "Użyj ID podstawy: małe litery oddzielone kropkami, na przykład acme.runbooks.",
       ancestorGate:
         "Kroki nadrzędne ({nodeIds}) mają własną listę dozwolonych. Governance sprawdza każdy krok od korzenia, więc wpis dodany tutaj nadal zostanie odrzucony, jeśli te kroki go nie dopuszczą.",
-      reviewHint: "Dodanie otworzy edytor drzewa, aby można było przejrzeć i zapisać zmianę.",
       empty: "Najpierw wprowadź wartość.",
       duplicate: "Ten wpis jest już zadeklarowany w tym kroku.",
       nodeMissing: "Ten krok nie znajduje się już w drzewie; odśwież i spróbuj ponownie.",
       exportFailed: "Nie udało się wczytać definicji drzewa do edycji.",
+      importFailed:
+        "Zapis nie został potwierdzony. Mógł zostać zastosowany lub nie — odśwież mapę pracy, aby to sprawdzić, zanim spróbujesz ponownie.",
+      importNotSent:
+        "Nic nie zostało zapisane: połączenie z Gateway zostało przerwane przed wysłaniem. Połącz się ponownie i spróbuj jeszcze raz.",
+      importRefused: "Serwer odrzucił tę zmianę, więc nic nie zostało zapisane: {message}",
+      importRejected: "Serwer odrzucił tę zmianę, więc nic nie zostało zapisane.",
+      importRejectedDetail: "Serwer odrzucił tę zmianę, więc nic nie zostało zapisane: {issues}",
     },
     catalogAgentScope:
       "Narzędzia i skills są przypisane do agenta; ten katalog jest tym, co widzi agent {agentId}.",

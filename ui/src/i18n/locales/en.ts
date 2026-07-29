@@ -218,6 +218,24 @@ export const en: TranslationMap = {
       optionalBadge: "optional",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Search the catalog and pick what this step may use.",
+      step: "Step: {nodeId}",
+      searchLabel: "Search",
+      noQueryMatches: "Nothing matches that search.",
+      allAdded: "Everything in this catalog is already on this step.",
+      emptyCatalog: "This deployment has none to offer.",
+      customToolLabel: "Or enter a tool name, group, or glob",
+      customNameLabel: "Or enter a name",
+      groupOption: "{label} — the whole section ({count} tools)",
+      confirm: "Add {count}",
+      close: "Close",
+      saving:
+        "Saving. Closing this dialog will not undo it — the work-map refreshes when it lands.",
+    },
+    addNodeSectionTitle: "Workflow structure",
+    addNodeSectionSubtitle:
+      "Add a sub-step under this one. This changes the shape of the work-map, not what this step may call.",
     entryDraft: {
       add: "Add",
       none: "None declared yet.",
@@ -225,20 +243,23 @@ export const en: TranslationMap = {
         "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist and only the listed tools stay available.",
       knowledgeNarrowing:
         "This step has no knowledge allowlist yet, so it can query every registered foundation. Adding the first entry restricts it to the listed foundations.",
-      toolLabel: "Tool name or group to allow",
-      skillLabel: "Skill name to declare",
-      knowledgeLabel: "Knowledge foundation id to allow",
       skillNameInvalid:
         "Use a skill name: lowercase letters, digits, and single hyphens, at most 64 characters.",
       foundationIdInvalid:
         "Use a foundation id: dotted lowercase segments, for example acme.runbooks.",
       ancestorGate:
         "Parent steps ({nodeIds}) have their own allowlist for this. Governance checks each step from the root, so an entry added here is still denied unless those steps allow it too.",
-      reviewHint: "Adding opens the tree editor so you can review and save the change.",
       empty: "Enter a value first.",
       duplicate: "That entry is already declared on this step.",
       nodeMissing: "That step is no longer in the tree; reload and try again.",
       exportFailed: "Could not load the tree definition to edit.",
+      importFailed:
+        "The save did not confirm. It may or may not have been applied — refresh the work-map to see which, before trying again.",
+      importNotSent:
+        "Nothing was saved: the gateway connection dropped before this was sent. Reconnect and try again.",
+      importRefused: "The server refused this change, so nothing was saved: {message}",
+      importRejected: "The server rejected this change, so nothing was saved.",
+      importRejectedDetail: "The server rejected this change, so nothing was saved: {issues}",
     },
     catalogAgentScope:
       "Tools and skills are agent-scoped; this catalog is the one agent {agentId} sees.",

@@ -21,6 +21,8 @@ import type {
   EnterpriseTreeVersionSummary,
   ToolsCatalogResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
+import { t } from "../../i18n/index.ts";
+import { GatewayNotConnectedError, GatewayRequestError } from "../gateway.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
@@ -73,22 +75,56 @@ export type EnterpriseOntologyEntryDraftError =
   | "skill-name-invalid"
   | "foundation-id-invalid"
   | "node-missing"
-  | "export-failed";
+  | "export-failed"
+  | "import-not-sent"
+  | "import-failed";
+
+/**
+ * Why a binding apply stopped. A shape rather than a bare reason because a
+ * server REJECTION carries the issue paths that say what to change, and those
+ * only exist for that one case — a rejected write is not the same event as one
+ * whose outcome is unknown, and telling the operator "this may have applied"
+ * about a definite refusal hides the fix.
+ */
+export type EnterpriseBindingPickerFailure =
+  | { kind: EnterpriseOntologyEntryDraftError }
+  | { kind: "import-rejected"; issues: EnterpriseTreeImportIssue[] }
+  | { kind: "import-refused"; message: string };
 
 /**
  * An in-progress step-binding form (a tool grant, a declared skill, or an allowed
- * knowledge foundation) on the step selected in the Worktree inspector. Same
- * contract as EnterpriseNodeDraft: bound to `treeId` + `nodeId` so it cannot be
- * applied to a different tree, and on submit the tree is re-exported, spliced, and
- * loaded into the raw editor for review + Save — so binding a step reuses
- * enterprise.trees.import rather than adding a write path.
+ * knowledge foundation) on the step selected in the Worktree inspector.
+ *
+ * A PICKER, not a text field: the operator searches the catalog the screen
+ * already loaded and ticks entries, so a binding is chosen from what exists
+ * instead of typed from memory. Tools additionally accept a free-text value,
+ * because a tool scope is globs and groups (`group:enterprise`, `memory_*`) that
+ * no catalog can enumerate.
+ *
+ * Bound to `treeId` + `nodeId` so it cannot be applied to a different tree. On
+ * submit the tree is re-exported, spliced, and imported directly — the operator
+ * asked for the entry, so making them review generated JSON to confirm it added
+ * a step they already picked was ceremony, not safety. It is still the same
+ * enterprise.trees.import write path.
  */
-export type EnterpriseOntologyEntryDraft = {
+export type EnterpriseBindingPicker = {
   treeId: string;
   nodeId: string;
   field: NodeOntologyListField;
-  value: string;
-  error: EnterpriseOntologyEntryDraftError | null;
+  /** Search text filtering the catalog list. */
+  query: string;
+  /** Ticked catalog entries, in click order. */
+  selected: string[];
+  /** Free-text entry (tools only); added alongside the ticked ones. */
+  custom: string;
+  /**
+   * How far the apply has got. A closed shape rather than a boolean because the
+   * two busy phases mean opposite things to the operator: closing during
+   * `preparing` (the export) genuinely abandons the change, while closing during
+   * `writing` cannot recall a request the server already has.
+   */
+  phase: "idle" | "preparing" | "writing";
+  failure: EnterpriseBindingPickerFailure | null;
 };
 
 /** Load state of the tool/skill/knowledge catalogs the enterprise screens browse. */
@@ -151,7 +187,7 @@ export type EnterpriseState = {
   // P5 dynamic node creation: the open "add child node" form, or null. Splices a
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
-  enterpriseOntologyEntryDraft: EnterpriseOntologyEntryDraft | null;
+  enterpriseBindingPicker: EnterpriseBindingPicker | null;
   // Catalogs of what a step can be bound TO: every tool the gateway exposes,
   // every installed skill, and every registered knowledge foundation. Read-only
   // reference data, loaded independently of the run/tree state.
@@ -481,7 +517,7 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
   // rather than let a stale form reappear under a same-named node elsewhere.
   state.enterpriseNodeDraft = null;
   // Same for a tool-grant / skill draft: it is bound to one node in one tree.
-  state.enterpriseOntologyEntryDraft = null;
+  state.enterpriseBindingPicker = null;
 }
 
 /**
@@ -862,7 +898,7 @@ export async function submitAddEnterpriseNode(state: EnterpriseState) {
 }
 
 /** Open the step-binding form for `field` on `nodeId` in the selected tree. */
-export function beginAddEnterpriseOntologyEntry(
+export function openEnterpriseBindingPicker(
   state: EnterpriseState,
   nodeId: string,
   field: NodeOntologyListField,
@@ -871,85 +907,308 @@ export function beginAddEnterpriseOntologyEntry(
   if (!treeId) {
     return;
   }
-  state.enterpriseOntologyEntryDraft = { treeId, nodeId, field, value: "", error: null };
+  state.enterpriseBindingPicker = {
+    treeId,
+    nodeId,
+    field,
+    query: "",
+    selected: [],
+    custom: "",
+    phase: "idle",
+    failure: null,
+  };
 }
 
-export function editEnterpriseOntologyEntryDraft(state: EnterpriseState, value: string) {
-  const draft = state.enterpriseOntologyEntryDraft;
-  if (!draft) {
+export function setEnterpriseBindingPickerQuery(state: EnterpriseState, query: string) {
+  const picker = state.enterpriseBindingPicker;
+  if (!picker || picker.phase !== "idle") {
     return;
   }
-  state.enterpriseOntologyEntryDraft = { ...draft, value, error: null };
+  state.enterpriseBindingPicker = { ...picker, query };
 }
 
-export function cancelAddEnterpriseOntologyEntry(state: EnterpriseState) {
-  state.enterpriseOntologyEntryDraft = null;
+export function setEnterpriseBindingPickerCustom(state: EnterpriseState, custom: string) {
+  const picker = state.enterpriseBindingPicker;
+  if (!picker || picker.phase !== "idle") {
+    return;
+  }
+  state.enterpriseBindingPicker = { ...picker, custom, failure: null };
+}
+
+/** Tick or untick one catalog entry. Order is click order, so Add stays predictable. */
+export function toggleEnterpriseBindingPickerValue(state: EnterpriseState, value: string) {
+  const picker = state.enterpriseBindingPicker;
+  if (!picker || picker.phase !== "idle") {
+    return;
+  }
+  const selected = picker.selected.includes(value)
+    ? picker.selected.filter((entry) => entry !== value)
+    : [...picker.selected, value];
+  state.enterpriseBindingPicker = { ...picker, selected, failure: null };
+}
+
+export function cancelEnterpriseBindingPicker(state: EnterpriseState) {
+  // Closable even mid-import. The client has no per-request timeout, so a stalled
+  // server would otherwise trap the operator behind a native modal with every
+  // control disabled. A late result cannot resurrect the dialog: `settle` only
+  // writes back if this exact picker is still the one on screen.
+  state.enterpriseBindingPicker = null;
 }
 
 /**
- * Validate the draft, splice the entry into the tree's CANONICAL nested definition,
- * and load the result into the raw editor. Mirrors submitAddEnterpriseNode exactly
- * (same seed/identity race guards), so the operator reviews and Saves through the
- * existing confirm -> enterprise.trees.import flow and no second write path appears.
+ * Apply the picked entries to the step and save.
+ *
+ * Splices every selection into ONE exported definition and imports once, so a
+ * multi-entry add is a single revision rather than one per value — and a partial
+ * failure cannot leave half the picks written.
  */
-export async function submitAddEnterpriseOntologyEntry(state: EnterpriseState) {
-  const draft = state.enterpriseOntologyEntryDraft;
+export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
+  const picker = state.enterpriseBindingPicker;
   const tree = state.enterpriseTreeDetail;
-  if (!draft || !tree || draft.treeId !== tree.id) {
+  if (!picker || picker.phase !== "idle" || !tree || picker.treeId !== tree.id) {
     return;
   }
-  const value = draft.value.trim();
-  if (value.length === 0) {
-    state.enterpriseOntologyEntryDraft = { ...draft, error: "entry-empty" };
+  const custom = picker.custom.trim();
+  // Deduped: ticking an option and typing the same value is an easy thing to do,
+  // and the second splice would report it as already declared and abandon a write
+  // that was actually adding something new.
+  const values = [...new Set([...picker.selected, ...(custom ? [custom] : [])])];
+  if (values.length === 0) {
+    state.enterpriseBindingPicker = { ...picker, failure: { kind: "entry-empty" } };
     return;
   }
   // A declared skill or foundation must satisfy the import contract; catching it
-  // here keeps the failure in the form instead of stranding the operator in the
-  // editor with a spliced definition that cannot save. Tool entries are globs
-  // (`group:enterprise`, `memory_*`), so only non-blank is required of them.
-  if (draft.field === "skills" && !isValidSkillName(value)) {
-    state.enterpriseOntologyEntryDraft = { ...draft, error: "skill-name-invalid" };
+  // here keeps the failure in the dialog instead of surfacing as a raw schema
+  // issue after the write. Tool entries are globs, so only non-blank is required.
+  const invalid = values.find((value) =>
+    picker.field === "skills"
+      ? !isValidSkillName(value)
+      : picker.field === "knowledgeFoundations"
+        ? !isValidEnterpriseId(value)
+        : false,
+  );
+  if (invalid !== undefined) {
+    state.enterpriseBindingPicker = {
+      ...picker,
+      failure: {
+        kind: picker.field === "skills" ? "skill-name-invalid" : "foundation-id-invalid",
+      },
+    };
     return;
   }
-  if (draft.field === "knowledgeFoundations" && !isValidEnterpriseId(value)) {
-    state.enterpriseOntologyEntryDraft = { ...draft, error: "foundation-id-invalid" };
+  if (!tree.nodes.some((node) => node.id === picker.nodeId)) {
+    state.enterpriseBindingPicker = { ...picker, failure: { kind: "node-missing" } };
     return;
   }
-  if (!tree.nodes.some((node) => node.id === draft.nodeId)) {
-    state.enterpriseOntologyEntryDraft = { ...draft, error: "node-missing" };
-    return;
-  }
-  const seedSeq = ++editSeedSeq;
-  const exported = await fetchExportContent(state, tree.id, "json");
-  // Same staleness checks as the node draft: a changed form or a competing editor
-  // load supersedes this add rather than seeding the editor with stale input.
-  if (seedSeq !== editSeedSeq || state.enterpriseOntologyEntryDraft !== draft) {
-    return;
-  }
-  if (!exported.ok) {
-    if (!exported.scopeCleared) {
-      state.enterpriseOntologyEntryDraft = { ...draft, error: "export-failed" };
+  let pending: EnterpriseBindingPicker = { ...picker, phase: "preparing", failure: null };
+  state.enterpriseBindingPicker = pending;
+  // Captured BEFORE the write: the dialog is dismissable while it runs, so the
+  // operator can navigate to another tree meanwhile. Reading the selection after
+  // the response would record THEIR choice and then undo it.
+  const selectedAtStart = state.enterpriseSelectedTreeId;
+  // Claim the edit intent, the same token the editor's save path takes. An Edit,
+  // history restore, or add-child seed already awaiting its own export would
+  // otherwise finish holding a definition from BEFORE this binding, and saving
+  // that whole-tree replacement later would silently drop it — re-widening a
+  // governance allowlist in the process.
+  const editIntent = ++editSeedSeq;
+  const settle = (next: EnterpriseBindingPicker | null) => {
+    // Only settle the picker this call started: a cancel or a newly opened picker
+    // during the await owns the slot now.
+    if (state.enterpriseBindingPicker === pending) {
+      state.enterpriseBindingPicker = next;
     }
+  };
+  const exported = await fetchExportContent(state, tree.id, "json");
+  if (!exported.ok) {
+    settle(
+      exported.scopeCleared
+        ? null
+        : { ...pending, phase: "idle", failure: { kind: "export-failed" } },
+    );
     return;
   }
   const definition = parseTreeDefinition(exported.content);
   if (!definition) {
-    state.enterpriseOntologyEntryDraft = { ...draft, error: "export-failed" };
+    settle({ ...pending, phase: "idle", failure: { kind: "export-failed" } });
     return;
   }
-  const spliced = addNodeOntologyEntry(definition, draft.nodeId, draft.field, value);
-  if (!spliced.ok) {
-    state.enterpriseOntologyEntryDraft = {
-      ...draft,
-      error: spliced.reason === "duplicate-entry" ? "entry-duplicate" : "node-missing",
-    };
+  // The export awaited. If this picker was dismissed (or replaced) meanwhile, or
+  // a newer edit claimed the intent, stop before writing: a later edit on the
+  // same tree would otherwise be overwritten by this whole-tree replace built
+  // from the older export.
+  if (state.enterpriseBindingPicker !== pending || editIntent !== editSeedSeq) {
     return;
   }
-  state.enterpriseOntologyEntryDraft = null;
-  applyEditorSeed(state, seedSeq, "json", tree.id, null, {
-    ok: true,
-    content: `${JSON.stringify(spliced.definition, null, 2)}\n`,
-  });
+  let spliced: EditableTreeDefinition = definition;
+  for (const value of values) {
+    const result = addNodeOntologyEntry(spliced, picker.nodeId, picker.field, value);
+    if (!result.ok) {
+      settle({
+        ...pending,
+        phase: "idle",
+        failure: {
+          kind: result.reason === "duplicate-entry" ? "entry-duplicate" : "node-missing",
+        },
+      });
+      return;
+    }
+    spliced = result.definition;
+  }
+  // Past this point the server has the request, so closing cannot recall it.
+  const writing: EnterpriseBindingPicker = { ...pending, phase: "writing" };
+  state.enterpriseBindingPicker = writing;
+  pending = writing;
+  const imported = await importTreeDefinition(state, spliced);
+  if (imported.status !== "saved") {
+    // The export already succeeded and no editor opens, so "could not load the
+    // definition" would point at the wrong step; these say the write failed.
+    if (state.enterpriseBindingPicker === pending) {
+      settle({ ...pending, phase: "idle", failure: importFailure(imported) });
+      return;
+    }
+    // Closing during the write leaves nothing to settle into, and the dialog said
+    // the save would still land, so the failure has to reach the tree's banner.
+    // That banner is shared: it hangs beside the SELECTED tree and inside whatever
+    // draft the editor holds. An operator who moved on — another tree, or New Tree,
+    // which keeps this selection while replacing the draft — would read it as a
+    // failure of what is now in front of them, so a superseded write reports
+    // nowhere rather than blaming the wrong work-map.
+    if (state.enterpriseSelectedTreeId !== picker.treeId || editIntent !== editSeedSeq) {
+      return;
+    }
+    state.enterpriseTreeSaveError = importFailureText(imported);
+    return;
+  }
+  // Close as soon as the WRITE lands, before the reloads. Those are separate
+  // requests with no client-side timeout, so keeping the dialog disabled until
+  // they answer would let one slow list call hold the whole screen modal — with
+  // Cancel and Escape ignored — over a binding that is already saved. Closing
+  // here also lets the dialog hand focus back while its trigger still exists.
+  settle(null);
+  // An earlier export/seed failure left its banner beside the tree; the write
+  // that just succeeded makes it stale, and leaving it up reads as this add
+  // having failed.
+  state.enterpriseTreeSaveError = null;
+  state.enterpriseTreeSaveIssues = null;
+  await refreshAfterTreeWrite(state, imported.treeId, selectedAtStart);
+}
+
+/** Why the apply stopped, in the shape the dialog renders. */
+function importFailure(
+  outcome: Exclude<TreeImportOutcome, { status: "saved" }>,
+): EnterpriseBindingPickerFailure {
+  if (outcome.status === "rejected") {
+    return { kind: "import-rejected", issues: outcome.issues };
+  }
+  if (outcome.status === "refused") {
+    return { kind: "import-refused", message: outcome.message };
+  }
+  return { kind: outcome.status === "not-sent" ? "import-not-sent" : "import-failed" };
+}
+
+/**
+ * The same failure as one line, for the tree banner a dismissed dialog falls back
+ * to. That banner takes text, not a list, and enterpriseTreeSaveIssues belongs to
+ * the editor — writing issues there would surface them on a draft they do not
+ * describe — so the paths are folded into the sentence.
+ */
+function importFailureText(outcome: Exclude<TreeImportOutcome, { status: "saved" }>): string {
+  if (outcome.status === "refused") {
+    return t("enterprise.entryDraft.importRefused", { message: outcome.message });
+  }
+  if (outcome.status === "not-sent") {
+    return t("enterprise.entryDraft.importNotSent");
+  }
+  if (outcome.status !== "rejected") {
+    return t("enterprise.entryDraft.importFailed");
+  }
+  const detail = outcome.issues
+    .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+    .filter((entry) => entry.length > 0)
+    .join(" · ");
+  return detail
+    ? t("enterprise.entryDraft.importRejectedDetail", { issues: detail })
+    : t("enterprise.entryDraft.importRejected");
+}
+
+/**
+ * What one import did. Three of these wrote nothing and can say so: `rejected` is
+ * a validation refusal with the paths to fix, `refused` is a server error frame
+ * with its message, and `not-sent` never reached the socket. Only `unknown` — a
+ * frame that went out and whose answer never came back — leaves the outcome open,
+ * so it is the only one allowed to tell the operator the change may have applied.
+ */
+type TreeImportOutcome =
+  | { status: "saved"; treeId?: string }
+  | { status: "rejected"; issues: EnterpriseTreeImportIssue[] }
+  | { status: "refused"; message: string }
+  | { status: "not-sent" }
+  | { status: "unknown" };
+
+/**
+ * Write one edited definition through enterprise.trees.import and refresh what it
+ * invalidates. Shared by the binding picker so a direct apply reuses the editor's
+ * write path instead of adding a second one.
+ */
+async function importTreeDefinition(
+  state: EnterpriseState,
+  definition: EditableTreeDefinition,
+): Promise<TreeImportOutcome> {
+  if (!state.client || !state.connected) {
+    return { status: "not-sent" };
+  }
+  try {
+    const res = await state.client.request<EnterpriseTreesImportResult>("enterprise.trees.import", {
+      content: `${JSON.stringify(definition, null, 2)}\n`,
+      format: "json",
+    });
+    if (!res.ok) {
+      return { status: "rejected", issues: res.issues ?? [] };
+    }
+    const treeId = res.treeId ?? definition.id;
+    return { status: "saved", ...(typeof treeId === "string" && treeId ? { treeId } : {}) };
+  } catch (error) {
+    // GatewayBrowserClient rejects before ws.send when the socket is not open,
+    // and answers an error frame with GatewayRequestError. Both mean the tree was
+    // not written. Anything else is a pending request flushed by a close AFTER
+    // the frame went out, which the server may still have applied.
+    if (error instanceof GatewayNotConnectedError) {
+      return { status: "not-sent" };
+    }
+    if (error instanceof GatewayRequestError) {
+      return { status: "refused", message: error.message };
+    }
+    return { status: "unknown" };
+  }
+}
+
+/** Reload what a whole-tree replace invalidates. Runs after the write settles. */
+async function refreshAfterTreeWrite(
+  state: EnterpriseState,
+  treeId: string | undefined,
+  /** What was selected when the write STARTED; navigation since then wins. */
+  selectedAtWrite: string | null,
+) {
+  // An import rebuilds the server's bundle knowledge registry, so the catalogs
+  // this screen suggests from are stale until reloaded.
+  void loadEnterpriseCatalogs(state);
+  // Editing a BUILT-IN tree creates an imported override, so the registry list
+  // still says `source: "builtin"` (and still shows any now-resolved import or
+  // store error) until it is reloaded.
+  await loadEnterprise(state);
+  // A failed list reload set the banner; opening the saved tree would clear
+  // enterpriseError at request start and present stale lists as current.
+  if (state.enterpriseError || !treeId || state.enterpriseSelectedTreeId !== selectedAtWrite) {
+    return;
+  }
+  await loadEnterpriseTreeDetail(state, treeId);
+  // The detail load awaited, so the operator can select another tree meanwhile.
+  // Its history request would win the sequence and overwrite the new selection.
+  if (state.enterpriseSelectedTreeId !== treeId) {
+    return;
+  }
+  await loadEnterpriseTreeVersions(state, treeId);
 }
 
 function parseTreeDefinition(content: string): EditableTreeDefinition | null {

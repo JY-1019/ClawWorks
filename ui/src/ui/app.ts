@@ -520,8 +520,8 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseTreeVersionsLoading = false;
   @state() enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null =
     null;
-  @state() enterpriseOntologyEntryDraft:
-    | import("./controllers/enterprise.js").EnterpriseOntologyEntryDraft
+  @state() enterpriseBindingPicker:
+    | import("./controllers/enterprise.js").EnterpriseBindingPicker
     | null = null;
   @state() enterpriseCatalogPhase: import("./controllers/enterprise.js").EnterpriseCatalogPhase =
     "unloaded";

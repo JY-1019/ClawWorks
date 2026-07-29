@@ -25,7 +25,8 @@ import type {
   EnterpriseCatalogPhase,
   EnterpriseNodeDraft,
   EnterpriseNodeDraftError,
-  EnterpriseOntologyEntryDraft,
+  EnterpriseBindingPicker,
+  EnterpriseBindingPickerFailure,
   EnterpriseOntologyEntryDraftError,
   EnterpriseTreeConfirm,
   EnterpriseTreeEditFormat,
@@ -97,13 +98,15 @@ export type EnterpriseProps = {
   onCancelAddNode: () => void;
   onSubmitAddNode: () => void;
   // The open "grant a tool" / "declare a skill" / "allow a knowledge foundation"
-  // form on the selected step, or null. Submit splices the entry into that step
-  // and loads the editor for Save.
-  ontologyEntryDraft: EnterpriseOntologyEntryDraft | null;
-  onBeginAddOntologyEntry: (nodeId: string, field: NodeOntologyListField) => void;
-  onEditOntologyEntryDraft: (value: string) => void;
-  onCancelAddOntologyEntry: () => void;
-  onSubmitAddOntologyEntry: () => void;
+  // picker for the selected step, or null. Confirming applies the picks straight
+  // through enterprise.trees.import.
+  bindingPicker: EnterpriseBindingPicker | null;
+  onOpenBindingPicker: (nodeId: string, field: NodeOntologyListField) => void;
+  onBindingPickerQuery: (query: string) => void;
+  onBindingPickerCustom: (value: string) => void;
+  onToggleBindingPickerValue: (value: string) => void;
+  onCancelBindingPicker: () => void;
+  onSubmitBindingPicker: () => void;
   // What a step can be bound TO: every tool the gateway exposes, every installed
   // skill, and every registered knowledge foundation. The Tools/Skills tabs browse
   // these, and the step binding forms suggest from them.
@@ -139,6 +142,8 @@ function ontologyEntryErrorMessage(error: EnterpriseOntologyEntryDraftError): st
     "foundation-id-invalid": t("enterprise.entryDraft.foundationIdInvalid"),
     "node-missing": t("enterprise.entryDraft.nodeMissing"),
     "export-failed": t("enterprise.entryDraft.exportFailed"),
+    "import-not-sent": t("enterprise.entryDraft.importNotSent"),
+    "import-failed": t("enterprise.entryDraft.importFailed"),
   };
   return messages[error];
 }
@@ -162,6 +167,52 @@ function renderCatalogEmpty(
   return html`<div class="muted" style="margin-top: 12px;">${emptyMessage}</div>`;
 }
 
+/** One catalog entry the picker can offer, with what it is for. */
+type BindingOption = { value: string; description?: string };
+
+/**
+ * Example shape for the picker's typed entry, per binding kind. Only tool scopes
+ * take groups and globs; the other two are validated names, so advertising a
+ * glob there would invite a value the import rejects.
+ */
+const CUSTOM_PLACEHOLDER: Partial<Record<NodeOntologyListField, string>> = {
+  allowedTools: "group:enterprise",
+  skills: "refund-policy",
+  knowledgeFoundations: "acme.runbooks",
+};
+
+function customEntryLabel(field: NodeOntologyListField): string {
+  return field === "allowedTools"
+    ? t("enterprise.picker.customToolLabel")
+    : t("enterprise.picker.customNameLabel");
+}
+
+/**
+ * What to say when the list is empty. "Everything is already on this step" is only
+ * true for a READY catalog with nothing left to offer — saying it while the
+ * catalog is still loading or failed sends the operator to look for a problem
+ * that is not there, and the error banner behind the modal is not visible.
+ */
+function pickerEmptyMessage(params: {
+  phase: EnterpriseCatalogPhase;
+  error: string | null;
+  hasQuery: boolean;
+  catalogExhausted: boolean;
+}): string {
+  if (params.error) {
+    return params.error;
+  }
+  if (params.phase !== "ready") {
+    return t("common.loading");
+  }
+  if (params.hasQuery) {
+    return t("enterprise.picker.noQueryMatches");
+  }
+  return params.catalogExhausted
+    ? t("enterprise.picker.allAdded")
+    : t("enterprise.picker.emptyCatalog");
+}
+
 /** One step-binding row: the field's current values plus the add affordance. */
 type OntologyEntryAdder = {
   /** The step being bound. Callers render this inside that node's inspector. */
@@ -170,11 +221,8 @@ type OntologyEntryAdder = {
   values: readonly string[];
   /** Row heading, e.g. "Tools — ontology.allowedTools". */
   title: string;
-  /** Accessible name for the text input; the placeholder is only an example value. */
-  inputLabel: string;
-  placeholder: string;
-  /** Catalog ids offered as completions. Free text stays valid (tool globs/groups). */
-  suggestions: readonly string[];
+  /** Catalog entries the picker lists, with an optional one-line description. */
+  options: readonly BindingOption[];
   /**
    * Warning shown when adding the first entry FLIPS this step into an allow-list:
    * with no local list the step allows everything, so the first entry silently
@@ -192,89 +240,239 @@ type OntologyEntryAdder = {
  * inspector on Worktree. The Tools/Skills tabs browse the whole catalog instead,
  * so the step a change lands on is always the one on screen.
  */
-function renderOntologyEntryAdder(
-  props: EnterpriseProps,
-  adder: OntologyEntryAdder,
-): TemplateResult {
+function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): TemplateResult {
   const { field, nodeId } = adder;
-  // Match on treeId too: a different tree can hold a node with the same id, and a
-  // draft carries its own tree, so an id-only match would show a stale form.
-  const draft =
-    props.ontologyEntryDraft?.treeId === props.treeDetail?.id &&
-    props.ontologyEntryDraft?.nodeId === nodeId &&
-    props.ontologyEntryDraft.field === field
-      ? props.ontologyEntryDraft
-      : null;
-  const suggestionsId = `enterprise-suggest-${field}`;
   return html`
-    <div style="margin-top: 12px;">
-      <div class="muted">${adder.title}</div>
-      <div class="list" style="margin-top: 8px;">
-        ${adder.values.length === 0
-          ? html`<div class="list-item muted">${t("enterprise.entryDraft.none")}</div>`
-          : adder.values.map((value) => {
-              const note = adder.valueNote?.(value) ?? null;
-              return html`<div class="list-item">
-                <code>${value}</code>
-                ${note ? html`<span class="chip chip-warn">${note}</span>` : nothing}
-              </div>`;
-            })}
-      </div>
-      ${adder.scopeWarning
-        ? html`<div class="callout" style="margin-top: 8px;">${adder.scopeWarning}</div>`
-        : nothing}
-      ${adder.constrainingAncestors?.length
-        ? html`<div class="callout" style="margin-top: 8px;">
-            ${t("enterprise.entryDraft.ancestorGate", {
-              nodeIds: adder.constrainingAncestors.join(", "),
-            })}
-          </div>`
-        : nothing}
-      ${props.canEdit
-        ? draft
-          ? html`
-              <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-                <input
-                  type="text"
-                  .value=${draft.value}
-                  aria-label=${adder.inputLabel}
-                  placeholder=${adder.placeholder}
-                  list=${suggestionsId}
-                  @input=${(event: Event) =>
-                    props.onEditOntologyEntryDraft((event.target as HTMLInputElement).value)}
-                />
-                <datalist id=${suggestionsId}>
-                  ${adder.suggestions.map(
-                    (suggestion) => html`<option value=${suggestion}></option>`,
-                  )}
-                </datalist>
-                <button type="button" class="btn primary" @click=${props.onSubmitAddOntologyEntry}>
-                  ${t("enterprise.entryDraft.add")}
-                </button>
-                <button type="button" class="btn" @click=${props.onCancelAddOntologyEntry}>
-                  ${t("common.cancel")}
-                </button>
-              </div>
-              ${draft.error
-                ? html`<div class="callout danger" style="margin-top: 8px;">
-                    ${ontologyEntryErrorMessage(draft.error)}
-                  </div>`
-                : nothing}
-              <div class="muted" style="margin-top: 8px;">
-                ${t("enterprise.entryDraft.reviewHint")}
-              </div>
-            `
-          : html`<button
+    <section class="binding-group">
+      <header class="binding-group__head">
+        <span class="binding-group__title">${adder.title}</span>
+        <span class="chip">${adder.values.length}</span>
+        ${props.canEdit
+          ? html`<button
               type="button"
               class="btn"
-              style="margin-top: 8px;"
-              @click=${() => props.onBeginAddOntologyEntry(nodeId, field)}
+              @click=${() => props.onOpenBindingPicker(nodeId, field)}
             >
               ${t("enterprise.entryDraft.add")}
             </button>`
-        : nothing}
-    </div>
+          : nothing}
+      </header>
+      <div class="binding-group__body">
+        ${adder.values.length === 0
+          ? html`<div class="muted">${t("enterprise.entryDraft.none")}</div>`
+          : html`<div class="chip-row">
+              ${adder.values.map((value) => {
+                const note = adder.valueNote?.(value) ?? null;
+                return html`<span class="chip"
+                  ><code>${value}</code>${note
+                    ? html`<span class="chip chip-warn">${note}</span>`
+                    : nothing}</span
+                >`;
+              })}
+            </div>`}
+        ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
+        ${adder.constrainingAncestors?.length
+          ? html`<div class="callout">
+              ${t("enterprise.entryDraft.ancestorGate", {
+                nodeIds: adder.constrainingAncestors.join(", "),
+              })}
+            </div>`
+          : nothing}
+      </div>
+    </section>
   `;
+}
+
+/**
+ * The search-and-pick dialog behind every binding row's Add button.
+ *
+ * A dialog rather than an inline field because the operator is choosing from a
+ * catalog of hundreds: they need room to search and to see what each entry is,
+ * and the answer is a selection, not a remembered string. Confirming applies the
+ * picks directly — the tree is spliced and imported — so the entry the operator
+ * chose is the thing that lands, with no generated JSON to approve in between.
+ */
+function renderBindingPicker(
+  props: EnterpriseProps,
+  adders: readonly OntologyEntryAdder[],
+): TemplateResult | typeof nothing {
+  const picker = props.bindingPicker;
+  // canEdit is checked here, not only on the Add button that opened this: a
+  // reconnect can drop operator.admin while the modal is up, and an import is
+  // admin-only — leaving it actionable would hand the operator a Confirm the
+  // server can only refuse.
+  if (!picker || !props.canEdit || picker.treeId !== props.treeDetail?.id) {
+    return nothing;
+  }
+  const adder = adders.find(
+    (candidate) => candidate.field === picker.field && candidate.nodeId === picker.nodeId,
+  );
+  if (!adder) {
+    return nothing;
+  }
+  const query = picker.query.trim().toLowerCase();
+  const already = new Set(adder.values);
+  // Entries the step already has are dropped rather than shown ticked: adding one
+  // twice is the duplicate the import rejects, so offering it is a dead end.
+  const matches = adder.options
+    .filter((option) => !already.has(option.value))
+    .filter(
+      (option) =>
+        !query ||
+        option.value.toLowerCase().includes(query) ||
+        (option.description ?? "").toLowerCase().includes(query),
+    );
+  // Same normalization the submit does: the custom value counts as a pick, and
+  // typing one that is also ticked adds one binding, not two.
+  const custom = picker.custom.trim();
+  const pickedCount = new Set([...picker.selected, ...(custom ? [custom] : [])]).size;
+  const idle = picker.phase === "idle";
+  // Only a request the server already has is uncancellable; during the export
+  // this is still a plain Cancel, and saying otherwise would tell the operator a
+  // governance change landed when nothing was written.
+  const writing = picker.phase === "writing";
+  const canSubmit = idle && pickedCount > 0;
+  const catalogError =
+    adder.field === "allowedTools"
+      ? props.catalogErrors.tools
+      : adder.field === "skills"
+        ? props.catalogErrors.skills
+        : props.catalogErrors.foundations;
+  return html`
+    <openclaw-modal-dialog
+      label=${adder.title}
+      description=${t("enterprise.picker.subtitle")}
+      wide
+      @modal-cancel=${props.onCancelBindingPicker}
+    >
+      <div class="binding-picker">
+        <div class="binding-picker__head">
+          <div class="card-title">${adder.title}</div>
+          <div class="muted">${t("enterprise.picker.step", { nodeId: picker.nodeId })}</div>
+        </div>
+        <input
+          type="search"
+          class="binding-picker__search"
+          .value=${picker.query}
+          ?disabled=${!idle}
+          aria-label=${t("enterprise.picker.searchLabel")}
+          placeholder=${t("enterprise.picker.searchLabel")}
+          @input=${(event: Event) =>
+            props.onBindingPickerQuery((event.target as HTMLInputElement).value)}
+        />
+        <div class="binding-picker__list">
+          ${matches.length === 0
+            ? html`<div class="muted">
+                ${pickerEmptyMessage({
+                  phase: props.catalogPhase,
+                  error: catalogError,
+                  hasQuery: query.length > 0,
+                  catalogExhausted: adder.options.length > 0,
+                })}
+              </div>`
+            : matches.map(
+                (option) => html`<label class="binding-picker__option">
+                  <input
+                    type="checkbox"
+                    .checked=${picker.selected.includes(option.value)}
+                    ?disabled=${!idle}
+                    @change=${() => props.onToggleBindingPickerValue(option.value)}
+                  />
+                  <span class="binding-picker__option-main">
+                    <code>${option.value}</code>
+                    ${option.description
+                      ? html`<span class="list-sub">${option.description}</span>`
+                      : nothing}
+                  </span>
+                </label>`,
+              )}
+        </div>
+        <!-- Every field keeps a typed entry. Tool scopes are globs and groups no
+          catalog can enumerate; skills and foundations are agent-scoped, and this
+          catalog answered for one agent while a work-map can govern runs for
+          others — so pick-only would make a skill installed elsewhere unaddable.
+          What is typed still has to satisfy the import contract. -->
+        <label class="binding-picker__custom">
+          <span class="muted">${customEntryLabel(adder.field)}</span>
+          <input
+            type="text"
+            .value=${picker.custom}
+            ?disabled=${!idle}
+            placeholder=${CUSTOM_PLACEHOLDER[adder.field] ?? ""}
+            @input=${(event: Event) =>
+              props.onBindingPickerCustom((event.target as HTMLInputElement).value)}
+          />
+        </label>
+        <!-- Repeated here, not only on the row behind the dialog: this is where
+          the operator confirms, and the row's warning sits after its Add button
+          in DOM order, so a keyboard or screen-reader user would reach the
+          action before ever hearing that the first entry revokes the rest or
+          that an ancestor still gates it. -->
+        ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
+        ${adder.constrainingAncestors?.length
+          ? html`<div class="callout">
+              ${t("enterprise.entryDraft.ancestorGate", {
+                nodeIds: adder.constrainingAncestors.join(", "),
+              })}
+            </div>`
+          : nothing}
+        ${writing ? html`<div class="callout">${t("enterprise.picker.saving")}</div>` : nothing}
+        ${picker.failure ? renderPickerFailure(picker.failure) : nothing}
+        <div class="row" style="justify-content: flex-end; gap: 8px;">
+          <!-- Never disabled: a stalled request has no client-side timeout, this
+            modal does not close on backdrop interaction, and a touch client has
+            no Escape key — so disabling this is the difference between a slow
+            save and a trapped operator. It CLOSES rather than cancels once the
+            write is in flight (there is no way to recall it), and says so, or an
+            operator would read a dismissed dialog as an allowlist left alone. -->
+          <button type="button" class="btn" @click=${props.onCancelBindingPicker}>
+            ${writing ? t("enterprise.picker.close") : t("common.cancel")}
+          </button>
+          <button
+            type="button"
+            class="btn primary"
+            ?disabled=${!canSubmit}
+            @click=${props.onSubmitBindingPicker}
+          >
+            ${idle
+              ? t("enterprise.picker.confirm", { count: String(pickedCount) })
+              : t("common.saving")}
+          </button>
+        </div>
+      </div>
+    </openclaw-modal-dialog>
+  `;
+}
+
+/**
+ * A stopped apply. A server rejection renders its issue paths: those name the
+ * value to change, so collapsing them into one sentence would leave the operator
+ * with a refusal and no way to act on it.
+ */
+function renderPickerFailure(failure: EnterpriseBindingPickerFailure): TemplateResult {
+  if (failure.kind === "import-rejected") {
+    // A refusal the server sent no issues for still has to read as a refusal, not
+    // as an empty list under a heading promising reasons.
+    if (failure.issues.length === 0) {
+      return html`<div class="callout danger">${t("enterprise.entryDraft.importRejected")}</div>`;
+    }
+    return html`<div class="callout danger">
+      <div>${t("enterprise.saveInvalid")}</div>
+      ${failure.issues.map(
+        (issue) => html`<div class="muted">
+          ${issue.path ? html`<strong>${issue.path}</strong>: ` : nothing}${issue.message}
+        </div>`,
+      )}
+    </div>`;
+  }
+  if (failure.kind === "import-refused") {
+    // The gateway's own message names the reason (permissions, a stale revision);
+    // dropping it would leave a refusal with nothing to act on.
+    return html`<div class="callout danger">
+      ${t("enterprise.entryDraft.importRefused", { message: failure.message })}
+    </div>`;
+  }
+  return html`<div class="callout danger">${ontologyEntryErrorMessage(failure.kind)}</div>`;
 }
 
 /**
@@ -1319,6 +1517,9 @@ function renderNodeInspector(
   // helper so the view never offers a chip the controller would refuse to load.
   const objectEntityIds = new Set(nodeObjectEntityIds(tree, nodeId));
   const objectEntities = entities.filter((entity) => objectEntityIds.has(entity.id));
+  // Built once: the groups render from them and the picker dialog resolves the
+  // row it was opened for out of the same list, so the two cannot disagree.
+  const adders = nodeBindingAdders(node, props);
   return html`
     <section class="card-nested" style="margin-top: 12px;">
       <div class="card-sub">${t("enterprise.nodeInspectorTitle")}: ${node.title} — ${node.id}</div>
@@ -1334,9 +1535,21 @@ function renderNodeInspector(
             ></openclaw-ontology-graph>
             ${renderNodeObjects(objectEntities, props)}
           `}
-      ${renderNodeBindings(node, props)}
-      ${props.canEdit ? renderAddNode(tree.id, nodeId, props) : nothing}
+      ${renderNodeBindings(adders, props)}
+      <!-- Adding a CHILD STEP is structural: it changes the workflow shape, not
+        what this step may call. Kept in its own block, behind a rule, so it is
+        not read as a fourth kind of binding. -->
+      ${props.canEdit
+        ? html`<div class="node-structure">
+            <div class="card-title">${t("enterprise.addNodeSectionTitle")}</div>
+            <div class="muted" style="margin-top: 4px;">
+              ${t("enterprise.addNodeSectionSubtitle")}
+            </div>
+            ${renderAddNode(tree.id, nodeId, props)}
+          </div>`
+        : nothing}
     </section>
+    ${renderBindingPicker(props, adders)}
   `;
 }
 
@@ -1346,10 +1559,10 @@ function renderNodeInspector(
  * each row can add an entry, which splices into the tree definition and opens the
  * editor for review + Save (the single enterprise.trees.import write path).
  */
-function renderNodeBindings(
+function nodeBindingAdders(
   node: EnterpriseTreeDetail["nodes"][number],
   props: EnterpriseProps,
-): TemplateResult {
+): OntologyEntryAdder[] {
   const ontology = node.ontology;
   const allowedTools = ontology.allowedTools ?? [];
   const foundations = ontology.knowledgeFoundations ?? [];
@@ -1363,49 +1576,42 @@ function renderNodeBindings(
   // unavailable, only unverified.
   const foundationsKnown =
     props.catalogPhase === "ready" && !props.catalogErrors.foundations && ownershipKnown;
-  const catalogAgentId = props.catalogAgentId;
-  return html`
-    <div class="card-title" style="margin-top: 16px;">${t("enterprise.bindings.title")}</div>
-    <div class="muted" style="margin-top: 4px;">${t("enterprise.bindings.subtitle")}</div>
-    ${renderCatalogAgentScope(catalogAgentId)}${renderBindingCatalogIssues(props)}
-    ${renderOntologyEntryAdder(props, {
+  return [
+    {
       nodeId: node.id,
       field: "allowedTools",
       values: allowedTools,
       title: t("enterprise.bindings.tools"),
-      inputLabel: t("enterprise.entryDraft.toolLabel"),
-      placeholder: "group:enterprise",
-      suggestions: toolSuggestions(props),
+      options: toolBindingOptions(props),
       // No LOCAL allowlist means the step allows everything (minus its denials),
       // so the first entry narrows it either way — a deny-only step converts too.
       scopeWarning: allowedTools.length === 0 ? t("enterprise.entryDraft.scopeNarrowing") : null,
       constrainingAncestors: constrainingAncestorIds(props, node.id, "allowedTools"),
-    })}
-    ${renderOntologyEntryAdder(props, {
+    },
+    {
       nodeId: node.id,
       field: "skills",
       values: ontology.skills ?? [],
       title: t("enterprise.bindings.skills"),
-      inputLabel: t("enterprise.entryDraft.skillLabel"),
-      placeholder: "refund-policy",
-      suggestions: props.skills.map((skill) => skill.name),
-      // A declared skill is an annotation, so naming one no install provides is
-      // legal — but the operator has to see which declarations resolve today.
-      // Named per agent: the skill set is agent-scoped, and a tree can govern a
-      // different agent than the one this catalog answered for.
+      options: props.skills.map((skill) => ({
+        value: skill.name,
+        ...(skill.description ? { description: skill.description } : {}),
+      })),
+      // A declared skill resolves to instructions only when the agent has it, so
+      // the operator has to see which declarations resolve today. Named per agent:
+      // the skill set is agent-scoped, and a tree can govern a different agent
+      // than the one this catalog answered for.
       valueNote: (value) =>
         skillsKnown && !installedSkills.has(value)
           ? t("enterprise.bindings.skillNotInstalled")
           : null,
-    })}
-    ${renderOntologyEntryAdder(props, {
+    },
+    {
       nodeId: node.id,
       field: "knowledgeFoundations",
       values: foundations,
       title: t("enterprise.bindings.knowledge"),
-      inputLabel: t("enterprise.entryDraft.knowledgeLabel"),
-      placeholder: "acme.runbooks",
-      suggestions: [...retrievableIds],
+      options: [...retrievableIds].toSorted().map((value) => ({ value })),
       // Same path-gate shape as tools: an omitted list lets the step query every
       // registered foundation, so the first entry restricts it.
       scopeWarning: foundations.length === 0 ? t("enterprise.entryDraft.knowledgeNarrowing") : null,
@@ -1414,7 +1620,27 @@ function renderNodeBindings(
         foundationsKnown && !retrievableIds.has(value)
           ? t("enterprise.bindings.foundationNotRegistered")
           : null,
-    })}
+    },
+  ];
+}
+
+/**
+ * What this step is bound to: its tool scope, the skills it declares, and the
+ * knowledge foundations it may query.
+ *
+ * Three separate cards, not one run-on list: they are three different kinds of
+ * binding with different rules, and an operator scanning for "what can this step
+ * call" should not have to parse where one ends and the next begins.
+ */
+function renderNodeBindings(
+  adders: readonly OntologyEntryAdder[],
+  props: EnterpriseProps,
+): TemplateResult {
+  return html`
+    <div class="card-title" style="margin-top: 16px;">${t("enterprise.bindings.title")}</div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.bindings.subtitle")}</div>
+    ${renderCatalogAgentScope(props.catalogAgentId)}${renderBindingCatalogIssues(props)}
+    <div class="binding-groups">${adders.map((adder) => renderBindingGroup(props, adder))}</div>
   `;
 }
 
@@ -1468,22 +1694,33 @@ function renderBindingCatalogIssues(props: EnterpriseProps): TemplateResult | ty
 }
 
 /**
- * Completions for a tool grant: every catalog tool id, plus the `group:` selector
- * of each core section. Plugin groups have no selector (CORE_TOOL_GROUPS is built
- * from core sections only), so offering one would suggest an entry that matches
- * nothing.
+ * Pickable tool grants: each core section's `group:` selector, then every catalog
+ * tool. Plugin groups have no selector (CORE_TOOL_GROUPS is built from core
+ * sections only), so offering one would list an entry that matches nothing.
+ * Groups come first because granting a whole section is the coarser, more common
+ * choice and the search box handles the rest.
  */
-function toolSuggestions(props: EnterpriseProps): string[] {
-  const suggestions: string[] = [];
+function toolBindingOptions(props: EnterpriseProps): BindingOption[] {
+  const groups: BindingOption[] = [];
+  const tools: BindingOption[] = [];
   for (const group of props.toolGroups) {
     if (group.source === "core") {
-      suggestions.push(`group:${group.id}`);
+      groups.push({
+        value: `group:${group.id}`,
+        description: t("enterprise.picker.groupOption", {
+          label: group.label,
+          count: String(group.tools.length),
+        }),
+      });
     }
     for (const tool of group.tools) {
-      suggestions.push(tool.id);
+      tools.push({
+        value: tool.id,
+        ...(tool.description ? { description: tool.description } : {}),
+      });
     }
   }
-  return suggestions;
+  return [...groups, ...tools];
 }
 
 /** i18n message for a rejected node-add draft. */

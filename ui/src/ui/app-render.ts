@@ -134,11 +134,13 @@ import {
   selectEnterpriseTree,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
-  beginAddEnterpriseOntologyEntry,
-  cancelAddEnterpriseOntologyEntry,
-  editEnterpriseOntologyEntryDraft,
+  cancelEnterpriseBindingPicker,
+  openEnterpriseBindingPicker,
+  setEnterpriseBindingPickerCustom,
+  setEnterpriseBindingPickerQuery,
   submitAddEnterpriseNode,
-  submitAddEnterpriseOntologyEntry,
+  submitEnterpriseBindingPicker,
+  toggleEnterpriseBindingPickerValue,
 } from "./controllers/enterprise.ts";
 import {
   loadExecApprovals,
@@ -2957,14 +2959,17 @@ export function renderApp(state: AppViewState) {
                 onEditNodeDraft: (patch) => editEnterpriseNodeDraft(state, patch),
                 onCancelAddNode: () => cancelAddEnterpriseNode(state),
                 onSubmitAddNode: () => void submitAddEnterpriseNode(state),
-                ontologyEntryDraft: state.enterpriseOntologyEntryDraft,
-                onBeginAddOntologyEntry: (nodeId, field) =>
-                  beginAddEnterpriseOntologyEntry(state, nodeId, field),
-                onEditOntologyEntryDraft: (value) => editEnterpriseOntologyEntryDraft(state, value),
-                onCancelAddOntologyEntry: () => cancelAddEnterpriseOntologyEntry(state),
-                // The binding forms live in the Worktree node inspector, which is also
-                // where the seeded editor renders, so a successful add needs no tab move.
-                onSubmitAddOntologyEntry: () => void submitAddEnterpriseOntologyEntry(state),
+                bindingPicker: state.enterpriseBindingPicker,
+                onOpenBindingPicker: (nodeId, field) =>
+                  openEnterpriseBindingPicker(state, nodeId, field),
+                onBindingPickerQuery: (query) => setEnterpriseBindingPickerQuery(state, query),
+                onBindingPickerCustom: (value) => setEnterpriseBindingPickerCustom(state, value),
+                onToggleBindingPickerValue: (value) =>
+                  toggleEnterpriseBindingPickerValue(state, value),
+                onCancelBindingPicker: () => cancelEnterpriseBindingPicker(state),
+                // Applies straight through enterprise.trees.import and reloads the
+                // tree, so the inspector shows the new binding without a detour.
+                onSubmitBindingPicker: () => void submitEnterpriseBindingPicker(state),
               }),
             )
           : nothing}

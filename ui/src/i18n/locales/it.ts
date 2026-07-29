@@ -221,6 +221,24 @@ export const it: TranslationMap = {
       optionalBadge: "opzionale",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Cerca nel catalogo e scegli cosa può utilizzare questo passaggio.",
+      step: "Step: {nodeId}",
+      searchLabel: "Cerca",
+      noQueryMatches: "Nessun risultato per questa ricerca.",
+      allAdded: "Tutto in questo catalogo è già presente in questo passaggio.",
+      emptyCatalog: "Questo deployment non ne offre nessuno.",
+      customToolLabel: "Oppure inserisci un nome di strumento, gruppo o glob",
+      customNameLabel: "Oppure inserisci un nome",
+      groupOption: "{label} — l'intera sezione ({count} strumenti)",
+      confirm: "Aggiungi {count}",
+      close: "Chiudi",
+      saving:
+        "Salvataggio in corso. Chiudere questa finestra non annullerà l'operazione — la mappa di lavoro si aggiornerà al completamento.",
+    },
+    addNodeSectionTitle: "Struttura del flusso di lavoro",
+    addNodeSectionSubtitle:
+      "Aggiungi un sotto-passaggio sotto questo. Questo modifica la forma della mappa di lavoro, non cosa può chiamare questo passaggio.",
     entryDraft: {
       add: "Aggiungi",
       none: "Nessuno dichiarato finora.",
@@ -228,21 +246,25 @@ export const it: TranslationMap = {
         "Questo passaggio non ha ancora una lista di strumenti consentiti, quindi permette tutti gli strumenti tranne quelli negati. Aggiungendo la prima voce, si trasforma in una lista consentiti e solo gli strumenti elencati restano disponibili.",
       knowledgeNarrowing:
         "Questo step non ha ancora una allowlist di conoscenze, quindi può interrogare ogni foundation registrata. Aggiungendo la prima voce, verrà limitato alle foundation elencate.",
-      toolLabel: "Nome o gruppo dello strumento da consentire",
-      skillLabel: "Nome della skill da dichiarare",
-      knowledgeLabel: "Id della knowledge foundation da consentire",
       skillNameInvalid:
         "Usa un nome di skill: lettere minuscole, cifre e trattini singoli, massimo 64 caratteri.",
       foundationIdInvalid:
         "Usa un id di foundation: segmenti minuscoli separati da punti, ad esempio acme.runbooks.",
       ancestorGate:
         "I passaggi padre ({nodeIds}) hanno una propria allowlist per questo. La governance controlla ogni passaggio dalla radice, quindi una voce aggiunta qui viene comunque negata a meno che anche quei passaggi non la consentano.",
-      reviewHint:
-        "L'aggiunta apre l'editor dell'albero per consentirti di rivedere e salvare la modifica.",
       empty: "Inserisci prima un valore.",
       duplicate: "Quella voce è già dichiarata in questo step.",
       nodeMissing: "Quello step non è più presente nell'albero; ricarica e riprova.",
       exportFailed: "Impossibile caricare la definizione dell'albero da modificare.",
+      importFailed:
+        "Il salvataggio non è stato confermato. Potrebbe essere stato applicato o meno — aggiorna la work-map per verificare, prima di riprovare.",
+      importNotSent:
+        "Non è stato salvato nulla: la connessione al Gateway si è interrotta prima dell'invio. Riconnettiti e riprova.",
+      importRefused:
+        "Il server ha rifiutato questa modifica, quindi non è stato salvato nulla: {message}",
+      importRejected: "Il server ha rifiutato questa modifica, quindi non è stato salvato nulla.",
+      importRejectedDetail:
+        "Il server ha rifiutato questa modifica, quindi non è stato salvato nulla: {issues}",
     },
     catalogAgentScope:
       "Strumenti e skills sono associati all'agente; questo catalogo è quello che l'agente {agentId} vede.",

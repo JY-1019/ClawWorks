@@ -446,13 +446,14 @@ event log of run lifecycle plus governance decisions.
     that agent has no install for and foundation ids this work-map cannot
     retrieve (`enterprise.knowledge.foundations.list` reports `ownerTreeIds` for
     bundle-owned foundations, which retrieval resolves only for their owning
-    tree), and — with `operator.admin` — adds an entry to any of the three
-    (completions come from the catalogs; free text stays valid for tool globs and
-    `group:` selectors).
-    Operators with `operator.admin` can also add a child node from the same
-    inspector. Each change splices into the tree definition and opens the editor,
-    so it is reviewed and saved through the same `enterprise.trees.import`
-    whole-tree replace. Adding the first tool (or the first foundation) on a step
+    tree). With `operator.admin`, each of the three has an Add button that opens a
+    search dialog over the matching catalog: tick one or more entries, confirm,
+    and they are written straight away — tool scopes additionally accept a typed
+    glob or `group:` selector, since no catalog can enumerate those. Adding a
+    child step is a separate control in its own block, because it changes the
+    work-map's shape rather than what the step may call; that one still opens the
+    editor for review. Every change lands through the same
+    `enterprise.trees.import` whole-tree replace. Adding the first tool (or the first foundation) on a step
     turns that list into an allowlist, and every step from the root is an
     independent gate, so the UI warns when an entry narrows scope or when an
     ancestor's allowlist would still deny it.

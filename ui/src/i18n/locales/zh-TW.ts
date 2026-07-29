@@ -216,6 +216,23 @@ export const zh_TW: TranslationMap = {
       optionalBadge: "選用",
       pluginBadge: "外掛：{pluginId}",
     },
+    picker: {
+      subtitle: "搜尋目錄並選擇此步驟可使用的項目。",
+      step: "步驟：{nodeId}",
+      searchLabel: "搜尋",
+      noQueryMatches: "沒有符合該搜尋的結果。",
+      allAdded: "此目錄中的所有項目已新增至此步驟。",
+      emptyCatalog: "此部署沒有可提供的項目。",
+      customToolLabel: "或輸入工具名稱、群組或 glob",
+      customNameLabel: "或輸入名稱",
+      groupOption: "{label} — 整個區段（{count} 個工具）",
+      confirm: "新增 {count}",
+      close: "關閉",
+      saving: "儲存中。關閉此對話框不會撤銷操作 — 工作地圖會在完成後重新整理。",
+    },
+    addNodeSectionTitle: "工作流程結構",
+    addNodeSectionSubtitle:
+      "在此步驟下新增子步驟。這會改變工作地圖的結構，而非此步驟可呼叫的內容。",
     entryDraft: {
       add: "新增",
       none: "尚未宣告。",
@@ -223,18 +240,20 @@ export const zh_TW: TranslationMap = {
         "此步驟尚未設定工具允許清單，因此除了被拒絕的工具外，所有工具均可使用。新增第一個項目後，將轉為允許清單模式，僅列出的工具可供使用。",
       knowledgeNarrowing:
         "此步驟尚未設定知識允許清單，因此可以查詢所有已註冊的基礎知識庫。新增第一筆項目後，將僅限於清單中列出的基礎知識庫。",
-      toolLabel: "要允許的工具名稱或群組",
-      skillLabel: "要宣告的 Skill 名稱",
-      knowledgeLabel: "要允許的知識基礎知識庫 ID",
       skillNameInvalid: "請使用有效的 Skill 名稱：僅限小寫字母、數字和單個連字號，最多 64 個字元。",
       foundationIdInvalid: "請使用基礎知識庫 ID：以點分隔的小寫字串，例如 acme.runbooks。",
       ancestorGate:
         "父層步驟 ({nodeIds}) 對此有各自的允許清單。治理機制會從根節點逐步檢查每個步驟，因此即使在此處新增項目，除非那些步驟也允許，否則仍會被拒絕。",
-      reviewHint: "新增後將開啟樹狀編輯器，以便您檢閱並儲存變更。",
       empty: "請先輸入值。",
       duplicate: "該項目已在此步驟中宣告。",
       nodeMissing: "該步驟已不在樹狀結構中，請重新載入後再試。",
       exportFailed: "無法載入要編輯的樹狀結構定義。",
+      importFailed:
+        "儲存未確認。變更可能已套用也可能未套用——請重新整理工作地圖以確認狀態，然後再重試。",
+      importNotSent: "未儲存任何內容：此訊息送出前 Gateway 連線已中斷。請重新連線後再試一次。",
+      importRefused: "伺服器拒絕了此變更，因此未儲存任何內容：{message}",
+      importRejected: "伺服器拒絕了此變更，因此未儲存任何內容。",
+      importRejectedDetail: "伺服器拒絕了此變更，因此未儲存任何內容：{issues}",
     },
     catalogAgentScope: "工具和 Skills 的範圍限定於代理；此目錄是代理 {agentId} 所看到的。",
     catalogUsage: {

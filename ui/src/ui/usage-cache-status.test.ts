@@ -1,8 +1,16 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { i18n } from "../i18n/lib/translate.ts";
 import { getUsageCacheRefreshTitle } from "./usage-cache-status.ts";
 
 describe("getUsageCacheRefreshTitle", () => {
+  // These assert the English source. The manager initializes from the host
+  // locale and its module state is shared across files (--isolate=false), so a
+  // jsdom file that switched locale first would otherwise decide what this reads.
+  beforeEach(async () => {
+    await i18n.setLocale("en");
+  });
+
   it("formats non-fresh cache states for the Usage loading badge", () => {
     expect(
       getUsageCacheRefreshTitle({

@@ -224,6 +224,24 @@ export const nl: TranslationMap = {
       optionalBadge: "optioneel",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Doorzoek de catalogus en kies wat deze stap mag gebruiken.",
+      step: "Stap: {nodeId}",
+      searchLabel: "Zoeken",
+      noQueryMatches: "Niets komt overeen met die zoekopdracht.",
+      allAdded: "Alles in deze catalogus is al aan deze stap toegevoegd.",
+      emptyCatalog: "Deze deployment heeft niets beschikbaar.",
+      customToolLabel: "Of voer een toolnaam, groep of glob in",
+      customNameLabel: "Of voer een naam in",
+      groupOption: "{label} — de hele sectie ({count} tools)",
+      confirm: "{count} toevoegen",
+      close: "Sluiten",
+      saving:
+        "Opslaan. Dit dialoogvenster sluiten maakt het niet ongedaan — de werkkaart wordt vernieuwd zodra het is verwerkt.",
+    },
+    addNodeSectionTitle: "Workflowstructuur",
+    addNodeSectionSubtitle:
+      "Voeg een substap toe onder deze stap. Dit wijzigt de vorm van de werkkaart, niet wat deze stap mag aanroepen.",
     entryDraft: {
       add: "Toevoegen",
       none: "Nog geen opgegeven.",
@@ -231,21 +249,25 @@ export const nl: TranslationMap = {
         "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Zodra u de eerste vermelding toevoegt, wordt het een allowlist en blijven alleen de vermelde tools beschikbaar.",
       knowledgeNarrowing:
         "Deze stap heeft nog geen kennislijst, dus kan elke geregistreerde foundation worden bevraagd. Door de eerste vermelding toe te voegen, wordt het beperkt tot de vermelde foundations.",
-      toolLabel: "Toolnaam of -groep om toe te staan",
-      skillLabel: "Skillnaam om te declareren",
-      knowledgeLabel: "Toe te staan kennis-foundation-id",
       skillNameInvalid:
         "Gebruik een skillnaam: kleine letters, cijfers en enkele koppeltekens, maximaal 64 tekens.",
       foundationIdInvalid:
         "Gebruik een foundation-id: kleine letters gescheiden door punten, bijvoorbeeld acme.runbooks.",
       ancestorGate:
         "Bovenliggende stappen ({nodeIds}) hebben hun eigen allowlist hiervoor. Governance controleert elke stap vanaf de root, dus een vermelding die hier wordt toegevoegd wordt alsnog geweigerd tenzij die stappen het ook toestaan.",
-      reviewHint:
-        "Bij toevoegen wordt de boomeditor geopend zodat u de wijziging kunt bekijken en opslaan.",
       empty: "Voer eerst een waarde in.",
       duplicate: "Die vermelding is al opgegeven voor deze stap.",
       nodeMissing: "Die stap bevindt zich niet meer in de boom; herlaad en probeer het opnieuw.",
       exportFailed: "Kan de boomdefinitie niet laden om te bewerken.",
+      importFailed:
+        "Het opslaan is niet bevestigd. Het kan wel of niet zijn toegepast — vernieuw de work-map om dit te controleren voordat u het opnieuw probeert.",
+      importNotSent:
+        "Er is niets opgeslagen: de Gateway-verbinding werd verbroken voordat dit verzonden kon worden. Maak opnieuw verbinding en probeer het nogmaals.",
+      importRefused:
+        "De server heeft deze wijziging geweigerd, dus er is niets opgeslagen: {message}",
+      importRejected: "De server heeft deze wijziging afgewezen, er is niets opgeslagen.",
+      importRejectedDetail:
+        "De server heeft deze wijziging afgewezen, er is niets opgeslagen: {issues}",
     },
     catalogAgentScope:
       "Tools en skills zijn agent-gebonden; deze catalogus is wat agent {agentId} ziet.",

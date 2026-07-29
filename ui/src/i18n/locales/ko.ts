@@ -219,6 +219,24 @@ export const ko: TranslationMap = {
       optionalBadge: "선택 사항",
       pluginBadge: "플러그인: {pluginId}",
     },
+    picker: {
+      subtitle: "카탈로그를 검색하고 이 단계에서 사용할 항목을 선택하세요.",
+      step: "단계: {nodeId}",
+      searchLabel: "검색",
+      noQueryMatches: "검색 결과가 없습니다.",
+      allAdded: "이 카탈로그의 모든 항목이 이미 이 단계에 추가되어 있습니다.",
+      emptyCatalog: "이 배포에는 제공할 항목이 없습니다.",
+      customToolLabel: "또는 도구 이름, 그룹 또는 glob을 입력하세요",
+      customNameLabel: "또는 이름을 입력하세요",
+      groupOption: "{label} — 전체 섹션 (도구 {count}개)",
+      confirm: "{count}개 추가",
+      close: "닫기",
+      saving:
+        "저장 중입니다. 이 대화 상자를 닫아도 취소되지 않으며, 완료되면 작업 맵이 새로고침됩니다.",
+    },
+    addNodeSectionTitle: "워크플로 구조",
+    addNodeSectionSubtitle:
+      "이 단계 아래에 하위 단계를 추가합니다. 이는 이 단계에서 호출할 수 있는 항목이 아니라 작업 맵의 구조를 변경합니다.",
     entryDraft: {
       add: "추가",
       none: "아직 선언된 항목이 없습니다.",
@@ -226,20 +244,23 @@ export const ko: TranslationMap = {
         "이 단계에는 아직 도구 허용 목록이 없으므로 거부된 도구를 제외한 모든 도구를 허용합니다. 첫 번째 항목을 추가하면 허용 목록으로 전환되며 나열된 도구만 사용할 수 있습니다.",
       knowledgeNarrowing:
         "이 단계에는 아직 지식 허용 목록이 없으므로 등록된 모든 파운데이션을 쿼리할 수 있습니다. 첫 번째 항목을 추가하면 나열된 파운데이션으로 제한됩니다.",
-      toolLabel: "허용할 도구 이름 또는 그룹",
-      skillLabel: "선언할 Skill 이름",
-      knowledgeLabel: "허용할 지식 파운데이션 ID",
       skillNameInvalid:
         "Skill 이름을 사용하세요: 소문자, 숫자, 단일 하이픈만 허용되며 최대 64자입니다.",
       foundationIdInvalid:
         "파운데이션 ID를 사용하세요: 점으로 구분된 소문자 세그먼트(예: acme.runbooks).",
       ancestorGate:
         "상위 단계({nodeIds})에 이 항목에 대한 자체 허용 목록이 있습니다. 거버넌스는 루트부터 각 단계를 확인하므로, 여기에 추가된 항목도 해당 단계에서 허용하지 않으면 거부됩니다.",
-      reviewHint: "추가하면 트리 편집기가 열려 변경 사항을 검토하고 저장할 수 있습니다.",
       empty: "먼저 값을 입력하세요.",
       duplicate: "해당 항목은 이미 이 단계에 선언되어 있습니다.",
       nodeMissing: "해당 단계가 더 이상 트리에 없습니다. 새로고침 후 다시 시도하세요.",
       exportFailed: "편집할 트리 정의를 불러올 수 없습니다.",
+      importFailed:
+        "저장이 확인되지 않았습니다. 적용되었을 수도 있고 그렇지 않을 수도 있습니다. 다시 시도하기 전에 작업 맵을 새로고침하여 확인하세요.",
+      importNotSent:
+        "저장된 항목이 없습니다: 전송되기 전에 Gateway 연결이 끊어졌습니다. 다시 연결한 후 재시도하세요.",
+      importRefused: "서버가 이 변경을 거부하여 저장된 항목이 없습니다: {message}",
+      importRejected: "서버가 이 변경 사항을 거부하여 저장되지 않았습니다.",
+      importRejectedDetail: "서버가 이 변경 사항을 거부하여 저장되지 않았습니다: {issues}",
     },
     catalogAgentScope:
       "도구와 Skills는 에이전트 범위로 적용됩니다. 이 카탈로그는 에이전트 {agentId}에게 표시되는 카탈로그입니다.",

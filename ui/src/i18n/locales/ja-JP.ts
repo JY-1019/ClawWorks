@@ -225,6 +225,24 @@ export const ja_JP: TranslationMap = {
       optionalBadge: "任意",
       pluginBadge: "プラグイン: {pluginId}",
     },
+    picker: {
+      subtitle: "カタログを検索して、このステップで使用できるものを選択してください。",
+      step: "ステップ: {nodeId}",
+      searchLabel: "検索",
+      noQueryMatches: "検索に一致するものがありません。",
+      allAdded: "このカタログのすべてが既にこのステップに追加されています。",
+      emptyCatalog: "このデプロイメントには提供できるものがありません。",
+      customToolLabel: "またはツール名、グループ、または glob を入力",
+      customNameLabel: "または名前を入力",
+      groupOption: "{label} — セクション全体（{count} ツール）",
+      confirm: "{count} 件追加",
+      close: "閉じる",
+      saving:
+        "保存中です。このダイアログを閉じても取り消されません。保存が完了するとワークマップが更新されます。",
+    },
+    addNodeSectionTitle: "ワークフロー構造",
+    addNodeSectionSubtitle:
+      "このステップの下にサブステップを追加します。これはワークマップの構造を変更するもので、このステップが呼び出せるものは変わりません。",
     entryDraft: {
       add: "追加",
       none: "まだ宣言されていません。",
@@ -232,20 +250,23 @@ export const ja_JP: TranslationMap = {
         "このステップにはまだツール許可リストがないため、拒否されたツール以外のすべてのツールが許可されます。最初のエントリを追加すると許可リストに切り替わり、リストに記載されたツールのみが使用可能になります。",
       knowledgeNarrowing:
         "このステップにはまだナレッジ許可リストがないため、登録されたすべてのファウンデーションにクエリできます。最初のエントリを追加すると、リストされたファウンデーションに制限されます。",
-      toolLabel: "許可するツール名またはグループ",
-      skillLabel: "宣言するSkill名",
-      knowledgeLabel: "許可するナレッジファウンデーションID",
       skillNameInvalid:
         "Skill名を使用してください：小文字の英字、数字、単独のハイフンのみ、最大64文字。",
       foundationIdInvalid:
         "ファウンデーションIDを使用してください: ドット区切りの小文字セグメント（例: acme.runbooks）。",
       ancestorGate:
         "親ステップ ({nodeIds}) にはこれに対する独自の許可リストがあります。ガバナンスはルートから各ステップを確認するため、ここに追加されたエントリは、それらのステップでも許可されていない限り拒否されます。",
-      reviewHint: "追加するとツリーエディターが開き、変更を確認して保存できます。",
       empty: "先に値を入力してください。",
       duplicate: "そのエントリはこのステップで既に宣言されています。",
       nodeMissing: "そのステップはツリーに存在しません。再読み込みしてもう一度お試しください。",
       exportFailed: "編集するツリー定義を読み込めませんでした。",
+      importFailed:
+        "保存が確認できませんでした。適用された可能性もされていない可能性もあります。再試行する前にワークマップを更新して状態を確認してください。",
+      importNotSent:
+        "保存されませんでした: 送信前に Gateway の接続が切断されました。再接続してもう一度お試しください。",
+      importRefused: "サーバーがこの変更を拒否したため、何も保存されませんでした: {message}",
+      importRejected: "サーバーがこの変更を拒否したため、何も保存されませんでした。",
+      importRejectedDetail: "サーバーがこの変更を拒否したため、何も保存されませんでした: {issues}",
     },
     catalogAgentScope:
       "ツールとSkillsはエージェントスコープです。このカタログはエージェント {agentId} に表示されるものです。",

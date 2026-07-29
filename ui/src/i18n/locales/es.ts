@@ -220,6 +220,24 @@ export const es: TranslationMap = {
       optionalBadge: "opcional",
       pluginBadge: "Plugin: {pluginId}",
     },
+    picker: {
+      subtitle: "Busca en el catálogo y elige lo que este paso puede usar.",
+      step: "Paso: {nodeId}",
+      searchLabel: "Buscar",
+      noQueryMatches: "Nada coincide con esa búsqueda.",
+      allAdded: "Todo en este catálogo ya está en este paso.",
+      emptyCatalog: "Este despliegue no tiene ninguno para ofrecer.",
+      customToolLabel: "O ingrese un nombre de herramienta, grupo o glob",
+      customNameLabel: "O ingrese un nombre",
+      groupOption: "{label} — la sección completa ({count} herramientas)",
+      confirm: "Agregar {count}",
+      close: "Cerrar",
+      saving:
+        "Guardando. Cerrar este diálogo no lo deshará — el mapa de trabajo se actualizará cuando se complete.",
+    },
+    addNodeSectionTitle: "Estructura del flujo de trabajo",
+    addNodeSectionSubtitle:
+      "Agrega un sub-paso debajo de este. Esto cambia la forma del mapa de trabajo, no lo que este paso puede llamar.",
     entryDraft: {
       add: "Añadir",
       none: "Ninguno declarado aún.",
@@ -227,21 +245,24 @@ export const es: TranslationMap = {
         "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Al agregar la primera entrada, se convierte en una lista de permitidas y solo las herramientas listadas permanecen disponibles.",
       knowledgeNarrowing:
         "Este paso aún no tiene una lista de conocimientos permitidos, por lo que puede consultar todas las fundaciones registradas. Agregar la primera entrada lo restringe a las fundaciones enumeradas.",
-      toolLabel: "Nombre o grupo de herramienta a permitir",
-      skillLabel: "Nombre del skill a declarar",
-      knowledgeLabel: "Id de fundación de conocimiento a permitir",
       skillNameInvalid:
         "Use un nombre de skill: letras minúsculas, dígitos y guiones simples, máximo 64 caracteres.",
       foundationIdInvalid:
         "Use un id de fundación: segmentos en minúsculas separados por puntos, por ejemplo acme.runbooks.",
       ancestorGate:
         "Los pasos superiores ({nodeIds}) tienen su propia lista de permitidos para esto. Governance verifica cada paso desde la raíz, por lo que una entrada añadida aquí será denegada a menos que esos pasos también la permitan.",
-      reviewHint:
-        "Al añadir se abre el editor de árbol para que puedas revisar y guardar el cambio.",
       empty: "Introduce un valor primero.",
       duplicate: "Esa entrada ya está declarada en este paso.",
       nodeMissing: "Ese paso ya no está en el árbol; recarga e inténtalo de nuevo.",
       exportFailed: "No se pudo cargar la definición del árbol para editar.",
+      importFailed:
+        "No se confirmó el guardado. Es posible que se haya aplicado o no — actualice el mapa de trabajo para verificarlo antes de intentarlo de nuevo.",
+      importNotSent:
+        "No se guardó nada: la conexión con el Gateway se interrumpió antes de que se enviara. Vuelve a conectarte e inténtalo de nuevo.",
+      importRefused: "El servidor rechazó este cambio, por lo que no se guardó nada: {message}",
+      importRejected: "El servidor rechazó este cambio, por lo que no se guardó nada.",
+      importRejectedDetail:
+        "El servidor rechazó este cambio, por lo que no se guardó nada: {issues}",
     },
     catalogAgentScope:
       "Las herramientas y Skills tienen alcance por agente; este catálogo es el que ve el agente {agentId}.",
