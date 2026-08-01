@@ -27,6 +27,7 @@ import {
 } from "./plan.js";
 import {
   registerEnterpriseActiveRun,
+  resolveEnterpriseMcpServers,
   resolveEnterpriseMode,
   unregisterEnterpriseActiveRun,
   type EnterpriseActiveRun,
@@ -292,6 +293,7 @@ async function beginEnterpriseRunInternal(
   const run: MediatedRunState = {
     plan,
     policies,
+    mcpServers: resolveEnterpriseMcpServers(params.config),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
     // Snapshot the tree's required-property shape from the definition this run
     // PLANNED against. Looking it up per tool call would drift: a re-import

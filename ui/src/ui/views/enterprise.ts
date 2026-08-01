@@ -27,6 +27,7 @@ import type {
   EnterpriseNodeDraftError,
   EnterpriseBindingPicker,
   EnterpriseBindingPickerFailure,
+  EnterpriseMcpDraft,
   EnterpriseOntologyEntryDraftError,
   EnterpriseTreeConfirm,
   EnterpriseTreeEditFormat,
@@ -38,6 +39,7 @@ import {
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
 import type { NodeOntologyListField } from "./enterprise-tree-edit.ts";
+import type { McpServerRow } from "./mcp.ts";
 import { renderSkillStatusChips } from "./skills-shared.ts";
 
 export type EnterpriseProps = {
@@ -93,6 +95,8 @@ export type EnterpriseProps = {
   onLoadVersion: (treeId: string, revision: number) => void;
   onSelectNode: (nodeId: string | null) => void;
   onSelectNodeEntity: (entity: string) => void;
+  /** Switch the selected work-map between explicit and inherited capability grants. */
+  onToggleCapabilityGrants: () => void;
   onBeginAddNode: (parentId: string) => void;
   onEditNodeDraft: (patch: { id?: string; title?: string }) => void;
   onCancelAddNode: () => void;
@@ -117,6 +121,40 @@ export type EnterpriseProps = {
   toolGroups: ToolsCatalogResult["groups"];
   skills: SkillStatusEntry[];
   foundations: EnterpriseKnowledgeFoundationSummary[];
+  /**
+   * MCP servers registered in config. Not a catalog request: registration lives in
+   * `mcp.servers`, which the Control UI already holds, and the same list drives the
+   * MCP screen, the step attachments, and the picker.
+   */
+  mcpServers: McpServerRow[];
+  /**
+   * Whether the config that holds `mcp.servers` has actually arrived. An empty
+   * list before it does is UNKNOWN, not "nothing registered" — labelling an
+   * attachment unregistered on that would accuse a server the gateway has.
+   */
+  mcpServersKnown: boolean;
+  mcpDraft: EnterpriseMcpDraft | null;
+  /** Effective `enterprise.mode`; only "enforce" actually withholds a server. */
+  enterpriseMode: "enforce" | "observe" | "off";
+  /**
+   * Whether registering a server here is safe right now. False while config has
+   * not arrived (a draft started from `{}` would be saved OVER the real config)
+   * and while a raw-mode config draft is pending (registering writes the form,
+   * and syncing that form serializes over the raw text the operator is editing).
+   */
+  canRegisterMcp: boolean;
+  mcpRegisterBlockedReason: string | null;
+  /** Whether the gateway is reachable; a config write cannot be saved without it. */
+  connected: boolean;
+  configDirty: boolean;
+  configSaving: boolean;
+  configApplying: boolean;
+  onBeginMcpDraft: () => void;
+  onEditMcpDraft: (patch: Partial<Omit<EnterpriseMcpDraft, "error">>) => void;
+  onCancelMcpDraft: () => void;
+  onSubmitMcpDraft: () => void;
+  onSaveConfig: () => void;
+  onApplyConfig: () => void;
   /** Which enterprise surface to render; chosen by the active sidebar tab. */
   section: EnterpriseSection;
 };
@@ -130,7 +168,7 @@ function formatTime(ms: number): string {
  * Enterprise group (see navigation.ts), so this view renders exactly the surface the
  * active tab selects rather than owning an in-view sub-tab row.
  */
-export const ENTERPRISE_SECTIONS = ["worktree", "history", "tools", "skills"] as const;
+export const ENTERPRISE_SECTIONS = ["worktree", "history", "tools", "skills", "mcp"] as const;
 export type EnterpriseSection = (typeof ENTERPRISE_SECTIONS)[number];
 
 /** i18n message for a rejected step-binding draft. */
@@ -233,6 +271,12 @@ type OntologyEntryAdder = {
   constrainingAncestors?: readonly string[];
   /** Per-value annotation (e.g. a declared skill no install provides), or null. */
   valueNote?: (value: string) => string | null;
+  /**
+   * Entries an ancestor step granted that apply here too. Shown separately from
+   * `values` because they are not this step's to remove — editing them means
+   * editing the ancestor.
+   */
+  inheritedValues?: readonly string[];
 };
 
 /**
@@ -270,6 +314,17 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
                 >`;
               })}
             </div>`}
+        <!-- Inherited grants sit under the step's own, dimmed and labelled: they
+          apply to this step but belong to an ancestor, so removing one means
+          editing that step instead of this one. -->
+        ${adder.inheritedValues?.length
+          ? html`<div class="chip-row" style="margin-top: 6px;">
+              <span class="muted">${t("enterprise.bindings.inherited")}</span>
+              ${adder.inheritedValues.map(
+                (value) => html`<span class="chip"><code>${value}</code></span>`,
+              )}
+            </div>`
+          : nothing}
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
         ${adder.constrainingAncestors?.length
           ? html`<div class="callout">
@@ -332,12 +387,26 @@ function renderBindingPicker(
   // governance change landed when nothing was written.
   const writing = picker.phase === "writing";
   const canSubmit = idle && pickedCount > 0;
-  const catalogError =
-    adder.field === "allowedTools"
+  // MCP options come from config, which arrives with the screen — so this field
+  // has neither a catalog request to fail nor one to wait for. Falling through to
+  // the foundations error (or the shared phase) would report an unrelated
+  // catalog's problem as this picker's.
+  const configBacked = adder.field === "mcpServers";
+  const catalogError = configBacked
+    ? null
+    : adder.field === "allowedTools"
       ? props.catalogErrors.tools
       : adder.field === "skills"
         ? props.catalogErrors.skills
         : props.catalogErrors.foundations;
+  // Config-backed, but config is a REQUEST too and the worktree becomes
+  // interactive while it is still in flight. Hard-coding "ready" would report an
+  // empty catalog for servers that are simply not here yet.
+  const catalogPhase: EnterpriseCatalogPhase = configBacked
+    ? props.mcpServersKnown
+      ? "ready"
+      : "loading"
+    : props.catalogPhase;
   return html`
     <openclaw-modal-dialog
       label=${adder.title}
@@ -364,7 +433,7 @@ function renderBindingPicker(
           ${matches.length === 0
             ? html`<div class="muted">
                 ${pickerEmptyMessage({
-                  phase: props.catalogPhase,
+                  phase: catalogPhase,
                   error: catalogError,
                   hasQuery: query.length > 0,
                   catalogExhausted: adder.options.length > 0,
@@ -408,6 +477,17 @@ function renderBindingPicker(
           in DOM order, so a keyboard or screen-reader user would reach the
           action before ever hearing that the first entry revokes the rest or
           that an ancestor still gates it. -->
+        <!-- Inherited grants sit under the step's own, dimmed and labelled: they
+          apply to this step but belong to an ancestor, so removing one means
+          editing that step instead of this one. -->
+        ${adder.inheritedValues?.length
+          ? html`<div class="chip-row" style="margin-top: 6px;">
+              <span class="muted">${t("enterprise.bindings.inherited")}</span>
+              ${adder.inheritedValues.map(
+                (value) => html`<span class="chip"><code>${value}</code></span>`,
+              )}
+            </div>`
+          : nothing}
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
         ${adder.constrainingAncestors?.length
           ? html`<div class="callout">
@@ -506,6 +586,35 @@ function constrainingAncestorIds(
     current = node.parentId;
   }
   return ids;
+}
+
+/**
+ * MCP servers this step inherits from its ancestors.
+ *
+ * Governance grants an attachment down the whole branch (pathAttachesMcpServer in
+ * src/enterprise/governance.ts), so a leaf with no `mcpServers` of its own is not
+ * necessarily server-less — and telling the operator it can call none would
+ * contradict what the run actually allows.
+ */
+function inheritedMcpServers(props: EnterpriseProps, nodeId: string): string[] {
+  const nodes = props.treeDetail?.nodes;
+  if (!nodes) {
+    return [];
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const inherited = new Set<string>();
+  let current = byId.get(nodeId)?.parentId ?? null;
+  while (current) {
+    const node = byId.get(current);
+    if (!node) {
+      break;
+    }
+    for (const server of node.ontology.mcpServers ?? []) {
+      inherited.add(server);
+    }
+    current = node.parentId;
+  }
+  return [...inherited].toSorted((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -657,6 +766,22 @@ function collectSkillUsage(
 }
 
 /**
+ * Which steps attach each MCP server. Exact-name match like skills: an attachment
+ * is a config key, never a glob.
+ */
+function collectMcpUsage(
+  nodes: readonly EnterpriseTreeNode[] | undefined,
+): Map<string, CatalogUsage[]> {
+  const usage = new Map<string, CatalogUsage[]>();
+  for (const node of nodes ?? []) {
+    for (const name of node.ontology.mcpServers ?? []) {
+      addUsage(usage, name, node);
+    }
+  }
+  return usage;
+}
+
+/**
  * Where a catalog entry is already used. The catalogs are deployment-wide, so
  * without this the operator cannot tell an entry their work-map depends on from
  * one nothing has bound — which is the only question the catalog cannot answer
@@ -732,7 +857,11 @@ function renderEnterpriseTools(props: EnterpriseProps): TemplateResult {
       <div class="card-title">${t("enterprise.toolsTab.title")}</div>
       <div class="card-sub">${t("enterprise.toolsTab.subtitle")}</div>
       ${renderCatalogAgentScope(props.catalogAgentId)}${renderCatalogUsageScope(props)}
-      <div class="muted" style="margin-top: 8px;">${t("enterprise.toolsTab.attachHint")}</div>
+      <div class="muted" style="margin-top: 8px;">
+        ${workMapGrantsExplicitly(props)
+          ? t("enterprise.toolsTab.attachHintGranted")
+          : t("enterprise.toolsTab.attachHint")}
+      </div>
       ${props.toolGroups.length === 0
         ? renderCatalogEmpty(
             props.catalogPhase,
@@ -843,6 +972,310 @@ function renderDeclaredOnlySkillRow(
 }
 
 /**
+ * Is the selected work-map's deny-by-default grant actually enforced right now?
+ *
+ * Declaration plus enforce mode, the same pair workMapGovernsMcp checks: observe
+ * records without blocking and off governs nothing, so a catalog that promised
+ * "unreachable" there would describe a restriction the runtime is not applying.
+ */
+function workMapGrantsExplicitly(props: EnterpriseProps): boolean {
+  return props.enterpriseMode === "enforce" && props.treeDetail?.capabilityGrants === "explicit";
+}
+
+/**
+ * Does the selected work-map govern MCP by attachment? A tree that never declares
+ * one keeps pre-feature behavior (see mcpGoverned in src/enterprise/plan.ts), so
+ * calling its servers "unattached and unreachable" would promise a restriction
+ * nothing is enforcing.
+ */
+/**
+ * Does the selected work-map DECLARE the field? Presence, matching the runtime's
+ * opt-in (treeDeclaresMcpAttachment): an explicit `mcpServers: []` opts in, so a
+ * length test would hide exactly the state an operator needs to see. Independent
+ * of mode — adding an attachment changes the tree, never the mode.
+ */
+function workMapDeclaresMcp(props: EnterpriseProps): boolean {
+  // Explicit grants imply it, exactly as buildEnterpriseRunPlan does: such a
+  // work-map reaches only what it attaches, so its servers are governed even
+  // though no step named the field.
+  return (
+    props.treeDetail?.capabilityGrants === "explicit" ||
+    (props.treeDetail?.nodes ?? []).some((node) => node.ontology.mcpServers !== undefined)
+  );
+}
+
+/**
+ * Is attachment actually enforced right now? Declaration plus enforce mode:
+ * observe records without blocking and off governs nothing, so "unreachable"
+ * would be a claim the runtime is not making.
+ */
+function workMapGovernsMcp(props: EnterpriseProps): boolean {
+  return props.enterpriseMode === "enforce" && workMapDeclaresMcp(props);
+}
+
+/**
+ * MCP servers registered for this deployment, and which steps may reach them.
+ *
+ * Registering is the ordinary OpenClaw act — one entry under `mcp.servers` — so
+ * this screen writes the same config draft the Settings MCP screen writes. What is
+ * enterprise about it is the second column: a registered server is callable only
+ * from the steps that attach it, so a server with no attachments is registered and
+ * unreachable, which is exactly the state an operator comes here to see.
+ */
+function renderEnterpriseMcp(props: EnterpriseProps): TemplateResult {
+  const treeName = props.treeDetail?.name ?? null;
+  const usage = collectMcpUsage(props.treeDetail?.nodes);
+  const usageLabel = treeName ? t("enterprise.catalogUsage.attachedTo", { treeName }) : null;
+  // Attachments the registry cannot satisfy. Driven by the tree, which is
+  // authoritative on its own: without this the screen would show the work-map as
+  // covered while the step that names the server can never call it.
+  const governed = workMapGovernsMcp(props);
+  // Only a KNOWN registry can call an attachment unregistered.
+  const attachedOnly = (props.mcpServersKnown ? [...usage.keys()] : [])
+    .filter((name) => !props.mcpServers.some((server) => server.name === name))
+    .toSorted((a, b) => a.localeCompare(b));
+  return html`
+    <section class="card" style="margin-top: 16px;">
+      <div class="row" style="justify-content: space-between;">
+        <div>
+          <div class="card-title">${t("enterprise.mcpTab.title")}</div>
+          <div class="card-sub">${t("enterprise.mcpTab.subtitle")}</div>
+        </div>
+        ${props.canEdit && !props.mcpDraft
+          ? html`<button
+              type="button"
+              class="btn"
+              ?disabled=${!props.canRegisterMcp}
+              title=${props.mcpRegisterBlockedReason ?? ""}
+              @click=${props.onBeginMcpDraft}
+            >
+              ${t("enterprise.mcpTab.add")}
+            </button>`
+          : nothing}
+      </div>
+      ${renderCatalogUsageScope(props)}
+      <div class="muted" style="margin-top: 8px;">
+        ${governed
+          ? t("enterprise.mcpTab.attachHint")
+          : t("enterprise.mcpTab.attachHintUngoverned")}
+      </div>
+      ${governed
+        ? html`<div class="muted" style="margin-top: 8px;">
+            ${t("enterprise.mcpTab.nativeConfigBoundary")}
+          </div>`
+        : nothing}
+      ${props.canEdit && props.mcpRegisterBlockedReason
+        ? html`<div class="callout" style="margin-top: 8px;">
+            ${props.mcpRegisterBlockedReason}
+          </div>`
+        : nothing}
+      ${props.canEdit && props.mcpDraft ? renderMcpDraft(props, props.mcpDraft) : nothing}
+      ${props.canEdit ? renderMcpConfigActions(props) : nothing}
+      ${props.mcpServers.length === 0 && attachedOnly.length === 0
+        ? html`<div class="muted" style="margin-top: 12px;">
+            ${props.mcpServersKnown ? t("enterprise.mcpTab.empty") : t("common.loading")}
+          </div>`
+        : html`<div class="list" style="margin-top: 12px;">
+            ${props.mcpServers.map((server) =>
+              renderMcpServerRow(server, usage, usageLabel, governed),
+            )}
+            ${attachedOnly.map((name) => renderUnregisteredMcpRow(name, usage, usageLabel))}
+          </div>`}
+    </section>
+  `;
+}
+
+/** One registered server: how it launches, and which steps may call it. */
+function renderMcpServerRow(
+  server: McpServerRow,
+  usage: Map<string, CatalogUsage[]>,
+  usageLabel: string | null,
+  governed: boolean,
+): TemplateResult {
+  const attachments = usage.get(server.name);
+  return html`<div class="list-item list-item-stacked">
+    <div class="list-main">
+      <div class="list-title">
+        <code>${server.name}</code>
+        <span class="chip">${server.transport}</span>
+        ${server.enabled
+          ? nothing
+          : html`<span class="chip chip-warn">${t("enterprise.mcpTab.disabled")}</span>`}
+        <!-- Registered and unattached is the default state, not an error, but it
+          is the one an operator misreads as "available", so it is labelled — and
+          only when the work-map actually governs attachments, or the label would
+          claim a restriction that is not being enforced. -->
+        ${governed && !attachments?.length
+          ? html`<span class="chip">${t("enterprise.mcpTab.unattached")}</span>`
+          : nothing}
+      </div>
+      <div class="list-sub">${server.launch}</div>
+      ${renderCatalogUsage(attachments, usageLabel)}
+    </div>
+  </div>`;
+}
+
+/**
+ * A server the work-map attaches that config does not register. The attachment is
+ * inert — the gate resolves a call by server name, and nothing launches under this
+ * one — so it is shown rather than silently dropped.
+ */
+function renderUnregisteredMcpRow(
+  name: string,
+  usage: Map<string, CatalogUsage[]>,
+  usageLabel: string | null,
+): TemplateResult {
+  return html`<div class="list-item list-item-stacked">
+    <div class="list-main">
+      <div class="list-title">
+        <code>${name}</code>
+        <span class="chip chip-warn">${t("enterprise.bindings.mcpNotRegistered")}</span>
+      </div>
+      ${renderCatalogUsage(usage.get(name), usageLabel)}
+    </div>
+  </div>`;
+}
+
+/**
+ * Save/Publish for the config draft this screen writes into. Shown only while the
+ * draft differs: a registration that is still only in the browser is the one thing
+ * an operator must not walk away from, and hiding the control when there is
+ * nothing to save keeps that signal meaningful.
+ */
+function renderMcpConfigActions(props: EnterpriseProps): TemplateResult | typeof nothing {
+  if (!props.configDirty) {
+    return nothing;
+  }
+  const busy = props.configSaving || props.configApplying || !props.connected;
+  return html`<div class="callout" style="margin-top: 12px;">
+    <div>${t("enterprise.mcpTab.unsaved")}</div>
+    <div class="row" style="gap: 8px; margin-top: 8px;">
+      <button type="button" class="btn" ?disabled=${busy} @click=${props.onSaveConfig}>
+        ${t("enterprise.mcpTab.save")}
+      </button>
+      <button type="button" class="btn primary" ?disabled=${busy} @click=${props.onApplyConfig}>
+        ${props.configApplying ? t("enterprise.mcpTab.publishing") : t("enterprise.mcpTab.publish")}
+      </button>
+    </div>
+  </div>`;
+}
+
+/**
+ * Example values for the registration form. Command lines and server names are
+ * literals an operator types verbatim, so they live here rather than in the
+ * locale bundles — the same reason CUSTOM_PLACEHOLDER above does.
+ */
+const MCP_DRAFT_PLACEHOLDER = {
+  name: "github",
+  command: "npx",
+  args: "-y @modelcontextprotocol/server-github",
+  url: "https://mcp.example.com/sse",
+} as const;
+
+/** i18n message for a rejected MCP registration. */
+function mcpDraftErrorMessage(error: NonNullable<EnterpriseMcpDraft["error"]>): string {
+  const messages: Record<NonNullable<EnterpriseMcpDraft["error"]>, string> = {
+    "name-empty": t("enterprise.mcpDraft.nameEmpty"),
+    "url-invalid": t("enterprise.mcpDraft.urlInvalid"),
+    "name-taken": t("enterprise.mcpDraft.nameTaken"),
+    "name-unsupported": t("enterprise.mcpDraft.nameUnsupported"),
+    "launch-missing": t("enterprise.mcpDraft.launchMissing"),
+  };
+  return messages[error];
+}
+
+/**
+ * The registration form: a name plus one transport. Deliberately the two shapes
+ * `openclaw mcp add` takes and nothing more — headers, env, TLS, and OAuth stay
+ * with the config editor rather than growing a second, partial config surface here.
+ */
+function renderMcpDraft(props: EnterpriseProps, draft: EnterpriseMcpDraft): TemplateResult {
+  const stdio = draft.transport === "stdio";
+  return html`
+    <section class="card" style="margin-top: 12px;">
+      <div class="card-title">${t("enterprise.mcpDraft.title")}</div>
+      <div class="muted" style="margin-top: 4px;">${t("enterprise.mcpDraft.subtitle")}</div>
+      <label class="field" style="margin-top: 12px;">
+        <span>${t("enterprise.mcpDraft.name")}</span>
+        <input
+          type="text"
+          .value=${draft.name}
+          placeholder=${MCP_DRAFT_PLACEHOLDER.name}
+          @input=${(event: Event) =>
+            props.onEditMcpDraft({ name: (event.target as HTMLInputElement).value })}
+        />
+      </label>
+      <div class="chip-row" style="margin-top: 8px;">
+        ${(["stdio", "streamable-http", "sse"] as const).map(
+          (transport) => html`<button
+            type="button"
+            class="chip ${draft.transport === transport ? "list-item-selected" : ""}"
+            @click=${() => props.onEditMcpDraft({ transport })}
+          >
+            ${transport}
+          </button>`,
+        )}
+      </div>
+      ${stdio
+        ? html`
+            <label class="field" style="margin-top: 8px;">
+              <span>${t("enterprise.mcpDraft.command")}</span>
+              <input
+                type="text"
+                .value=${draft.command}
+                placeholder=${MCP_DRAFT_PLACEHOLDER.command}
+                @input=${(event: Event) =>
+                  props.onEditMcpDraft({ command: (event.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="field" style="margin-top: 8px;">
+              <span>${t("enterprise.mcpDraft.args")}</span>
+              <input
+                type="text"
+                .value=${draft.args}
+                placeholder=${MCP_DRAFT_PLACEHOLDER.args}
+                @input=${(event: Event) =>
+                  props.onEditMcpDraft({ args: (event.target as HTMLInputElement).value })}
+              />
+            </label>
+          `
+        : html`<label class="field" style="margin-top: 8px;">
+            <span>${t("enterprise.mcpDraft.url")}</span>
+            <input
+              type="text"
+              .value=${draft.url}
+              placeholder=${MCP_DRAFT_PLACEHOLDER.url}
+              @input=${(event: Event) =>
+                props.onEditMcpDraft({ url: (event.target as HTMLInputElement).value })}
+            />
+          </label>`}
+      ${draft.error
+        ? html`<div class="callout danger" style="margin-top: 8px;">
+            ${mcpDraftErrorMessage(draft.error)}
+          </div>`
+        : nothing}
+      <div class="row" style="gap: 8px; margin-top: 12px;">
+        <!-- Same gate as the Register button: this form survives navigation, so an
+          operator can open it, go edit raw config, and come back to a submit that
+          would serialize a stale form over their unsaved text. -->
+        <button
+          type="button"
+          class="btn primary"
+          ?disabled=${!props.canRegisterMcp}
+          title=${props.mcpRegisterBlockedReason ?? ""}
+          @click=${props.onSubmitMcpDraft}
+        >
+          ${t("enterprise.mcpDraft.submit")}
+        </button>
+        <button type="button" class="btn" @click=${props.onCancelMcpDraft}>
+          ${t("common.cancel")}
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+/**
  * Every installed skill. Like Tools this is the catalog, not a step's
  * declaration: a step names the skills its work depends on from Worktree. The
  * ones the selected work-map declares are lifted out of the alphabet soup into
@@ -872,7 +1305,11 @@ function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
       <div class="card-title">${t("enterprise.skillsTab.title")}</div>
       <div class="card-sub">${t("enterprise.skillsTab.subtitle")}</div>
       ${renderCatalogAgentScope(props.catalogAgentId)}${renderCatalogUsageScope(props)}
-      <div class="muted" style="margin-top: 8px;">${t("enterprise.skillsTab.attachHint")}</div>
+      <div class="muted" style="margin-top: 8px;">
+        ${workMapGrantsExplicitly(props)
+          ? t("enterprise.skillsTab.attachHintGranted")
+          : t("enterprise.skillsTab.attachHint")}
+      </div>
       ${hasDeclaredSection
         ? html`<div class="card-title" style="margin-top: 16px;">
               ${t("enterprise.skillsTab.declaredSection", { treeName: treeName ?? "" })}
@@ -985,6 +1422,7 @@ export function renderEnterprise(props: EnterpriseProps) {
       : nothing}
     ${section === "tools" ? renderEnterpriseTools(props) : nothing}
     ${section === "skills" ? renderEnterpriseSkills(props) : nothing}
+    ${section === "mcp" ? renderEnterpriseMcp(props) : nothing}
     <!-- Outside the subsection switch: the global Remove action (shown with import
       errors on any tab) sets the confirm state, so its modal must render everywhere. -->
     ${renderTreeConfirmModal(props)}
@@ -1160,6 +1598,11 @@ function renderStep(
           ${ontology.skills?.length
             ? html`<span class="chip"
                 >${t("enterprise.skills", { ids: ontology.skills.join(", ") })}</span
+              >`
+            : nothing}
+          ${ontology.mcpServers?.length
+            ? html`<span class="chip"
+                >${t("enterprise.mcpServers", { ids: ontology.mcpServers.join(", ") })}</span
               >`
             : nothing}
           ${ontology.audit ? html`<span class="chip">${t("enterprise.audit")}</span>` : nothing}
@@ -1454,6 +1897,7 @@ function renderTreeDetail(tree: EnterpriseTreeDetail, props: EnterpriseProps): T
     ${tree.description
       ? html`<div class="muted" style="margin-top: 4px;">${tree.description}</div>`
       : nothing}
+    ${renderCapabilityGrants(tree, props)}
 
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.structureTitle")}</div>
     <openclaw-workflow-tree-graph
@@ -1463,6 +1907,48 @@ function renderTreeDetail(tree: EnterpriseTreeDetail, props: EnterpriseProps): T
         props.onSelectNode(event.detail.nodeId)}
     ></openclaw-workflow-tree-graph>
     ${renderNodeInspector(tree, props)} ${renderWholeTreeOverview(tree, props)}
+  `;
+}
+
+/**
+ * How this work-map hands capabilities to its steps, and the switch between the
+ * two modes.
+ *
+ * Shown on the work-map itself rather than per step because it changes what every
+ * step's bindings MEAN: under explicit grants a step with no tools listed reaches
+ * none, while the inherited default leaves it unrestricted. An operator reading
+ * per-step lists without knowing which mode is on would read them backwards.
+ */
+function renderCapabilityGrants(
+  tree: EnterpriseTreeDetail,
+  props: EnterpriseProps,
+): TemplateResult {
+  const explicit = tree.capabilityGrants === "explicit";
+  return html`
+    <div class="row" style="justify-content: space-between; gap: 8px; margin-top: 8px;">
+      <div class="muted">
+        <span class="chip ${explicit ? "chip-ok" : ""}">
+          ${explicit
+            ? t("enterprise.capabilityGrants.explicit")
+            : t("enterprise.capabilityGrants.inherited")}
+        </span>
+        ${explicit
+          ? t("enterprise.capabilityGrants.explicitHint")
+          : t("enterprise.capabilityGrants.inheritedHint")}
+      </div>
+      ${props.canEdit
+        ? html`<button
+            type="button"
+            class="btn"
+            ?disabled=${props.treeSaving}
+            @click=${props.onToggleCapabilityGrants}
+          >
+            ${explicit
+              ? t("enterprise.capabilityGrants.turnOff")
+              : t("enterprise.capabilityGrants.turnOn")}
+          </button>`
+        : nothing}
+    </div>
   `;
 }
 
@@ -1576,6 +2062,13 @@ function nodeBindingAdders(
   // unavailable, only unverified.
   const foundationsKnown =
     props.catalogPhase === "ready" && !props.catalogErrors.foundations && ownershipKnown;
+  // Config is loaded with the screen rather than fetched per catalog, so an
+  // attachment naming a server that is not in `mcp.servers` is known-missing
+  // straight away — no phase gate like the two above need.
+  const registeredServers = new Set(props.mcpServers.map((server) => server.name));
+  const inheritedMcp = inheritedMcpServers(props, node.id);
+  const mcpGoverned = workMapGovernsMcp(props);
+  const mcpDeclared = workMapDeclaresMcp(props);
   return [
     {
       nodeId: node.id,
@@ -1583,9 +2076,17 @@ function nodeBindingAdders(
       values: allowedTools,
       title: t("enterprise.bindings.tools"),
       options: toolBindingOptions(props),
-      // No LOCAL allowlist means the step allows everything (minus its denials),
-      // so the first entry narrows it either way — a deny-only step converts too.
-      scopeWarning: allowedTools.length === 0 ? t("enterprise.entryDraft.scopeNarrowing") : null,
+      // What an empty list MEANS flips with the work-map's grant mode: inherited
+      // scopes leave the step wide open (the first entry narrows it), while
+      // explicit grants leave it with nothing until some step on the path names a
+      // tool. Showing the narrowing warning there would state the opposite and
+      // discourage the very first grant the step needs.
+      scopeWarning:
+        allowedTools.length === 0
+          ? workMapGrantsExplicitly(props)
+            ? t("enterprise.entryDraft.scopeUngranted")
+            : t("enterprise.entryDraft.scopeNarrowing")
+          : null,
       constrainingAncestors: constrainingAncestorIds(props, node.id, "allowedTools"),
     },
     {
@@ -1619,6 +2120,35 @@ function nodeBindingAdders(
       valueNote: (value) =>
         foundationsKnown && !retrievableIds.has(value)
           ? t("enterprise.bindings.foundationNotRegistered")
+          : null,
+    },
+    {
+      nodeId: node.id,
+      field: "mcpServers",
+      values: ontology.mcpServers ?? [],
+      title: t("enterprise.bindings.mcp"),
+      options: props.mcpServers.map((server) => ({
+        value: server.name,
+        description: server.launch,
+      })),
+      // The opposite warning to the lists above: those START permissive and the
+      // first entry narrows, while no attachment anywhere on the path reaches
+      // nothing. Two conditions, though: an ancestor's attachment counts (the run
+      // grants it here too), and the rule is only ON for a work-map that uses the
+      // field — saying "can call none" about an ungoverned tree would promise a
+      // restriction that is not being enforced.
+      scopeWarning: mcpDeclared
+        ? mcpGoverned && (ontology.mcpServers ?? []).length === 0 && inheritedMcp.length === 0
+          ? t("enterprise.entryDraft.mcpNoneAttached")
+          : null
+        : // Nothing declared yet: the FIRST attachment opts the whole work-map into
+          // deny-by-default, so every other step loses its registered servers once
+          // the deployment enforces. Worth reading before saving.
+          t("enterprise.entryDraft.mcpFirstAttachment"),
+      inheritedValues: inheritedMcp,
+      valueNote: (value) =>
+        props.mcpServersKnown && !registeredServers.has(value)
+          ? t("enterprise.bindings.mcpNotRegistered")
           : null,
     },
   ];

@@ -175,12 +175,31 @@ export type OntologyBinding = {
   /** Links between the declared objects. Materialized into SQLite on import. */
   links?: OntologyLinkSeed[];
   constraints?: OntologyConstraint[];
-  /** Tool name globs allowed for this node. Empty/omitted = allow all (repo tool-policy semantics). */
+  /**
+   * Tool name globs allowed for this node. Empty/omitted = allow all (repo
+   * tool-policy semantics), except under `capabilityGrants: "explicit"`, where
+   * this list IS the grant: a call needs one node on the root→step path to name
+   * it, and a path that names nothing reaches no tool.
+   */
   allowedTools?: string[];
   /** Tool name globs denied for this node. Deny wins over allow. */
   deniedTools?: string[];
   /** Knowledge foundation ids this node may query. Empty/omitted = all configured foundations. */
   knowledgeFoundations?: string[];
+  /**
+   * MCP servers this step may call, by their `mcp.servers` config name.
+   *
+   * DENY BY DEFAULT, unlike every other scope here: an omitted list grants
+   * nothing. A configured MCP server reaches the model as an ordinary tool, so
+   * without an explicit grant a work-map that carefully scopes `allowedTools`
+   * would still leave every registered server callable from every step. The
+   * grant is inherited down the branch (attaching on the root covers its
+   * subtree), and it IS the grant for that server's tools — a step does not have
+   * to also list them in `allowedTools`, which would make attaching in the UI
+   * insufficient and unguessable. `deniedTools` still wins, so a step can take
+   * one back.
+   */
+  mcpServers?: string[];
   /** Compact context lines surfaced to the model in the step digest. */
   contextHints?: string[];
   /**
@@ -208,6 +227,11 @@ export type OntologyBinding = {
    * the agent's own filter excluded. A name the agent does not have is still
    * shown on the step (the operator declared it) but carries no body — the
    * Skills screen is where that gap is reported.
+   *
+   * Under `capabilityGrants: "explicit"` the same list also becomes the GRANT:
+   * the run's skill catalog is narrowed to what the work-map attaches, so a skill
+   * no step names is never offered to the model or materialized for a CLI
+   * harness. Advisory everywhere else, exactly as above.
    */
   skills?: string[];
   /** Expected output shape/summary for this step. */
@@ -246,6 +270,24 @@ export type WorkflowTreeTrigger = "user" | "system" | "subagent";
 export const WORKFLOW_TREE_SCHEMA = "clawworks.workflow-tree" as const;
 export const WORKFLOW_TREE_SCHEMA_VERSION = 1 as const;
 
+/**
+ * How a work-map hands capabilities to its steps.
+ *
+ * `"explicit"` makes every family deny-by-default — a step may use only the
+ * tools, skills, and MCP servers its own root→step path attaches. Omitted keeps
+ * the inherited semantics `allowedTools` and `skills` already have (a scope
+ * narrows what an ancestor allowed; a path that scopes nothing allows
+ * everything), which is what every tree written before this field carries.
+ *
+ * An opt-in rather than the default because both fields PREDATE it: a stored
+ * tree that scopes one leaf means "narrow that leaf", and reading it as "deny
+ * everywhere else" would break an imported work-map on upgrade with no
+ * migration. `mcpServers` is new, so it governs on presence alone (see
+ * EnterpriseRunPlan.mcpGoverned) — explicit grants also imply it, or a work-map
+ * that attached no server would still reach every registered one.
+ */
+export type WorkflowCapabilityGrants = "explicit";
+
 /** Versioned, importable/exportable workflow tree definition. */
 export type WorkflowTreeDefinition = {
   schema: typeof WORKFLOW_TREE_SCHEMA;
@@ -257,6 +299,8 @@ export type WorkflowTreeDefinition = {
   name: string;
   description?: string;
   match?: WorkflowTreeMatch;
+  /** Deny-by-default capabilities for this work-map. Omitted = inherited scopes. */
+  capabilityGrants?: WorkflowCapabilityGrants;
   root: WorkflowNodeDefinition;
 };
 
@@ -290,6 +334,13 @@ export type WorkflowBundle = {
   requiredTools: string[];
   /** Skill ids the trees' nodes declare as dependencies, so import can warn on gaps. Names only — content is not inlined. */
   requiredSkills: string[];
+  /**
+   * `mcp.servers` names the trees attach. Names only, like skills: a server is
+   * deployment configuration (credentials, transport), so a bundle cannot carry it
+   * — but without the list an import looks complete while every attachment is
+   * inert. Optional so bundles written before this field still load.
+   */
+  requiredMcpServers?: string[];
 };
 
 /** Governance policy effects. Precedence: deny > require_approval > allow > audit. */
@@ -417,6 +468,40 @@ export type EnterpriseRunPlan = {
    * root→node path (see resolvePlanNodePath), so the root scope always holds.
    */
   activeNodeId: EnterpriseId;
+  /**
+   * The TREE declares at least one MCP attachment, so its steps are governed by
+   * them. Taken before route pruning: a route that leaves out the step holding the
+   * only attachment must not turn the rule off for the run. A tree that never uses
+   * the field is absent here and keeps the behavior it had before it existed.
+   */
+  mcpGoverned?: boolean;
+  /**
+   * Every MCP attachment and every tool denial in the TREE, before a route pruned
+   * anything. Native runtimes are handed their servers once, at launch, for the
+   * whole run — so the decision has to see the whole work-map, not the branch the
+   * planner happened to pick. Absent when the tree declares no attachment.
+   */
+  mcpAttachments?: string[];
+  mcpDeniedTools?: string[];
+  /**
+   * The bound work-map grants capabilities explicitly (see
+   * WorkflowTreeDefinition.capabilityGrants). Carried on the plan because every
+   * enforcement point reads the run, not the tree registry: the definition can be
+   * re-imported mid-run, and a run must keep being judged by the work-map it was
+   * planned and prompted against.
+   */
+  capabilityGrants?: WorkflowCapabilityGrants;
+  /**
+   * Skills the work-map attaches, across every step the run PLANNED. Absent when
+   * the run does not grant explicitly, which means "do not narrow".
+   *
+   * Plan-wide rather than per-step, like the MCP attachments above: the skill
+   * catalog is part of the system prompt, so narrowing it per step would rewrite
+   * prompt bytes every turn and cost the run its prompt cache. The per-step
+   * declaration still shows in the digest, which is where a step says which of
+   * them is its own.
+   */
+  grantedSkills?: string[];
   mode: Exclude<EnterpriseMode, "off">;
   createdAt: number;
 };

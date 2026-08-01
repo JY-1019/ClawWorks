@@ -64,6 +64,21 @@ export function collectReferencedToolGlobs(tree: WorkflowTreeDefinition): string
  * workflow expects the target to provide. Content is not inlined — the bundle
  * reports the names so a target missing a skill is visible, not silently degraded.
  */
+/**
+ * MCP servers the tree attaches. A portability dependency like skills: the bundle
+ * carries the NAMES so an import can say which `mcp.servers` entries the recipient
+ * still has to register — an attachment naming a server nobody configured is inert.
+ */
+export function collectReferencedMcpServers(tree: WorkflowTreeDefinition): string[] {
+  const servers = new Set<string>();
+  walkWorkflowNodes(tree.root, (node) => {
+    for (const server of node.ontology?.mcpServers ?? []) {
+      servers.add(server);
+    }
+  });
+  return [...servers].toSorted();
+}
+
 export function collectReferencedSkills(tree: WorkflowTreeDefinition): string[] {
   const skills = new Set<string>();
   walkWorkflowNodes(tree.root, (node) => {

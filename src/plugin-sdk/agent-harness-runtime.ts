@@ -28,6 +28,13 @@ import { truncateUtf16Safe } from "../utils.js";
 export const TOOL_PROGRESS_OUTPUT_MAX_CHARS = 8_000;
 
 export { FAST_MODE_AUTO_PROGRESS_KIND } from "../auto-reply/reply-payload.js";
+// A governed run's skill scope. A harness spawns its own processes, so it needs
+// the keys a withheld skill owns before it hands this process's environment on.
+export {
+  resolveRunSkillGrant,
+  resolveRunWithheldSkillEnvKeys,
+  type RunSkillScopeSnapshot,
+} from "../agents/enterprise-skill-scope.js";
 export {
   isDeliveredMessageToolOnlySourceReplyResult,
   isDeliveredMessagingToolResult,

@@ -16,6 +16,7 @@ import { snapshotEnterpriseKnowledgeFoundation } from "./knowledge.js";
 import { EnterpriseIdSchema, WorkflowTreeDefinitionSchema } from "./schema.js";
 import {
   collectReferencedFoundationIds,
+  collectReferencedMcpServers,
   collectReferencedSkills,
   collectReferencedToolGlobs,
   treeHasUnboundedKnowledgeScope,
@@ -77,6 +78,8 @@ const WorkflowBundleSchema = z
     knowledgeFoundations: z.array(BundledKnowledgeFoundationSchema),
     requiredTools: z.array(z.string()),
     requiredSkills: z.array(z.string()),
+    // Optional: bundles written before MCP attachments existed still load.
+    requiredMcpServers: z.array(z.string()).optional(),
   })
   .strict()
   .superRefine((bundle, ctx) => {
@@ -160,6 +163,12 @@ export type WorkflowBundleImportResult =
       requiredTools: string[];
       /** Skill ids the imported trees declare, so the recipient can spot any it lacks. */
       requiredSkills: string[];
+      /**
+       * `mcp.servers` names the imported trees attach. A server is deployment
+       * configuration, so the bundle carries only the name: without this the import
+       * looks complete while every attachment on the recipient is inert.
+       */
+      requiredMcpServers: string[];
     }
   | { ok: false; issues: WorkflowBundleValidationIssue[] };
 
@@ -177,6 +186,9 @@ export function serializeWorkflowBundle(
     ),
     requiredTools: [...bundle.requiredTools].toSorted(),
     requiredSkills: [...bundle.requiredSkills].toSorted(),
+    ...(bundle.requiredMcpServers?.length
+      ? { requiredMcpServers: [...bundle.requiredMcpServers].toSorted() }
+      : {}),
   };
   if (format === "yaml") {
     return stringifyYaml(canonical);
@@ -239,6 +251,7 @@ export async function exportWorkflowBundle(
   const foundationIds = collectReferencedFoundationIds(entry.tree);
   const requiredTools = collectReferencedToolGlobs(entry.tree);
   const requiredSkills = collectReferencedSkills(entry.tree);
+  const requiredMcpServers = collectReferencedMcpServers(entry.tree);
   const knowledgeFoundations: WorkflowBundle["knowledgeFoundations"] = [];
   const skippedFoundations: SkippedBundleFoundation[] = [];
   for (const id of foundationIds) {
@@ -258,6 +271,7 @@ export async function exportWorkflowBundle(
     knowledgeFoundations,
     requiredTools,
     requiredSkills,
+    ...(requiredMcpServers.length > 0 ? { requiredMcpServers } : {}),
   };
   return {
     ok: true,
@@ -302,6 +316,9 @@ export function importWorkflowBundle(
   // Same rationale for skills: derive from the trees, not the bundle's stored
   // array, so a stale export cannot misreport the dependency.
   const requiredSkills = new Set<string>();
+  // And for MCP: an attachment naming a server the recipient never registered is
+  // inert, so the import has to name them rather than look complete.
+  const requiredMcpServers = new Set<string>();
   for (const tree of bundle.trees) {
     const existing = getWorkflowTreeRegistryEntry(tree.id, options);
     for (const tool of collectReferencedToolGlobs(tree)) {
@@ -309,6 +326,9 @@ export function importWorkflowBundle(
     }
     for (const skill of collectReferencedSkills(tree)) {
       requiredSkills.add(skill);
+    }
+    for (const server of collectReferencedMcpServers(tree)) {
+      requiredMcpServers.add(server);
     }
     const bundledFoundations: BundledKnowledgeFoundation[] = [];
     for (const id of collectReferencedFoundationIds(tree)) {
@@ -339,5 +359,6 @@ export function importWorkflowBundle(
     missingFoundations: [...missing].toSorted(),
     requiredTools: [...requiredTools].toSorted(),
     requiredSkills: [...requiredSkills].toSorted(),
+    requiredMcpServers: [...requiredMcpServers].toSorted(),
   };
 }

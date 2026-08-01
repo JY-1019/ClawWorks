@@ -2,7 +2,7 @@
 import { redactSensitiveUrlLikeString } from "@openclaw/net-policy/redact-sensitive-url";
 import { html, nothing, type TemplateResult } from "lit";
 
-type McpServerRow = {
+export type McpServerRow = {
   name: string;
   enabled: boolean;
   transport: "stdio" | "http" | "invalid";
@@ -100,10 +100,19 @@ function renderServerRow(props: McpViewProps, server: McpServerRow) {
   `;
 }
 
-export function renderMcp(props: McpViewProps) {
-  const rows = Object.entries(getMcpServers(props.configObject))
+/**
+ * Configured MCP servers, summarized for display. Exported because the Enterprise
+ * MCP screen shows the same registry (config `mcp.servers` is the one place a
+ * server is registered) and must not re-derive transport/auth from raw config.
+ */
+export function summarizeMcpServerRows(configObject: Record<string, unknown>): McpServerRow[] {
+  return Object.entries(getMcpServers(configObject))
     .map(([name, server]) => summarizeServer(name, server))
     .toSorted((a, b) => a.name.localeCompare(b.name));
+}
+
+export function renderMcp(props: McpViewProps) {
+  const rows = summarizeMcpServerRows(props.configObject);
   const enabledCount = rows.filter((row) => row.enabled).length;
   const oauthCount = rows.filter((row) => row.auth === "oauth").length;
   const filteredCount = rows.filter((row) => row.toolFilter).length;

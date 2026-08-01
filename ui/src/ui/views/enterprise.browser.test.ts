@@ -73,6 +73,22 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
   return {
     section: "tools",
     loading: false,
+    mcpServers: [],
+    mcpServersKnown: true,
+    mcpDraft: null,
+    enterpriseMode: "enforce",
+    canRegisterMcp: true,
+    mcpRegisterBlockedReason: null,
+    connected: true,
+    configDirty: false,
+    configSaving: false,
+    configApplying: false,
+    onBeginMcpDraft: () => undefined,
+    onEditMcpDraft: () => undefined,
+    onCancelMcpDraft: () => undefined,
+    onSubmitMcpDraft: () => undefined,
+    onSaveConfig: () => undefined,
+    onApplyConfig: () => undefined,
     runs: [],
     trees: [],
     importErrors: [],
@@ -117,6 +133,7 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     onLoadVersion: () => undefined,
     onSelectNode: () => undefined,
     onSelectNodeEntity: () => undefined,
+    onToggleCapabilityGrants: () => undefined,
     onBeginAddNode: () => undefined,
     onEditNodeDraft: () => undefined,
     onCancelAddNode: () => undefined,
@@ -509,6 +526,79 @@ describe("enterprise Skills tab (browser)", () => {
   });
 });
 
+describe("enterprise capability grants (browser)", () => {
+  const EXPLICIT_TREE = { ...TREE, capabilityGrants: "explicit" } as EnterpriseTreeDetail;
+
+  it("names the work-map's grant mode on Worktree and offers the switch", () => {
+    const container = renderInto(
+      createProps({ section: "worktree", selectedTreeId: TREE.id, treeDetail: TREE }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Inherited scopes");
+    expect(text).toContain("Grant explicitly");
+  });
+
+  it("hides the switch without admin", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        canEdit: false,
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Inherited scopes");
+    expect(text).not.toContain("Grant explicitly");
+  });
+
+  it("tells the Tools and Skills catalogs that everything unattached is denied", () => {
+    const tools = renderInto(
+      createProps({ section: "tools", treeDetail: EXPLICIT_TREE, toolGroups: [] }),
+    );
+    expect(tools.textContent ?? "").toContain("grants tools explicitly");
+    const skills = renderInto(
+      createProps({ section: "skills", treeDetail: EXPLICIT_TREE, skills: [skill("summarize")] }),
+    );
+    expect(skills.textContent ?? "").toContain("grants skills explicitly");
+  });
+
+  it("claims no restriction while enterprise is only observing", () => {
+    // Observe records without blocking, so promising "denied" would describe a
+    // rule the runtime is not applying.
+    const container = renderInto(
+      createProps({ section: "tools", treeDetail: EXPLICIT_TREE, enterpriseMode: "observe" }),
+    );
+    expect(container.textContent ?? "").not.toContain("grants tools explicitly");
+  });
+
+  it("tells a step with no tools that it is ungranted, not unrestricted", () => {
+    // The inherited default warns that the first entry NARROWS the step; under
+    // explicit grants the step reaches nothing until something is listed, so the
+    // narrowing wording would state the opposite.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: EXPLICIT_TREE.id,
+        treeDetail: EXPLICIT_TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("reaches no tool until one is listed");
+    expect(text).not.toContain("it allows every tool except any it denies");
+  });
+
+  it("treats an explicit work-map as governing MCP even with no attachment", () => {
+    const container = renderInto(
+      createProps({ section: "mcp", treeDetail: EXPLICIT_TREE, mcpServers: [] }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("A server no step attaches is registered and unreachable.");
+    expect(text).not.toContain("does not govern MCP yet");
+  });
+});
+
 describe("enterprise Worktree step bindings (browser)", () => {
   it("offers tool, skill, and knowledge binding on the selected step", () => {
     const container = renderInto(
@@ -646,9 +736,10 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(text).toContain("Tools");
     expect(text).toContain("Skills");
     expect(text).toContain("Knowledge");
-    expect(container.querySelectorAll(".binding-group").length).toBe(3);
+    expect(text).toContain("MCP servers");
+    expect(container.querySelectorAll(".binding-group").length).toBe(4);
     expect(container.querySelector(".binding-group input")).toBeNull();
-    // Structural edits live in their own block, not as a fourth binding.
+    // Structural edits live in their own block, not as a fifth binding.
     expect(container.querySelector(".node-structure")).not.toBeNull();
   });
 
@@ -734,6 +825,228 @@ describe("enterprise Worktree step bindings (browser)", () => {
       }),
     );
     expect(container.querySelector("openclaw-modal-dialog")).toBeNull();
+  });
+
+  it("credits an ancestor's MCP attachment on the selected leaf", () => {
+    // Governance grants an attachment down the branch, so a leaf with no local
+    // mcpServers is not server-less — saying it can call none would contradict
+    // what the run allows.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: {
+          ...TREE,
+          nodes: [
+            { ...TREE.nodes[0], ontology: { mcpServers: ["acme-tracker"] } },
+            { ...TREE.nodes[1] },
+          ],
+        },
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Inherited from a parent step:");
+    expect(text).toContain("acme-tracker");
+    expect(text).not.toContain("no MCP server attached");
+  });
+
+  it("shows the MCP picker as loading until config arrives", () => {
+    // Config is a request too, and the worktree is interactive before it lands —
+    // an empty list then is "not here yet", not "nothing registered".
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        mcpServers: [],
+        mcpServersKnown: false,
+        bindingPicker: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "mcpServers",
+          query: "",
+          selected: [],
+          custom: "",
+          phase: "idle",
+          failure: null,
+        },
+      }),
+    );
+    const text = container.querySelector("openclaw-modal-dialog")?.textContent ?? "";
+    expect(text).not.toContain("No MCP servers are registered");
+  });
+
+  it("keeps the MCP picker usable while another catalog is failing", () => {
+    // MCP options come from config, so a foundations failure is not this picker's
+    // failure — and reporting it here sends the operator after the wrong problem.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        catalogPhase: "unloaded",
+        catalogErrors: { tools: null, skills: null, foundations: "foundations exploded" },
+        mcpServers: [
+          {
+            name: "acme-tracker",
+            enabled: true,
+            transport: "stdio",
+            auth: null,
+            launch: "npx",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+        ],
+        bindingPicker: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "mcpServers",
+          query: "",
+          selected: [],
+          custom: "",
+          phase: "idle",
+          failure: null,
+        },
+      }),
+    );
+    const text = container.querySelector("openclaw-modal-dialog")?.textContent ?? "";
+    expect(text).toContain("acme-tracker");
+    expect(text).not.toContain("foundations exploded");
+  });
+
+  it("holds registration back until the config it writes into has arrived", () => {
+    // Starting a draft from an empty config would let Save replace the whole
+    // persisted config with just this one entry.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        canRegisterMcp: false,
+        mcpRegisterBlockedReason: "Loading the gateway config",
+      }),
+    );
+    const addButton = [...container.querySelectorAll("button")].find((button) =>
+      (button.textContent ?? "").includes("Register server"),
+    );
+    expect(addButton?.hasAttribute("disabled")).toBe(true);
+    expect(container.textContent ?? "").toContain("Loading the gateway config");
+  });
+
+  it("does not call a server unreachable outside enforce mode", () => {
+    // Observe records without blocking and off governs nothing, so the runtime
+    // withholds nothing — the screen must not claim otherwise.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        selectedTreeId: TREE.id,
+        enterpriseMode: "observe",
+        treeDetail: {
+          ...TREE,
+          nodes: [
+            { ...TREE.nodes[0] },
+            { ...TREE.nodes[1], ontology: { mcpServers: ["atlassian"] } },
+          ],
+        },
+        mcpServers: [
+          {
+            name: "github",
+            enabled: true,
+            transport: "stdio",
+            auth: null,
+            launch: "npx",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+        ],
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("github");
+    expect(text).not.toContain("not attached to any step");
+  });
+
+  it("shows a registered server as unattached until a step attaches it", () => {
+    // The state an operator comes to this screen to check: registered is not
+    // reachable, and nothing else on the screen says so.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        selectedTreeId: TREE.id,
+        // The work-map attaches SOMETHING, which is what turns attachment
+        // governance on; github is registered but attached nowhere.
+        treeDetail: {
+          ...TREE,
+          nodes: [
+            { ...TREE.nodes[0] },
+            { ...TREE.nodes[1], ontology: { mcpServers: ["atlassian"] } },
+          ],
+        },
+        mcpServers: [
+          {
+            name: "github",
+            enabled: true,
+            transport: "stdio",
+            auth: null,
+            launch: "npx",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+        ],
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("github");
+    expect(text).toContain("not attached to any step");
+  });
+
+  it("does not call an attachment unregistered before config arrives", () => {
+    // An empty registry before `config.get` answers is UNKNOWN: accusing the
+    // attachment would blame a server the gateway may well have.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        selectedTreeId: TREE.id,
+        treeDetail: {
+          ...TREE,
+          nodes: [
+            { ...TREE.nodes[0] },
+            { ...TREE.nodes[1], ontology: { mcpServers: ["atlassian"] } },
+          ],
+        },
+        mcpServers: [],
+        mcpServersKnown: false,
+      }),
+    );
+    expect(container.textContent ?? "").not.toContain("not registered in mcp.servers");
+  });
+
+  it("lists a server the work-map attaches but config does not register", () => {
+    // The attachment is inert — nothing launches under that name — so it has to
+    // be visible rather than silently dropped.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        selectedTreeId: TREE.id,
+        treeDetail: {
+          ...TREE,
+          nodes: [
+            { ...TREE.nodes[0] },
+            { ...TREE.nodes[1], ontology: { mcpServers: ["atlassian"] } },
+          ],
+        },
+        mcpServers: [],
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("atlassian");
+    expect(text).toContain("not registered in mcp.servers");
   });
 
   it("counts a custom tool value in the confirm button", () => {

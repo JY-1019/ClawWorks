@@ -5,6 +5,7 @@
  */
 import crypto from "node:crypto";
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
+import { enterpriseRunBoundableMcpServers } from "../enterprise/active-runs.js";
 import {
   loadEnabledBundleMcpConfig,
   type BundleMcpConfig,
@@ -158,7 +159,41 @@ export function loadCodexBundleMcpThreadConfig(
     workspaceDir: params.workspaceDir,
     cfg: params.cfg,
   });
-  const mcpServers = buildCodexMcpServersConfig(bundleMcp.config);
+  // A registered NAME belongs to its `mcp.servers` definition, whole. Codex
+  // deep-merges this patch with the user projection into one `mcp_servers` map, so
+  // keeping a bundle entry under a configured key would compose the two: bundle
+  // headers sent to the configured URL, bundle args and env beside a configured
+  // command — and a bundle command next to a configured url is not even loadable
+  // ("url is not supported for stdio", RawMcpServerConfig conversion in
+  // ../codex/codex-rs/config/src/mcp_types.rs:347-392). The user projection is the
+  // sole owner of those names; it is also what applies the work-map's attachments
+  // to them. Names only the bundle provides stay outside the boundary, exactly as
+  // the CLI overlay treats them.
+  const configuredNames = new Set(Object.keys(params.cfg?.mcp?.servers ?? {}));
+  const pluginNames = Object.keys(bundleMcp.config.mcpServers ?? {}).filter(
+    (name) => !configuredNames.has(name),
+  );
+  // A plugin's server cannot be attached, but the run's tool ceiling still applies:
+  // Codex's hook reports no MCP provenance, so nothing recognizes these tools as
+  // this server's once the thread is up. Peers are the configured names the user
+  // projection will actually EMIT into the same merged `mcp_servers` map — a
+  // disabled, agent-scoped, or unattached key never reaches Codex, so treating it
+  // as a namespace collision would withhold a plugin server for a clash that
+  // cannot happen (the caller resolves them; see
+  // resolveCodexEmittedUserMcpServerNames).
+  const admitted = enterpriseRunBoundableMcpServers(
+    params.runId,
+    pluginNames,
+    params.emittedUserMcpServerNames,
+  );
+  const mcpServers = buildCodexMcpServersConfig({
+    ...bundleMcp.config,
+    mcpServers: Object.fromEntries(
+      Object.entries(bundleMcp.config.mcpServers ?? {}).filter(
+        ([name]) => !configuredNames.has(name) && (!admitted || admitted.has(name)),
+      ),
+    ),
+  });
   if (Object.keys(mcpServers).length === 0) {
     return {
       diagnostics: bundleMcp.diagnostics,

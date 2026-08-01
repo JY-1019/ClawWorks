@@ -216,10 +216,57 @@ export const id: TranslationMap = {
         "Katalog alat yang dikonfigurasi, dikelompokkan sesuai cara runtime mengelompokkannya. Alat plugin terdaftar begitu dideklarasikan, bahkan sebelum konfigurasinya terselesaikan, dan alat channel serta MCP hanya ada dalam sesi aktif, jadi ini adalah apa yang dapat dikonfigurasi, bukan apa yang sedang aktif saat ini.",
       attachHint:
         "Ini adalah katalog. Untuk mengizinkan sebuah langkah memanggilnya, buka Worktree, pilih langkah tersebut, dan tambahkan di bawah Step bindings.",
+      attachHintGranted:
+        "Work-map ini memberikan tools secara eksplisit. Sebuah langkah hanya dapat memanggil tools yang tercantum di dalamnya, atau yang tercantum di langkah di atasnya. Semua tools lain dalam katalog ini ditolak.",
       empty: "Tidak ada alat yang tersedia di gateway ini.",
       toolCount: "{count} alat",
       optionalBadge: "opsional",
       pluginBadge: "Plugin: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "Server MCP yang terdaftar untuk gateway ini. Mendaftarkannya di sini sama seperti di tempat lain di OpenClaw — masuk ke mcp.servers — tetapi di bawah tata kelola enterprise, server tetap tidak dapat dijangkau sampai sebuah step melampirkannya.",
+      attachHint:
+        "Untuk mengizinkan step memanggil server, buka Worktree, pilih step tersebut, dan tambahkan di bawah Step bindings. Server yang tidak dilampirkan oleh step mana pun tetap terdaftar dan tidak dapat dijangkau.",
+      nativeConfigBoundary:
+        "Ini mengatur server yang diserahkan OpenClaw ke sebuah run. Server yang dideklarasikan langsung dalam konfigurasi harness itu sendiri, seperti file konfigurasi Codex, tetap berada di luarnya — lapisan tersebut milik harness, bukan Gateway.",
+      attachHintUngoverned:
+        "Peta kerja ini belum mengatur MCP, sehingga server terdaftar tetap dapat dipanggil sebagai alat biasa. Melampirkan salah satu ke langkah di bawah Step bindings akan mengaktifkan deny-by-default untuk seluruh peta kerja.",
+      empty: "Tidak ada server MCP yang terdaftar untuk gateway ini.",
+      add: "Daftarkan server",
+      disabled: "dinonaktifkan",
+      unattached: "tidak terhubung ke langkah mana pun",
+      unsaved:
+        "Pendaftaran ini hanya tersimpan di browser Anda sampai Anda menyimpannya ke konfigurasi.",
+      waitingForConfig:
+        "Memuat konfigurasi gateway; pendaftaran akan tersedia setelah konfigurasi diterima.",
+      configSaving:
+        "Penyimpanan konfigurasi sedang berlangsung. Tunggu hingga selesai — server yang didaftarkan sekarang akan dibuang saat konfigurasi yang disimpan dimuat ulang.",
+      configInvalid:
+        "Konfigurasi gateway tidak dapat diparse, sehingga layar ini tidak memiliki apa pun untuk ditambahkan. Perbaiki terlebih dahulu di editor konfigurasi — menyimpan dari sini akan mengganti file hanya dengan entri ini.",
+      rawDraftPending:
+        "Anda memiliki perubahan yang belum disimpan di editor konfigurasi mentah. Simpan atau buang terlebih dahulu — mendaftar di sini akan menimpa draf tersebut.",
+      save: "Simpan",
+      publish: "Simpan & Terbitkan",
+      publishing: "Menerbitkan...",
+    },
+    mcpDraft: {
+      title: "Daftarkan server MCP",
+      subtitle:
+        "Beri nama dan satu transport. Header, environment, TLS, dan OAuth ada di layar pengaturan MCP.",
+      name: "Nama",
+      command: "Perintah",
+      args: "Argumen (dipisahkan spasi)",
+      url: "URL",
+      submit: "Tambahkan ke config",
+      nameEmpty: "Masukkan nama server.",
+      nameTaken: "Server dengan nama tersebut sudah terdaftar; pilih nama lain.",
+      nameUnsupported:
+        "Nama tersebut tidak dapat disimpan di editor konfigurasi. Pilih nama lain (constructor, prototype, dan __proto__ adalah kata yang dicadangkan).",
+      launchMissing: "Masukkan perintah atau URL agar server dapat diluncurkan.",
+      urlInvalid:
+        "Masukkan URL http:// atau https://; MCP over HTTP tidak dapat menghubungi yang lain.",
     },
     picker: {
       subtitle: "Cari katalog dan pilih apa yang boleh digunakan langkah ini.",
@@ -244,6 +291,8 @@ export const id: TranslationMap = {
       none: "Belum ada yang dideklarasikan.",
       scopeNarrowing:
         "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin dan hanya alat yang tercantum yang tetap tersedia.",
+      scopeUngranted:
+        "Work-map ini memberikan alat secara eksplisit. Langkah ini tidak dapat mengakses alat apa pun sampai satu alat dicantumkan di sini atau pada langkah di atasnya.",
       knowledgeNarrowing:
         "Langkah ini belum memiliki daftar izin pengetahuan, sehingga dapat mengkueri setiap fondasi yang terdaftar. Menambahkan entri pertama akan membatasinya hanya pada fondasi yang tercantum.",
       skillNameInvalid:
@@ -257,6 +306,10 @@ export const id: TranslationMap = {
       exportFailed: "Tidak dapat memuat definisi pohon untuk diedit.",
       importFailed:
         "Penyimpanan tidak terkonfirmasi. Perubahan mungkin atau mungkin tidak diterapkan — muat ulang work-map untuk memeriksanya, sebelum mencoba lagi.",
+      mcpFirstAttachment:
+        "Peta kerja ini belum mengatur MCP. Menambahkan server pertama di sini akan mengaktifkan deny-by-default untuk SELURUH peta kerja: setiap langkah tanpa lampiran tidak akan dapat mengakses server MCP mana pun.",
+      mcpNoneAttached:
+        "Langkah ini tidak memiliki server MCP yang terpasang, sehingga tidak dapat memanggil apa pun. Tidak seperti tools dan knowledge, MCP tidak memberikan apa pun secara default.",
       importNotSent:
         "Tidak ada yang disimpan: koneksi Gateway terputus sebelum ini terkirim. Sambungkan kembali dan coba lagi.",
       importRefused: "Server menolak perubahan ini, jadi tidak ada yang disimpan: {message}",
@@ -272,6 +325,7 @@ export const id: TranslationMap = {
         "Tidak ada work-map yang dipilih, sehingga tidak ada penggunaan langkah yang ditampilkan. Pilih satu di Worktree untuk melihat langkah mana yang menggunakan setiap entri.",
       usedBy: "Digunakan oleh {treeName}:",
       declaredBy: "Dideklarasikan oleh {treeName}:",
+      attachedTo: "Terpasang ke {treeName}:",
       treeIssue:
         "Peta kerja yang dipilih tidak berhasil dimuat, sehingga langkah-langkah di bawah berasal dari definisi fallback yang dikembalikan oleh Gateway: {message}. Dalam mode enforce, peta kerja yang gagal tidak mengatur apa pun hingga berhasil dimuat.",
       treeUnavailable:
@@ -284,8 +338,11 @@ export const id: TranslationMap = {
       tools: "Alat — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Pengetahuan — ontology.knowledgeFoundations",
+      mcp: "Server MCP — ontology.mcpServers",
       skillNotInstalled: "tidak terinstal",
       foundationNotRegistered: "tidak terdaftar",
+      mcpNotRegistered: "tidak terdaftar di mcp.servers",
+      inherited: "Diwarisi dari langkah induk:",
     },
     skillsTab: {
       title: "Skills",
@@ -293,6 +350,8 @@ export const id: TranslationMap = {
         "Setiap skill yang terinstal untuk gateway ini, beserta persyaratan agar memenuhi syarat.",
       attachHint:
         "Ini adalah katalog. Untuk mendeklarasikan salah satu sebagai dependensi langkah, buka Worktree, pilih langkah tersebut, dan tambahkan di bawah Step bindings.",
+      attachHintGranted:
+        "Work-map ini memberikan skills secara eksplisit: eksekusi yang terikat padanya hanya ditawarkan skills yang dideklarasikan oleh langkah-langkahnya, dan setiap skill lain yang terinstal tidak diberikan ke model.",
       empty: "Tidak ada skills yang terinstal.",
       declaredSection: "Dideklarasikan oleh {treeName}",
       otherSection: "Skills terinstal lainnya",
@@ -314,6 +373,7 @@ export const id: TranslationMap = {
     knowledge: "Pengetahuan: {ids}",
     guidance: "Instruksi: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Diaudit",
     activeBadge: "aktif",
     nodeCount: "{count} langkah",
@@ -323,6 +383,16 @@ export const id: TranslationMap = {
     selectTree: "Pilih workflow tree untuk memvisualisasikan struktur dan ontologinya.",
     treeTitle: "Visualisasi tree",
     treeUnavailable: "Definisi tree tidak lagi tersedia.",
+    capabilityGrants: {
+      explicit: "Pemberian eksplisit",
+      inherited: "Cakupan yang diwarisi",
+      explicitHint:
+        "Setiap langkah hanya dapat mengakses tools, skills, dan server MCP yang dicantumkan oleh langkah tersebut atau langkah di atasnya. Langkah yang tidak mencantumkan apa pun tidak dapat mengakses apa pun.",
+      inheritedHint:
+        "Daftar pada suatu langkah mempersempit apa yang diizinkan oleh langkah induknya; langkah yang cabangnya tidak mencantumkan apa pun dapat menggunakan tool atau skill apa pun.",
+      turnOn: "Berikan secara eksplisit",
+      turnOff: "Gunakan cakupan yang diwarisi",
+    },
     structureTitle: "Struktur",
     ontologyTitle: "Ontologi",
     wholeTreeOverviewTitle: "Ikhtisar seluruh pohon",
@@ -680,6 +750,7 @@ export const id: TranslationMap = {
     enterpriseHistory: "Riwayat",
     enterpriseTools: "Alat",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Pengetahuan",
   },
   subtitles: {
@@ -710,6 +781,7 @@ export const id: TranslationMap = {
     enterpriseHistory: "Riwayat eksekusi yang dikelola dan jejaknya.",
     enterpriseTools: "Katalog alat yang dikonfigurasi.",
     enterpriseSkills: "Setiap skill yang terinstal untuk gateway ini.",
+    enterpriseMcp: "Server MCP terdaftar dan langkah-langkah yang dapat memanggilnya.",
     knowledge: "Fondasi pengetahuan terdaftar dan statusnya.",
   },
   skillWorkshop: {

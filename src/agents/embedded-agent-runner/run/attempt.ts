@@ -164,6 +164,7 @@ import {
 } from "../../embedded-agent-helpers.js";
 import { countActiveToolExecutions } from "../../embedded-agent-subscribe.handlers.tools.js";
 import { subscribeEmbeddedAgentSession } from "../../embedded-agent-subscribe.js";
+import { resolveRunSkillGrant } from "../../enterprise-skill-scope.js";
 import { isSignalTimeoutReason } from "../../failover-error.js";
 import { runAgentEndSideEffects } from "../../harness/agent-end-side-effects.js";
 import { runAgentHarnessBeforeAgentFinalizeHook } from "../../harness/lifecycle-hook-helpers.js";
@@ -1105,14 +1106,27 @@ export async function runEmbeddedAttempt(
       skillsSnapshot: skillsSnapshotForRun,
       workspaceOnly: loadSkillsWorkspaceOnly,
     });
+    // A work-map that grants capabilities explicitly narrows this run to the
+    // skills it attaches: the catalog below, and the credentials right here. Null
+    // for every other run, which leaves both untouched.
+    const grantedSkills = resolveRunSkillGrant({
+      runId: params.runId,
+      ...(skillsSnapshotForRun ? { skillsSnapshot: skillsSnapshotForRun } : {}),
+    });
+    // Resolved BEFORE the env overrides on purpose: these put a withheld skill's
+    // api key into the process environment, where an allowed `exec` or a
+    // subprocess could read it — hiding the skill from the catalog alone would
+    // leave the secret behind.
     restoreSkillEnv = skillsSnapshotForRun
       ? applySkillEnvOverridesFromSnapshot({
           snapshot: skillsSnapshotForRun,
           config: params.config,
+          ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
         })
       : applySkillEnvOverrides({
           skills: skillEntries ?? [],
           config: params.config,
+          ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
         });
     const promptSkillEntries = mapSandboxSkillEntriesForPrompt({
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
@@ -1127,6 +1141,7 @@ export async function runEmbeddedAttempt(
       workspaceDir: effectiveSkillsPromptWorkspace,
       agentId: sessionAgentId,
       eligibility: skillsEligibility,
+      ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
     });
     prepStages.mark("skills");
 

@@ -58,7 +58,20 @@ trees:
         # the root (CLI/ACP never advance into child steps). Keep it a superset
         # of every child scope so children narrow within it; without it, a
         # root-scoped run would fall back to allow-all.
-        allowedTools: [memory_search, knowledge_search, message]
+        # The MCP globs belong here too: a native runtime (Codex, the Claude CLI)
+        # never advances past this root, so THIS list is what its calls are judged
+        # against — and on a CLI with no pre-tool hook it also decides whether the
+        # server is handed over at all. Both spellings, one per runtime's renaming.
+        allowedTools:
+          [
+            memory_search,
+            knowledge_search,
+            message,
+            "acme-tracker__*",
+            "mcp__acme-tracker__*",
+            "acme_tracker__*",
+            "mcp__acme_tracker__*",
+          ]
         knowledgeFoundations: [acme.support-desk-handbook]
         constraints:
           - id: no-card-numbers
@@ -102,8 +115,30 @@ trees:
           title: Escalate to a human agent
           ontology:
             # No knowledge_search: escalation summarizes what is already known
-            # rather than retrieving more, and no memory_search either.
-            allowedTools: [message]
+            # rather than retrieving more, and no memory_search either. The two
+            # MCP globs are here because this example has to run on every backend:
+            # the embedded runtime reads each tool's registration, so the
+            # attachment below is enough there, but a native harness (Codex, the
+            # Claude CLI) reports tool calls with no origin — nothing distinguishes
+            # an MCP tool from an ordinary one — so a step that narrows its tools
+            # has to name them — every spelling, because the harness picks which
+            # one it exposes (OpenClaw maps punctuation to `-`, Codex to `_`, and
+            # either may carry the `mcp__` prefix).
+            allowedTools:
+              [
+                message,
+                "acme-tracker__*",
+                "mcp__acme-tracker__*",
+                "acme_tracker__*",
+                "mcp__acme_tracker__*",
+              ]
+            # The one step allowed to reach the issue tracker. MCP is the only
+            # scope here that denies by default: the other two steps attach
+            # nothing, so neither can call this server even though the root's
+            # allowedTools would otherwise let a tool through. Registering a
+            # server named "acme-tracker" under mcp.servers is what makes this
+            # attachment resolve; until then the MCP tab shows it unregistered.
+            mcpServers: [acme-tracker]
             actions:
               - id: handoff
                 description: Summarize the request and hand it to a human.
@@ -157,7 +192,20 @@ knowledgeFoundations:
           Open by naming what went wrong in the customer's own terms, say what
           you did about it, then say what happens next and when. Keep replies
           short and apologize at most once.
-# Derived from the tree above. Import recomputes both from the tree rather than
-# trusting these, so they are a manifest for the reader, not a contract.
-requiredTools: [knowledge_search, memory_search, message]
+# Derived from the tree above. Import recomputes all three from the tree rather
+# than trusting these, so they are a manifest for the reader, not a contract.
+# The MCP globs are here because they are ordinary `allowedTools` entries; the
+# server itself is listed separately, since a bundle can carry the NAME but never
+# the server (its transport and credentials are deployment configuration).
+requiredTools:
+  [
+    "acme-tracker__*",
+    "acme_tracker__*",
+    knowledge_search,
+    "mcp__acme-tracker__*",
+    "mcp__acme_tracker__*",
+    memory_search,
+    message,
+  ]
 requiredSkills: [taskflow-inbox-triage]
+requiredMcpServers: [acme-tracker]

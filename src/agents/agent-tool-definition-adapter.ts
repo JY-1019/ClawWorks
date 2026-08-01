@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import { logDebug, logError } from "../logger.js";
 import { redactToolDetail } from "../logging/redact.js";
+import { getPluginToolMeta } from "../plugins/tools.js";
 import { isPlainObject } from "../utils.js";
 import type { HookContext } from "./agent-tools.before-tool-call.js";
 import {
@@ -392,12 +393,18 @@ export function toToolDefinitions(
               tool,
               params: preparedParams,
             });
+            // Provenance, not inference: an MCP tool carries its server in its own
+            // registration metadata, and enterprise governance needs that to decide
+            // whether the active step attached it. A name cannot answer it — a core
+            // tool can look exactly like `<server>__<tool>`.
+            const mcpTool = getPluginToolMeta(tool)?.mcp;
             const hookOutcome = await runBeforeToolCallHook({
               toolName: name,
               params: hookParams,
               ...hookMetadata,
               toolCallId,
               ctx: hookContext,
+              ...(mcpTool ? { mcpTool } : {}),
             });
             if (hookOutcome.blocked) {
               if (hookOutcome.kind === "veto") {

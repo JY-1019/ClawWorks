@@ -189,6 +189,7 @@ export const EnterpriseTreeOntologySchema = Type.Object(
     contextHints: Type.Optional(Type.Array(Type.String())),
     guidance: Type.Optional(Type.String()),
     skills: Type.Optional(Type.Array(Type.String())),
+    mcpServers: Type.Optional(Type.Array(Type.String())),
     expectedOutput: Type.Optional(Type.String()),
     audit: Type.Optional(Type.Boolean()),
   },
@@ -229,6 +230,13 @@ export const EnterpriseTreeDetailSchema = Type.Object(
     description: Type.Optional(Type.String()),
     source: EnterpriseTreeSourceSchema,
     match: Type.Optional(EnterpriseTreeMatchSchema),
+    /**
+     * `"explicit"` when the work-map grants capabilities per step: a step reaches
+     * only the tools, skills, and MCP servers its own path attaches. Absent for
+     * the inherited semantics every tree written before this field carries, which
+     * is why a client must read absence as "not explicit" rather than defaulting.
+     */
+    capabilityGrants: Type.Optional(Type.Literal("explicit")),
     nodes: Type.Array(EnterpriseTreeNodeSchema),
   },
   { additionalProperties: false },
@@ -448,6 +456,7 @@ export const EnterpriseNodeOntologySchema = Type.Object(
     contextHints: Type.Optional(Type.Array(Type.String())),
     guidance: Type.Optional(Type.String()),
     skills: Type.Optional(Type.Array(Type.String())),
+    mcpServers: Type.Optional(Type.Array(Type.String())),
     expectedOutput: Type.Optional(Type.String()),
     audit: Type.Optional(Type.Boolean()),
   },

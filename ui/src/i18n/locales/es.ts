@@ -215,10 +215,56 @@ export const es: TranslationMap = {
         "El catálogo de herramientas configurado, agrupado de la forma en que el runtime los agrupa. Una herramienta de plugin aparece en la lista una vez declarada, incluso antes de que su configuración se resuelva, y las herramientas de canal y MCP solo existen dentro de una sesión activa, por lo que esto es lo que se puede configurar en lugar de lo que está activo en este momento.",
       attachHint:
         "Este es el catálogo. Para permitir que un paso llame a una herramienta, abra Worktree, seleccione el paso y agréguela en Step bindings.",
+      attachHintGranted:
+        "Este mapa de trabajo otorga herramientas de forma explícita. Un paso solo puede llamar a las herramientas que lista, o a las que lista un paso superior. Cualquier otra herramienta en este catálogo se deniega.",
       empty: "No hay herramientas disponibles en este Gateway.",
       toolCount: "{count} herramienta(s)",
       optionalBadge: "opcional",
       pluginBadge: "Plugin: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "Servidores MCP registrados para este gateway. Registrar uno aquí es lo mismo que en cualquier otro lugar de OpenClaw — se guarda en mcp.servers — pero bajo gobernanza enterprise un servidor permanece inaccesible hasta que un paso lo vincule.",
+      attachHint:
+        "Para permitir que un paso llame a un servidor, abra Worktree, seleccione el paso y añádalo en Step bindings. Un servidor que ningún paso vincule estará registrado pero inaccesible.",
+      nativeConfigBoundary:
+        "Esto controla los servidores que OpenClaw entrega a una ejecución. Un servidor declarado directamente en la configuración propia de un harness, como el archivo de configuración de Codex, permanece fuera de esto — esa capa pertenece al harness, no al Gateway.",
+      attachHintUngoverned:
+        "Este mapa de trabajo aún no gobierna MCP, por lo que los servidores registrados siguen siendo invocables como herramientas ordinarias. Adjuntar uno a un paso en Step bindings activa la política de denegación por defecto para todo el mapa de trabajo.",
+      empty: "No hay servidores MCP registrados para este gateway.",
+      add: "Registrar servidor",
+      disabled: "deshabilitado",
+      unattached: "no asociado a ningún paso",
+      unsaved: "Este registro solo está en tu navegador hasta que lo guardes en la configuración.",
+      waitingForConfig:
+        "Cargando la configuración del Gateway; el registro estará disponible una vez que llegue.",
+      configSaving:
+        "Se está guardando una configuración. Espera a que termine — un servidor registrado ahora se descartaría cuando la configuración guardada se recargue.",
+      configInvalid:
+        "La configuración del Gateway no se puede analizar, por lo que esta pantalla no tiene nada a lo que añadir. Corrígela primero en el editor de configuración — guardar desde aquí reemplazaría el archivo con solo esta entrada.",
+      rawDraftPending:
+        "Tienes cambios sin guardar en el editor de configuración raw. Guárdalos o descártalos primero — registrar aquí sobrescribiría ese borrador.",
+      save: "Guardar",
+      publish: "Guardar y publicar",
+      publishing: "Publicando...",
+    },
+    mcpDraft: {
+      title: "Registrar un servidor MCP",
+      subtitle:
+        "Nómbralo y asígnale un transporte. Los encabezados, el entorno, TLS y OAuth se configuran en la pantalla de ajustes de MCP.",
+      name: "Nombre",
+      command: "Comando",
+      args: "Argumentos (separados por espacios)",
+      url: "URL",
+      submit: "Agregar a la configuración",
+      nameEmpty: "Ingresa un nombre de servidor.",
+      nameTaken: "Ya existe un servidor registrado con ese nombre; elige otro nombre.",
+      nameUnsupported:
+        "Ese nombre no se puede almacenar en el editor de configuración. Elige otro (constructor, prototype y __proto__ están reservados).",
+      launchMissing: "Introduce un comando o una URL para poder iniciar el servidor.",
+      urlInvalid:
+        "Ingresa una URL http:// o https://; MCP over HTTP no puede conectarse a nada más.",
     },
     picker: {
       subtitle: "Busca en el catálogo y elige lo que este paso puede usar.",
@@ -243,6 +289,8 @@ export const es: TranslationMap = {
       none: "Ninguno declarado aún.",
       scopeNarrowing:
         "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Al agregar la primera entrada, se convierte en una lista de permitidas y solo las herramientas listadas permanecen disponibles.",
+      scopeUngranted:
+        "Este mapa de trabajo otorga herramientas de forma explícita. El paso no tiene acceso a ninguna herramienta hasta que se incluya una aquí o en un paso superior.",
       knowledgeNarrowing:
         "Este paso aún no tiene una lista de conocimientos permitidos, por lo que puede consultar todas las fundaciones registradas. Agregar la primera entrada lo restringe a las fundaciones enumeradas.",
       skillNameInvalid:
@@ -257,6 +305,10 @@ export const es: TranslationMap = {
       exportFailed: "No se pudo cargar la definición del árbol para editar.",
       importFailed:
         "No se confirmó el guardado. Es posible que se haya aplicado o no — actualice el mapa de trabajo para verificarlo antes de intentarlo de nuevo.",
+      mcpFirstAttachment:
+        "Este mapa de trabajo aún no gobierna MCP. Agregar el primer servidor aquí activa denegación por defecto para TODO el mapa de trabajo: cada paso sin un adjunto no alcanzará ningún servidor MCP.",
+      mcpNoneAttached:
+        "Este paso no tiene ningún servidor MCP adjunto, por lo que no puede llamar a ninguno. A diferencia de las herramientas y el conocimiento, MCP no otorga nada por defecto.",
       importNotSent:
         "No se guardó nada: la conexión con el Gateway se interrumpió antes de que se enviara. Vuelve a conectarte e inténtalo de nuevo.",
       importRefused: "El servidor rechazó este cambio, por lo que no se guardó nada: {message}",
@@ -273,6 +325,7 @@ export const es: TranslationMap = {
         "No hay un mapa de trabajo seleccionado, por lo que no se muestra el uso de pasos. Selecciona uno en Worktree para ver qué pasos usa cada entrada.",
       usedBy: "Usado por {treeName}:",
       declaredBy: "Declarado por {treeName}:",
+      attachedTo: "Adjunto a {treeName}:",
       treeIssue:
         "El mapa de trabajo seleccionado no se cargó, por lo que los pasos a continuación provienen de la definición de respaldo que el Gateway devolvió en su lugar: {message}. En modo de aplicación, el mapa de trabajo fallido no gobierna nada hasta que se cargue.",
       treeUnavailable:
@@ -285,14 +338,19 @@ export const es: TranslationMap = {
       tools: "Herramientas — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Conocimiento — ontology.knowledgeFoundations",
+      mcp: "Servidores MCP — ontology.mcpServers",
       skillNotInstalled: "no instalado",
       foundationNotRegistered: "no registrada",
+      mcpNotRegistered: "no registrado en mcp.servers",
+      inherited: "Heredado de un paso superior:",
     },
     skillsTab: {
       title: "Skills",
       subtitle: "Cada skill instalado para este gateway, con lo que necesita para ser elegible.",
       attachHint:
         "Este es el catálogo. Para declarar una como dependencia de un paso, abra Worktree, seleccione el paso y agréguela en Step bindings.",
+      attachHintGranted:
+        "Este mapa de trabajo otorga Skills de forma explícita: una ejecución vinculada a él solo recibe las Skills que sus pasos declaran, y cualquier otra Skill instalada se oculta del modelo.",
       empty: "No hay Skills instalados.",
       declaredSection: "Declarado por {treeName}",
       otherSection: "Otras skills instaladas",
@@ -314,6 +372,7 @@ export const es: TranslationMap = {
     knowledge: "Conocimiento: {ids}",
     guidance: "Instrucciones: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Auditado",
     activeBadge: "activo",
     nodeCount: "{count} paso(s)",
@@ -324,6 +383,16 @@ export const es: TranslationMap = {
       "Selecciona un árbol de flujo de trabajo para visualizar su estructura y ontología.",
     treeTitle: "Visualización del árbol",
     treeUnavailable: "La definición del árbol ya no está disponible.",
+    capabilityGrants: {
+      explicit: "Concesiones explícitas",
+      inherited: "Ámbitos heredados",
+      explicitHint:
+        "Cada paso accede únicamente a las herramientas, Skills y servidores MCP que él mismo o un paso superior enumere. Un paso que no enumere ninguno no accede a ninguno.",
+      inheritedHint:
+        "Las listas de un paso restringen lo que sus ancestros permitieron; un paso cuya rama no lista nada puede usar cualquier herramienta o skill.",
+      turnOn: "Conceder explícitamente",
+      turnOff: "Usar alcances heredados",
+    },
     structureTitle: "Estructura",
     ontologyTitle: "Ontología",
     wholeTreeOverviewTitle: "Vista general del árbol completo",
@@ -681,6 +750,7 @@ export const es: TranslationMap = {
     enterpriseHistory: "Historial",
     enterpriseTools: "Herramientas",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Conocimiento",
   },
   subtitles: {
@@ -712,6 +782,7 @@ export const es: TranslationMap = {
     enterpriseHistory: "Ejecuciones gobernadas anteriores y sus trazas.",
     enterpriseTools: "El catálogo de herramientas configurado.",
     enterpriseSkills: "Cada skill instalado para este gateway.",
+    enterpriseMcp: "Servidores MCP registrados y los pasos que pueden llamarlos.",
     knowledge: "Bases de conocimiento registradas y su estado.",
   },
   skillWorkshop: {

@@ -87,6 +87,7 @@ root:
         allowedTools: [memory_search, message]
         deniedTools: [exec, process]
         skills: [refund-playbook]
+        mcpServers: [acme-tracker]
         expectedOutput: A resolution summary or an escalation note.
 ```
 
@@ -195,9 +196,20 @@ Each node carries executable metadata in its `ontology`:
 
 - `allowedTools` / `deniedTools`: tool name globs. Empty or omitted allows all;
   deny wins over allow. Each node on the root-to-active path is an independent
-  gate, so a leaf inherits every ancestor's scope.
+  gate, so a leaf inherits every ancestor's scope. Under
+  [explicit capability grants](#capability-grants) an omitted list allows
+  nothing instead.
 - `knowledgeFoundations`: knowledge foundation ids the step may query. Empty or
   omitted allows every configured foundation.
+- `mcpServers`: MCP servers the step may call, by their `mcp.servers` config
+  name. This is the one scope that DENIES by default — but only for a work-map
+  that uses it: attach a server anywhere in the tree and every step is governed,
+  so a step without an attachment can call none. A work-map that never mentions
+  the field keeps the behavior it had before it existed. An attachment is
+  inherited down the branch and grants that server's tools without the step also
+  listing them in `allowedTools`; `deniedTools` still wins, so a step can take one
+  tool back. [Explicit capability grants](#capability-grants) turn the same rule
+  on for a work-map that attaches no server at all.
 - `contextHints` / `expectedOutput`: compact lines surfaced to the model in the
   step digest so it knows the rules up front.
 - `guidance`: a free-form instruction line for the step, rendered in the digest.
@@ -209,6 +221,80 @@ Each node carries executable metadata in its `ontology`:
 Guidance is the advisory lane: it teaches the model how to work but never widens
 what it may do. Structure (tool scope, the object model) and governance policies
 remain the enforced authority.
+
+### Capability grants
+
+A work-map decides how its steps get capabilities at all:
+
+```yaml
+schema: clawworks.workflow-tree
+schemaVersion: 1
+id: acme.incident-response
+capabilityGrants: explicit
+```
+
+With `capabilityGrants: explicit`, **tools, skills, and MCP servers are all
+deny-by-default**: a step reaches only what it or a step above it attaches.
+
+- **Tools**: a call has to be named by some `allowedTools` list on the
+  root-to-step path. A path that lists nothing calls nothing — including
+  `message`, so a work-map that grants explicitly has to say what its steps may
+  do. The lists still narrow as they nest (a leaf cannot widen past its root),
+  and `deniedTools` still wins.
+- **Skills**: the run's skill catalog is narrowed to the skills its steps
+  declare. A skill no step attaches is not offered to the model, not materialized
+  for a CLI harness, and its `skills.entries.<name>` credentials are not injected
+  for the run — nor handed to a CLI subprocess the run starts. Nothing is
+  installed or uninstalled by this; the agent's own skill filter still applies
+  first, so a work-map can only narrow what the agent already had.
+- **MCP servers**: already deny-by-default whenever a work-map attaches one
+  (above); explicit grants turn the same rule on for a work-map that attaches
+  none, and additionally withhold a plugin's MCP servers from a native runtime
+  unless the root's `allowedTools` grants them whole. On the Claude CLI and the
+  Codex app-server the attachment alone is not enough to CALL the server — those
+  report a tool name with no MCP origin — so the root must also list the server's
+  tool globs, in every spelling (see
+  [What that means for a governed native run](#mcp-servers)).
+
+Omit the field for the inherited semantics every work-map written before it
+carries: a scope narrows what an ancestor allowed, and a branch that scopes
+nothing may use anything. That is the default because `allowedTools` and `skills`
+predate this switch — a stored work-map that scopes one leaf means "narrow that
+leaf", and silently rereading it as "deny everywhere else" would break an import
+on upgrade.
+
+The Control UI shows which mode a work-map is in on **Enterprise -> Worktree**,
+next to the work-map's name, and switches it there. Switching writes an ordinary
+revision, so the version history can restore the previous mode.
+
+One gap is worth stating plainly. Skill credentials are injected into the
+gateway's **process** environment, shared by every run in it. A governed run
+never injects a withheld skill's key, and the subprocesses it starts (a CLI
+backend, the Codex app-server) have those keys removed even when a concurrent run
+put them there — but a governed run allowed to `exec` reads that environment
+in-process, so it can still see a key a DIFFERENT, concurrently running session
+injected for a skill it was granted. That is a property of the process-wide skill
+environment (the same crossing exists between any two sessions with no enterprise
+involved), not of capability grants; closing it needs per-run credential
+isolation in the skills runtime. Keep skills whose credentials must not cross
+runs on their own agent until then.
+
+**ACP turns are outside this boundary.** A turn dispatched to an ACP agent runs
+in a process OpenClaw does not supply tools to, and its calls never reach the
+per-call gate, so an explicit work-map does not constrain what that agent does —
+its own tool and MCP surface applies. The run is still traced and its run-start
+policies still evaluate. Do not rely on capability grants to bound an ACP-backed
+agent; scope that agent itself.
+
+Three limits are worth knowing. The run digest tells the model the rule and lists
+each step's grants, so it does not spend turns discovering denials — but the
+enforcement is the per-call gate, not the prompt. A CLI backend with no pre-tool
+hook judges no call at all: there, skills and MCP servers are withheld physically
+(nothing is linked, nothing is launched), while `allowedTools` bounds only what
+OpenClaw hands over. And the runtimes that never advance past the root (the Claude
+CLI, Codex, ACP) are judged by the ROOT's grants for the whole run, so a work-map
+that grants only on its leaves gives them nothing — put the tools those runs need
+on the root, exactly as an MCP-attaching work-map does.
 
 ### The typed object model
 
@@ -292,6 +378,180 @@ appears only when the tree opts into ontology writes. Every tool is bounded to
 the active node's path and to addressable types (those with a primary key), so a
 step can never read, traverse into, or write an object type outside its own
 contract. Writes are recorded to the run trace as `action.invoked` events.
+
+## MCP servers
+
+MCP servers are registered the ordinary OpenClaw way — one entry under
+`mcp.servers` — from **Enterprise -> MCP** in the Control UI, from the MCP
+settings screen, or with `openclaw mcp add`. Registration alone does not make a
+server reachable from a governed run.
+
+Under enterprise governance a registered server is callable only from the steps
+that attach it — once the work-map opts in. A work-map that never mentions
+`mcpServers` and does not [grant explicitly](#capability-grants) is not governed
+by attachments at all: its runs reach every registered server as ordinary tools,
+exactly as they did before this field existed. Attaching one server anywhere in
+the tree (or turning on explicit grants) switches the whole work-map to
+deny-by-default:
+
+```yaml
+- id: support.resolve
+  title: Resolve or escalate
+  ontology:
+    mcpServers: [acme-tracker]
+```
+
+Everything else about MCP is unchanged: the servers, their transports, their auth,
+and their tools are the same ones the rest of OpenClaw uses. What the workflow
+tree adds is reach. A step that attaches nothing calls nothing, so a server
+registered for one workflow cannot be used by a step that was never given it.
+
+The Enterprise MCP screen shows each registered server with the steps of the
+selected work-map that attach it, and labels the two states that are easy to
+misread: a server no step attaches (registered, unreachable) and an attachment
+naming a server config does not register (inert — nothing launches under that
+name).
+
+Only servers an operator registered under `mcp.servers` are gated this way. A
+server a plugin contributes arrives with that plugin's tool surface and cannot be
+attached here — the Enterprise MCP screen does not register it, so requiring an
+attachment would take a working plugin away from every governed run with no way to
+grant it back.
+
+It is still scoped by `allowedTools` like the rest of that plugin. On the embedded
+runtime the per-call gate does that. On a backend with no pre-tool hook nothing
+judges a call afterwards, so the same ceiling is applied at launch instead: a
+plugin server the root's list cannot admit whole — or that a denial or a blocking
+policy reaches — is not handed over. A root that narrows nothing hands over
+everything, as before.
+
+An MCP tool is recognized by what it _is_, never by how its name reads: every tool
+the MCP runtime materializes carries the server it came from, and the per-call gate
+reads that registration. A core tool spelled like `<server>__<tool>` is therefore
+never mistaken for one.
+
+That registration exists on the embedded runtime. A native harness (Codex, the
+Claude CLI) reports tool calls through a hook that carries no origin and passes
+ordinary tool names through verbatim, so nothing there distinguishes an ordinary
+`foo__danger` from server `foo`'s `danger`. Guessing would hand that ordinary tool
+the attachment's grant, so the gate does not guess — native runs are bounded where
+the mapping is exact instead, at launch, by what is handed over.
+
+**What that means for a governed native run:** the attachment decides whether a
+server is reachable at all. On the embedded runtime it additionally grants that
+server's tools, so `allowedTools` need not name them; on a native runtime a step
+that narrows `allowedTools` must name them as it would any other tool — with both
+spellings, since each runtime renames the server its own way. Under
+[explicit capability grants](#capability-grants) this is not optional: those
+runtimes report a flattened tool name with no MCP origin, so the gate cannot tell
+the server's tool from an ordinary one, and a step that grants no tools grants
+none of the server's either. Attach the server AND list its globs:
+
+```yaml
+ontology:
+  allowedTools:
+    [message, "acme-tracker__*", "mcp__acme-tracker__*", "acme_tracker__*", "mcp__acme_tracker__*"]
+  mcpServers: [acme-tracker]
+```
+
+Every spelling, not just one: the harness decides which name it exposes (OpenClaw
+maps punctuation to `-`, Codex to `_`, and either may carry the `mcp__` prefix), so
+a list that covers only some of them leaves the rest outside the ceiling — and a
+native run withholds the server rather than hand over tools it cannot bound.
+
+### What the boundary does not cover
+
+Attachment governs the servers **OpenClaw hands over**. A harness that reads its
+own configuration is a second source, and OpenClaw's projection is an overlay on
+top of it: Codex merges its configuration layers table by table
+(`merge_toml_values_at_path`, `codex-rs/config/src/merge.rs`), so an overlay can
+add or change keys but never remove a server a lower layer declared. A server
+written into the Codex config file therefore starts for a governed run too, and a
+lower-layer entry that shares a name with a registered one contributes its own
+fields to the merge.
+
+That layer belongs to the harness, not to the gateway. Keep the servers a work-map
+should govern in `mcp.servers`, where the Enterprise MCP screen can see them, and
+treat MCP servers in a harness's own config the way you would treat anything else
+installed on the host.
+
+A bundle exported from a work-map records the server names it attaches
+(`requiredMcpServers`), and importing one reports them: a server is deployment
+configuration, so the bundle carries the name and the recipient registers the
+server itself.
+
+Put those globs on the ROOT as well when the tree narrows tools there: a native
+runtime never advances past the root, so that list is what its calls are judged
+against — and on a CLI with no pre-tool hook it also decides whether the server is
+handed over at all (a server the root's list cannot admit is withheld, not merely
+denied later). A tree that narrows nothing needs none of this; the attachment is
+the whole rule there.
+
+A `deniedTools` entry may be written with either the configured server name or the
+runtime's rewritten one; both cover an embedded call.
+
+One rewrite cannot be read back, though. Codex disambiguates a collision — and
+fits a name into its 64-character budget — with a hash of an identity computed on
+its side, so a denial copied from a model-visible name like
+`mcp__github__read_a1b2c3d4e5f6` names an operation nothing here can identify. The
+embedded gate does not drop such a rule: it applies it to the whole server for that
+step. Write the denial with the configured name (`github__read`) to keep the rest
+of the server callable.
+
+A harness may rewrite an identity past recovery — Codex truncates a callable name
+at 64 characters and disambiguates a collision with a hash suffix — so a per-tool
+denial cannot be matched against what it reports. Rather than resting the boundary
+on a name that would have to be guessed at, a server the work-map **both attaches
+and partially denies is never handed to a native runtime**: it is withheld at
+launch, exactly like an unattached one. Per-tool denials inside an MCP server are
+enforced on the embedded runtime, where every call carries its registration.
+
+A denial that cannot reach the server's tools (`exec`, say) does not withhold
+anything — only one that names the server, or a pattern that opens with a wildcard
+and could therefore reach it.
+
+Attachments match `mcp.servers` keys exactly — those keys are free-form and
+case-sensitive, so `github` and `GitHub` are two different servers.
+
+Registering a server here writes the same `mcp.servers` entry as anywhere else,
+including an explicit `transport`. The two HTTP transports are not interchangeable
+(`streamable-http` and `sse`), and an entry that omits it is read differently by
+different runtimes, so the form asks which one it is.
+
+CLI-backed runtimes (including the Codex app-server) launch their MCP servers
+themselves, from config the subprocess owns, so nothing can be withdrawn once that
+process is up. For those, OpenClaw withholds the servers **no step in the bound
+work-map attaches** — they are never written into the subprocess config or the
+Codex thread patch. Two consequences follow, and both are deliberate:
+
+- Those runtimes never advance workflow steps, so they stay on the root for the
+  whole run. Attachments are therefore read across every step the run PLANNED —
+  not the whole definition: a branch the route left out is not going to run, and
+  handing over its server would let the selected branch call it with no per-step
+  gate to stop it. Per-step enforcement is exact on the embedded
+  runtime, where every tool call passes the gate.
+- Withholding removes what OpenClaw would have injected. A server the operator
+  declared in the harness's own configuration is a layer OpenClaw does not own —
+  Codex, for instance, composes `mcp_servers` by key across its config layers and
+  a thread patch is the session layer.
+
+Anything that would have blocked a call counts the same way, because on a runtime
+with no per-call hook nothing evaluates it later: a governance policy that denies
+or requires approval for a tool the server exposes withholds the server at launch,
+and so does a root allow-list that grants it only in part — `allowedTools` stays a
+ceiling, so `<server>__*` is how a step grants a server to a native runtime.
+
+Observe mode withholds nothing: it records decisions without blocking, and
+removing a server is physical rather than recorded.
+
+Only `mcp.servers` entries are attachable. A server that reaches a Claude backend
+through an inherited `--mcp-config` file is operator-supplied but not registrable
+here, so a governed run withholds it outright rather than letting an attachment
+that this screen reports as unregistered quietly launch it.
+
+Servers a plugin provides are not attached this way. They arrive with that
+plugin's tool surface and stay scoped by `allowedTools` like the rest of it, and
+so does OpenClaw's own loopback MCP server.
 
 ## Governance policies
 

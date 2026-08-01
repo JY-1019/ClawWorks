@@ -213,10 +213,55 @@ export const en: TranslationMap = {
         "The configured tool catalog, grouped the way the runtime groups them. A plugin tool is listed once declared, even before its config resolves, and channel and MCP tools only exist inside a live session, so this is what can be configured rather than what is live right now.",
       attachHint:
         "This is the catalog. To let a step call one, open Worktree, select the step, and add it under Step bindings.",
+      attachHintGranted:
+        "This work-map grants tools explicitly. A step can call only the tools it lists, or the ones a step above it lists. Every other tool in this catalog is denied.",
       empty: "No tools are available on this gateway.",
       toolCount: "{count} tool(s)",
       optionalBadge: "optional",
       pluginBadge: "Plugin: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "MCP servers registered for this gateway. Registering one here is the same as anywhere else in OpenClaw — it lands in mcp.servers — but under enterprise governance a server stays unreachable until a step attaches it.",
+      attachHint:
+        "To let a step call a server, open Worktree, select the step, and add it under Step bindings. A server no step attaches is registered and unreachable.",
+      nativeConfigBoundary:
+        "This governs the servers OpenClaw hands to a run. A server declared directly in a harness's own configuration, such as the Codex config file, stays outside it — that layer belongs to the harness, not to the gateway.",
+      attachHintUngoverned:
+        "This work-map does not govern MCP yet, so registered servers stay callable as ordinary tools. Attaching one to a step under Step bindings turns on deny-by-default for the whole work-map.",
+      empty: "No MCP servers are registered for this gateway.",
+      add: "Register server",
+      disabled: "disabled",
+      unattached: "not attached to any step",
+      unsaved: "This registration is only in your browser until you save it to config.",
+      waitingForConfig:
+        "Loading the gateway config; registering will be available once it arrives.",
+      configSaving:
+        "A config save is in flight. Wait for it to finish — a server registered now would be discarded when the saved config reloads.",
+      configInvalid:
+        "The gateway config does not parse, so this screen has nothing to add to. Fix it in the config editor first — saving from here would replace the file with just this entry.",
+      rawDraftPending:
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
+      save: "Save",
+      publish: "Save & Publish",
+      publishing: "Publishing...",
+    },
+    mcpDraft: {
+      title: "Register an MCP server",
+      subtitle:
+        "Name it and give it one transport. Headers, environment, TLS, and OAuth belong in the MCP settings screen.",
+      name: "Name",
+      command: "Command",
+      args: "Arguments (space-separated)",
+      url: "URL",
+      submit: "Add to config",
+      nameEmpty: "Enter a server name.",
+      nameTaken: "A server with that name is already registered; pick another name.",
+      nameUnsupported:
+        "That name cannot be stored in the config editor. Pick another (constructor, prototype, and __proto__ are reserved).",
+      launchMissing: "Enter a command or a URL so the server can be launched.",
+      urlInvalid: "Enter an http:// or https:// URL; MCP over HTTP cannot dial anything else.",
     },
     picker: {
       subtitle: "Search the catalog and pick what this step may use.",
@@ -241,6 +286,8 @@ export const en: TranslationMap = {
       none: "None declared yet.",
       scopeNarrowing:
         "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist and only the listed tools stay available.",
+      scopeUngranted:
+        "This work-map grants tools explicitly. The step reaches no tool until one is listed here or on a step above it.",
       knowledgeNarrowing:
         "This step has no knowledge allowlist yet, so it can query every registered foundation. Adding the first entry restricts it to the listed foundations.",
       skillNameInvalid:
@@ -255,6 +302,10 @@ export const en: TranslationMap = {
       exportFailed: "Could not load the tree definition to edit.",
       importFailed:
         "The save did not confirm. It may or may not have been applied — refresh the work-map to see which, before trying again.",
+      mcpFirstAttachment:
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
+      mcpNoneAttached:
+        "This step has no MCP server attached, so it can call none. Unlike tools and knowledge, MCP grants nothing by default.",
       importNotSent:
         "Nothing was saved: the gateway connection dropped before this was sent. Reconnect and try again.",
       importRefused: "The server refused this change, so nothing was saved: {message}",
@@ -269,6 +320,7 @@ export const en: TranslationMap = {
         "No work-map is selected, so no step usage is shown. Pick one on Worktree to see which steps use each entry.",
       usedBy: "Used by {treeName}:",
       declaredBy: "Declared by {treeName}:",
+      attachedTo: "Attached to {treeName}:",
       treeIssue:
         "The selected work-map did not load, so the steps below come from the fallback definition the gateway returned instead: {message}. In enforce mode the failed work-map governs nothing until it loads.",
       treeUnavailable:
@@ -280,14 +332,19 @@ export const en: TranslationMap = {
       tools: "Tools — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Knowledge — ontology.knowledgeFoundations",
+      mcp: "MCP servers — ontology.mcpServers",
       skillNotInstalled: "not installed",
       foundationNotRegistered: "not retrievable by this work-map",
+      mcpNotRegistered: "not registered in mcp.servers",
+      inherited: "Inherited from a parent step:",
     },
     skillsTab: {
       title: "Skills",
       subtitle: "Every skill installed for this gateway, with what it needs to be eligible.",
       attachHint:
         "This is the catalog. To declare one as a step's dependency, open Worktree, select the step, and add it under Step bindings.",
+      attachHintGranted:
+        "This work-map grants skills explicitly: a run bound to it is offered only the skills its steps declare, and every other installed skill is withheld from the model.",
       empty: "No skills are installed.",
       declaredSection: "Declared by {treeName}",
       otherSection: "Other installed skills",
@@ -309,6 +366,7 @@ export const en: TranslationMap = {
     knowledge: "Knowledge: {ids}",
     guidance: "Instructions: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Audited",
     activeBadge: "active",
     nodeCount: "{count} step(s)",
@@ -317,6 +375,16 @@ export const en: TranslationMap = {
     selectTree: "Select a workflow tree to visualize its structure and ontology.",
     treeTitle: "Tree visualization",
     treeUnavailable: "Tree definition is no longer available.",
+    capabilityGrants: {
+      explicit: "Explicit grants",
+      inherited: "Inherited scopes",
+      explicitHint:
+        "Each step reaches only the tools, skills, and MCP servers it or a step above it lists. A step that lists none reaches none.",
+      inheritedHint:
+        "A step's lists narrow what its ancestors allowed; a step whose branch lists nothing may use any tool or skill.",
+      turnOn: "Grant explicitly",
+      turnOff: "Use inherited scopes",
+    },
     structureTitle: "Structure",
     ontologyTitle: "Ontology",
     wholeTreeOverviewTitle: "Whole-tree overview",
@@ -673,6 +741,7 @@ export const en: TranslationMap = {
     enterpriseHistory: "History",
     enterpriseTools: "Tools",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Knowledge",
   },
   subtitles: {
@@ -703,6 +772,7 @@ export const en: TranslationMap = {
     enterpriseHistory: "Past governed runs and their traces.",
     enterpriseTools: "The configured tool catalog.",
     enterpriseSkills: "Every skill installed for this gateway.",
+    enterpriseMcp: "Registered MCP servers and the steps that may call them.",
     knowledge: "Registered knowledge foundations and their status.",
   },
   skillWorkshop: {

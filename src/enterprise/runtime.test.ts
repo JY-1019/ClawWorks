@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { enterpriseRunBoundableMcpServers, enterpriseRunGrantedSkills } from "./active-runs.js";
 import {
   clearEnterpriseActiveRunsForTest,
   enterpriseRunTracksSteps,
@@ -7,7 +8,9 @@ import {
   getSessionActiveRunId,
   recordEnterpriseApprovalResolution,
   recordEnterpriseTurnExecuted,
+  enterpriseRunAttachedMcpServers,
   registerEnterpriseActiveRun,
+  resolveEnterpriseMcpServers,
   resolveEnterpriseMode,
   setEnterpriseStepForTurn,
   unregisterEnterpriseActiveRun,
@@ -20,6 +23,13 @@ function makeRun(overrides: {
   sessionId?: string;
   mode?: "enforce" | "observe";
   allowedTools?: string[];
+  deniedTools?: string[];
+  mcpServers?: string[];
+  registeredMcpServers?: string[];
+  actions?: { id: string; description: string; tools?: string[] }[];
+  mcpGoverned?: boolean;
+  capabilityGrants?: "explicit";
+  skills?: string[];
   audit?: boolean;
   policies?: GovernancePolicy[];
   sink?: EnterpriseActiveRun["sink"];
@@ -39,17 +49,36 @@ function makeRun(overrides: {
         title: "Support",
         ontology: {
           ...(overrides.allowedTools ? { allowedTools: overrides.allowedTools } : {}),
+          ...(overrides.deniedTools ? { deniedTools: overrides.deniedTools } : {}),
+          ...(overrides.mcpServers ? { mcpServers: overrides.mcpServers } : {}),
+          ...(overrides.skills ? { skills: overrides.skills } : {}),
+          ...(overrides.actions ? { actions: overrides.actions } : {}),
           ...(overrides.audit !== undefined ? { audit: overrides.audit } : {}),
         },
       },
     ],
     activeNodeId: "support",
+    // The plan carries the DEFINITION-wide facts; the node lists mirror them here
+    // exactly as buildEnterpriseRunPlan does.
+    ...(overrides.mcpGoverned || overrides.capabilityGrants
+      ? {
+          mcpGoverned: true,
+          mcpAttachments: overrides.mcpServers ?? [],
+          ...(overrides.deniedTools ? { mcpDeniedTools: overrides.deniedTools } : {}),
+        }
+      : {}),
+    ...(overrides.capabilityGrants
+      ? { capabilityGrants: overrides.capabilityGrants, grantedSkills: overrides.skills ?? [] }
+      : {}),
     mode: overrides.mode ?? "enforce",
     createdAt: 0,
   };
   return {
     plan,
     policies: overrides.policies ?? [],
+    ...((overrides.registeredMcpServers ?? overrides.mcpServers)
+      ? { mcpServers: overrides.registeredMcpServers ?? overrides.mcpServers }
+      : {}),
     ...(overrides.sessionId ? { sessionId: overrides.sessionId } : {}),
     ...(overrides.sink ? { sink: overrides.sink } : {}),
   };
@@ -460,5 +489,950 @@ describe("enterprise step cursor", () => {
     const decisions = events.filter((event) => event.kind === "governance.decision");
     expect(decisions).toHaveLength(1);
     expect(decisions[0].nodeId).toBe("support.triage");
+  });
+});
+
+describe("enterpriseRunAttachedMcpServers", () => {
+  it("does not filter a work-map that never attaches a server", () => {
+    // Upgrade safety: a tree written before the field existed keeps every server.
+    registerEnterpriseActiveRun(makeRun({ runId: "run-mcp-legacy" }));
+
+    expect(enterpriseRunAttachedMcpServers("run-mcp-legacy")).toBeNull();
+  });
+
+  it("keeps a server whose only denial cannot reach it", () => {
+    // Losing an attached server over an unrelated `slack*` rule would make the two
+    // features unusable together.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-unrelated",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["slack*__delete_channel"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-unrelated") ?? [])]).toEqual(["github"]);
+  });
+
+  it("withholds a server for a whole-call glob with no delimiter", () => {
+    // `*forbidden` matches whole call names, so it can reach inside any server —
+    // and a native runtime can rewrite the name past matching it later.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-suffix",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["*forbidden_suffix"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-suffix") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server a full-call glob reaches through the mcp__ spelling", () => {
+    // `mcp__*delete_repo` matches Codex's canonical name for this server's tool,
+    // so the server cannot be handed to a subprocess that would run it.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-fullglob",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["mcp__*delete_repo"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-fullglob") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server denied by its prefixed whole-server name", () => {
+    // `mcp__github` is a supported spelling of "deny this whole server".
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-whole-prefixed",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["mcp__github"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-whole-prefixed") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server whose config key is itself a tool-group id", () => {
+    // `group:web` is a valid config key AND a tool-group id; expanding it before
+    // comparing would match core web tools and miss the server entirely.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-group-key",
+        mcpGoverned: true,
+        mcpServers: ["group:web"],
+        deniedTools: ["group:web"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-group-key") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a collided server without knowing the colliding party", () => {
+    // The other half of the collision can be a PLUGIN server this side never sees,
+    // so the suffix is accepted on its own rather than inferred from a collision.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-plugin-collision",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        deniedTools: ["my-server-2__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-plugin-collision") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a long server whose collision alias was truncated", () => {
+    // Past the 30-character prefix budget the sanitizer truncates the base before
+    // appending the suffix, so the alias is shorter than the raw name.
+    const server = `${"a".repeat(29)}-server`;
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-truncated",
+        mcpGoverned: true,
+        mcpServers: [server],
+        deniedTools: [`${"a".repeat(28)}-2__delete`],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-truncated") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server denied under a collision name with no operation left", () => {
+    // `mcp__foo_<hash>__` is a complete Codex hook name: colliding namespace, and an
+    // operation whose name trimmed away. A hookless backend has no later gate, so
+    // the server is not handed over.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-empty-tool",
+        mcpGoverned: true,
+        mcpServers: ["foo"],
+        deniedTools: ["mcp__foo_a1b2c3d4e5f6__"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-empty-tool") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server whose canonical namespace trims to nothing", () => {
+    // `_` prefixes to `mcp___`, which trims to `mcp`, so Codex reports this
+    // server's `delete` as `mcp__delete`. A denial copied from that name has to
+    // withhold the server on a backend with no later gate.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-empty-namespace",
+        mcpGoverned: true,
+        mcpServers: ["_"],
+        deniedTools: ["mcp__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-empty-namespace") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server whose trailing underscore the hook name drops", () => {
+    // `foo_` is reported as `mcp__foo__<tool>`, so a denial copied from that name
+    // has to reach this server — a hookless backend has no later gate.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-trimmed-key",
+        mcpGoverned: true,
+        mcpServers: ["foo_"],
+        deniedTools: ["mcp__foo__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-trimmed-key") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server whose key contains the delimiter", () => {
+    // `foo__bar` is a valid config key, and Codex's collision name puts its hash
+    // between the key and the delimiter. Cutting the denial at the FIRST `__` would
+    // read it as naming a server called `foo` and hand this one over.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-delimiter-key",
+        mcpGoverned: true,
+        mcpServers: ["foo__bar"],
+        deniedTools: ["mcp__foo__bar_a1b2c3d4e5f6__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-delimiter-key") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server whose key already carries the legacy prefix", () => {
+    // Codex keeps a namespace that already starts with `mcp__` as-is, so the
+    // denial's own prefix is part of the server name rather than Codex's.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-prefixed-key",
+        mcpGoverned: true,
+        mcpServers: ["mcp__probe"],
+        deniedTools: ["mcp__probe_a1b2c3d4e5f6__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-prefixed-key") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a long server denied under a multi-digit collision suffix", () => {
+    // The tenth server sharing a base is `-10`, so the materializer truncates one
+    // character further than it does for `-2`. A denial copied from that real name
+    // must still be recognized as this server's.
+    const server = `${"a".repeat(29)}-server`;
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-truncated-10",
+        mcpGoverned: true,
+        mcpServers: [server],
+        deniedTools: [`${"a".repeat(27)}-10__delete`],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-truncated-10") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a collided server named by its materialized suffix", () => {
+    // Two keys collapse to one materialized base, so the runtime disambiguates
+    // with a numeric suffix from a set this side cannot reconstruct. A denial
+    // written with that name still has to withhold the server.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-collision",
+        mcpGoverned: true,
+        mcpServers: ["my server", "my:server"],
+        deniedTools: ["my-server-2__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-collision") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server a governance deny policy can reach", () => {
+    // A hookless CLI evaluates no policy per call, so a deny that names the tool
+    // has to be honored before the subprocess is handed the server.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-deny",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        policies: [{ id: "deny.destructive", effect: "deny", tools: ["*delete_repo"] }],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-deny") ?? [])]).toEqual([]);
+  });
+
+  it("ignores a policy pinned to a step this run never planned", () => {
+    // It cannot block anything here, so withholding for it would take a server
+    // away for no reason.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-elsewhere",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        policies: [
+          { id: "deny.billing", effect: "deny", tools: ["github__*"], nodes: ["billing.refund"] },
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-elsewhere") ?? [])]).toEqual([
+      "github",
+    ]);
+  });
+
+  it("keeps a server a policy names bare, which cannot match any call", () => {
+    // `tools: ["github"]` is matched against real call names by the runtime gate,
+    // so it can never block `github__read`. The bare-name shorthand belongs to
+    // ontology deniedTools, not to a policy selector.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-bare",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        policies: [{ id: "deny.bare", effect: "deny", tools: ["github"] }],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-bare") ?? [])]).toEqual(["github"]);
+  });
+
+  it("ignores a knowledge-scoped policy", () => {
+    // Selectors are conjunctive and a knowledge selector cannot match a tool call,
+    // so such a policy never gates one.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-knowledge-policy",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        policies: [
+          {
+            id: "deny.kb",
+            effect: "deny",
+            tools: ["github__*"],
+            knowledge: ["acme.kb"],
+          },
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-knowledge-policy") ?? [])]).toEqual([
+      "github",
+    ]);
+  });
+
+  it("keeps a server when two globs share a head but not a tail", () => {
+    // `github__*read` and `github__*delete` can never name one tool.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-glob-tails",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        actions: [{ id: "destructive", description: "Delete", tools: ["github__*delete"] }],
+        policies: [
+          { id: "deny.reads", effect: "deny", tools: ["github__*read"], actions: ["destructive"] },
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-glob-tails") ?? [])]).toEqual(["github"]);
+  });
+
+  it("grants a sanitized server from the names a runtime can expose", () => {
+    // `my server` never appears in a tool name, so requiring it would make the
+    // grant impossible to write.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-sanitized-grant",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        allowedTools: [
+          "message",
+          "my-server__*",
+          "mcp__my-server__*",
+          "my_server__*",
+          "mcp__my_server__*",
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-sanitized-grant") ?? [])]).toEqual([
+      "my server",
+    ]);
+  });
+
+  it("keeps a server when the policy's tool and action patterns name different tools", () => {
+    // Both selectors reach `github`, but no single call satisfies both, so the
+    // policy can never fire — withholding for it would take the server for nothing.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-disjoint",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        actions: [{ id: "destructive", description: "Delete", tools: ["github__delete"] }],
+        policies: [
+          {
+            id: "deny.disjoint",
+            effect: "deny",
+            tools: ["github__read"],
+            actions: ["destructive"],
+          },
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-disjoint") ?? [])]).toEqual([
+      "github",
+    ]);
+  });
+
+  it("withholds a server when one call can satisfy both selectors", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-overlap",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        actions: [{ id: "destructive", description: "Delete", tools: ["github__delete"] }],
+        policies: [
+          { id: "deny.overlap", effect: "deny", tools: ["github__*"], actions: ["destructive"] },
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-overlap") ?? [])]).toEqual([]);
+  });
+
+  it("keeps a server when a policy's node and action matches sit on different branches", () => {
+    // Governance needs every selector satisfied on ONE root→node path; a node
+    // match on one branch and an action match on another can never block a call.
+    const run = makeRun({
+      runId: "run-mcp-cross-branch",
+      mcpGoverned: true,
+      mcpServers: ["github"],
+      policies: [
+        { id: "deny.split", effect: "deny", nodes: ["desk.triage"], actions: ["destructive"] },
+      ],
+    });
+    run.plan.nodes = [
+      { nodeId: "desk", parentId: null, seq: 0, title: "Desk", ontology: {} },
+      { nodeId: "desk.triage", parentId: "desk", seq: 1, title: "Triage", ontology: {} },
+      {
+        nodeId: "desk.file",
+        parentId: "desk",
+        seq: 2,
+        title: "File",
+        ontology: {
+          mcpServers: ["github"],
+          actions: [{ id: "destructive", description: "Delete", tools: ["github__*"] }],
+        },
+      },
+    ];
+    registerEnterpriseActiveRun(run);
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-cross-branch") ?? [])]).toEqual([
+      "github",
+    ]);
+  });
+
+  it("keeps a server when a policy's tool and action selectors cannot both match", () => {
+    // The two selectors are conjunctive in governance; treating them as
+    // alternatives would withhold a server neither can name.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-conjunctive",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        actions: [{ id: "destructive", description: "Delete things", tools: ["github__*"] }],
+        policies: [{ id: "deny.mixed", effect: "deny", tools: ["exec"], actions: ["destructive"] }],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-conjunctive") ?? [])]).toEqual([
+      "github",
+    ]);
+  });
+
+  it("withholds two servers that collide only once Codex adds its prefix", () => {
+    // Codex prefixes by default, so `foo` is emitted as `mcp__foo` — the same
+    // namespace a server literally named `mcp__foo` gets, and both are hashed.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-prefix-collision",
+        mcpGoverned: true,
+        mcpServers: ["foo", "mcp__foo"],
+        allowedTools: ["message", "foo__*", "mcp__foo__*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-prefix-collision") ?? [])]).toEqual([]);
+  });
+
+  it("keeps every attached server under a universal grant", () => {
+    // `*` admits every emitted spelling, truncation and hashes included.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-star-grant",
+        mcpGoverned: true,
+        mcpServers: ["a".repeat(50)],
+        allowedTools: ["*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-star-grant") ?? [])]).toEqual([
+      "a".repeat(50),
+    ]);
+  });
+
+  it("does not register a disabled server as attachable", () => {
+    // Every projection skips a disabled entry, so it can neither be called nor
+    // collide with the server that is.
+    expect(
+      resolveEnterpriseMcpServers({
+        mcp: {
+          servers: {
+            "my server": { command: "node" },
+            "my:server": { command: "node", enabled: false },
+          },
+        },
+      } as never),
+    ).toEqual(["my server"]);
+  });
+
+  it("ignores an inert attachment when judging collisions", () => {
+    // An attachment naming a server config never registered is inert, so it
+    // cannot collide with anything the backend receives.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-inert-attachment",
+        mcpGoverned: true,
+        mcpServers: ["my server", "my:server"],
+        registeredMcpServers: ["my server"],
+        allowedTools: [
+          "message",
+          "my-server__*",
+          "mcp__my-server__*",
+          "my_server__*",
+          "mcp__my_server__*",
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-inert-attachment") ?? [])]).toEqual([
+      "my server",
+    ]);
+  });
+
+  it("grants a server whose own key already starts with mcp__", () => {
+    // Codex does not add a second prefix and the materializer uses the key once,
+    // so requiring `mcp__mcp__…` would make the grant unwritable.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-prefixed-key",
+        mcpGoverned: true,
+        mcpServers: ["mcp__github"],
+        allowedTools: ["message", "mcp__github__*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-prefixed-key") ?? [])]).toEqual([
+      "mcp__github",
+    ]);
+  });
+
+  it("withholds a server whose namespace is long enough for Codex to truncate", () => {
+    // Past that length Codex truncates the namespace and emits the hash as the
+    // tool part, a spelling no operator glob can cover.
+    const server = "a".repeat(50);
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-long-namespace",
+        mcpGoverned: true,
+        mcpServers: [server],
+        allowedTools: ["message", `${server}__*`, `mcp__${server}__*`],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-long-namespace") ?? [])]).toEqual([]);
+  });
+
+  it("ignores a registered sibling the backend will not emit", () => {
+    // A disabled or agent-scoped entry never reaches the runtime, so it cannot
+    // collide — withholding for it would take a working server away.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-inert-sibling",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        registeredMcpServers: ["my server", "my:server"],
+        allowedTools: [
+          "message",
+          "my-server__*",
+          "mcp__my-server__*",
+          "my_server__*",
+          "mcp__my_server__*",
+        ],
+      }),
+    );
+
+    // Peers default to none, so only the attached server counts.
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-inert-sibling") ?? [])]).toEqual([
+      "my server",
+    ]);
+  });
+
+  it("withholds when a peer the backend WILL emit shares the namespace", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-emitted-peer",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        allowedTools: [
+          "message",
+          "my-server__*",
+          "mcp__my-server__*",
+          "my_server__*",
+          "mcp__my_server__*",
+        ],
+      }),
+    );
+
+    expect([
+      ...(enterpriseRunAttachedMcpServers("run-mcp-emitted-peer", ["my:server"]) ?? []),
+    ]).toEqual([]);
+  });
+
+  it("withholds both servers when a grant names the namespace they share", () => {
+    // `my-server__*` is the normalized name of BOTH keys, so it cannot say which
+    // one the operator meant — neither is handed to a hookless runtime.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-shared-namespace",
+        mcpGoverned: true,
+        mcpServers: ["my server", "my:server"],
+        allowedTools: ["message", "my-server__*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-shared-namespace") ?? [])]).toEqual([]);
+  });
+
+  it("withholds nothing on an ambiguous collision grant", () => {
+    // Two attached servers materialize to the same base, so `my-server-2__*`
+    // cannot say which one it granted: neither is handed over.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-ambiguous-grant",
+        mcpGoverned: true,
+        mcpServers: ["my server", "my:server"],
+        allowedTools: ["message", "my-server-2__*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-ambiguous-grant") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server an approval policy would gate", () => {
+    // A hookless CLI has no channel to ask on, so an approval that never runs is a
+    // call that was never approved.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-approval",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        policies: [{ id: "ask.destructive", effect: "require_approval", tools: ["github__*"] }],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-approval") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server an action-scoped deny reaches through its tools", () => {
+    // An action-scoped policy reaches a tool through the actions covering it.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-action-policy",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        actions: [{ id: "destructive", description: "Delete things", tools: ["github__*"] }],
+        policies: [{ id: "deny.destructive", effect: "deny", actions: ["destructive"] }],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-action-policy") ?? [])]).toEqual([]);
+  });
+
+  it("keeps a server when the policy's own tool selector cannot reach it", () => {
+    // Both selectors have to hold on ONE call. An action that covers every tool
+    // shares a call with `message`, but that call is `message` — never a github
+    // tool — so this policy can only ever gate a non-MCP call and withholding the
+    // server for it would take it away for nothing.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-action-policy-elsewhere",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        actions: [{ id: "anything", description: "Any tool" }],
+        policies: [
+          {
+            id: "ask.message",
+            effect: "require_approval",
+            tools: ["message"],
+            actions: ["anything"],
+          },
+        ],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-action-policy-elsewhere") ?? [])]).toEqual(
+      ["github"],
+    );
+  });
+
+  it("withholds a server the root allow-list grants only in part", () => {
+    // Nothing gates a call on a hookless CLI, so a partial grant would let the
+    // tools it omits run anyway — `allowedTools` has to stay a ceiling.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-partial-allow",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        allowedTools: ["message", "github__read_issue"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-partial-allow") ?? [])]).toEqual([]);
+  });
+
+  it("keeps a server no deny policy can reach", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-policy-other",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        policies: [{ id: "deny.exec", effect: "deny", tools: ["exec"] }],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-policy-other") ?? [])]).toEqual([
+      "github",
+    ]);
+  });
+
+  it("withholds a server denied under a Codex-truncated namespace", () => {
+    // Codex can truncate the namespace and move its hash into the tool part, so
+    // the name an operator copies has a SHORTER server segment than the real one.
+    const server = `${"a".repeat(29)}-server`;
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-truncated-ns",
+        mcpGoverned: true,
+        mcpServers: [server],
+        deniedTools: [`mcp__${"a".repeat(29)}__delete_a1b2c3d4e5f6`],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-truncated-ns") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server denied under Codex's hash-suffixed name", () => {
+    // Codex disambiguates a namespace collision with `_` + 12 hex characters; an
+    // operator copying that name into deniedTools must still withhold the server.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-codex-hash",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        deniedTools: ["mcp__my_server_a1b2c3d4e5f6__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-codex-hash") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server the root allow-list cannot admit", () => {
+    // A CLI without a pre-tool hook enforces nothing per call, so this filter is
+    // the only thing between `allowedTools: [message]` and every tool the server
+    // has.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-allow-narrow",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        allowedTools: ["message"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-allow-narrow") ?? [])]).toEqual([]);
+  });
+
+  it("withholds a server the allow-list names in only one spelling", () => {
+    // `github__*` leaves `mcp__github__*` ungoverned, and the harness decides
+    // which one it uses.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-one-spelling",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        allowedTools: ["message", "github__*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-one-spelling") ?? [])]).toEqual([]);
+  });
+
+  it("keeps a server the root allow-list names with a glob", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-allow-glob",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        // EVERY spelling: a hookless runtime has no per-call ceiling and the
+        // harness picks the name, so one glob is not a grant.
+        allowedTools: ["message", "github__*", "mcp__github__*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-allow-glob") ?? [])]).toEqual(["github"]);
+  });
+
+  it("keeps a server when the root declares no allow-list at all", () => {
+    // An omitted list allows everything, so there is nothing to withhold for.
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-mcp-allow-open", mcpGoverned: true, mcpServers: ["github"] }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-allow-open") ?? [])]).toEqual(["github"]);
+  });
+
+  it("withholds a server denied under the embedded runtime's spelling", () => {
+    // A free-form key is rewritten differently by each runtime: OpenClaw maps
+    // invalid characters to `-`, Codex to `_`. An operator writes whichever they
+    // saw, so a denial in either spelling has to withhold the server.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-embedded-spelling",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        deniedTools: ["my-server__delete"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-embedded-spelling") ?? [])]).toEqual([]);
+  });
+
+  it("keeps a server an unrelated wildcard cannot reach", () => {
+    // `slack*` can match neither `github__…` nor `mcp__github__…`.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-other-glob",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["slack*"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-other-glob") ?? [])]).toEqual(["github"]);
+  });
+
+  it("withholds a server named by its materialized collision alias", () => {
+    // Two servers that sanitize alike are disambiguated as `<base>-2`, and an
+    // operator copying THAT name means this server. A hookless CLI has no gate
+    // afterwards, so the bare alias has to be honored here.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-alias-denial",
+        mcpGoverned: true,
+        mcpServers: ["my server"],
+        deniedTools: ["my-server-2"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-alias-denial") ?? [])]).toEqual([]);
+  });
+
+  it("keeps a server when a delimiter-free denial cannot name it", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-plain",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["exec"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-plain") ?? [])]).toEqual(["github"]);
+  });
+
+  it("withholds a server a wildcard denial can reach", () => {
+    // Per-tool denials cannot be enforced on a native runtime, so a server that
+    // carries one is not handed over at all.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-mcp-denied",
+        mcpGoverned: true,
+        mcpServers: ["github"],
+        deniedTools: ["git*__delete_repo"],
+      }),
+    );
+
+    expect([...(enterpriseRunAttachedMcpServers("run-mcp-denied") ?? [])]).toEqual([]);
+  });
+});
+
+describe("enterpriseRunGrantedSkills", () => {
+  it("does not narrow a work-map that grants inherited scopes", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-skills-legacy", skills: ["triage"] }));
+
+    expect(enterpriseRunGrantedSkills("run-skills-legacy")).toBeNull();
+  });
+
+  it("returns the attached skills for a work-map that grants explicitly", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-skills-explicit",
+        capabilityGrants: "explicit",
+        skills: ["ticket-triage", "refund-policy"],
+      }),
+    );
+
+    expect(enterpriseRunGrantedSkills("run-skills-explicit")).toEqual([
+      "ticket-triage",
+      "refund-policy",
+    ]);
+  });
+
+  it("empties the catalog when an explicit work-map attaches no skill", () => {
+    // An empty grant is a real answer, not "unrestricted": the work-map said this
+    // run needs none.
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-skills-none", capabilityGrants: "explicit" }),
+    );
+
+    expect(enterpriseRunGrantedSkills("run-skills-none")).toEqual([]);
+  });
+
+  it("narrows nothing in observe mode", () => {
+    // Observe records decisions without blocking; removing a skill from the
+    // catalog is physical, so it belongs to enforce alone.
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-skills-observe",
+        mode: "observe",
+        capabilityGrants: "explicit",
+        skills: ["ticket-triage"],
+      }),
+    );
+
+    expect(enterpriseRunGrantedSkills("run-skills-observe")).toBeNull();
+  });
+
+  it("narrows nothing for an unmediated run", () => {
+    expect(enterpriseRunGrantedSkills("run-unknown")).toBeNull();
+    expect(enterpriseRunGrantedSkills()).toBeNull();
+  });
+});
+
+describe("enterpriseRunBoundableMcpServers", () => {
+  it("admits a plugin's server when the root narrows nothing", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-plugin-open", mcpGoverned: true }));
+
+    expect([...(enterpriseRunBoundableMcpServers("run-plugin-open", ["bundled"]) ?? [])]).toEqual([
+      "bundled",
+    ]);
+  });
+
+  it("withholds a plugin's server from an explicit work-map that grants no tools", () => {
+    // No attachment can grant a plugin server, so the root allow-list is the only
+    // grant available — and an empty one means "nothing", not "unrestricted".
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-plugin-explicit", capabilityGrants: "explicit" }),
+    );
+
+    expect([
+      ...(enterpriseRunBoundableMcpServers("run-plugin-explicit", ["bundled"]) ?? []),
+    ]).toEqual([]);
+  });
+
+  it("admits a plugin's server an explicit root grants whole", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-plugin-granted",
+        capabilityGrants: "explicit",
+        allowedTools: ["bundled__*", "mcp__bundled__*"],
+      }),
+    );
+
+    expect([
+      ...(enterpriseRunBoundableMcpServers("run-plugin-granted", ["bundled"]) ?? []),
+    ]).toEqual(["bundled"]);
   });
 });

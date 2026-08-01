@@ -38,6 +38,7 @@ describe("TAB_GROUPS", () => {
       "enterpriseHistory",
       "enterpriseTools",
       "enterpriseSkills",
+      "enterpriseMcp",
       "knowledge",
     ]);
   });

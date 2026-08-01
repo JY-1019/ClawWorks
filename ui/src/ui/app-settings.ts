@@ -478,9 +478,13 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
       case "enterpriseHistory":
       case "enterpriseTools":
       case "enterpriseSkills":
+      case "enterpriseMcp":
         // The catalogs feed the Tools/Skills surfaces AND the Worktree binding
         // forms, so every enterprise tab needs them alongside the run/tree data.
-        await Promise.all([refreshEnterprise(app), loadEnterpriseCatalogs(app)]);
+        // Config comes too: MCP servers are registered there rather than in a
+        // catalog, and the Worktree binding row reads that same list — without it,
+        // a deep link straight to Worktree shows every attachment as unregistered.
+        await Promise.all([refreshEnterprise(app), loadEnterpriseCatalogs(app), loadConfig(app)]);
         break;
       case "knowledge":
         await loadKnowledgeFoundations(app);

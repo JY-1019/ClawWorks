@@ -523,6 +523,8 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseBindingPicker:
     | import("./controllers/enterprise.js").EnterpriseBindingPicker
     | null = null;
+  @state() enterpriseMcpDraft: import("./controllers/enterprise.js").EnterpriseMcpDraft | null =
+    null;
   @state() enterpriseCatalogPhase: import("./controllers/enterprise.js").EnterpriseCatalogPhase =
     "unloaded";
   @state() enterpriseCatalogErrors: import("./controllers/enterprise.js").EnterpriseCatalogErrors =

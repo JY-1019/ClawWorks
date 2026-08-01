@@ -8,6 +8,11 @@ import path from "node:path";
 import { applyMergePatch } from "../../config/merge-patch.js";
 import type { CliBackendConfig } from "../../config/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  enterpriseRunAttachedMcpServers,
+  enterpriseRunBoundableMcpServers,
+  resolveEnterpriseMcpServers,
+} from "../../enterprise/active-runs.js";
 import { tryReadJson } from "../../infra/json-files.js";
 import { extractMcpServerMap, type BundleMcpConfig } from "../../plugins/bundle-mcp.js";
 import type { CliBundleMcpMode } from "../../plugins/types.js";
@@ -173,6 +178,54 @@ async function prepareModeSpecificBundleMcpConfig(params: {
 }
 
 /** Prepare backend args/env/cleanup for bundle MCP injection into a CLI run. */
+/**
+ * Drop the operator-supplied servers the work-map never attaches.
+ *
+ * `gated` is every server an OPERATOR wired up — the `mcp.servers` registry plus
+ * whatever an inherited `--mcp-config` file brought in. Plugin-provided servers
+ * are deliberately outside it: they arrive with a plugin's tool surface and are
+ * scoped by `allowedTools` like the rest of it, and OpenClaw's own loopback server
+ * is merged after this. Applied BEFORE the mode writers so one rule covers every
+ * CLI backend rather than one config format.
+ */
+function withdrawUnattachedMcpServers(params: {
+  merged: BundleMcpConfig;
+  /** `mcp.servers` names: the only ones a work-map can attach. */
+  registered: readonly string[];
+  /**
+   * Servers an inherited `--mcp-config` brought in that config does not register.
+   * Operator-supplied, so governed — but not attachable either: the Enterprise MCP
+   * screen cannot register them and an attachment naming one is reported as
+   * unregistered. Withheld outright rather than satisfiable by an attachment that
+   * the operator is told does nothing.
+   */
+  inheritedOnly: readonly string[];
+  attached: ReadonlySet<string> | null | undefined;
+  /** Names a PLUGIN bundle supplies; no attachment can grant or withhold them. */
+  plugin: readonly string[];
+  /** The subset of `plugin` the run's tool ceiling still admits, or null when unjudged. */
+  pluginAdmitted: ReadonlySet<string> | null | undefined;
+}): BundleMcpConfig {
+  const withheld = new Set([
+    ...(params.attached
+      ? [
+          ...params.registered.filter((name) => !params.attached?.has(name)),
+          ...params.inheritedOnly,
+        ]
+      : []),
+    ...(params.pluginAdmitted
+      ? params.plugin.filter((name) => !params.pluginAdmitted?.has(name))
+      : []),
+  ]);
+  if (withheld.size === 0) {
+    return params.merged;
+  }
+  const servers = Object.fromEntries(
+    Object.entries(params.merged.mcpServers ?? {}).filter(([name]) => !withheld.has(name)),
+  );
+  return { ...params.merged, mcpServers: servers };
+}
+
 export async function prepareCliBundleMcpConfig(params: {
   enabled: boolean;
   mode?: CliBundleMcpMode;
@@ -182,6 +235,9 @@ export async function prepareCliBundleMcpConfig(params: {
   additionalConfig?: BundleMcpConfig;
   env?: Record<string, string>;
   warn?: (message: string) => void;
+
+  /** The run this overlay serves; its projected servers are recorded for the gate. */
+  runId?: string;
 }): Promise<PreparedCliBundleMcpConfig> {
   if (!params.enabled) {
     return { backend: params.backend, env: params.env };
@@ -194,6 +250,11 @@ export async function prepareCliBundleMcpConfig(params: {
         findClaudeMcpConfigPath(params.backend.args))
       : undefined;
   let mergedConfig: BundleMcpConfig = { mcpServers: {} };
+  // Servers an operator wired up rather than a plugin: the inherited config file's
+  // entries collect here alongside the `mcp.servers` registry, because governance
+  // gates both the same way.
+  const configuredServerNames = new Set(Object.keys(params.config?.mcp?.servers ?? {}));
+  const operatorServerNames = new Set(configuredServerNames);
 
   if (existingMcpConfigPath) {
     // Merge any user-provided Claude MCP config first so bundle/plugin config can
@@ -201,10 +262,11 @@ export async function prepareCliBundleMcpConfig(params: {
     const resolvedExistingPath = path.isAbsolute(existingMcpConfigPath)
       ? existingMcpConfigPath
       : path.resolve(params.workspaceDir, existingMcpConfigPath);
-    mergedConfig = applyMergePatch(
-      mergedConfig,
-      await readExternalMcpConfig(resolvedExistingPath),
-    ) as BundleMcpConfig;
+    const externalConfig = await readExternalMcpConfig(resolvedExistingPath);
+    for (const name of Object.keys(externalConfig.mcpServers ?? {})) {
+      operatorServerNames.add(name);
+    }
+    mergedConfig = applyMergePatch(mergedConfig, externalConfig) as BundleMcpConfig;
   }
 
   const bundleConfig = loadMergedBundleMcpConfig({
@@ -215,8 +277,85 @@ export async function prepareCliBundleMcpConfig(params: {
   for (const diagnostic of bundleConfig.diagnostics) {
     params.warn?.(`bundle MCP skipped for ${diagnostic.pluginId}: ${diagnostic.message}`);
   }
+  // A plugin's own server wins the merge when it shares a name with an inherited
+  // entry, and plugin servers are outside the attachment boundary — they arrive
+  // with a plugin's tool surface and cannot be attached from the work-map. So the
+  // final owner of a name decides: a name the bundle provides is no longer
+  // operator-owned, whatever the inherited file called it.
+  for (const name of Object.keys(bundleConfig.config.mcpServers ?? {})) {
+    if (!configuredServerNames.has(name)) {
+      operatorServerNames.delete(name);
+    }
+    // Whoever supplies the name supplies the WHOLE entry. applyMergePatch descends
+    // into objects, so merge-patching would leave the inherited file's command,
+    // args, env, url, and headers beside the definition an operator can actually
+    // see — an inherited Authorization header riding along to a configured URL, or
+    // inherited launch behavior under a key that attachment already approved.
+    // Classification (who owns the name) stays separate from replacement.
+    delete mergedConfig.mcpServers?.[name];
+  }
   mergedConfig = applyMergePatch(mergedConfig, bundleConfig.config) as BundleMcpConfig;
+  // A CLI backend connects its servers itself, from a config file it owns, so
+  // nothing can be withheld once the process is up: whatever survives here is
+  // reachable for the whole run. Both filters below therefore judge namespace
+  // collisions against the servers that will REALLY arrive — a clash with one
+  // that never ships would withhold a working server for nothing.
+  //
+  // The plugin half goes FIRST because it does not depend on attachments (the
+  // run's tool ceiling decides it), while the attachment half needs to know which
+  // plugin servers survive to collide with. Resolving them the other way around
+  // would let a plugin server that is about to be dropped take a legitimately
+  // attached configured server down with it. The Codex projection resolves them
+  // in this same order.
+  const loopbackServerNames = Object.keys(params.additionalConfig?.mcpServers ?? {});
+  // A plugin's servers cannot be attached — they arrive with the plugin's tool
+  // surface — but the run's tool ceiling still applies to them, and this overlay is
+  // the only place that can apply it: a hookless CLI judges no call afterwards.
+  const pluginServerNames = Object.keys(mergedConfig.mcpServers ?? {}).filter(
+    (name) => !operatorServerNames.has(name),
+  );
+  // Peers here are the operator servers the backend can receive at all: the
+  // ENABLED registry plus whatever the inherited config file brought in. A
+  // disabled key is skipped by every projection, so treating it as a namespace
+  // collision would withhold a working plugin server for a clash that cannot
+  // happen. Attachment may still drop some of these, which only makes this
+  // conservative — the safe direction for a ceiling.
+  const emittedOperatorServerNames = new Set([
+    ...resolveEnterpriseMcpServers(params.config),
+    ...[...operatorServerNames].filter((name) => !configuredServerNames.has(name)),
+  ]);
+  const admittedPluginServers = enterpriseRunBoundableMcpServers(params.runId, pluginServerNames, [
+    ...emittedOperatorServerNames,
+    // The loopback overlay merges later but lands in the same config.
+    ...loopbackServerNames,
+  ]);
+  // Only the plugin servers that survived the ceiling are collision peers for the
+  // attachment filter; the rest are never written. The function adds the attached
+  // servers themselves.
+  const survivingPluginPeers = pluginServerNames.filter(
+    (name) => !admittedPluginServers || admittedPluginServers.has(name),
+  );
+  const attachedMcpServers = enterpriseRunAttachedMcpServers(params.runId, [
+    ...survivingPluginPeers,
+    ...loopbackServerNames,
+  ]);
+  mergedConfig = withdrawUnattachedMcpServers({
+    merged: mergedConfig,
+    registered: [...operatorServerNames].filter((name) => configuredServerNames.has(name)),
+    inheritedOnly: [...operatorServerNames].filter((name) => !configuredServerNames.has(name)),
+    attached: attachedMcpServers,
+    plugin: pluginServerNames,
+    pluginAdmitted: admittedPluginServers,
+  });
   if (params.additionalConfig) {
+    // Same whole-owner rule as the bundle merge above: the loopback overlay owns
+    // the names it supplies. Merge-patching onto a server that happens to share a
+    // name (`openclaw`) would leave that server's command, args, and env beside the
+    // overlay's url — a transport mix Codex refuses to load at all ("url is not
+    // supported for stdio", ../codex/codex-rs/config/src/mcp_types.rs:347-392).
+    for (const name of Object.keys(params.additionalConfig.mcpServers ?? {})) {
+      delete mergedConfig.mcpServers?.[name];
+    }
     mergedConfig = applyMergePatch(mergedConfig, params.additionalConfig) as BundleMcpConfig;
   }
 

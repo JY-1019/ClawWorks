@@ -53,6 +53,7 @@ function treeWithOntology(id: string, foundationId = "acme.kb"): WorkflowTreeDef
         allowedTools: ["read_*"],
         deniedTools: ["shell"],
         skills: ["refund-playbook"],
+        mcpServers: ["acme-tracker"],
       },
     },
   };
@@ -308,6 +309,9 @@ describe("workflow bundle import", () => {
     expect(result.missingFoundations).toEqual([]);
     expect(result.requiredTools).toEqual(["read_*"]);
     expect(result.requiredSkills).toEqual(["refund-playbook"]);
+    // A server is deployment configuration, so the bundle carries only the name:
+    // without this the import looks complete while the attachment is inert.
+    expect(result.requiredMcpServers).toEqual(["acme-tracker"]);
 
     // Persisted to SQLite so a restart re-registers it.
     expect(
@@ -496,6 +500,9 @@ describe("workflow bundle import", () => {
     expect(result.requiredTools).toEqual(["read_*"]);
     // Skills derive from the tree too, so the stale ["stale_skill"] is ignored.
     expect(result.requiredSkills).toEqual(["refund-playbook"]);
+    // A server is deployment configuration, so the bundle carries only the name:
+    // without this the import looks complete while the attachment is inert.
+    expect(result.requiredMcpServers).toEqual(["acme-tracker"]);
     deleteEnterpriseWorkflowTree("acme.imported", storeOptions);
   });
 

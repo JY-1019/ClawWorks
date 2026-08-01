@@ -92,6 +92,18 @@ export type EnterpriseBindingPickerFailure =
   | { kind: "import-refused"; message: string };
 
 /**
+ * Which failure a rejected value reports, per field. Tool globs have no name
+ * contract, so they are absent — those fields only reject blanks, which the empty
+ * check above already caught.
+ */
+const INVALID_ENTRY_FAILURE: Partial<
+  Record<NodeOntologyListField, EnterpriseOntologyEntryDraftError>
+> = {
+  skills: "skill-name-invalid",
+  knowledgeFoundations: "foundation-id-invalid",
+};
+
+/**
  * An in-progress step-binding form (a tool grant, a declared skill, or an allowed
  * knowledge foundation) on the step selected in the Worktree inspector.
  *
@@ -126,6 +138,158 @@ export type EnterpriseBindingPicker = {
   phase: "idle" | "preparing" | "writing";
   failure: EnterpriseBindingPickerFailure | null;
 };
+
+/**
+ * The "register an MCP server" form on the Enterprise MCP screen.
+ *
+ * Registration is the same act as anywhere else in OpenClaw — one entry under
+ * `mcp.servers` in config — so this form writes the config draft the Settings
+ * screens write and leaves Save/Publish to them. What is enterprise-specific is
+ * not the registration but the reach: a registered server stays unreachable until
+ * a step attaches it (OntologyBinding.mcpServers).
+ */
+export type EnterpriseMcpDraft = {
+  name: string;
+  /**
+   * Stored verbatim as the server's `transport`. HTTP is not one transport:
+   * OpenClaw resolves an entry with no `transport` as SSE
+   * (src/agents/mcp-transport-config.ts) while Codex reads a bare URL as
+   * streamable HTTP, so a server added here has to say which one it is.
+   */
+  transport: "stdio" | "streamable-http" | "sse";
+  /** stdio: the executable to spawn. */
+  command: string;
+  /** stdio: whitespace-separated arguments. Anything quoted belongs in the config editor. */
+  args: string;
+  /** http: the server URL. */
+  url: string;
+  error: EnterpriseMcpDraftError | null;
+};
+
+export type EnterpriseMcpDraftError =
+  | "name-empty"
+  | "name-taken"
+  | "name-unsupported"
+  | "launch-missing"
+  | "url-invalid";
+
+/** Names the config form's path writer refuses, so the form must refuse them first. */
+const UNWRITABLE_SERVER_NAMES = new Set(["__proto__", "prototype", "constructor"]);
+
+export function beginEnterpriseMcpDraft(state: EnterpriseState) {
+  state.enterpriseMcpDraft = {
+    name: "",
+    transport: "stdio",
+    command: "",
+    args: "",
+    url: "",
+    error: null,
+  };
+}
+
+export function editEnterpriseMcpDraft(
+  state: EnterpriseState,
+  patch: Partial<Omit<EnterpriseMcpDraft, "error">>,
+) {
+  const draft = state.enterpriseMcpDraft;
+  if (!draft) {
+    return;
+  }
+  // Clearing the error on every edit: the operator is answering it, and a stale
+  // "name taken" under a name they just changed reads as a second failure.
+  state.enterpriseMcpDraft = { ...draft, ...patch, error: null };
+}
+
+export function cancelEnterpriseMcpDraft(state: EnterpriseState) {
+  state.enterpriseMcpDraft = null;
+}
+
+/**
+ * Validate the form and hand the new entry to `apply`, which owns the config
+ * write. The write stays with the config controller so this screen cannot grow a
+ * second way to save config; this function owns only the form's contract.
+ */
+export function submitEnterpriseMcpDraft(
+  state: EnterpriseState,
+  params: {
+    existingNames: readonly string[];
+    apply: (name: string, server: Record<string, unknown>) => void;
+  },
+) {
+  const draft = state.enterpriseMcpDraft;
+  if (!draft) {
+    return;
+  }
+  const name = draft.name.trim();
+  const fail = (error: EnterpriseMcpDraftError) => {
+    state.enterpriseMcpDraft = { ...draft, error };
+  };
+  if (!name) {
+    fail("name-empty");
+    return;
+  }
+  // Config keys are unique, so a repeated name would REPLACE a working server
+  // rather than add one — and take its steps' attachments somewhere else with it.
+  if (params.existingNames.some((existing) => existing === name)) {
+    fail("name-taken");
+    return;
+  }
+  // The config form writes through a path setter that refuses these segments
+  // (isForbiddenKey in controllers/config/form-utils.ts), so registering one would
+  // write nothing and close as if it had worked.
+  if (UNWRITABLE_SERVER_NAMES.has(name)) {
+    fail("name-unsupported");
+    return;
+  }
+  const entry = buildMcpServerEntry(draft);
+  if (entry.kind !== "ok") {
+    fail(entry.kind);
+    return;
+  }
+  const server = entry.server;
+  params.apply(name, server);
+  state.enterpriseMcpDraft = null;
+}
+
+/**
+ * The config entry for a draft, or why it cannot be one. The URL is checked here
+ * rather than left to the config schema: the schema rejects it only at save time,
+ * long after this form closed, leaving a failed Save and nothing to correct it in.
+ */
+function buildMcpServerEntry(
+  draft: EnterpriseMcpDraft,
+):
+  | { kind: "ok"; server: Record<string, unknown> }
+  | { kind: "launch-missing" }
+  | { kind: "url-invalid" } {
+  if (draft.transport !== "stdio") {
+    const url = draft.url.trim();
+    if (!url) {
+      return { kind: "launch-missing" };
+    }
+    // `transport` is written explicitly: the two HTTP transports are not
+    // interchangeable, and leaving it out makes each runtime guess differently.
+    return isHttpUrl(url)
+      ? { kind: "ok", server: { url, transport: draft.transport } }
+      : { kind: "url-invalid" };
+  }
+  const command = draft.command.trim();
+  if (!command) {
+    return { kind: "launch-missing" };
+  }
+  const args = draft.args.split(/\s+/).filter((arg) => arg.length > 0);
+  return { kind: "ok", server: args.length > 0 ? { command, args } : { command } };
+}
+
+/** MCP over HTTP means http(s); anything else cannot be dialed by the runtime. */
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 /** Load state of the tool/skill/knowledge catalogs the enterprise screens browse. */
 export type EnterpriseCatalogPhase = "unloaded" | "loading" | "ready";
@@ -188,6 +352,7 @@ export type EnterpriseState = {
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
   enterpriseBindingPicker: EnterpriseBindingPicker | null;
+  enterpriseMcpDraft: EnterpriseMcpDraft | null;
   // Catalogs of what a step can be bound TO: every tool the gateway exposes,
   // every installed skill, and every registered knowledge foundation. Read-only
   // reference data, loaded independently of the run/tree state.
@@ -990,9 +1155,7 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
   if (invalid !== undefined) {
     state.enterpriseBindingPicker = {
       ...picker,
-      failure: {
-        kind: picker.field === "skills" ? "skill-name-invalid" : "foundation-id-invalid",
-      },
+      failure: { kind: INVALID_ENTRY_FAILURE[picker.field] ?? "entry-empty" },
     };
     return;
   }
@@ -1092,6 +1255,63 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
   state.enterpriseTreeSaveError = null;
   state.enterpriseTreeSaveIssues = null;
   await refreshAfterTreeWrite(state, imported.treeId, selectedAtStart);
+}
+
+/**
+ * Turn the selected work-map's explicit capability grants on or off.
+ *
+ * The flag lives on the DEFINITION, so this takes the same export→edit→import
+ * route the binding picker takes rather than adding a second write path: one
+ * whole-tree replace, one revision, and the same edit-intent guard so a
+ * concurrent editor save cannot be silently dropped by this one.
+ *
+ * Turning it on narrows every step at once — a step that lists no tools stops
+ * reaching any — so the button says which direction it goes and the write lands
+ * as an ordinary revision the version history can restore.
+ */
+export async function toggleEnterpriseCapabilityGrants(state: EnterpriseState) {
+  const tree = state.enterpriseTreeDetail;
+  if (!tree || state.enterpriseTreeSaving) {
+    return;
+  }
+  const treeId = tree.id;
+  const next = tree.capabilityGrants === "explicit" ? undefined : "explicit";
+  const editIntent = ++editSeedSeq;
+  state.enterpriseTreeSaving = true;
+  state.enterpriseTreeSaveError = null;
+  state.enterpriseTreeSaveIssues = null;
+  try {
+    const exported = await fetchExportContent(state, treeId, "json");
+    if (!exported.ok) {
+      if (!exported.scopeCleared) {
+        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      }
+      return;
+    }
+    const definition = parseTreeDefinition(exported.content);
+    if (!definition) {
+      state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      return;
+    }
+    // A newer edit claimed the intent while the export was in flight; writing this
+    // whole-tree replace now would undo it.
+    if (editIntent !== editSeedSeq) {
+      return;
+    }
+    // Removed rather than set to a second value: the schema accepts one, and
+    // absence IS the inherited mode. Leaving a key behind would make "off" look
+    // like a mode the definition declares.
+    const { capabilityGrants: _dropped, ...rest } = definition;
+    const patched: EditableTreeDefinition = next ? { ...rest, capabilityGrants: next } : rest;
+    const imported = await importTreeDefinition(state, patched);
+    if (imported.status !== "saved") {
+      state.enterpriseTreeSaveError = importFailureText(imported);
+      return;
+    }
+    await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
+  } finally {
+    state.enterpriseTreeSaving = false;
+  }
 }
 
 /** Why the apply stopped, in the shape the dialog renders. */

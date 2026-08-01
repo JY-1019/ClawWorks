@@ -19,6 +19,7 @@ export const TAB_GROUPS = [
       "enterpriseHistory",
       "enterpriseTools",
       "enterpriseSkills",
+      "enterpriseMcp",
       "knowledge",
     ],
   },
@@ -57,6 +58,7 @@ export type Tab =
   | "enterpriseHistory"
   | "enterpriseTools"
   | "enterpriseSkills"
+  | "enterpriseMcp"
   | "knowledge";
 
 export const SETTINGS_TABS = [
@@ -102,6 +104,7 @@ const TAB_PATHS: Record<Tab, string> = {
   enterpriseHistory: "/enterprise/history",
   enterpriseTools: "/enterprise/tools",
   enterpriseSkills: "/enterprise/skills",
+  enterpriseMcp: "/enterprise/mcp",
   knowledge: "/knowledge",
 };
 
@@ -262,6 +265,10 @@ export function iconForTab(tab: Tab): IconName {
       return "wrench";
     case "enterpriseSkills":
       return "zap";
+    case "enterpriseMcp":
+      // Not the Settings MCP screen's wrench: that glyph is already the
+      // enterpriseTools tab two rows up in this same group.
+      return "plug";
     case "knowledge":
       // Not "book": it sits next to enterprise in the sidebar and the two
       // glyphs read as the same icon at that size.

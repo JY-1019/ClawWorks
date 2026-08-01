@@ -44,8 +44,17 @@ export function isClaudeCliSkillFileAccessible(skillFilePath: string): boolean {
   }
 }
 
-async function collectClaudePluginSkills(snapshot?: SkillSnapshot): Promise<MaterializedSkill[]> {
-  const skills = snapshot?.resolvedSkills ?? [];
+async function collectClaudePluginSkills(
+  snapshot?: SkillSnapshot,
+  allowedSkills?: readonly string[],
+): Promise<MaterializedSkill[]> {
+  const granted = allowedSkills ? new Set(allowedSkills) : null;
+  // The CLI resolves these itself from the plugin directory, so withholding is
+  // physical: a skill the work-map never attached is not linked, rather than
+  // linked and then argued about.
+  const skills = granted
+    ? (snapshot?.resolvedSkills ?? []).filter((skill) => granted.has(skill.name))
+    : (snapshot?.resolvedSkills ?? []);
   if (skills.length === 0) {
     return [];
   }
@@ -93,12 +102,18 @@ async function linkOrCopySkillDir(params: { sourceDir: string; targetDir: string
 export async function prepareClaudeCliSkillsPlugin(params: {
   backendId: string;
   skillsSnapshot?: SkillSnapshot;
+  /**
+   * Skill names the governing workflow grants, or undefined for "do not narrow"
+   * (enterpriseRunGrantedSkills). The CLI owns this directory for the whole
+   * session, so what is not linked here cannot be reached later.
+   */
+  allowedSkills?: readonly string[];
 }): Promise<{ args: string[]; cleanup: () => Promise<void>; pluginDir?: string }> {
   if (normalizeLowercaseStringOrEmpty(params.backendId) !== CLAUDE_CLI_BACKEND_ID) {
     return { args: [], cleanup: async () => {} };
   }
 
-  const skills = await collectClaudePluginSkills(params.skillsSnapshot);
+  const skills = await collectClaudePluginSkills(params.skillsSnapshot, params.allowedSkills);
   if (skills.length === 0) {
     return { args: [], cleanup: async () => {} };
   }

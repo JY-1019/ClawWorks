@@ -65,8 +65,12 @@ async function main(): Promise<number> {
     await import("../src/enterprise/tree-registry.js");
   const { beginEnterpriseRun, endEnterpriseRun } =
     await import("../src/enterprise/run-mediation.js");
-  const { evaluateEnterpriseToolCall, setEnterpriseStepForTurn, recordEnterpriseTurnExecuted } =
-    await import("../src/enterprise/runtime.js");
+  const {
+    evaluateEnterpriseToolCall,
+    getEnterpriseActiveRun,
+    setEnterpriseStepForTurn,
+    recordEnterpriseTurnExecuted,
+  } = await import("../src/enterprise/runtime.js");
   const { searchOntologyObjects } = await import("../src/enterprise/object-store.sqlite.js");
   const {
     createComputeFunctionTool,
@@ -602,6 +606,13 @@ async function main(): Promise<number> {
         }),
       });
       setEnterpriseStepForTurn(escalateRunId);
+      // Walk to the escalation leaf. A planner route names the branch but does not
+      // move the run into it: the active leaf advances with executed turns, so
+      // without these the assertions below would judge the FIRST leaf instead.
+      recordEnterpriseTurnExecuted(escalateRunId);
+      setEnterpriseStepForTurn(escalateRunId);
+      recordEnterpriseTurnExecuted(escalateRunId);
+      setEnterpriseStepForTurn(escalateRunId);
       expectEqual(
         "a step that drops knowledge_search cannot retrieve at all",
         evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "knowledge_search" })
@@ -614,6 +625,195 @@ async function main(): Promise<number> {
         false,
       );
       endEnterpriseRun({ runId: escalateRunId, status: "completed" });
+
+      // MCP is the only scope that denies by default, so both directions matter:
+      // the step that attaches the server may call it, and its siblings may not —
+      // even though the root's allow-list would otherwise pass the tool.
+      const mcpRunId = "golden-mcp";
+      await beginEnterpriseRun({
+        runId: mcpRunId,
+        prompt: "사람에게 넘겨줘",
+        // BOTH registered: only a registered server is gated, so leaving
+        // other-tracker out would have the isolation check below pass on the tool
+        // scope alone — green even if one attachment granted every server.
+        config: {
+          mcp: {
+            servers: { "acme-tracker": { command: "npx" }, "other-tracker": { command: "npx" } },
+          },
+        } as never,
+        // Names the tree, like every other run here: two trees are imported, and
+        // without a planner this would bind whichever one wins the fallback.
+        // The `routes` are inert for THIS fixture and deliberately so: selection
+        // skips the planner entirely on a tree this small ("not worth a model
+        // call"), so the plan keeps all four nodes and the walk below moves leaf
+        // by leaf. Do not read the route as choosing the step under test.
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: BUNDLE_TREE_ID,
+          routes: ["desk.escalate"],
+          rationale: "escalate",
+        }),
+      });
+      setEnterpriseStepForTurn(mcpRunId);
+      // Name the step this asserts against: if a route ever narrows this tree to
+      // the escalation leaf, the check below would silently start testing the step
+      // that DOES attach the server and pass for the wrong reason.
+      expectEqual(
+        "the run starts on the triage step, which attaches nothing",
+        getEnterpriseActiveRun(mcpRunId)?.plan.activeNodeId,
+        "desk.triage",
+      );
+      expectEqual(
+        "the first step, which attaches nothing, cannot reach the server",
+        evaluateEnterpriseToolCall({
+          runId: mcpRunId,
+          toolName: "acme-tracker__create_issue",
+          mcpTool: {
+            serverName: "acme-tracker",
+            safeServerName: "acme-tracker",
+            toolName: "create_issue",
+          },
+        })?.blocked ?? false,
+        true,
+      );
+      // Walk to desk.escalate, the one step the example attaches the server to.
+      recordEnterpriseTurnExecuted(mcpRunId);
+      setEnterpriseStepForTurn(mcpRunId);
+      recordEnterpriseTurnExecuted(mcpRunId);
+      setEnterpriseStepForTurn(mcpRunId);
+      expectEqual(
+        "the step that attaches an MCP server may call it",
+        evaluateEnterpriseToolCall({
+          runId: mcpRunId,
+          toolName: "acme-tracker__create_issue",
+          mcpTool: {
+            serverName: "acme-tracker",
+            safeServerName: "acme-tracker",
+            toolName: "create_issue",
+          },
+        })?.blocked ?? false,
+        false,
+      );
+      // The attachment grants THAT server, not MCP in general.
+      expectEqual(
+        "a server no step attached is still denied on the same step",
+        evaluateEnterpriseToolCall({
+          runId: mcpRunId,
+          toolName: "other-tracker__create_issue",
+          mcpTool: {
+            serverName: "other-tracker",
+            safeServerName: "other-tracker",
+            toolName: "create_issue",
+          },
+        })?.blocked ?? false,
+        true,
+      );
+      // Any tool of the attached server, not just the one named above. (That the
+      // ATTACHMENT alone grants an embedded call, with no tool-scope entry, is
+      // covered by governance.test.ts — this example also carries the globs a
+      // native backend needs, so it cannot prove that here.)
+      expectEqual(
+        "the attached server's other tools are callable from that step",
+        JSON.stringify(
+          evaluateEnterpriseToolCall({
+            runId: mcpRunId,
+            toolName: "acme-tracker__anything",
+            mcpTool: {
+              serverName: "acme-tracker",
+              safeServerName: "acme-tracker",
+              toolName: "anything",
+            },
+          })?.decision.effect,
+        ),
+        JSON.stringify("allow"),
+      );
+      endEnterpriseRun({ runId: mcpRunId, status: "completed" });
+    }
+  }
+
+  // ---- A work-map that grants capabilities explicitly, through the real path.
+  // Written here rather than shipped as an example: the examples deliberately
+  // carry the inherited semantics, and this needs a tree where a step grants
+  // nothing to prove that silence denies.
+  {
+    const EXPLICIT_TREE_ID = "golden.explicit";
+    const explicitTree = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: EXPLICIT_TREE_ID,
+      version: "1.0.0",
+      name: "Explicit grants",
+      description: "Work-map that grants tools, skills, and MCP servers per step.",
+      match: { triggers: ["user"], priority: 50 },
+      capabilityGrants: "explicit",
+      root: {
+        id: "grant",
+        title: "Handle the request",
+        ontology: { allowedTools: ["message"], skills: ["desk-intake"] },
+        children: [
+          {
+            id: "grant.narrow",
+            title: "Work within the root grant",
+            ontology: { skills: ["ticket-triage"] },
+          },
+        ],
+      },
+    };
+    const importedExplicit = importWorkflowTreeContent({
+      content: JSON.stringify(explicitTree),
+      format: "json",
+    });
+    record(
+      "an explicit-grants work-map imports cleanly",
+      importedExplicit.ok,
+      importedExplicit.ok ? EXPLICIT_TREE_ID : JSON.stringify(importedExplicit.issues),
+    );
+    if (importedExplicit.ok) {
+      invalidateWorkflowTreeRegistry();
+      const explicitRunId = "golden-explicit";
+      await beginEnterpriseRun({
+        runId: explicitRunId,
+        prompt: "handle this",
+        // Registered but never attached: the point of the check below.
+        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } } as never,
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: EXPLICIT_TREE_ID,
+          routes: ["grant.narrow"],
+          rationale: "explicit",
+        }),
+      });
+      setEnterpriseStepForTurn(explicitRunId);
+      expectEqual(
+        "a tool the root grants is callable from a step that grants none of its own",
+        evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "message" })?.blocked ?? false,
+        false,
+      );
+      expectEqual(
+        "a tool no step grants is denied even though no list excludes it",
+        evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "memory_search" })?.blocked ??
+          false,
+        true,
+      );
+      expectEqual(
+        "the run's skill catalog is narrowed to what its steps attach",
+        getEnterpriseActiveRun(explicitRunId)?.plan.grantedSkills,
+        ["desk-intake", "ticket-triage"],
+      );
+      expectEqual(
+        "a registered MCP server is denied to a work-map that attaches none",
+        evaluateEnterpriseToolCall({
+          runId: explicitRunId,
+          toolName: "acme-tracker__create_issue",
+          mcpTool: {
+            serverName: "acme-tracker",
+            safeServerName: "acme-tracker",
+            toolName: "create_issue",
+          },
+        })?.blocked ?? false,
+        true,
+      );
+      endEnterpriseRun({ runId: explicitRunId, status: "completed" });
     }
   }
 

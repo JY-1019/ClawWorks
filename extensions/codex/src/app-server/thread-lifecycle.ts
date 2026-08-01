@@ -7,6 +7,7 @@ import {
   SKILL_WORKSHOP_TOOL_NAME,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { resolveRunSkillGrant } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { buildCodexUserMcpServersThreadConfigPatch } from "openclaw/plugin-sdk/codex-mcp-projection";
 import { listRegisteredPluginAgentPromptGuidance } from "openclaw/plugin-sdk/plugin-runtime";
 import { CODEX_GPT5_HEARTBEAT_PROMPT_OVERLAY } from "../../prompt-overlay.js";
@@ -309,6 +310,8 @@ export async function startOrResumeThread(params: {
   environmentSelection?: CodexTurnEnvironmentParams[];
   appServerRuntimeFingerprint?: string;
   pluginThreadConfig?: CodexPluginThreadConfigProvider;
+  /** Server names the bundle half of `mcp_servers` carries, for collision checks. */
+  bundleMcpServerNames?: readonly string[];
   contextEngineProjection?: CodexContextEngineThreadBootstrapProjection;
   signal?: AbortSignal;
   timing?: CodexThreadLifecycleTimingOptions;
@@ -344,8 +347,25 @@ export async function startOrResumeThread(params: {
       ? undefined
       : buildCodexUserMcpServersThreadConfigPatch(params.params.config, {
           agentId: params.agentId ?? params.params.agentId,
+          // Enterprise governance withholds the servers no workflow step attaches;
+          // the projection needs the run to know which those are.
+          runId: params.params.runId,
+          peerServerNames: params.bundleMcpServerNames ?? [],
         });
   const userMcpServersFingerprint = fingerprintUserMcpServersConfigPatch(userMcpServersConfigPatch);
+  // A work-map that grants skills explicitly governs OpenClaw's catalog, which
+  // this harness renders itself — but Codex ALSO scans its own skill roots and
+  // injects their instructions by default. Turning that block off is what keeps a
+  // governed thread from being offered skills the work-map never granted; the
+  // narrowed OpenClaw catalog still reaches the model through the prompt.
+  // `skills.include_instructions` is Codex's own switch for it
+  // (../codex/codex-rs/config/src/skills_config.rs:30-32).
+  const governedSkillsConfigPatch = resolveRunSkillGrant({
+    ...(params.params.runId ? { runId: params.params.runId } : {}),
+    ...(params.params.skillsSnapshot ? { skillsSnapshot: params.params.skillsSnapshot } : {}),
+  })
+    ? { skills: { include_instructions: false } }
+    : undefined;
   const environmentSelectionFingerprint = fingerprintEnvironmentSelection(
     params.environmentSelection,
   );
@@ -633,6 +653,7 @@ export async function startOrResumeThread(params: {
         const resumeConfig = mergeCodexThreadConfigs(
           params.config,
           userMcpServersConfigPatch,
+          governedSkillsConfigPatch,
           finalConfigPatch.configPatch,
         );
         const resumeParams = lifecycleTiming.measureSync("thread-resume-params", () =>
@@ -773,6 +794,7 @@ export async function startOrResumeThread(params: {
     mergeCodexThreadConfigs(
       params.config,
       userMcpServersConfigPatch,
+      governedSkillsConfigPatch,
       pluginThreadConfig?.configPatch,
       finalConfigPatch.configPatch,
     ),
@@ -1055,6 +1077,8 @@ function isJsonConfigValue(value: unknown): value is JsonValue {
 function shouldRecheckRecoverablePluginBinding(params: {
   binding: CodexAppServerThreadBinding;
   pluginThreadConfig?: CodexPluginThreadConfigProvider;
+  /** Server names the bundle half of `mcp_servers` carries, for collision checks. */
+  bundleMcpServerNames?: readonly string[];
 }): boolean {
   if (!params.pluginThreadConfig?.enabled) {
     return false;

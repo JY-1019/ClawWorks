@@ -1067,6 +1067,13 @@ type RunBeforeToolCallHookArgs = {
   ctx?: HookContext;
   signal?: AbortSignal;
   approvalMode?: "request" | "report" | "defer";
+  /**
+   * This tool's MCP registration, read from the tool object by the dispatcher.
+   * Governance needs the server AND both spellings of it: a tool name cannot
+   * supply either, and the materializer rewrites a server whose raw config key the
+   * tool-name grammar rejects.
+   */
+  mcpTool?: { serverName: string; safeServerName: string; toolName: string };
 };
 
 export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Promise<HookOutcome> {
@@ -1169,6 +1176,7 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
   let enterpriseVerdict = evaluateEnterpriseToolCall({
     ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
     toolName,
+    ...(args.mcpTool ? { mcpTool: args.mcpTool } : {}),
     ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
     ...(invokedActionId !== undefined ? { actionId: invokedActionId } : {}),
     ...(decideLater ? { record: false } : {}),
@@ -1631,6 +1639,11 @@ export function wrapToolWithBeforeToolCallHook(
   // Resolved once per wrap from the same opt-in config gate the model-content
   // path uses; controls whether tool input/output rides the trusted private channel.
   const toolContentPolicy = resolveDiagnosticModelContentCapturePolicy(ctx?.config);
+  // Provenance for the enterprise MCP gate, resolved once per wrap like the
+  // identity above. This wrapper — not the definition adapter — is the path every
+  // materialized MCP tool takes, and a tool name cannot say which server a call
+  // belongs to: `github__create_issue` reads exactly like a core tool.
+  const mcpTool = getPluginToolMeta(tool)?.mcp;
   const wrappedTool: AnyAgentTool = {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate) => {
@@ -1655,6 +1668,7 @@ export function wrapToolWithBeforeToolCallHook(
         ctx,
         signal,
         approvalMode: hookOptions.approvalMode,
+        ...(mcpTool ? { mcpTool } : {}),
       });
       if (outcome.blocked) {
         if (outcome.kind !== "veto") {

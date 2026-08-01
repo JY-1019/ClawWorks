@@ -6,6 +6,7 @@
  * this module import-light for agent hot paths.
  */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { activeRuns, getEnterpriseActiveRun, type EnterpriseActiveRun } from "./active-runs.js";
 import { evaluateToolCallGovernance, policyTargetsTree } from "./governance.js";
 import {
   enterpriseStepSequence,
@@ -15,106 +16,27 @@ import {
 } from "./plan.js";
 import type {
   EnterpriseMode,
+  EnterprisePlanNode,
   EnterpriseRunPlan,
   GovernanceDecision,
-  GovernancePolicy,
-  EnterprisePlanNode,
 } from "./types.js";
 
-/** Trace sink installed by run mediation; must never throw. */
-export type EnterpriseRunTraceSink = (event: {
-  kind: "governance.decision" | "node.entered" | "node.completed" | "action.invoked";
-  nodeId: string;
-  payload: Record<string, unknown>;
-}) => void;
-
-export type EnterpriseActiveRun = {
-  plan: EnterpriseRunPlan;
-  policies: readonly GovernancePolicy[];
-  /**
-   * The session this run executes for. Indexed into a sessionId→runId map so an
-   * out-of-process caller (the loopback MCP server, spawned by this run) can find
-   * the run it belongs to from its own trusted sessionId, instead of trusting a
-   * client-supplied run-id header it could forge to another run's scope.
-   */
-  sessionId?: string;
-  sink?: EnterpriseRunTraceSink;
-  /**
-   * Required property ids per object type, from the tree this run PLANNED
-   * against. Snapshotted at mediation so a mid-run re-import cannot change the
-   * shape an in-flight write is judged by.
-   */
-  treeRequiredProperties?: Map<string, Set<string>>;
-  /**
-   * Provider turns that have actually executed for this execution. The active
-   * leaf is `leaves[min(stepTurnsExecuted, last)]`, so it only advances once a
-   * turn really runs — a preflight-failed turn is never counted and the retry
-   * redoes that step. Absent means zero (fixtures/first turn).
-   */
-  stepTurnsExecuted?: number;
-};
+// Re-exported so the registry's move stays invisible to every existing caller.
+export {
+  clearEnterpriseActiveRunsForTest,
+  enterpriseRunAttachedMcpServers,
+  getEnterpriseActiveRun,
+  getSessionActiveRunId,
+  registerEnterpriseActiveRun,
+  resolveEnterpriseMcpServers,
+  unregisterEnterpriseActiveRun,
+  type EnterpriseActiveRun,
+  type EnterpriseRunTraceSink,
+} from "./active-runs.js";
 
 /** Effective enterprise mode. Enterprise is on ("enforce") unless config opts out. */
 export function resolveEnterpriseMode(config?: OpenClawConfig): EnterpriseMode {
   return config?.enterprise?.mode ?? "enforce";
-}
-
-// Symbol-keyed global so duplicated dist chunks share one registry
-// (same pattern as the memory embedding provider registry).
-const ACTIVE_RUNS_KEY = Symbol.for("openclaw.enterpriseActiveRuns");
-
-function activeRuns(): Map<string, EnterpriseActiveRun> {
-  const holder = globalThis as { [ACTIVE_RUNS_KEY]?: Map<string, EnterpriseActiveRun> };
-  holder[ACTIVE_RUNS_KEY] ??= new Map();
-  return holder[ACTIVE_RUNS_KEY];
-}
-
-// sessionId → the runId that session is CURRENTLY executing. Turns of one session
-// are serialized (the session lane), so at most one run is active per session at
-// a time and this map is unambiguous during a turn. Same symbol-keyed global as
-// the run registry so duplicated dist chunks share one map.
-const SESSION_ACTIVE_RUNS_KEY = Symbol.for("openclaw.enterpriseSessionActiveRuns");
-
-function sessionActiveRuns(): Map<string, string> {
-  const holder = globalThis as { [SESSION_ACTIVE_RUNS_KEY]?: Map<string, string> };
-  holder[SESSION_ACTIVE_RUNS_KEY] ??= new Map();
-  return holder[SESSION_ACTIVE_RUNS_KEY];
-}
-
-export function registerEnterpriseActiveRun(run: EnterpriseActiveRun): void {
-  activeRuns().set(run.plan.runId, run);
-  if (run.sessionId) {
-    // Begin runs inside the session lane, so a fresh turn's begin overwrites the
-    // prior turn's link before this turn's tool calls resolve — always the
-    // current run.
-    sessionActiveRuns().set(run.sessionId, run.plan.runId);
-  }
-}
-
-export function getEnterpriseActiveRun(runId: string): EnterpriseActiveRun | undefined {
-  return activeRuns().get(runId);
-}
-
-/** The run a session is executing right now, or undefined between/outside runs. */
-export function getSessionActiveRunId(sessionId: string): string | undefined {
-  return sessionActiveRuns().get(sessionId);
-}
-
-export function unregisterEnterpriseActiveRun(runId: string): void {
-  const run = activeRuns().get(runId);
-  activeRuns().delete(runId);
-  // Guarded clear: run end runs OUTSIDE the session lane, so the next run for the
-  // same session can begin (and re-point the link) before this one ends. Drop the
-  // link only if it still names the ending run, or we would orphan the successor.
-  if (run?.sessionId && sessionActiveRuns().get(run.sessionId) === runId) {
-    sessionActiveRuns().delete(run.sessionId);
-  }
-}
-
-/** Test-only: clear registry state between cases (isolate:false lanes). */
-export function clearEnterpriseActiveRunsForTest(): void {
-  activeRuns().clear();
-  sessionActiveRuns().clear();
 }
 
 /** Whether a mediated run advances/traces per-node steps (governed trees only). */
@@ -154,6 +76,10 @@ export function setEnterpriseStepForTurn(runId: string): void {
   if (!run) {
     return;
   }
+  // Claiming a step is what makes the active path meaningful. Only the embedded
+  // loop does it; CLI/Codex/ACP runs stay on the root for their whole life, so the
+  // gate reads their attachments plan-wide instead of denying every leaf grant.
+  run.tracksSteps = true;
   const leaves = enterpriseStepSequence(run.plan);
   const targetId = leaves[Math.min(run.stepTurnsExecuted ?? 0, leaves.length - 1)];
   if (!targetId || run.plan.activeNodeId === targetId) {
@@ -317,6 +243,8 @@ export function readInvokedActionId(toolName: string, params: unknown): string |
 export function evaluateEnterpriseToolCall(params: {
   runId?: string;
   toolName: string;
+  /** This tool's MCP registration, from the tool object the dispatcher holds. */
+  mcpTool?: { serverName: string; safeServerName: string; toolName: string };
   toolCallId?: string;
   /** The ontology action the call names (invoke_action). See readInvokedActionId. */
   actionId?: string;
@@ -374,6 +302,9 @@ export function evaluateEnterpriseToolCall(params: {
       toolName: params.toolName,
       policies: run.policies,
       path,
+      ...(params.mcpTool ? { mcpTool: params.mcpTool } : {}),
+      ...(run.mcpServers ? { mcpServers: run.mcpServers } : {}),
+      ...(run.tracksSteps ? {} : { attachmentScope: "plan" as const }),
       ...(params.actionId !== undefined ? { actionId: params.actionId } : {}),
       ...(toolCarriesOntologyAction(params.toolName) ? { carriesAction: true } : {}),
     });

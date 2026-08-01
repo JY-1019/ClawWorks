@@ -210,10 +210,54 @@ export const zh_CN: TranslationMap = {
         "已配置的工具目录，按运行时的分组方式排列。插件工具在声明后即会列出（即使其配置尚未解析），而频道工具和 MCP 工具仅存在于活跃会话中，因此这里展示的是可配置的内容，而非当前实时运行的内容。",
       attachHint:
         "这是工具目录。要让某个步骤调用工具，请打开工作树，选择该步骤，然后在步骤绑定下添加。",
+      attachHintGranted:
+        "此工作地图显式授予工具。每个步骤只能调用其自身列出的工具，或其上级步骤列出的工具。目录中的所有其他工具均被拒绝。",
       empty: "此 Gateway 上没有可用的工具。",
       toolCount: "{count} 个工具",
       optionalBadge: "可选",
       pluginBadge: "插件：{pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "已为此 Gateway 注册的 MCP 服务器。在此处注册与在 OpenClaw 其他位置注册效果相同——都会存入 mcp.servers——但在企业治理模式下，服务器在被步骤绑定之前将保持不可访问。",
+      attachHint:
+        "要允许步骤调用服务器，请打开 Worktree，选择相应步骤，然后在步骤绑定中添加。未被任何步骤绑定的服务器虽已注册但不可访问。",
+      nativeConfigBoundary:
+        "此配置管理 OpenClaw 提供给运行的服务器。直接在工具自身配置中声明的服务器（例如 Codex 配置文件）不受此管理——该层属于工具本身，而非 Gateway。",
+      attachHintUngoverned:
+        "此工作地图尚未管控 MCP，因此已注册的服务器仍可作为普通工具调用。将某个服务器附加到步骤绑定中的某一步骤后，将对整个工作地图启用默认拒绝策略。",
+      empty: "此 Gateway 尚未注册任何 MCP 服务器。",
+      add: "注册服务器",
+      disabled: "已禁用",
+      unattached: "未关联到任何步骤",
+      unsaved: "此注册信息仅保存在浏览器中，需保存到配置后才会生效。",
+      waitingForConfig: "正在加载 Gateway 配置，注册功能将在配置加载完成后可用。",
+      configSaving:
+        "配置正在保存中。请等待保存完成——现在注册的服务器会在保存的配置重新加载时被丢弃。",
+      configInvalid:
+        "Gateway 配置无法解析，因此此界面无法在其基础上添加内容。请先在配置编辑器中修复它——从此处保存将会用仅包含此条目的内容替换整个文件。",
+      rawDraftPending:
+        "原始配置编辑器中有未保存的更改。请先保存或丢弃这些更改——在此处注册将覆盖该草稿。",
+      save: "保存",
+      publish: "保存并发布",
+      publishing: "发布中...",
+    },
+    mcpDraft: {
+      title: "注册 MCP 服务器",
+      subtitle:
+        "为其命名并指定一种传输方式。Headers、环境变量、TLS 和 OAuth 请在 MCP 设置页面中配置。",
+      name: "名称",
+      command: "命令",
+      args: "参数（以空格分隔）",
+      url: "URL",
+      submit: "添加到配置",
+      nameEmpty: "请输入服务器名称。",
+      nameTaken: "该名称的服务器已注册，请选择其他名称。",
+      nameUnsupported:
+        "该名称无法存储在配置编辑器中。请选择其他名称（constructor、prototype 和 __proto__ 为保留名称）。",
+      launchMissing: "请输入命令或 URL 以便启动服务器。",
+      urlInvalid: "请输入 http:// 或 https:// URL；MCP over HTTP 无法连接其他协议。",
     },
     picker: {
       subtitle: "搜索目录并选择此步骤可使用的内容。",
@@ -237,6 +281,8 @@ export const zh_CN: TranslationMap = {
       none: "尚未声明。",
       scopeNarrowing:
         "此步骤尚未设置工具允许列表，因此除被拒绝的工具外，所有工具均可使用。添加第一个条目后将转为允许列表模式，仅列出的工具可用。",
+      scopeUngranted:
+        "此工作地图需要显式授予工具权限。在此处或上级步骤中列出工具之前，该步骤无法访问任何工具。",
       knowledgeNarrowing:
         "此步骤尚未设置知识允许列表，因此可以查询所有已注册的知识基础。添加第一个条目后，将仅限于列出的知识基础。",
       skillNameInvalid: "请使用有效的 Skill 名称：仅限小写字母、数字和单个连字符，最多 64 个字符。",
@@ -249,6 +295,10 @@ export const zh_CN: TranslationMap = {
       exportFailed: "无法加载要编辑的树定义。",
       importFailed:
         "保存未确认。更改可能已应用也可能未应用——请刷新工作地图查看实际状态，然后再重试。",
+      mcpFirstAttachment:
+        "此工作地图尚未管理 MCP。在此添加第一个服务器将为整个工作地图启用默认拒绝策略：之后每个没有附件的步骤都将无法访问任何 MCP 服务器。",
+      mcpNoneAttached:
+        "此步骤未附加 MCP 服务器，因此无法调用任何服务器。与工具和知识不同，MCP 默认不授予任何权限。",
       importNotSent: "未保存任何内容：此内容发送前 Gateway 连接已断开。请重新连接后重试。",
       importRefused: "服务器拒绝了此更改，未保存任何内容：{message}",
       importRejected: "服务器拒绝了此更改，因此未保存任何内容。",
@@ -261,6 +311,7 @@ export const zh_CN: TranslationMap = {
         "未选择工作地图，因此未显示步骤用量。请在工作树中选择一个，以查看每个条目使用了哪些步骤。",
       usedBy: "被 {treeName} 使用：",
       declaredBy: "由 {treeName} 声明：",
+      attachedTo: "已附加到 {treeName}：",
       treeIssue:
         "所选工作地图未能加载，因此以下步骤来自 Gateway 返回的备用定义：{message}。在强制模式下，加载失败的工作地图在成功加载之前不会生效。",
       treeUnavailable: "无法加载所选的工作地图，因此未显示步骤使用情况：{message}。",
@@ -271,14 +322,19 @@ export const zh_CN: TranslationMap = {
       tools: "工具 — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "知识 — ontology.knowledgeFoundations",
+      mcp: "MCP 服务器 — ontology.mcpServers",
       skillNotInstalled: "未安装",
       foundationNotRegistered: "未注册",
+      mcpNotRegistered: "未在 mcp.servers 中注册",
+      inherited: "继承自父步骤：",
     },
     skillsTab: {
       title: "Skills",
       subtitle: "此 Gateway 已安装的所有 Skills，以及其生效所需的条件。",
       attachHint:
         "这是技能目录。要将其声明为步骤的依赖项，请打开工作树，选择该步骤，然后在步骤绑定下添加。",
+      attachHintGranted:
+        "此工作地图显式授予 Skills：绑定到该地图的运行仅提供其步骤中声明的 Skills，所有其他已安装的 Skills 将对模型隐藏。",
       empty: "未安装任何 Skills。",
       declaredSection: "由 {treeName} 声明",
       otherSection: "其他已安装的 Skills",
@@ -300,6 +356,7 @@ export const zh_CN: TranslationMap = {
     knowledge: "知识：{ids}",
     guidance: "指令：{text}",
     skills: "Skills：{ids}",
+    mcpServers: "MCP: {ids}",
     audit: "已审计",
     activeBadge: "活跃",
     nodeCount: "{count} 个步骤",
@@ -308,6 +365,16 @@ export const zh_CN: TranslationMap = {
     selectTree: "选择一个工作流树以可视化其结构和本体。",
     treeTitle: "树可视化",
     treeUnavailable: "树定义已不再可用。",
+    capabilityGrants: {
+      explicit: "显式授权",
+      inherited: "继承的范围",
+      explicitHint:
+        "每个步骤只能访问它自身或其上级步骤中列出的工具、Skills 和 MCP 服务器。未列出任何内容的步骤将无法访问任何资源。",
+      inheritedHint:
+        "步骤的列表会缩小其上级所允许的范围；分支中未列出任何内容的步骤可以使用任何工具或 Skills。",
+      turnOn: "显式授权",
+      turnOff: "使用继承的权限范围",
+    },
     structureTitle: "结构",
     ontologyTitle: "本体",
     wholeTreeOverviewTitle: "全树概览",
@@ -662,6 +729,7 @@ export const zh_CN: TranslationMap = {
     enterpriseHistory: "历史记录",
     enterpriseTools: "工具",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "知识库",
   },
   subtitles: {
@@ -692,6 +760,7 @@ export const zh_CN: TranslationMap = {
     enterpriseHistory: "过往的受管运行及其追踪记录。",
     enterpriseTools: "已配置的工具目录。",
     enterpriseSkills: "此 Gateway 已安装的所有 Skills。",
+    enterpriseMcp: "已注册的 MCP 服务器及可调用它们的步骤。",
     knowledge: "已注册的知识基础及其状态。",
   },
   skillWorkshop: {

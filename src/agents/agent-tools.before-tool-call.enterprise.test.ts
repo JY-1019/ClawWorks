@@ -12,10 +12,13 @@ import {
 import type { EnterpriseRunPlan, GovernancePolicy } from "../enterprise/types.js";
 import { getGlobalHookRunner, resetGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { HookRunner } from "../plugins/hooks.js";
+import { setPluginToolMeta } from "../plugins/tools.js";
 import {
   requestDeferredPluginToolApproval,
   runBeforeToolCallHook,
+  wrapToolWithBeforeToolCallHook,
 } from "./agent-tools.before-tool-call.js";
+import { textResult, type AnyAgentTool } from "./tools/common.js";
 import { callGatewayTool } from "./tools/gateway.js";
 
 vi.mock("./tools/gateway.js", () => ({
@@ -35,6 +38,10 @@ function registerRun(params: {
   runId: string;
   mode?: "enforce" | "observe";
   allowedTools?: string[];
+  /** Servers the STEP attaches (ontology.mcpServers). */
+  attachMcpServers?: string[];
+  /** Servers an operator REGISTERED in config; only these are gated. */
+  registeredMcpServers?: string[];
   policies?: GovernancePolicy[];
   sink?: EnterpriseActiveRun["sink"];
 }): void {
@@ -51,16 +58,22 @@ function registerRun(params: {
         parentId: null,
         seq: 0,
         title: "Support",
-        ontology: params.allowedTools ? { allowedTools: params.allowedTools } : {},
+        ontology: {
+          ...(params.allowedTools ? { allowedTools: params.allowedTools } : {}),
+          ...(params.attachMcpServers ? { mcpServers: params.attachMcpServers } : {}),
+        },
       },
     ],
     activeNodeId: "support",
+    // Attaching anywhere is what turns attachment governance on for a work-map.
+    ...(params.attachMcpServers ? { mcpGoverned: true } : {}),
     mode: params.mode ?? "enforce",
     createdAt: 0,
   };
   const run: EnterpriseActiveRun = {
     plan,
     policies: params.policies ?? [],
+    ...(params.registeredMcpServers ? { mcpServers: params.registeredMcpServers } : {}),
     ...(params.sink ? { sink: params.sink } : {}),
   };
   registerEnterpriseActiveRun(run);
@@ -93,6 +106,97 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
       expect(outcome.deniedReason).toBe("enterprise-governance");
       expect(outcome.reason).toContain("ontology tool scope");
     }
+  });
+
+  it("blocks an MCP tool from a server no step attached", async () => {
+    // The wrapper that every materialized MCP tool goes through supplies the
+    // server; the name alone could never say which server this belongs to.
+    // The work-map opts into attachment governance by attaching SOMETHING; this
+    // step attaches a different server, so github is still unreachable here.
+    registerRun({
+      runId: "ent-run-mcp-1",
+      attachMcpServers: ["atlassian"],
+      registeredMcpServers: ["github", "atlassian"],
+    });
+    const outcome = await runBeforeToolCallHook({
+      toolName: "github__create_issue",
+      params: {},
+      ctx: { runId: "ent-run-mcp-1" },
+      mcpTool: { serverName: "github", safeServerName: "github", toolName: "create_issue" },
+    });
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.deniedReason).toBe("enterprise-governance");
+      expect(outcome.reason).toContain("ontology.mcpServers");
+    }
+  });
+
+  it("allows an MCP tool once the step attaches its server", async () => {
+    registerRun({
+      runId: "ent-run-mcp-2",
+      attachMcpServers: ["github"],
+      registeredMcpServers: ["github"],
+    });
+    const outcome = await runBeforeToolCallHook({
+      toolName: "github__create_issue",
+      params: {},
+      ctx: { runId: "ent-run-mcp-2" },
+      mcpTool: { serverName: "github", safeServerName: "github", toolName: "create_issue" },
+    });
+    expect(outcome.blocked).toBe(false);
+  });
+
+  it("leaves a same-looking core tool alone when no provenance says MCP", async () => {
+    // Without the server the gate must not classify by name, or a core tool
+    // spelled `<something>__<something>` would be denied for being unattached.
+    registerRun({ runId: "ent-run-mcp-3", registeredMcpServers: ["github"] });
+    const outcome = await runBeforeToolCallHook({
+      toolName: "github__create_issue",
+      params: {},
+      ctx: { runId: "ent-run-mcp-3" },
+    });
+    expect(outcome.blocked).toBe(false);
+  });
+
+  it("carries MCP provenance from the wrapper every materialized tool goes through", async () => {
+    // The regression this guards: reading the metadata only in the definition
+    // adapter is dead code, because embedded tools are already wrapped here and
+    // the adapter skips its own hook call for them.
+    registerRun({
+      runId: "ent-run-mcp-wrap",
+      attachMcpServers: ["atlassian"],
+      registeredMcpServers: ["github", "atlassian"],
+    });
+    let executed = 0;
+    const tool: AnyAgentTool = {
+      name: "github__create_issue",
+      label: "create_issue",
+      description: "",
+      parameters: { type: "object", properties: {} } as never,
+      execute: async () => {
+        executed += 1;
+        return textResult("ok", { status: "ok" });
+      },
+    };
+    setPluginToolMeta(tool, {
+      pluginId: "bundle-mcp",
+      optional: false,
+      mcp: {
+        serverName: "github",
+        safeServerName: "github",
+        toolName: "create_issue",
+        operation: "tool",
+      },
+    });
+
+    const wrapped = wrapToolWithBeforeToolCallHook(tool, { runId: "ent-run-mcp-wrap" });
+    const result = (await wrapped.execute?.("call-mcp", {}, undefined, undefined)) as {
+      details?: { status?: string; deniedReason?: string };
+    };
+
+    expect(executed).toBe(0);
+    expect(result.details?.status).toBe("blocked");
+    expect(result.details?.deniedReason).toBe("enterprise-governance");
   });
 
   it("blocks tools denied by governance policy", async () => {
@@ -344,8 +448,10 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
       toolCallId: "call-appr-long",
       ctx: { runId: "ent-run-9" },
     });
-    const [, , request] = mockCallGatewayTool.mock.calls[0];
-    const approvalRequest = request as { title: string; description: string };
+    const approvalRequest = mockCallGatewayTool.mock.calls[0]?.[2] as {
+      title: string;
+      description: string;
+    };
     expect(approvalRequest.title.length).toBeLessThanOrEqual(80);
     expect(approvalRequest.description.length).toBeLessThanOrEqual(256);
   });

@@ -32,6 +32,7 @@ import {
   resolveFastModeForElapsed,
   setActiveEmbeddedRun,
   supportsModelTools,
+  resolveRunWithheldSkillEnvKeys,
   runAgentCleanupStep,
   type FastModeAutoProgressState,
   type EmbeddedRunAttemptParams,
@@ -40,6 +41,7 @@ import {
   type NativeHookRelayRegistrationHandle,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { resolveAgentDir } from "openclaw/plugin-sdk/agent-runtime";
+import { resolveCodexEmittedUserMcpServerNames } from "openclaw/plugin-sdk/codex-mcp-projection";
 import {
   createDiagnosticTraceContextFromActiveScope,
   emitTrustedDiagnosticEvent,
@@ -637,6 +639,28 @@ export async function runCodexAppServerAttempt(
     env: process.env,
     agentDir,
   });
+  // Skill credentials this run's work-map withholds must not reach the
+  // app-server: it inherits this process's environment when it spawns and then
+  // serves the whole run, so nothing can be taken back afterwards. The keys ride
+  // in `clearEnv`, which the stdio transport applies to the spawn environment.
+  const withheldSkillEnvKeys = resolveRunWithheldSkillEnvKeys({
+    ...(params.runId ? { runId: params.runId } : {}),
+    ...(params.skillsSnapshot ? { skillsSnapshot: params.skillsSnapshot } : {}),
+    // The config carries what each withheld skill DECLARES, which is what makes
+    // this list stable: an app-server started earlier may still hold the key with
+    // nothing active to detect, and a stable list also changes this run's start
+    // options so it does not reuse that warm process.
+    ...(params.config ? { config: params.config } : {}),
+  });
+  if (withheldSkillEnvKeys.length > 0) {
+    appServer = {
+      ...appServer,
+      start: {
+        ...appServer.start,
+        clearEnv: [...(appServer.start.clearEnv ?? []), ...withheldSkillEnvKeys],
+      },
+    };
+  }
   pluginAppServer = appServer;
   nativeHookRelayEvents = resolveCodexNativeHookRelayEvents({
     configuredEvents: options.nativeHookRelay?.events,
@@ -669,6 +693,19 @@ export async function runCodexAppServerAttempt(
   const bundleMcpThreadConfig = await loadCodexBundleMcpThreadConfig({
     workspaceDir: effectiveWorkspace,
     cfg: params.config,
+    // The run's tool ceiling applies to plugin servers here too; this thread has no
+    // per-call gate that could recognize them.
+    runId: params.runId,
+    // The configured servers this thread can receive, for the namespace-collision
+    // check on the plugin half. A superset by one step: whether the user
+    // projection runs at all is decided below (nativeToolSurfaceEnabled), and the
+    // bundle patch is built first. Naming a peer that never arrives only withholds
+    // a plugin server, which is the safe direction; missing one would hand over
+    // tools the ceiling cannot bound.
+    emittedUserMcpServerNames: resolveCodexEmittedUserMcpServerNames(params.config, {
+      agentId: sessionAgentId,
+      runId: params.runId,
+    }),
     toolsEnabled: supportsModelTools(params.model),
     disableTools: params.disableTools,
     toolsAllow: params.toolsAllow,

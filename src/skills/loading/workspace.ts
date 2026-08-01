@@ -1485,26 +1485,49 @@ function resolveWorkspaceSkillPromptState(
   const promptEntries = filterPromptVisibleSkillEntries(eligible);
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
   const resolvedSkills = promptEntries.map((entry) => entry.skill);
-  // Derive prompt-facing skills with compacted paths (e.g. ~/...) once.
-  // Budget checks and final render both use this same representation so the
-  // tier decision is based on the exact strings that end up in the prompt.
-  // resolvedSkills keeps canonical paths for snapshot / runtime consumers.
-  const promptSkills = compactSkillPaths(resolvedSkills).toSorted((a, b) =>
-    a.name.localeCompare(b.name, "en"),
-  );
-  const { skillsForPrompt, compact } = applySkillsPromptLimits({
-    skills: promptSkills,
+  const prompt = buildSkillsCatalogPrompt({
+    skills: resolvedSkills,
     config: opts?.config,
     agentId: opts?.agentId,
     remoteNote,
   });
-  const prompt = buildRenderedSkillsPrompt({
-    remoteNote,
+  return { eligible, prompt, resolvedSkills };
+}
+
+/**
+ * Render the catalog for an already-resolved skill list: compacted paths, name
+ * order, then the prompt-size limits.
+ *
+ * Exported because a run whose workflow narrows the catalog rebuilds it from a
+ * snapshot's `resolvedSkills` (see resolveSkillsPromptForRun). Rebuilding through
+ * this keeps that catalog identical in shape to a stock one instead of growing a
+ * second formatter that can drift.
+ */
+export function buildSkillsCatalogPrompt(params: {
+  skills: readonly Skill[];
+  config?: OpenClawConfig;
+  agentId?: string;
+  remoteNote?: string;
+}): string {
+  // Derive prompt-facing skills with compacted paths (e.g. ~/...) once.
+  // Budget checks and final render both use this same representation so the
+  // tier decision is based on the exact strings that end up in the prompt.
+  // The caller's list keeps canonical paths for snapshot / runtime consumers.
+  const promptSkills = compactSkillPaths([...params.skills]).toSorted((a, b) =>
+    a.name.localeCompare(b.name, "en"),
+  );
+  const { skillsForPrompt, compact } = applySkillsPromptLimits({
+    skills: promptSkills,
+    config: params.config,
+    agentId: params.agentId,
+    remoteNote: params.remoteNote,
+  });
+  return buildRenderedSkillsPrompt({
+    remoteNote: params.remoteNote,
     skills: skillsForPrompt,
-    total: resolvedSkills.length,
+    total: params.skills.length,
     compact,
   });
-  return { eligible, prompt, resolvedSkills };
 }
 
 export function resolveSkillsPromptForRun(params: {
@@ -1514,9 +1537,35 @@ export function resolveSkillsPromptForRun(params: {
   workspaceDir: string;
   agentId?: string;
   eligibility?: SkillEligibilityContext;
+  /**
+   * Skill names this run may see, from the workflow that governs it
+   * (enterpriseRunGrantedSkills). Undefined means "do not narrow"; an EMPTY list
+   * is a real answer — a work-map that grants explicitly and attaches no skill
+   * gets no catalog — so the session snapshot's prompt is never used as-is once
+   * this is present.
+   */
+  allowedSkills?: readonly string[];
 }): string {
+  const granted = params.allowedSkills ? new Set(params.allowedSkills) : null;
+  const resolvedSkills = params.skillsSnapshot?.resolvedSkills;
+  if (granted && resolvedSkills) {
+    // Rebuilt rather than filtered from the rendered string: the catalog carries
+    // size limits and a compact fallback, so dropping lines out of the finished
+    // prompt would leave its own "included N of M" note describing the wrong set.
+    // Narrowing only — the snapshot was already built under the agent's own skill
+    // filter, so this can never hand back a skill that filter excluded.
+    return buildSkillsCatalogPrompt({
+      skills: resolvedSkills.filter((skill) => granted.has(skill.name)),
+      config: params.config,
+      agentId: params.agentId,
+      remoteNote: params.eligibility?.remote?.note?.trim(),
+    }).trim();
+  }
   const snapshotPrompt = params.skillsSnapshot?.prompt?.trim();
-  if (snapshotPrompt) {
+  // A snapshot with no resolved skills cannot be narrowed, so a governed run falls
+  // through to the entries below (which is where those runs get their skills: the
+  // runner loads entries exactly when the snapshot has none).
+  if (snapshotPrompt && !granted) {
     return snapshotPrompt;
   }
   if (params.entries && params.entries.length > 0) {
@@ -1525,6 +1574,10 @@ export function resolveSkillsPromptForRun(params: {
       config: params.config,
       agentId: params.agentId,
       eligibility: params.eligibility,
+      // The entries were loaded under the agent's filter already, so this narrows
+      // that set; the builder reads an empty list as "no skills", which is what an
+      // explicit work-map attaching none means.
+      ...(granted ? { skillFilter: [...granted] } : {}),
     });
     return prompt.trim() ? prompt : "";
   }

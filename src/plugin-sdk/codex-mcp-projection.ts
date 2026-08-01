@@ -3,4 +3,9 @@
 // can attach the same user `mcp.servers` entries to its thread config without
 // deep-importing core helpers.
 
-export { buildCodexUserMcpServersThreadConfigPatch } from "../agents/cli-runner/bundle-mcp-codex.js";
+export {
+  buildCodexUserMcpServersThreadConfigPatch,
+  // The same projection's name set, so the bundle half of one thread config can
+  // judge namespace collisions against the servers that will really arrive.
+  resolveCodexEmittedUserMcpServerNames,
+} from "../agents/cli-runner/bundle-mcp-codex.js";

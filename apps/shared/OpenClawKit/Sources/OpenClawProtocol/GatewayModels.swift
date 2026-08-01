@@ -6884,6 +6884,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
     public let contexthints: [String]?
     public let guidance: String?
     public let skills: [String]?
+    public let mcpservers: [String]?
     public let expectedoutput: String?
     public let audit: Bool?
 
@@ -6899,6 +6900,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
         contexthints: [String]?,
         guidance: String? = nil,
         skills: [String]? = nil,
+        mcpservers: [String]? = nil,
         expectedoutput: String?,
         audit: Bool?)
     {
@@ -6913,6 +6915,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
         self.contexthints = contexthints
         self.guidance = guidance
         self.skills = skills
+        self.mcpservers = mcpservers
         self.expectedoutput = expectedoutput
         self.audit = audit
     }
@@ -6929,6 +6932,7 @@ public struct EnterpriseTreeOntology: Codable, Sendable {
         case contexthints = "contextHints"
         case guidance
         case skills
+        case mcpservers = "mcpServers"
         case expectedoutput = "expectedOutput"
         case audit
     }
@@ -6976,6 +6980,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
     public let description: String?
     public let source: AnyCodable
     public let match: [String: AnyCodable]?
+    public let capabilitygrants: String?
     public let nodes: [EnterpriseTreeNode]
 
     public init(
@@ -6986,6 +6991,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
         description: String?,
         source: AnyCodable,
         match: [String: AnyCodable]?,
+        capabilitygrants: String? = nil,
         nodes: [EnterpriseTreeNode])
     {
         self.id = id
@@ -6995,6 +7001,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
         self.description = description
         self.source = source
         self.match = match
+        self.capabilitygrants = capabilitygrants
         self.nodes = nodes
     }
 
@@ -7006,6 +7013,7 @@ public struct EnterpriseTreeDetail: Codable, Sendable {
         case description
         case source
         case match
+        case capabilitygrants = "capabilityGrants"
         case nodes
     }
 }

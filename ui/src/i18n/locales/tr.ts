@@ -217,10 +217,55 @@ export const tr: TranslationMap = {
         "Yapılandırılmış araç kataloğu, çalışma zamanının grupladığı şekilde gruplandırılmıştır. Bir plugin aracı, yapılandırması çözümlenmeden önce bile bildirildiğinde listelenir; kanal ve MCP araçları yalnızca canlı bir oturumda bulunur, bu nedenle burada gösterilen şu anda canlı olan değil, yapılandırılabilecek olanlardır.",
       attachHint:
         "Bu katalogdur. Bir adımın birini çağırmasına izin vermek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
+      attachHintGranted:
+        "Bu çalışma haritası araçları açıkça tanımlar. Bir adım yalnızca kendi listelediği veya üstündeki bir adımın listelediği araçları çağırabilir. Bu katalogdaki diğer tüm araçlar reddedilir.",
       empty: "Bu gateway üzerinde kullanılabilir araç yok.",
       toolCount: "{count} araç",
       optionalBadge: "isteğe bağlı",
       pluginBadge: "Eklenti: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "Bu gateway için kayıtlı MCP sunucuları. Burada bir sunucu kaydetmek, OpenClaw'daki diğer yerlerle aynıdır — mcp.servers'a eklenir — ancak kurumsal yönetim altında bir sunucu, bir adım onu bağlayana kadar erişilemez kalır.",
+      attachHint:
+        "Bir adımın sunucuyu çağırmasına izin vermek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin. Hiçbir adımın bağlamadığı bir sunucu kayıtlı ancak erişilemez durumda kalır.",
+      nativeConfigBoundary:
+        "Bu, OpenClaw'un bir çalıştırmaya sunduğu sunucuları yönetir. Bir harness'ın kendi yapılandırmasında (örneğin Codex yapılandırma dosyasında) doğrudan tanımlanan bir sunucu bunun dışında kalır — bu katman Gateway'e değil, harness'a aittir.",
+      attachHintUngoverned:
+        "Bu iş haritası henüz MCP'yi yönetmiyor, bu nedenle kayıtlı sunucular sıradan araçlar olarak çağrılabilir durumda kalır. Adım bağlamaları altında bir adıma birini eklemek, tüm iş haritası için varsayılan olarak reddet modunu etkinleştirir.",
+      empty: "Bu gateway için kayıtlı MCP sunucusu yok.",
+      add: "Sunucu kaydet",
+      disabled: "devre dışı",
+      unattached: "herhangi bir adıma bağlı değil",
+      unsaved: "Bu kayıt, yapılandırmaya kaydedene kadar yalnızca tarayıcınızda bulunur.",
+      waitingForConfig:
+        "Gateway yapılandırması yükleniyor; yapılandırma alındığında kayıt işlemi kullanılabilir olacaktır.",
+      configSaving:
+        "Bir yapılandırma kaydı devam ediyor. Tamamlanmasını bekleyin — şu anda kaydedilen bir sunucu, kayıtlı yapılandırma yeniden yüklendiğinde silinecektir.",
+      configInvalid:
+        "Gateway yapılandırması ayrıştırılamıyor, bu nedenle bu ekranın ekleyeceği bir şey yok. Önce yapılandırma düzenleyicisinde düzeltin — buradan kaydetmek dosyayı yalnızca bu girişle değiştirir.",
+      rawDraftPending:
+        "Ham yapılandırma düzenleyicisinde kaydedilmemiş değişiklikleriniz var. Önce bunları kaydedin veya iptal edin — burada kayıt yapmak bu taslağın üzerine yazacaktır.",
+      save: "Kaydet",
+      publish: "Kaydet ve Yayınla",
+      publishing: "Yayınlanıyor...",
+    },
+    mcpDraft: {
+      title: "Bir MCP sunucusu kaydet",
+      subtitle:
+        "Adlandırın ve bir aktarım yöntemi belirleyin. Başlıklar, ortam değişkenleri, TLS ve OAuth ayarları MCP ayarları ekranında yapılır.",
+      name: "Ad",
+      command: "Komut",
+      args: "Argümanlar (boşlukla ayrılmış)",
+      url: "URL",
+      submit: "Yapılandırmaya ekle",
+      nameEmpty: "Bir sunucu adı girin.",
+      nameTaken: "Bu ada sahip bir sunucu zaten kayıtlı; başka bir ad seçin.",
+      nameUnsupported:
+        "Bu ad yapılandırma düzenleyicisinde saklanamaz. Başka bir ad seçin (constructor, prototype ve __proto__ ayrılmıştır).",
+      launchMissing: "Sunucunun başlatılabilmesi için bir komut veya URL girin.",
+      urlInvalid: "Bir http:// veya https:// URL girin; MCP over HTTP başka bir şeye bağlanamaz.",
     },
     picker: {
       subtitle: "Kataloğu arayın ve bu adımın kullanabileceği öğeleri seçin.",
@@ -245,6 +290,8 @@ export const tr: TranslationMap = {
       none: "Henüz tanımlanmış bir şey yok.",
       scopeNarrowing:
         "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında tüm araçlara izin verir. İlk girişi eklemek bunu bir izin listesine dönüştürür ve yalnızca listelenen araçlar kullanılabilir kalır.",
+      scopeUngranted:
+        "Bu iş haritası araçları açıkça tanımlar. Adım, buraya veya üstündeki bir adıma bir araç eklenene kadar hiçbir araca erişemez.",
       knowledgeNarrowing:
         "Bu adımın henüz bir bilgi izin listesi yok, bu nedenle kayıtlı tüm temelleri sorgulayabilir. İlk girişi eklemek, sorgulamayı listelenen temellerle sınırlar.",
       skillNameInvalid:
@@ -259,6 +306,10 @@ export const tr: TranslationMap = {
       exportFailed: "Düzenlenecek ağaç tanımı yüklenemedi.",
       importFailed:
         "Kaydetme işlemi onaylanmadı. Değişiklik uygulanmış olabilir veya olmayabilir — tekrar denemeden önce çalışma haritasını yenileyerek durumu kontrol edin.",
+      mcpFirstAttachment:
+        "Bu çalışma haritası henüz MCP'yi yönetmiyor. Buraya ilk sunucuyu eklemek, TÜM çalışma haritası için varsayılan olarak reddet modunu etkinleştirir: eki olmayan her adım hiçbir MCP sunucusuna erişemez.",
+      mcpNoneAttached:
+        "Bu adıma bağlı MCP sunucusu yok, dolayısıyla hiçbirini çağıramaz. Araçlar ve bilgiden farklı olarak, MCP varsayılan olarak hiçbir şey sağlamaz.",
       importNotSent:
         "Hiçbir şey kaydedilmedi: bu gönderilmeden önce Gateway bağlantısı kesildi. Yeniden bağlanıp tekrar deneyin.",
       importRefused: "Sunucu bu değişikliği reddetti, bu yüzden hiçbir şey kaydedilmedi: {message}",
@@ -274,6 +325,7 @@ export const tr: TranslationMap = {
         "Çalışma haritası seçilmediğinden adım kullanımı gösterilmiyor. Her girişi hangi adımların kullandığını görmek için Worktree üzerinden bir tane seçin.",
       usedBy: "{treeName} tarafından kullanılıyor:",
       declaredBy: "{treeName} tarafından bildirildi:",
+      attachedTo: "{treeName} öğesine bağlı:",
       treeIssue:
         "Seçilen çalışma haritası yüklenemedi, bu nedenle aşağıdaki adımlar Gateway'in döndürdüğü yedek tanımdan gelmektedir: {message}. Zorunlu modda, başarısız çalışma haritası yüklenene kadar hiçbir şeyi yönetmez.",
       treeUnavailable:
@@ -285,14 +337,19 @@ export const tr: TranslationMap = {
       tools: "Araçlar — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Bilgi — ontology.knowledgeFoundations",
+      mcp: "MCP sunucuları — ontology.mcpServers",
       skillNotInstalled: "yüklü değil",
       foundationNotRegistered: "kayıtlı değil",
+      mcpNotRegistered: "mcp.servers içinde kayıtlı değil",
+      inherited: "Bir üst adımdan devralındı:",
     },
     skillsTab: {
       title: "Skills",
       subtitle: "Bu gateway için yüklenmiş her skill ve uygun olması için gerekenler.",
       attachHint:
         "Bu katalogdur. Birini bir adımın bağımlılığı olarak bildirmek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
+      attachHintGranted:
+        "Bu çalışma haritası Skills'i açıkça tanımlar: ona bağlı bir çalıştırma yalnızca adımlarının bildirdiği Skills'i alır ve diğer tüm yüklü Skills modelden gizlenir.",
       empty: "Yüklü Skills yok.",
       declaredSection: "{treeName} tarafından tanımlanan",
       otherSection: "Diğer yüklü Skills",
@@ -314,6 +371,7 @@ export const tr: TranslationMap = {
     knowledge: "Bilgi: {ids}",
     guidance: "Talimatlar: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Denetlendi",
     activeBadge: "aktif",
     nodeCount: "{count} adım",
@@ -323,6 +381,16 @@ export const tr: TranslationMap = {
     selectTree: "Yapısını ve ontolojisini görselleştirmek için bir iş akışı ağacı seçin.",
     treeTitle: "Ağaç görselleştirme",
     treeUnavailable: "Ağaç tanımı artık mevcut değil.",
+    capabilityGrants: {
+      explicit: "Açık izinler",
+      inherited: "Devralınan kapsamlar",
+      explicitHint:
+        "Her adım yalnızca kendisinin veya üstündeki bir adımın listelediği araçlara, Skills'e ve MCP sunucularına erişebilir. Hiçbirini listelemeyen bir adım hiçbirine erişemez.",
+      inheritedHint:
+        "Bir adımın listeleri, üst öğelerinin izin verdiği kapsamı daraltır; dalında hiçbir şey listelenmemiş bir adım herhangi bir aracı veya beceriyi kullanabilir.",
+      turnOn: "Açıkça ver",
+      turnOff: "Devralınan kapsamları kullan",
+    },
     structureTitle: "Yapı",
     ontologyTitle: "Ontoloji",
     wholeTreeOverviewTitle: "Tüm ağaç görünümü",
@@ -679,6 +747,7 @@ export const tr: TranslationMap = {
     enterpriseHistory: "Geçmiş",
     enterpriseTools: "Araçlar",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Bilgi",
   },
   subtitles: {
@@ -710,6 +779,7 @@ export const tr: TranslationMap = {
     enterpriseHistory: "Geçmiş yönetilen çalıştırmalar ve izleri.",
     enterpriseTools: "Yapılandırılmış araç kataloğu.",
     enterpriseSkills: "Bu gateway için yüklenmiş her skill.",
+    enterpriseMcp: "Kayıtlı MCP sunucuları ve bunları çağırabilecek adımlar.",
     knowledge: "Kayıtlı bilgi temelleri ve durumları.",
   },
   skillWorkshop: {

@@ -214,10 +214,55 @@ export const vi: TranslationMap = {
         "Danh mục công cụ đã cấu hình, được nhóm theo cách runtime phân nhóm. Một công cụ plugin được liệt kê ngay khi khai báo, ngay cả trước khi cấu hình của nó được giải quyết, và các công cụ channel và MCP chỉ tồn tại trong phiên hoạt động, vì vậy đây là những gì có thể được cấu hình chứ không phải những gì đang hoạt động ngay lúc này.",
       attachHint:
         "Đây là danh mục. Để cho phép một bước gọi công cụ, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
+      attachHintGranted:
+        "Work-map này cấp quyền công cụ một cách rõ ràng. Một bước chỉ có thể gọi các công cụ mà nó liệt kê, hoặc các công cụ mà bước phía trên nó liệt kê. Mọi công cụ khác trong danh mục này đều bị từ chối.",
       empty: "Không có công cụ nào khả dụng trên gateway này.",
       toolCount: "{count} công cụ",
       optionalBadge: "tùy chọn",
       pluginBadge: "Plugin: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "Các máy chủ MCP đã đăng ký cho gateway này. Đăng ký tại đây cũng giống như ở bất kỳ đâu trong OpenClaw — nó nằm trong mcp.servers — nhưng dưới quản trị doanh nghiệp, máy chủ sẽ không thể truy cập cho đến khi một bước gắn kết nó.",
+      attachHint:
+        "Để cho phép một bước gọi máy chủ, hãy mở Worktree, chọn bước đó và thêm vào mục Step bindings. Máy chủ không có bước nào gắn kết sẽ được đăng ký nhưng không thể truy cập.",
+      nativeConfigBoundary:
+        "Mục này quản lý các máy chủ mà OpenClaw chuyển giao cho một lần chạy. Máy chủ được khai báo trực tiếp trong cấu hình riêng của harness, chẳng hạn như tệp cấu hình Codex, nằm ngoài phạm vi này — lớp đó thuộc về harness, không phải Gateway.",
+      attachHintUngoverned:
+        "Work-map này chưa quản lý MCP, vì vậy các server đã đăng ký vẫn có thể gọi được như các công cụ thông thường. Đính kèm một server vào một bước trong Step bindings sẽ bật chế độ deny-by-default cho toàn bộ work-map.",
+      empty: "Không có máy chủ MCP nào được đăng ký cho gateway này.",
+      add: "Đăng ký máy chủ",
+      disabled: "đã tắt",
+      unattached: "chưa gắn với bước nào",
+      unsaved: "Đăng ký này chỉ lưu trong trình duyệt của bạn cho đến khi bạn lưu vào cấu hình.",
+      waitingForConfig: "Đang tải cấu hình gateway; việc đăng ký sẽ khả dụng sau khi tải xong.",
+      configSaving:
+        "Cấu hình đang được lưu. Vui lòng đợi hoàn tất — máy chủ đăng ký lúc này sẽ bị loại bỏ khi cấu hình đã lưu được tải lại.",
+      configInvalid:
+        "Cấu hình gateway không thể phân tích được, vì vậy màn hình này không có gì để thêm vào. Hãy sửa trong trình chỉnh sửa cấu hình trước — lưu từ đây sẽ thay thế tệp chỉ với mục nhập này.",
+      rawDraftPending:
+        "Bạn có các thay đổi chưa lưu trong trình chỉnh sửa cấu hình thô. Hãy lưu hoặc hủy chúng trước — đăng ký tại đây sẽ ghi đè bản nháp đó.",
+      save: "Lưu",
+      publish: "Lưu & Xuất bản",
+      publishing: "Đang xuất bản...",
+    },
+    mcpDraft: {
+      title: "Đăng ký máy chủ MCP",
+      subtitle:
+        "Đặt tên và chọn một phương thức truyền tải. Headers, biến môi trường, TLS và OAuth thuộc về màn hình cài đặt MCP.",
+      name: "Tên",
+      command: "Lệnh",
+      args: "Đối số (phân tách bằng dấu cách)",
+      url: "URL",
+      submit: "Thêm vào cấu hình",
+      nameEmpty: "Nhập tên máy chủ.",
+      nameTaken: "Một máy chủ có tên đó đã được đăng ký; hãy chọn tên khác.",
+      nameUnsupported:
+        "Tên đó không thể được lưu trong trình chỉnh sửa cấu hình. Vui lòng chọn tên khác (constructor, prototype và __proto__ là các từ dành riêng).",
+      launchMissing: "Nhập một lệnh hoặc URL để máy chủ có thể được khởi chạy.",
+      urlInvalid:
+        "Nhập URL http:// hoặc https://; MCP over HTTP không thể kết nối với bất kỳ giao thức nào khác.",
     },
     picker: {
       subtitle: "Tìm kiếm trong danh mục và chọn những gì bước này có thể sử dụng.",
@@ -242,6 +287,8 @@ export const vi: TranslationMap = {
       none: "Chưa có khai báo nào.",
       scopeNarrowing:
         "Bước này chưa có danh sách công cụ được phép, nên nó cho phép mọi công cụ trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển thành danh sách cho phép và chỉ các công cụ được liệt kê mới khả dụng.",
+      scopeUngranted:
+        "Bản đồ công việc này cấp công cụ một cách rõ ràng. Bước này không truy cập được công cụ nào cho đến khi một công cụ được liệt kê ở đây hoặc ở bước phía trên.",
       knowledgeNarrowing:
         "Bước này chưa có danh sách cho phép kiến thức, vì vậy nó có thể truy vấn mọi foundation đã đăng ký. Thêm mục đầu tiên sẽ giới hạn nó chỉ trong các foundation được liệt kê.",
       skillNameInvalid:
@@ -256,6 +303,10 @@ export const vi: TranslationMap = {
       exportFailed: "Không thể tải định nghĩa cây để chỉnh sửa.",
       importFailed:
         "Lưu không được xác nhận. Thay đổi có thể đã hoặc chưa được áp dụng — hãy làm mới work-map để kiểm tra trước khi thử lại.",
+      mcpFirstAttachment:
+        "Bản đồ công việc này chưa quản lý MCP. Thêm máy chủ đầu tiên tại đây sẽ bật chế độ từ chối mặc định cho TOÀN BỘ bản đồ công việc: mọi bước không có tệp đính kèm sẽ không truy cập được máy chủ MCP nào.",
+      mcpNoneAttached:
+        "Bước này không có máy chủ MCP nào được đính kèm, vì vậy không thể gọi bất kỳ máy chủ nào. Không giống như công cụ và kiến thức, MCP không cấp quyền gì theo mặc định.",
       importNotSent:
         "Không có gì được lưu: kết nối Gateway đã bị ngắt trước khi gửi. Hãy kết nối lại và thử lại.",
       importRefused: "Máy chủ đã từ chối thay đổi này, vì vậy không có gì được lưu: {message}",
@@ -271,6 +322,7 @@ export const vi: TranslationMap = {
         "Chưa chọn work-map nào, nên không có mức sử dụng bước nào được hiển thị. Chọn một work-map trên Worktree để xem các bước nào sử dụng từng mục.",
       usedBy: "Được sử dụng bởi {treeName}:",
       declaredBy: "Được khai báo bởi {treeName}:",
+      attachedTo: "Đính kèm vào {treeName}:",
       treeIssue:
         "Bản đồ công việc đã chọn không tải được, vì vậy các bước bên dưới được lấy từ định nghĩa dự phòng mà Gateway trả về: {message}. Ở chế độ thực thi, bản đồ công việc bị lỗi sẽ không kiểm soát gì cho đến khi nó được tải.",
       treeUnavailable:
@@ -283,8 +335,11 @@ export const vi: TranslationMap = {
       tools: "Công cụ — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Kiến thức — ontology.knowledgeFoundations",
+      mcp: "Máy chủ MCP — ontology.mcpServers",
       skillNotInstalled: "chưa cài đặt",
       foundationNotRegistered: "chưa đăng ký",
+      mcpNotRegistered: "chưa được đăng ký trong mcp.servers",
+      inherited: "Kế thừa từ bước cha:",
     },
     skillsTab: {
       title: "Skills",
@@ -292,6 +347,8 @@ export const vi: TranslationMap = {
         "Mọi skill được cài đặt cho gateway này, cùng với những gì cần thiết để đủ điều kiện.",
       attachHint:
         "Đây là danh mục. Để khai báo một skill là phụ thuộc của bước, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
+      attachHintGranted:
+        "Work-map này cấp Skills một cách rõ ràng: một lần chạy được liên kết với nó chỉ được cung cấp các Skills mà các bước của nó khai báo, và mọi skill đã cài đặt khác sẽ bị ẩn khỏi mô hình.",
       empty: "Không có skill nào được cài đặt.",
       declaredSection: "Được khai báo bởi {treeName}",
       otherSection: "Các Skills đã cài đặt khác",
@@ -313,6 +370,7 @@ export const vi: TranslationMap = {
     knowledge: "Kiến thức: {ids}",
     guidance: "Hướng dẫn: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Đã kiểm toán",
     activeBadge: "đang hoạt động",
     nodeCount: "{count} bước",
@@ -322,6 +380,16 @@ export const vi: TranslationMap = {
     selectTree: "Chọn một cây quy trình để trực quan hóa cấu trúc và bản thể học của nó.",
     treeTitle: "Trực quan hóa cây",
     treeUnavailable: "Định nghĩa cây không còn khả dụng.",
+    capabilityGrants: {
+      explicit: "Cấp quyền rõ ràng",
+      inherited: "Phạm vi kế thừa",
+      explicitHint:
+        "Mỗi bước chỉ truy cập được các công cụ, Skills và máy chủ MCP mà nó hoặc bước phía trên nó liệt kê. Bước nào không liệt kê gì thì không truy cập được gì.",
+      inheritedHint:
+        "Danh sách của một bước sẽ thu hẹp những gì các bước cha đã cho phép; một bước mà nhánh không liệt kê gì có thể sử dụng bất kỳ công cụ hoặc skill nào.",
+      turnOn: "Cấp quyền rõ ràng",
+      turnOff: "Sử dụng phạm vi kế thừa",
+    },
     structureTitle: "Cấu trúc",
     ontologyTitle: "Bản thể học",
     wholeTreeOverviewTitle: "Tổng quan toàn bộ cây",
@@ -678,6 +746,7 @@ export const vi: TranslationMap = {
     enterpriseHistory: "Lịch sử",
     enterpriseTools: "Công cụ",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Kiến thức",
   },
   subtitles: {
@@ -709,6 +778,7 @@ export const vi: TranslationMap = {
     enterpriseHistory: "Các lần chạy được quản lý trước đây và dấu vết của chúng.",
     enterpriseTools: "Danh mục công cụ đã cấu hình.",
     enterpriseSkills: "Mọi skill được cài đặt cho gateway này.",
+    enterpriseMcp: "Các máy chủ MCP đã đăng ký và các bước có thể gọi chúng.",
     knowledge: "Các nền tảng kiến thức đã đăng ký và trạng thái của chúng.",
   },
   skillWorkshop: {

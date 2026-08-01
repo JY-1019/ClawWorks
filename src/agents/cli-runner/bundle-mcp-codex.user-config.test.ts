@@ -1,6 +1,11 @@
 /** Tests projecting OpenClaw user MCP servers into Codex app-server config. */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  clearEnterpriseActiveRunsForTest,
+  registerEnterpriseActiveRun,
+} from "../../enterprise/runtime.js";
+import type { EnterpriseRunPlan } from "../../enterprise/types.js";
 import { buildCodexUserMcpServersThreadConfigPatch } from "./bundle-mcp-codex.js";
 
 describe("buildCodexUserMcpServersThreadConfigPatch", () => {
@@ -13,6 +18,120 @@ describe("buildCodexUserMcpServersThreadConfigPatch", () => {
     expect(
       buildCodexUserMcpServersThreadConfigPatch({ mcp: { servers: {} } } as OpenClawConfig),
     ).toBeUndefined();
+  });
+
+  afterEach(() => {
+    clearEnterpriseActiveRunsForTest();
+  });
+
+  function registerGovernedRun(params: {
+    runId: string;
+    attached?: string[];
+    /** Names the operator has under `mcp.servers`; only these are attachable. */
+    registered?: string[];
+    rootAllowedTools?: string[];
+    mode?: "enforce" | "observe";
+  }): void {
+    const plan: EnterpriseRunPlan = {
+      runId: params.runId,
+      treeId: "acme.support",
+      treeVersion: "1.0.0",
+      treeName: "Support",
+      matchedBy: "planner",
+      requestSummary: "help",
+      nodes: [
+        {
+          nodeId: "support",
+          parentId: null,
+          seq: 0,
+          title: "Support",
+          ontology: {
+            ...(params.attached ? { mcpServers: params.attached } : {}),
+            ...(params.rootAllowedTools ? { allowedTools: params.rootAllowedTools } : {}),
+          },
+        },
+      ],
+      activeNodeId: "support",
+      // The work-map uses the field, which is what turns attachment governance on.
+      // The plan carries the definition-wide attachment list, as the builder does.
+      ...(params.attached ? { mcpGoverned: true, mcpAttachments: params.attached } : {}),
+      mode: params.mode ?? "enforce",
+      createdAt: 0,
+    };
+    registerEnterpriseActiveRun({
+      plan,
+      policies: [],
+      mcpServers: params.registered ?? params.attached ?? [],
+    });
+  }
+
+  const twoServers = {
+    mcp: {
+      servers: {
+        attached: { transport: "stdio", command: "node", args: ["./attached.mjs"] },
+        unattached: { transport: "stdio", command: "node", args: ["./unattached.mjs"] },
+      },
+    },
+  } as unknown as OpenClawConfig;
+
+  it("withholds a server the governing work-map does not attach", () => {
+    // The Codex thread config is a session layer that composes BY KEY, so an
+    // omitted key is a server OpenClaw did not hand over.
+    registerGovernedRun({ runId: "codex-run-1", attached: ["attached"] });
+
+    const patch = buildCodexUserMcpServersThreadConfigPatch(twoServers, {
+      runId: "codex-run-1",
+    });
+
+    expect(Object.keys(patch?.mcp_servers ?? {})).toEqual(["attached"]);
+  });
+
+  it("keeps an attached server whose colliding sibling is scoped to another agent", () => {
+    // The sibling is filtered out for this thread, so it cannot collide — and
+    // dropping the attached server with it would strip an attachment this thread
+    // should receive.
+    registerGovernedRun({
+      runId: "codex-run-agent-scope",
+      attached: ["my server", "my:server"],
+      // An explicit allow-list is what makes collisions decidable at all: without
+      // one the grant is unconditional and the sibling never matters.
+      rootAllowedTools: ["my-server__*", "mcp__my-server__*", "my_server__*", "mcp__my_server__*"],
+    });
+
+    const patch = buildCodexUserMcpServersThreadConfigPatch(
+      {
+        mcp: {
+          servers: {
+            "my server": { transport: "stdio", command: "node" },
+            "my:server": {
+              transport: "stdio",
+              command: "node",
+              codex: { agents: ["other-agent"] },
+            },
+          },
+        },
+      } as unknown as OpenClawConfig,
+      { runId: "codex-run-agent-scope", agentId: "main" },
+    );
+
+    expect(Object.keys(patch?.mcp_servers ?? {})).toEqual(["my server"]);
+  });
+
+  it("projects every server when no work-map governs the thread", () => {
+    const patch = buildCodexUserMcpServersThreadConfigPatch(twoServers, { runId: "not-a-run" });
+
+    expect(Object.keys(patch?.mcp_servers ?? {}).toSorted()).toEqual(["attached", "unattached"]);
+  });
+
+  it("projects every server in observe mode", () => {
+    // Observe watches without blocking, and withholding a server is physical.
+    registerGovernedRun({ runId: "codex-run-2", attached: ["attached"], mode: "observe" });
+
+    const patch = buildCodexUserMcpServersThreadConfigPatch(twoServers, {
+      runId: "codex-run-2",
+    });
+
+    expect(Object.keys(patch?.mcp_servers ?? {}).toSorted()).toEqual(["attached", "unattached"]);
   });
 
   it("projects a stdio user MCP server entry into mcp_servers (regression: #80814)", () => {

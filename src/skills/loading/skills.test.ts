@@ -16,6 +16,7 @@ import {
   applySkillEnvOverrides,
   applySkillEnvOverridesFromSnapshot,
   getActiveSkillEnvKeys,
+  resolveSkillEnvKeysOutsideGrant,
 } from "../runtime/env-overrides.js";
 import { writeSkill } from "../test-support/e2e-test-helpers.js";
 import {
@@ -549,6 +550,123 @@ describe("applySkillEnvOverrides", () => {
         restoreSecond();
         expect(process.env.ENV_KEY).toBeUndefined();
         expect(getActiveSkillEnvKeys().has("ENV_KEY")).toBe(false);
+      }
+    });
+  });
+
+  it("withholds credentials for a skill the workflow does not grant", () => {
+    // Hiding the skill from the catalog is not enough: these overrides put its key
+    // into the PROCESS environment, where an allowed `exec` or a CLI subprocess
+    // would find it.
+    const entries = envSkillEntries("env-skill", {
+      primaryEnv: "ENV_KEY",
+      requires: { env: ["ENV_KEY"] },
+    });
+
+    withClearedEnv(["ENV_KEY"], () => {
+      const restore = applySkillEnvOverrides({
+        skills: entries,
+        config: { skills: { entries: { "env-skill": { [apiKeyField]: "injected" } } } }, // pragma: allowlist secret
+        allowedSkills: ["other-skill"],
+      });
+
+      try {
+        expect(process.env.ENV_KEY).toBeUndefined();
+        expect(getActiveSkillEnvKeys().has("ENV_KEY")).toBe(false);
+      } finally {
+        restore();
+      }
+    });
+  });
+
+  it("withholds snapshot credentials for a skill the workflow does not grant", () => {
+    const snapshot = envSkillSnapshot("env-skill", {
+      primaryEnv: "ENV_KEY",
+      requires: { env: ["ENV_KEY"] },
+    });
+
+    withClearedEnv(["ENV_KEY"], () => {
+      const withheld = applySkillEnvOverridesFromSnapshot({
+        snapshot,
+        config: { skills: { entries: { "env-skill": { [apiKeyField]: "snap-key" } } } }, // pragma: allowlist secret
+        allowedSkills: [],
+      });
+      try {
+        expect(process.env.ENV_KEY).toBeUndefined();
+      } finally {
+        withheld();
+      }
+
+      // ...and the granted one still gets its key, so the filter narrows rather
+      // than disables the feature.
+      const granted = applySkillEnvOverridesFromSnapshot({
+        snapshot,
+        config: { skills: { entries: { "env-skill": { [apiKeyField]: "snap-key" } } } }, // pragma: allowlist secret
+        allowedSkills: ["env-skill"],
+      });
+      try {
+        expect(process.env.ENV_KEY).toBe("snap-key");
+      } finally {
+        granted();
+      }
+    });
+  });
+
+  it("names the keys a concurrent run injected for a skill this grant withholds", () => {
+    // The environment is process-wide, so skipping our own injection is not the
+    // whole boundary: a run that granted the skill may already have put the key
+    // there, and a subprocess started for a run that did NOT would inherit it.
+    const entries = envSkillEntries("env-skill", {
+      primaryEnv: "ENV_KEY",
+      requires: { env: ["ENV_KEY"] },
+    });
+
+    withClearedEnv(["ENV_KEY"], () => {
+      const restore = applySkillEnvOverrides({
+        skills: entries,
+        config: { skills: { entries: { "env-skill": { [apiKeyField]: "injected" } } } }, // pragma: allowlist secret
+      });
+      try {
+        expect(resolveSkillEnvKeysOutsideGrant(["other-skill"])).toEqual(["ENV_KEY"]);
+        // The skill IS granted here, so the key is legitimately part of that run.
+        expect(resolveSkillEnvKeysOutsideGrant(["env-skill"])).toEqual([]);
+        // An ungoverned run narrows nothing.
+        expect(resolveSkillEnvKeysOutsideGrant(undefined)).toEqual([]);
+      } finally {
+        restore();
+      }
+      expect(resolveSkillEnvKeysOutsideGrant(["other-skill"])).toEqual([]);
+    });
+  });
+
+  it("strips a shared key when the value belongs to a withheld skill", () => {
+    // Two skills, one key: the environment holds ONE value, and it is the first
+    // acquirer's. Granting the second must not launder the first one's secret.
+    const withheld = makeSkillEntry("withheld-skill", {
+      primaryEnv: "ENV_KEY",
+      requires: { env: ["ENV_KEY"] },
+    });
+    const granted = makeSkillEntry("granted-skill", {
+      primaryEnv: "ENV_KEY",
+      requires: { env: ["ENV_KEY"] },
+    });
+
+    withClearedEnv(["ENV_KEY"], () => {
+      const restoreWithheld = applySkillEnvOverrides({
+        skills: [withheld],
+        config: { skills: { entries: { "withheld-skill": { [apiKeyField]: "first" } } } }, // pragma: allowlist secret
+      });
+      const restoreGranted = applySkillEnvOverrides({
+        skills: [granted],
+        config: { skills: { entries: { "granted-skill": { [apiKeyField]: "second" } } } }, // pragma: allowlist secret
+      });
+      try {
+        expect(process.env.ENV_KEY).toBe("first");
+        expect(resolveSkillEnvKeysOutsideGrant(["granted-skill"])).toEqual(["ENV_KEY"]);
+        expect(resolveSkillEnvKeysOutsideGrant(["withheld-skill"])).toEqual([]);
+      } finally {
+        restoreGranted();
+        restoreWithheld();
       }
     });
   });

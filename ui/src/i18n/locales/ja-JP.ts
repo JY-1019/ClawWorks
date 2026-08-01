@@ -220,10 +220,55 @@ export const ja_JP: TranslationMap = {
         "ランタイムがグループ化する方法に従って整理された、設定済みのツールカタログです。プラグインツールは設定が解決される前でも宣言された時点で表示されます。チャネルツールと MCP ツールはライブセッション内でのみ存在するため、ここに表示されるのは現在ライブのものではなく、設定可能なものです。",
       attachHint:
         "これはカタログです。ステップからツールを呼び出すには、Worktreeを開き、ステップを選択して、Step bindingsに追加してください。",
+      attachHintGranted:
+        "このワークマップはツールを明示的に付与します。ステップは、自身がリストしたツール、または上位ステップがリストしたツールのみを呼び出せます。このカタログ内の他のすべてのツールは拒否されます。",
       empty: "このGatewayで利用可能なツールはありません。",
       toolCount: "{count} 件のツール",
       optionalBadge: "任意",
       pluginBadge: "プラグイン: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "この Gateway に登録されている MCP サーバー。ここでの登録は OpenClaw の他の場所と同じく mcp.servers に追加されますが、エンタープライズガバナンス下ではステップがアタッチするまでサーバーにはアクセスできません。",
+      attachHint:
+        "ステップからサーバーを呼び出せるようにするには、Worktree を開いてステップを選択し、Step bindings に追加してください。どのステップにもアタッチされていないサーバーは、登録済みでもアクセスできません。",
+      nativeConfigBoundary:
+        "これは OpenClaw が実行時に渡すサーバーを管理します。ハーネス独自の設定（Codex 設定ファイルなど）で直接宣言されたサーバーはこの範囲外です。そのレイヤーは Gateway ではなくハーネスに属します。",
+      attachHintUngoverned:
+        "このワークマップはまだMCPを管理していないため、登録済みサーバーは通常のツールとして呼び出し可能です。Step bindingsでステップにサーバーを関連付けると、ワークマップ全体でdeny-by-defaultが有効になります。",
+      empty: "このGatewayに登録されたMCPサーバーはありません。",
+      add: "サーバーを登録",
+      disabled: "無効",
+      unattached: "どのステップにも接続されていません",
+      unsaved: "この登録は設定に保存するまでブラウザにのみ保持されます。",
+      waitingForConfig: "Gateway設定を読み込んでいます。読み込みが完了すると登録が可能になります。",
+      configSaving:
+        "設定の保存が進行中です。完了するまでお待ちください — 今サーバーを登録しても、保存された設定の再読み込み時に破棄されます。",
+      configInvalid:
+        "Gateway の設定が解析できないため、この画面で追加する対象がありません。まず設定エディターで修正してください。ここから保存すると、ファイルがこのエントリのみに置き換えられます。",
+      rawDraftPending:
+        "Raw設定エディターに未保存の変更があります。先に保存または破棄してください。ここで登録すると、その下書きが上書きされます。",
+      save: "保存",
+      publish: "保存して公開",
+      publishing: "公開中...",
+    },
+    mcpDraft: {
+      title: "MCPサーバーを登録",
+      subtitle:
+        "名前を付けて、トランスポートを1つ指定してください。ヘッダー、環境変数、TLS、OAuthはMCP設定画面で設定できます。",
+      name: "名前",
+      command: "コマンド",
+      args: "引数（スペース区切り）",
+      url: "URL",
+      submit: "設定に追加",
+      nameEmpty: "サーバー名を入力してください。",
+      nameTaken: "その名前のサーバーは既に登録されています。別の名前を選んでください。",
+      nameUnsupported:
+        "その名前は設定エディターに保存できません。別の名前を選択してください（constructor、prototype、__proto__ は予約されています）。",
+      launchMissing: "サーバーを起動できるように、コマンドまたはURLを入力してください。",
+      urlInvalid:
+        "http:// または https:// の URL を入力してください。MCP over HTTP では他のプロトコルに接続できません。",
     },
     picker: {
       subtitle: "カタログを検索して、このステップで使用できるものを選択してください。",
@@ -248,6 +293,8 @@ export const ja_JP: TranslationMap = {
       none: "まだ宣言されていません。",
       scopeNarrowing:
         "このステップにはまだツール許可リストがないため、拒否されたツール以外のすべてのツールが許可されます。最初のエントリを追加すると許可リストに切り替わり、リストに記載されたツールのみが使用可能になります。",
+      scopeUngranted:
+        "このワークマップはツールを明示的に付与します。ここまたは上位のステップにツールが登録されるまで、このステップはどのツールにもアクセスできません。",
       knowledgeNarrowing:
         "このステップにはまだナレッジ許可リストがないため、登録されたすべてのファウンデーションにクエリできます。最初のエントリを追加すると、リストされたファウンデーションに制限されます。",
       skillNameInvalid:
@@ -262,6 +309,10 @@ export const ja_JP: TranslationMap = {
       exportFailed: "編集するツリー定義を読み込めませんでした。",
       importFailed:
         "保存が確認できませんでした。適用された可能性もされていない可能性もあります。再試行する前にワークマップを更新して状態を確認してください。",
+      mcpFirstAttachment:
+        "このワークマップはまだ MCP を管理していません。ここに最初のサーバーを追加すると、ワークマップ全体でデフォルト拒否が有効になります。添付のないすべてのステップは MCP サーバーにアクセスできなくなります。",
+      mcpNoneAttached:
+        "このステップには MCP サーバーが接続されていないため、何も呼び出せません。ツールやナレッジとは異なり、MCP はデフォルトでは何も付与しません。",
       importNotSent:
         "保存されませんでした: 送信前に Gateway の接続が切断されました。再接続してもう一度お試しください。",
       importRefused: "サーバーがこの変更を拒否したため、何も保存されませんでした: {message}",
@@ -277,6 +328,7 @@ export const ja_JP: TranslationMap = {
         "ワークマップが選択されていないため、ステップの使用状況は表示されません。Worktree でワークマップを選択すると、各エントリを使用しているステップを確認できます。",
       usedBy: "{treeName} で使用中:",
       declaredBy: "{treeName} による宣言:",
+      attachedTo: "{treeName} に接続:",
       treeIssue:
         "選択されたワークマップを読み込めなかったため、以下のステップは Gateway が返したフォールバック定義から取得されています: {message}。強制モードでは、読み込みに失敗したワークマップは読み込まれるまで何も制御しません。",
       treeUnavailable:
@@ -288,8 +340,11 @@ export const ja_JP: TranslationMap = {
       tools: "ツール — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "ナレッジ — ontology.knowledgeFoundations",
+      mcp: "MCP サーバー — ontology.mcpServers",
       skillNotInstalled: "未インストール",
       foundationNotRegistered: "未登録",
+      mcpNotRegistered: "mcp.servers に未登録",
+      inherited: "親ステップから継承:",
     },
     skillsTab: {
       title: "Skills",
@@ -297,6 +352,8 @@ export const ja_JP: TranslationMap = {
         "この Gateway にインストールされたすべての Skills と、有効になるために必要な条件です。",
       attachHint:
         "これはカタログです。ステップの依存関係として宣言するには、Worktreeを開き、ステップを選択して、Step bindingsに追加してください。",
+      attachHintGranted:
+        "このワークマップは Skills を明示的に付与します。これにバインドされた実行には、そのステップで宣言された Skills のみが提供され、その他のインストール済み Skills はモデルから除外されます。",
       empty: "インストールされたSkillsはありません。",
       declaredSection: "{treeName} で宣言済み",
       otherSection: "その他のインストール済み Skills",
@@ -318,6 +375,7 @@ export const ja_JP: TranslationMap = {
     knowledge: "ナレッジ: {ids}",
     guidance: "指示: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "監査済み",
     activeBadge: "アクティブ",
     nodeCount: "{count} ステップ",
@@ -327,6 +385,16 @@ export const ja_JP: TranslationMap = {
     selectTree: "ワークフローツリーを選択して、その構造とオントロジーを視覚化します。",
     treeTitle: "ツリーの視覚化",
     treeUnavailable: "ツリー定義は利用できなくなりました。",
+    capabilityGrants: {
+      explicit: "明示的な付与",
+      inherited: "継承されたスコープ",
+      explicitHint:
+        "各ステップは、そのステップまたは上位のステップで指定されたツール、Skills、MCP サーバーにのみアクセスできます。何も指定されていないステップは、何にもアクセスできません。",
+      inheritedHint:
+        "ステップのリストは、上位で許可された内容を絞り込みます。ブランチリストに何も指定されていないステップは、任意のツールやSkillsを使用できます。",
+      turnOn: "明示的に付与",
+      turnOff: "継承されたスコープを使用",
+    },
     structureTitle: "構造",
     ontologyTitle: "オントロジー",
     wholeTreeOverviewTitle: "ツリー全体の概要",
@@ -683,6 +751,7 @@ export const ja_JP: TranslationMap = {
     enterpriseHistory: "履歴",
     enterpriseTools: "ツール",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "ナレッジ",
   },
   subtitles: {
@@ -713,6 +782,7 @@ export const ja_JP: TranslationMap = {
     enterpriseHistory: "過去のガバナンス対象の実行とそのトレース。",
     enterpriseTools: "設定済みのツールカタログ。",
     enterpriseSkills: "この Gateway にインストールされたすべての Skills。",
+    enterpriseMcp: "登録済みの MCP サーバーと、それを呼び出せるステップ。",
     knowledge: "登録済みのナレッジ基盤とそのステータス。",
   },
   skillWorkshop: {

@@ -3,6 +3,7 @@
  */
 import { normalizeConfiguredMcpServers } from "../../config/mcp-config-normalize.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { enterpriseRunAttachedMcpServers } from "../../enterprise/active-runs.js";
 import type { BundleMcpConfig, BundleMcpServerConfig } from "../../plugins/bundle-mcp.js";
 import { isValidAgentId, normalizeAgentId } from "../../routing/session-key.js";
 import { buildCodexMcpServersConfig, normalizeCodexMcpServerConfig } from "../codex-mcp-config.js";
@@ -25,6 +26,18 @@ type CodexThreadConfigObject = { [key: string]: CodexThreadConfigValue };
 
 type CodexUserMcpServersProjectionOptions = {
   agentId?: string;
+  /**
+   * The run this thread serves. Under enterprise governance the servers no step
+   * attaches are withheld, exactly as the CLI overlay withholds them.
+   */
+  runId?: string;
+  /**
+   * Server names the OTHER half of this thread's config carries (the bundle
+   * patch). Codex deep-merges both into one `mcp_servers` map, so a namespace
+   * collision across them is a collision in the thread — and the collision rule
+   * fails closed only if it can see both halves.
+   */
+  peerServerNames?: readonly string[];
 };
 
 function normalizeAgentIds(value: unknown): string[] {
@@ -77,22 +90,27 @@ export function injectCodexMcpConfigArgs(
  * Only user-configured servers (`cfg.mcp.servers`) are projected. Plugin-
  * curated app-server apps are already attached separately through the codex
  * plugin thread-config `apps` patch, so they must not be re-projected here.
+ *
+ * Under an enforcing enterprise run, a server no workflow step attaches is not
+ * projected at all. Codex composes `mcp_servers` by KEY across config layers and
+ * a thread patch is the session layer (ConfigLayerSource::SessionFlags, above
+ * User/Project — codex-rs/config/src/config_layer_source.rs), so omitting a key
+ * withholds what OpenClaw would have injected. It does not remove a server the
+ * operator declared in Codex's own config: layers merge table by table
+ * (merge_toml_values_at_path, ../codex/codex-rs/config/src/merge.rs:94-119), so an
+ * overlay can add and change keys but never delete a lower one — and `enabled =
+ * false` is applied only AFTER the transport conversion (mcp_types.rs:354-403), so
+ * it cannot stand in for a delete either. That layer belongs to the harness; the
+ * docs state the boundary where operators look.
  */
 export function buildCodexUserMcpServersThreadConfigPatch(
   cfg: OpenClawConfig | undefined,
   options?: CodexUserMcpServersProjectionOptions,
 ): { mcp_servers: CodexThreadConfigObject } | undefined {
-  const userServers = normalizeConfiguredMcpServers(cfg?.mcp?.servers);
-  const entries = Object.entries(userServers);
-  if (entries.length === 0) {
-    return undefined;
-  }
+  const emitted = new Set(resolveCodexEmittedUserMcpServerNames(cfg, options));
   const mcp_servers: CodexThreadConfigObject = {};
-  for (const [name, server] of entries) {
-    if (server.enabled === false) {
-      continue;
-    }
-    if (!isCodexMcpServerAllowedForAgent(server as BundleMcpServerConfig, options)) {
+  for (const [name, server] of Object.entries(normalizeConfiguredMcpServers(cfg?.mcp?.servers))) {
+    if (!emitted.has(name)) {
       continue;
     }
     mcp_servers[name] = normalizeCodexMcpServerConfig(
@@ -104,4 +122,39 @@ export function buildCodexUserMcpServersThreadConfigPatch(
     return undefined;
   }
   return { mcp_servers };
+}
+
+/**
+ * The `mcp.servers` names this thread will actually receive: enabled, allowed for
+ * this agent, and attached by the work-map.
+ *
+ * Exported because the OTHER half of the same thread config — the plugin bundle —
+ * judges namespace collisions against it. Codex hashes a callable name only when
+ * two servers it really has collide, so a key that is disabled, scoped to another
+ * agent, or left unattached is not a collision and must not withhold a plugin
+ * server that works. One definition rather than two, or the halves drift.
+ */
+export function resolveCodexEmittedUserMcpServerNames(
+  cfg: OpenClawConfig | undefined,
+  options?: CodexUserMcpServersProjectionOptions,
+): string[] {
+  const entries = Object.entries(normalizeConfiguredMcpServers(cfg?.mcp?.servers));
+  if (entries.length === 0) {
+    return [];
+  }
+  // Eligibility FIRST, attachment second: a disabled or agent-scoped entry never
+  // reaches this thread, so letting it into the collision set would withhold the
+  // very server that does. Only the bundle half is a peer here — a configured
+  // server the work-map leaves unattached is dropped below and never emitted.
+  const eligible = entries.filter(
+    ([, server]) =>
+      server.enabled !== false &&
+      isCodexMcpServerAllowedForAgent(server as BundleMcpServerConfig, options),
+  );
+  const attached = enterpriseRunAttachedMcpServers(
+    options?.runId,
+    options?.peerServerNames ?? [],
+    eligible.map(([name]) => name),
+  );
+  return eligible.map(([name]) => name).filter((name) => !attached || attached.has(name));
 }

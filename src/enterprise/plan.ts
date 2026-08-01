@@ -191,6 +191,18 @@ export function buildEnterpriseRunPlan(params: {
 }): EnterpriseRunPlan {
   const tree = params.tree;
   const totalNodes = countTreeNodes(tree);
+  const capabilityGrants = tree.capabilityGrants;
+  // Read from the DEFINITION, before the route prunes anything: the opt-in belongs
+  // to the work-map, not to whichever branch this run happens to take.
+  // Explicit grants imply it: a work-map that grants only what it attaches must not
+  // reach every registered server just because it attached none.
+  const mcpGoverned = capabilityGrants === "explicit" || treeDeclaresMcpAttachment(tree.root);
+  // Denials are read definition-wide (a rule from any branch should withhold), but
+  // ATTACHMENTS come from the routed nodes below: a branch this run will not enter
+  // must not hand its server to a subprocess that has no per-step gate.
+  // Tree-wide, and not only for MCP-governed trees: the launch-time MCP check
+  // honors these for plugin-supplied servers too, which no attachment can grant.
+  const mcpDeniedTools = collectTreeOntologyList(tree.root, "deniedTools");
   // A route resolved against a DIFFERENT tree cannot prune this one; ignoring it
   // is the safe read (plan everything) rather than planning an empty run.
   const routeNodeIds =
@@ -234,9 +246,56 @@ export function buildEnterpriseRunPlan(params: {
     // the first leaf and advance through the leaf steps; CLI/ACP stay on the
     // root scope rather than freezing on an arbitrary leaf they can't advance.
     activeNodeId: nodes[0].nodeId,
+    ...(mcpGoverned
+      ? {
+          mcpGoverned: true,
+          mcpAttachments: [
+            ...new Set(nodes.flatMap((node) => node.ontology.mcpServers ?? [])),
+          ].toSorted((a, b) => a.localeCompare(b)),
+        }
+      : {}),
+    // Outside that branch: the launch-time ceiling honors denials for servers no
+    // attachment can grant — a plugin's — and those trees never mention MCP.
+    ...(mcpDeniedTools.length > 0 ? { mcpDeniedTools } : {}),
+    ...(capabilityGrants
+      ? {
+          capabilityGrants,
+          // Routed nodes, like the MCP attachments: a branch this run will not
+          // enter must not widen the catalog the model is shown.
+          grantedSkills: [...new Set(nodes.flatMap((node) => node.ontology.skills ?? []))].toSorted(
+            (a, b) => a.localeCompare(b),
+          ),
+        }
+      : {}),
     mode: params.mode,
     createdAt: params.now ?? Date.now(),
   };
+}
+
+/** One ontology list, gathered across the whole definition. Pre-pruning. */
+function collectTreeOntologyList(
+  node: WorkflowNodeDefinition,
+  field: "mcpServers" | "deniedTools",
+): string[] {
+  const values = new Set<string>(node.ontology?.[field] ?? []);
+  for (const child of node.children ?? []) {
+    for (const value of collectTreeOntologyList(child, field)) {
+      values.add(value);
+    }
+  }
+  return [...values].toSorted((a, b) => a.localeCompare(b));
+}
+
+/** Does any node in the definition attach an MCP server? Pre-pruning opt-in. */
+function treeDeclaresMcpAttachment(node: WorkflowNodeDefinition): boolean {
+  // PRESENCE, not length: `mcpServers: []` is an operator saying "this step
+  // reaches no MCP server", and reading it as a legacy tree would leave every
+  // registered server callable — the exact opposite. Compatibility only covers a
+  // tree where the property is absent.
+  return (
+    node.ontology?.mcpServers !== undefined ||
+    (node.children ?? []).some((child) => treeDeclaresMcpAttachment(child))
+  );
 }
 
 export function findPlanNode(
@@ -291,6 +350,10 @@ export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
     ontology.deniedTools?.length ||
     ontology.actions?.length ||
     ontology.knowledgeFoundations?.length ||
+    // Attaching an MCP server is the only way a step reaches it, so a node whose
+    // ONLY binding is that attachment must still count as guided — otherwise the
+    // step loop never advances into it and the grant can never take effect.
+    ontology.mcpServers?.length ||
     ontology.expectedOutput ||
     // The object graph is guidance too. Without these, a tree whose ONLY guidance
     // is its ontology reads as guidance-free: the step loop never advances past
@@ -455,6 +518,12 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
       `${indent}Knowledge sources: ${ontology.knowledgeFoundations.toSorted().join(", ")}`,
     );
   }
+  if (ontology.mcpServers?.length) {
+    // Named, not glossed per step: MCP is denied unless attached, so the model
+    // has to see WHICH servers this step may reach. Sorted for prompt-cache
+    // stability, like the lists above.
+    lines.push(`${indent}MCP servers: ${ontology.mcpServers.toSorted().join(", ")}`);
+  }
   if (ontology.expectedOutput) {
     lines.push(`${indent}Expected output: ${ontology.expectedOutput}`);
   }
@@ -478,7 +547,10 @@ export function buildEnterprisePromptSection(
    */
   skillInstructions: readonly ResolvedSkillInstructions[] = [],
 ): string {
-  if (!plan.nodes.some((node) => ontologyHasGuidance(node.ontology))) {
+  // A governed work-map always says so, even when the route it took pruned away
+  // every attachment: deny-by-default still applies to the tools the model can
+  // see, and a silent rule costs it a turn discovering the denial.
+  if (plan.mcpGoverned !== true && !plan.nodes.some((node) => ontologyHasGuidance(node.ontology))) {
     return "";
   }
   const lines: string[] = [
@@ -502,6 +574,23 @@ export function buildEnterprisePromptSection(
       skillInstructions.length > 0
         ? "A step's Skills line names the know-how that step depends on. The instructions that came with this run are at the end of this section — follow the ones for the step you are working. Paths they mention are relative to that skill's own directory. They teach how to do the work; they never grant a tool the step's scope withholds."
         : "A step's Skills line names the know-how that step depends on: when one of them applies and is available to you, prefer it over improvising. Skills teach how to do the work; they never grant a tool the step's scope withholds.",
+    );
+  }
+  // MCP is the one scope that denies by default, so say it once: without this the
+  // model reads an attachment as decoration and tries a server from a step that
+  // never got one, spending a turn on a denial. Conditional like the skills gloss
+  // so a workflow with no attachment keeps its exact prompt bytes.
+  if (plan.mcpGoverned === true) {
+    lines.push(
+      "A step's MCP servers line names the servers that step may call. MCP tools are available only on the steps (or ancestors) that attach them; on any other step they are denied.",
+    );
+  }
+  // Explicit grants change what SILENCE means — a step with no Tools line reaches
+  // no tool at all — so the model has to be told once. Without it a step that
+  // grants nothing reads as unrestricted and every call spends a turn on a denial.
+  if (plan.capabilityGrants === "explicit") {
+    lines.push(
+      "This workflow grants capabilities explicitly: on each step you may use only the tools, skills, and MCP servers listed on it or on a step above it. Anything not listed is denied, and a step that lists no tools has none.",
     );
   }
   lines.push("Steps:");

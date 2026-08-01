@@ -24,4 +24,18 @@ export type LoadCodexBundleMcpThreadConfigParams = {
   toolsEnabled?: boolean;
   disableTools?: boolean;
   toolsAllow?: string[];
+  /**
+   * The run this thread serves. Its tool ceiling decides which plugin-supplied MCP
+   * servers may be handed over: nothing recognizes their calls afterwards, because
+   * Codex's hook carries no MCP provenance.
+   */
+  runId?: string;
+  /**
+   * `mcp.servers` names the user projection will emit into the SAME merged
+   * `mcp_servers` map (resolveCodexEmittedUserMcpServerNames). They are the
+   * collision peers for the plugin servers above; a configured key that never
+   * reaches Codex is not a collision. Omitted means "no configured peers", which
+   * is what a thread with the user projection disabled has.
+   */
+  emittedUserMcpServerNames?: readonly string[];
 };

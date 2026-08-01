@@ -59,6 +59,7 @@ import {
   sanitizeToolArgs,
   sanitizeToolResult,
 } from "../embedded-agent-subscribe.tools.js";
+import { resolveRunSkillGrant, resolveRunWithheldSkillEnvKeys } from "../enterprise-skill-scope.js";
 import { FailoverError, resolveFailoverStatus } from "../failover-error.js";
 import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
 import { prepareCliBundleMcpCaptureAttempt } from "./bundle-mcp.js";
@@ -489,11 +490,18 @@ export async function executePreparedCliRun(
   const resolvedArgs = useResume
     ? baseArgs.map((entry) => entry.replaceAll("{sessionId}", resolvedSessionId ?? ""))
     : baseArgs;
+  // Same narrowing as the prepared path: this fallback materializes the plugin
+  // directory itself, so the work-map's skill grant has to reach it too.
+  const grantedSkills = resolveRunSkillGrant({
+    runId: params.runId,
+    ...(params.skillsSnapshot ? { skillsSnapshot: params.skillsSnapshot } : {}),
+  });
   const fallbackClaudeSkillsPlugin =
     context.claudeSkillsPluginArgs === undefined
       ? await prepareClaudeCliSkillsPlugin({
           backendId: context.backendResolved.id,
           skillsSnapshot: params.skillsSnapshot,
+          ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
         })
       : undefined;
   let fallbackClaudeSkillsPluginCleanupOwned = false;
@@ -569,10 +577,15 @@ export async function executePreparedCliRun(
         assertAgentRunLifecycleGenerationCurrent(params.lifecycleGeneration);
       }
       const cliTurnStartedAt = Date.now();
+      // The subprocess inherits this process's environment, so a skill the
+      // work-map withholds must not have its credentials injected here either —
+      // withholding it from the plugin directory alone would leave the secret in
+      // reach of whatever the CLI runs.
       const restoreSkillEnv = params.skillsSnapshot
         ? applySkillEnvOverridesFromSnapshot({
             snapshot: params.skillsSnapshot,
             config: params.config,
+            ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
           })
         : undefined;
       let gatewayCaptureKey: string | undefined;
@@ -709,6 +722,20 @@ export async function executePreparedCliRun(
             );
           }
           Object.assign(next, mcpCaptureAttempt.env);
+
+          // A skill this work-map withholds must not reach the subprocess through
+          // the environment either. Skipping our own injection is not enough: the
+          // environment is process-wide, so a CONCURRENT run that granted the skill
+          // may have put its key there and this child would inherit it.
+          // Intersected with what this run's agent actually has: a work-map name
+          // the agent never installed cannot justify keeping another run's key.
+          for (const key of resolveRunWithheldSkillEnvKeys({
+            runId: params.runId,
+            ...(params.skillsSnapshot ? { skillsSnapshot: params.skillsSnapshot } : {}),
+            ...(params.config ? { config: params.config } : {}),
+          })) {
+            delete next[key];
+          }
 
           // Never mark Claude CLI as host-managed. That marker routes runs into
           // Anthropic's separate host-managed usage tier instead of normal CLI

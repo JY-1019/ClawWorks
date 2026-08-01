@@ -135,12 +135,17 @@ import {
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
   cancelEnterpriseBindingPicker,
+  beginEnterpriseMcpDraft,
+  cancelEnterpriseMcpDraft,
+  editEnterpriseMcpDraft,
   openEnterpriseBindingPicker,
+  submitEnterpriseMcpDraft,
   setEnterpriseBindingPickerCustom,
   setEnterpriseBindingPickerQuery,
   submitAddEnterpriseNode,
   submitEnterpriseBindingPicker,
   toggleEnterpriseBindingPickerValue,
+  toggleEnterpriseCapabilityGrants,
 } from "./controllers/enterprise.ts";
 import {
   loadExecApprovals,
@@ -255,7 +260,7 @@ import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
-import { renderMcp } from "./views/mcp.ts";
+import { renderMcp, summarizeMcpServerRows } from "./views/mcp.ts";
 import { renderOverview } from "./views/overview.ts";
 
 let pendingUpdate: (() => void) | undefined;
@@ -715,6 +720,60 @@ const lazyChannels = createLazyView(() => import("./views/channels.ts"), notifyL
 const lazyCron = createLazyView(() => import("./views/cron.ts"), notifyLazyViewChanged);
 const lazyDebug = createLazyView(() => import("./views/debug.ts"), notifyLazyViewChanged);
 const lazyEnterprise = createLazyView(() => import("./views/enterprise.ts"), notifyLazyViewChanged);
+/**
+ * The mode the gateway is ENFORCING right now, for screens that describe what is
+ * reachable.
+ *
+ * The live `enterprise.mode.get` answer wins over any config the screen holds:
+ * `configForm` is a draft, and reading an unsaved edit as the running mode would
+ * label servers unreachable (or unrestricted) before Save/Publish changed
+ * anything. The snapshot is the fallback only until that answer arrives.
+ */
+export function readEnterpriseMode(state: AppViewState): "enforce" | "observe" | "off" {
+  if (state.enterpriseChatMode) {
+    return state.enterpriseChatMode;
+  }
+  if (state.configValid === false) {
+    // The snapshot is redacted; defaulting to enforce would claim a boundary the
+    // running gateway may not be applying.
+    return "off";
+  }
+  const config = state.configSnapshot?.config as Record<string, unknown> | undefined;
+  const mode = (config?.enterprise as { mode?: unknown } | undefined)?.mode;
+  return mode === "observe" || mode === "off" ? mode : "enforce";
+}
+
+/**
+ * Why the Enterprise MCP screen cannot register a server right now, or null when
+ * it can. Both cases would silently damage config rather than fail loudly, so the
+ * screen says which one is in the way instead of just disabling a button.
+ */
+function enterpriseMcpRegisterBlockedReason(state: AppViewState): string | null {
+  if (!state.configForm && !state.configSnapshot) {
+    return t("enterprise.mcpTab.waitingForConfig");
+  }
+  // An unparseable config yields an EMPTY form beside the original file. Adding a
+  // server to that form and saving would write the one entry over everything the
+  // file still holds, so the config editor has to fix the file first.
+  if (state.configValid === false) {
+    return t("enterprise.mcpTab.configInvalid");
+  }
+  // A save already in flight reloads the persisted snapshot when it lands and
+  // clears the dirty flag, so anything registered during that window is discarded
+  // without a word.
+  if (state.configSaving || state.configApplying) {
+    return t("enterprise.mcpTab.configSaving");
+  }
+  // Any raw mode, not just a dirty one: registering writes the FORM, and a save
+  // taken in raw mode serializes that form over the raw text — dropping the
+  // operator's JSON5 formatting and comments, and skipping the redaction pass a
+  // form-mode save applies. Switching mode is the operator's call, not ours.
+  if (state.configFormMode === "raw") {
+    return t("enterprise.mcpTab.rawDraftPending");
+  }
+  return null;
+}
+
 // Each Enterprise sidebar tab renders the one enterprise view, pinned to its surface.
 // Keys are the only tabs that route here, so a lookup miss means "not an enterprise tab".
 const ENTERPRISE_TAB_SECTIONS = {
@@ -722,6 +781,7 @@ const ENTERPRISE_TAB_SECTIONS = {
   enterpriseHistory: "history",
   enterpriseTools: "tools",
   enterpriseSkills: "skills",
+  enterpriseMcp: "mcp",
 } as const;
 const lazyKnowledge = createLazyView(() => import("./views/knowledge.ts"), notifyLazyViewChanged);
 const lazyInstances = createLazyView(() => import("./views/instances.ts"), notifyLazyViewChanged);
@@ -2938,6 +2998,10 @@ export function renderApp(state: AppViewState) {
                 onRefresh: () => {
                   void refreshEnterprise(state);
                   void loadEnterpriseCatalogs(state);
+                  // The MCP list and the binding picker read `mcp.servers` from the
+                  // config draft, so a registry another client changed stays stale
+                  // here unless Refresh reloads config too.
+                  void loadConfig(state);
                 },
                 onSelectRun: (executionId) => void loadEnterpriseRunDetail(state, executionId),
                 onSelectTree: (treeId) => selectEnterpriseTree(state, treeId),
@@ -2955,6 +3019,7 @@ export function renderApp(state: AppViewState) {
                   void loadEnterpriseTreeVersion(state, treeId, revision),
                 onSelectNode: (nodeId) => selectEnterpriseNode(state, nodeId),
                 onSelectNodeEntity: (entity) => selectEnterpriseNodeEntity(state, entity),
+                onToggleCapabilityGrants: () => void toggleEnterpriseCapabilityGrants(state),
                 onBeginAddNode: (parentId) => beginAddEnterpriseNode(state, parentId),
                 onEditNodeDraft: (patch) => editEnterpriseNodeDraft(state, patch),
                 onCancelAddNode: () => cancelAddEnterpriseNode(state),
@@ -2970,6 +3035,57 @@ export function renderApp(state: AppViewState) {
                 // Applies straight through enterprise.trees.import and reloads the
                 // tree, so the inspector shows the new binding without a detour.
                 onSubmitBindingPicker: () => void submitEnterpriseBindingPicker(state),
+                // Registration is config, not an enterprise store: the same
+                // `mcp.servers` the Settings MCP screen shows, read from the draft
+                // so a server added here is attachable before it is published.
+                mcpServers: summarizeMcpServerRows(
+                  state.configForm ??
+                    ((state.configSnapshot?.config as Record<string, unknown> | null) || {}),
+                ),
+                mcpDraft: state.enterpriseMcpDraft,
+                // Unknown until config arrives: an empty registry before then is
+                // not evidence that a server is unregistered.
+                // An INVALID snapshot is redacted to empty objects while the
+                // gateway keeps running its last good config, so it says nothing
+                // about what is registered — unknown, not empty.
+                mcpServersKnown:
+                  Boolean(state.configForm ?? state.configSnapshot) && state.configValid !== false,
+                // Only enforce withholds anything, so the screen's reachability
+                // wording follows the same switch the runtime does.
+                enterpriseMode: readEnterpriseMode(state),
+                // Registering writes the config DRAFT, so it must wait for the
+                // real config to arrive (otherwise the draft starts from `{}` and
+                // Save replaces everything) and must not run while raw-mode text
+                // is pending (syncing the form would serialize over it).
+                canRegisterMcp: enterpriseMcpRegisterBlockedReason(state) === null,
+                mcpRegisterBlockedReason: enterpriseMcpRegisterBlockedReason(state),
+                connected: state.connected,
+                configDirty: state.configFormDirty,
+                configSaving: state.configSaving,
+                configApplying: state.configApplying,
+                onBeginMcpDraft: () => beginEnterpriseMcpDraft(state),
+                onEditMcpDraft: (patch) => editEnterpriseMcpDraft(state, patch),
+                onCancelMcpDraft: () => cancelEnterpriseMcpDraft(state),
+                onSubmitMcpDraft: () => {
+                  // Guarded here too: the button is disabled, but the state it
+                  // guards (a pending raw-config draft) can change while this form
+                  // is open, and submitting would overwrite that draft.
+                  if (enterpriseMcpRegisterBlockedReason(state) !== null) {
+                    return;
+                  }
+                  submitEnterpriseMcpDraft(state, {
+                    existingNames: summarizeMcpServerRows(
+                      state.configForm ??
+                        ((state.configSnapshot?.config as Record<string, unknown> | null) || {}),
+                    ).map((server) => server.name),
+                    // The config controller owns every config write; this screen
+                    // only decides what the new entry is.
+                    apply: (name, server) =>
+                      updateConfigFormValue(state, ["mcp", "servers", name], server),
+                  });
+                },
+                onSaveConfig: () => void saveConfig(state),
+                onApplyConfig: () => void applyConfig(state),
               }),
             )
           : nothing}

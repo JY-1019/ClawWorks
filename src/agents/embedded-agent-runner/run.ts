@@ -85,6 +85,7 @@ import {
   pickFallbackThinkingLevel,
 } from "../embedded-agent-helpers.js";
 import { applyEnterpriseMediation, finishEnterpriseMediation } from "../enterprise-mediation.js";
+import { narrowRunSkillsSnapshot } from "../enterprise-skill-snapshot.js";
 import { isStrictAgenticExecutionContractActive } from "../execution-contract.js";
 import {
   coerceToFailoverError,
@@ -818,6 +819,22 @@ async function runEmbeddedAgentInternal(
         return enterpriseMediation.blockedResult;
       }
       params = enterpriseMediation.params;
+      // Narrow the snapshot ONCE, here, while the runner still owns it: a
+      // plugin-owned harness (the Codex app-server) renders its own skills block
+      // straight from `skillsSnapshot.prompt`, so a governed run would otherwise
+      // be offered every skill its agent has.
+      params = {
+        ...params,
+        skillsSnapshot: narrowRunSkillsSnapshot({
+          runId: params.runId,
+          skillsSnapshot: params.skillsSnapshot,
+          // For a snapshot that dropped its resolved skills (a scheduled turn
+          // reuses one), this is what the catalog is rebuilt from.
+          ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
+          ...(params.config ? { config: params.config } : {}),
+          ...(params.agentId ? { agentId: params.agentId } : {}),
+        }),
+      };
       throwIfAborted();
       const started = Date.now();
       const fastModeStarted = params.fastModeStartedAtMs ?? started;

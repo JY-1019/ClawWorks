@@ -341,6 +341,271 @@ describe("buildEnterprisePromptSection", () => {
     expect(section).not.toMatch(/load (those|these) skills/i);
   });
 
+  it("names a step's MCP servers and says they grant nothing elsewhere", () => {
+    // MCP denies by default, so the model has to see both WHICH servers a step may
+    // call and that the other steps may call none — otherwise it spends a turn
+    // discovering the denial.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-mcp",
+      requestText: "file an issue",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-mcp",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          children: [
+            {
+              id: "desk.file",
+              title: "File",
+              ontology: { mcpServers: ["github", "atlassian"] },
+            },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    const section = buildEnterprisePromptSection(plan);
+    // Sorted, like every other list in the digest, for prompt-cache stability.
+    expect(section).toContain("MCP servers: atlassian, github");
+    expect(section).toContain("only on the steps (or ancestors) that attach them");
+  });
+
+  it("carries tree denials on a tree that never mentions MCP", () => {
+    // The launch-time ceiling reads this list for servers no attachment can grant —
+    // a plugin's — and those trees have no reason to declare `mcpServers`. Keeping
+    // the denials inside the attachment branch would leave that ceiling empty.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-denied-no-mcp",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-denied",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { deniedTools: ["bundleProbe__*"] },
+        },
+      },
+      matchedBy: "planner",
+    });
+
+    expect(plan.mcpGoverned).toBeUndefined();
+    expect(plan.mcpDeniedTools).toEqual(["bundleProbe__*"]);
+  });
+
+  it("treats an explicit empty MCP list as opting in", () => {
+    // `mcpServers: []` is an operator saying this step reaches no server. Reading
+    // it as a legacy tree would leave every registered server callable instead.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-mcp-empty",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-mcp-empty",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: { id: "desk", title: "Handle a request", ontology: { mcpServers: [] } },
+      },
+      matchedBy: "planner",
+    });
+
+    expect(plan.mcpGoverned).toBe(true);
+    expect(plan.mcpAttachments).toEqual([]);
+  });
+
+  it("keeps the MCP opt-in when a route prunes the step that declares it", () => {
+    // The opt-in belongs to the work-map, not to the branch a run happens to take:
+    // routing around the attachment must not switch deny-by-default off.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-mcp-route",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-mcp-route",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          children: [
+            { id: "desk.triage", title: "Triage", ontology: { allowedTools: ["message"] } },
+            { id: "desk.file", title: "File", ontology: { mcpServers: ["acme-tracker"] } },
+          ],
+        },
+      },
+      matchedBy: "planner",
+      route: {
+        routes: ["desk.triage"],
+        nodeIds: new Set(["desk", "desk.triage"]),
+        rationale: "triage",
+        source: "planner",
+        invalidRoutes: [],
+      },
+    });
+
+    expect(plan.nodes.map((node) => node.nodeId)).toEqual(["desk", "desk.triage"]);
+    // The RULE survives the pruning; the launchable set does not — a branch this
+    // run will not enter must not hand its server to a native subprocess.
+    expect(plan.mcpGoverned).toBe(true);
+    expect(plan.mcpAttachments).toEqual([]);
+  });
+
+  it("still states the MCP rule when routing pruned every attachment", () => {
+    // The rule is still enforced for the tools the model can see, so a silent
+    // digest would cost it a turn discovering the denial.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-mcp-route-digest",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-mcp-digest",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          children: [
+            { id: "desk.triage", title: "Triage" },
+            { id: "desk.file", title: "File", ontology: { mcpServers: ["acme-tracker"] } },
+          ],
+        },
+      },
+      matchedBy: "planner",
+      route: {
+        routes: ["desk.triage"],
+        nodeIds: new Set(["desk", "desk.triage"]),
+        rationale: "triage",
+        source: "planner",
+        invalidRoutes: [],
+      },
+    });
+
+    expect(buildEnterprisePromptSection(plan)).toContain(
+      "only on the steps (or ancestors) that attach them",
+    );
+  });
+
+  it("carries explicit capability grants, the skills they cover, and the MCP rule", () => {
+    // One switch governs all three families: the plan records the mode, the skills
+    // the ROUTED steps attach, and turns MCP deny-by-default on even though no step
+    // named a server.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-explicit",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-explicit",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        capabilityGrants: "explicit",
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { allowedTools: ["message"], skills: ["desk-intake"] },
+          children: [
+            { id: "desk.triage", title: "Triage", ontology: { skills: ["ticket-triage"] } },
+            { id: "desk.file", title: "File", ontology: { skills: ["filing-runbook"] } },
+          ],
+        },
+      },
+      matchedBy: "planner",
+      route: {
+        routes: ["desk.triage"],
+        nodeIds: new Set(["desk", "desk.triage"]),
+        rationale: "triage",
+        source: "planner",
+        invalidRoutes: [],
+      },
+    });
+
+    expect(plan.capabilityGrants).toBe("explicit");
+    // Routed steps only: a branch this run will not enter must not widen the
+    // catalog the model is shown.
+    expect(plan.grantedSkills).toEqual(["desk-intake", "ticket-triage"]);
+    expect(plan.mcpGoverned).toBe(true);
+    expect(plan.mcpAttachments).toEqual([]);
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).toContain("grants capabilities explicitly");
+    expect(section).toContain("a step that lists no tools has none");
+  });
+
+  it("leaves a work-map without the switch unchanged", () => {
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-inherited",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-inherited",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { allowedTools: ["message"], skills: ["desk-intake"] },
+        },
+      },
+      matchedBy: "planner",
+    });
+
+    expect(plan.capabilityGrants).toBeUndefined();
+    expect(plan.grantedSkills).toBeUndefined();
+    expect(plan.mcpGoverned).toBeUndefined();
+    expect(buildEnterprisePromptSection(plan)).not.toContain("grants capabilities explicitly");
+  });
+
+  it("adds no MCP wording to a workflow that attaches none", () => {
+    // Prompt-cache parity: a work-map without attachments must keep the exact
+    // bytes it had before the field existed.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-mcp-none",
+      requestText: "triage",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-nomcp",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          children: [
+            { id: "desk.triage", title: "Triage", ontology: { allowedTools: ["message"] } },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    expect(buildEnterprisePromptSection(plan)).not.toContain("MCP");
+  });
+
   it("names a step's skills even when its scope withholds read", () => {
     // Gating on `read` would guess: the embedded loop opens a SKILL.md with it,
     // a claude-cli run resolves natively through a plugin directory, and ACP

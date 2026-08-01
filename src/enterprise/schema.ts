@@ -210,6 +210,11 @@ export const OntologyBindingSchema = z
     // skill must be able to match a loaded one, so an id the runtime rejects
     // cannot be accepted here.
     skills: z.array(SkillNameSchema).optional(),
+    // Config keys of `mcp.servers` verbatim. Those keys are free-form, and the
+    // runtime keeps the registered name while sanitizing only the model-facing
+    // tool prefix — so any pattern or length rule here would refuse to attach a
+    // server that works everywhere else.
+    mcpServers: z.array(NonBlankStringSchema).optional(),
     expectedOutput: z.string().optional(),
     audit: z.boolean().optional(),
   })
@@ -259,6 +264,10 @@ export const WorkflowTreeDefinitionSchema = z
     name: z.string().min(1),
     description: z.string().optional(),
     match: WorkflowTreeMatchSchema.optional(),
+    // One value, and deliberately not a boolean: the inherited semantics this
+    // opts out of are a mode of their own, so the field has room to name them
+    // (or a third) without a second flag contradicting the first.
+    capabilityGrants: z.literal("explicit").optional(),
     root: WorkflowNodeDefinitionSchema,
   })
   .strict()

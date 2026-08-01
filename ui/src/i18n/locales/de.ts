@@ -221,10 +221,59 @@ export const de: TranslationMap = {
         "Der konfigurierte Tool-Katalog, gruppiert wie die Laufzeitumgebung sie gruppiert. Ein Plugin-Tool wird aufgelistet, sobald es deklariert ist, auch bevor seine Konfiguration aufgelöst wird. Channel- und MCP-Tools existieren nur innerhalb einer aktiven Sitzung – daher zeigt dies, was konfiguriert werden kann, und nicht, was gerade aktiv ist.",
       attachHint:
         "Dies ist der Katalog. Um einem Schritt ein Tool zuzuweisen, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie es unter Schrittbindungen hinzu.",
+      attachHintGranted:
+        "Diese Work-Map gewährt Tools explizit. Ein Schritt kann nur die Tools aufrufen, die er selbst auflistet, oder die, die ein übergeordneter Schritt auflistet. Jedes andere Tool in diesem Katalog wird abgelehnt.",
       empty: "Auf diesem Gateway sind keine Tools verfügbar.",
       toolCount: "{count} Tool(s)",
       optionalBadge: "optional",
       pluginBadge: "Plugin: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "Für dieses Gateway registrierte MCP-Server. Die Registrierung hier entspricht der an jeder anderen Stelle in OpenClaw — der Eintrag landet in mcp.servers — aber unter Enterprise-Governance bleibt ein Server unerreichbar, bis ein Schritt ihn einbindet.",
+      attachHint:
+        "Damit ein Schritt einen Server aufrufen kann, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie ihn unter Schritt-Bindungen hinzu. Ein Server, den kein Schritt einbindet, ist registriert, aber unerreichbar.",
+      nativeConfigBoundary:
+        "Dies steuert die Server, die OpenClaw einem Lauf übergibt. Ein Server, der direkt in der eigenen Konfiguration eines Harness deklariert ist, wie z. B. der Codex-Konfigurationsdatei, bleibt davon ausgenommen — diese Ebene gehört zum Harness, nicht zum Gateway.",
+      attachHintUngoverned:
+        "Diese Work-Map regelt MCP noch nicht, daher bleiben registrierte Server als gewöhnliche Tools aufrufbar. Wenn Sie einen Server unter Step-Bindings an einen Schritt anhängen, wird Deny-by-Default für die gesamte Work-Map aktiviert.",
+      empty: "Für dieses Gateway sind keine MCP-Server registriert.",
+      add: "Server registrieren",
+      disabled: "deaktiviert",
+      unattached: "keinem Schritt zugeordnet",
+      unsaved:
+        "Diese Registrierung befindet sich nur in Ihrem Browser, bis Sie sie in der Konfiguration speichern.",
+      waitingForConfig:
+        "Gateway-Konfiguration wird geladen; die Registrierung ist verfügbar, sobald sie eingetroffen ist.",
+      configSaving:
+        "Eine Konfiguration wird gerade gespeichert. Warten Sie, bis der Vorgang abgeschlossen ist — ein jetzt registrierter Server würde verworfen, wenn die gespeicherte Konfiguration neu geladen wird.",
+      configInvalid:
+        "Die Gateway-Konfiguration kann nicht geparst werden, daher kann dieser Bildschirm nichts hinzufügen. Beheben Sie das Problem zuerst im Konfigurationseditor — das Speichern von hier würde die Datei nur mit diesem Eintrag ersetzen.",
+      rawDraftPending:
+        "Sie haben ungespeicherte Änderungen im Raw-Config-Editor. Speichern oder verwerfen Sie diese zuerst — eine Registrierung hier würde diesen Entwurf überschreiben.",
+      save: "Speichern",
+      publish: "Speichern & Veröffentlichen",
+      publishing: "Wird veröffentlicht...",
+    },
+    mcpDraft: {
+      title: "Einen MCP-Server registrieren",
+      subtitle:
+        "Benennen Sie es und geben Sie einen Transport an. Header, Umgebungsvariablen, TLS und OAuth gehören in den MCP-Einstellungsbildschirm.",
+      name: "Name",
+      command: "Befehl",
+      args: "Argumente (durch Leerzeichen getrennt)",
+      url: "URL",
+      submit: "Zur Konfiguration hinzufügen",
+      nameEmpty: "Geben Sie einen Servernamen ein.",
+      nameTaken:
+        "Ein Server mit diesem Namen ist bereits registriert; wählen Sie einen anderen Namen.",
+      nameUnsupported:
+        "Dieser Name kann nicht im Konfigurationseditor gespeichert werden. Wählen Sie einen anderen (constructor, prototype und __proto__ sind reserviert).",
+      launchMissing:
+        "Geben Sie einen Befehl oder eine URL ein, damit der Server gestartet werden kann.",
+      urlInvalid:
+        "Geben Sie eine http:// oder https:// URL ein; MCP over HTTP kann nichts anderes anwählen.",
     },
     picker: {
       subtitle:
@@ -250,6 +299,8 @@ export const de: TranslationMap = {
       none: "Noch keine Einträge vorhanden.",
       scopeNarrowing:
         "Dieser Schritt hat noch keine Tool-Erlaubnisliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Sobald der erste Eintrag hinzugefügt wird, wird er zu einer Erlaubnisliste und nur die aufgeführten Tools bleiben verfügbar.",
+      scopeUngranted:
+        "Diese Work-Map gewährt Tools explizit. Der Schritt erreicht kein Tool, bis eines hier oder in einem darüberliegenden Schritt aufgeführt ist.",
       knowledgeNarrowing:
         "Dieser Schritt hat noch keine Wissens-Allowlist, daher kann er jede registrierte Foundation abfragen. Der erste Eintrag beschränkt ihn auf die aufgeführten Foundations.",
       skillNameInvalid:
@@ -265,6 +316,10 @@ export const de: TranslationMap = {
       exportFailed: "Die Baumdefinition konnte nicht zum Bearbeiten geladen werden.",
       importFailed:
         "Das Speichern wurde nicht bestätigt. Es wurde möglicherweise angewendet oder auch nicht — aktualisieren Sie die Arbeitskarte, um dies zu prüfen, bevor Sie es erneut versuchen.",
+      mcpFirstAttachment:
+        "Diese Work-Map steuert MCP noch nicht. Das Hinzufügen des ersten Servers hier aktiviert Deny-by-Default für die GESAMTE Work-Map: Jeder Schritt ohne Anhang erreicht dann keinen MCP-Server.",
+      mcpNoneAttached:
+        "Diesem Schritt ist kein MCP-Server zugewiesen, daher kann er keinen aufrufen. Anders als Tools und Wissen gewährt MCP standardmäßig nichts.",
       importNotSent:
         "Nichts wurde gespeichert: Die Gateway-Verbindung wurde unterbrochen, bevor dies gesendet wurde. Verbinden Sie sich erneut und versuchen Sie es noch einmal.",
       importRefused:
@@ -282,6 +337,7 @@ export const de: TranslationMap = {
         "Es ist keine Work-Map ausgewählt, daher wird keine Schrittnutzung angezeigt. Wählen Sie eine im Worktree aus, um zu sehen, welche Schritte jeden Eintrag verwenden.",
       usedBy: "Verwendet von {treeName}:",
       declaredBy: "Deklariert von {treeName}:",
+      attachedTo: "Zugewiesen an {treeName}:",
       treeIssue:
         "Die ausgewählte Work-Map konnte nicht geladen werden, daher stammen die folgenden Schritte aus der Fallback-Definition, die das Gateway stattdessen zurückgegeben hat: {message}. Im Enforce-Modus steuert die fehlgeschlagene Work-Map nichts, bis sie geladen ist.",
       treeUnavailable:
@@ -294,14 +350,19 @@ export const de: TranslationMap = {
       tools: "Tools — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Wissen — ontology.knowledgeFoundations",
+      mcp: "MCP-Server — ontology.mcpServers",
       skillNotInstalled: "nicht installiert",
       foundationNotRegistered: "nicht registriert",
+      mcpNotRegistered: "nicht in mcp.servers registriert",
+      inherited: "Von einem übergeordneten Schritt geerbt:",
     },
     skillsTab: {
       title: "Skills",
       subtitle: "Alle für dieses Gateway installierten Skills mit den jeweiligen Voraussetzungen.",
       attachHint:
         "Dies ist der Katalog. Um einen Skill als Abhängigkeit eines Schritts zu deklarieren, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie ihn unter Schrittbindungen hinzu.",
+      attachHintGranted:
+        "Diese Work-Map gewährt Skills explizit: Ein daran gebundener Lauf erhält nur die Skills, die seine Schritte deklarieren, und alle anderen installierten Skills werden dem Modell vorenthalten.",
       empty: "Es sind keine Skills installiert.",
       declaredSection: "Deklariert von {treeName}",
       otherSection: "Andere installierte Skills",
@@ -324,6 +385,7 @@ export const de: TranslationMap = {
     knowledge: "Wissen: {ids}",
     guidance: "Anweisungen: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Geprüft",
     activeBadge: "aktiv",
     nodeCount: "{count} Schritt(e)",
@@ -334,6 +396,16 @@ export const de: TranslationMap = {
       "Wählen Sie einen Workflow-Baum aus, um seine Struktur und Ontologie zu visualisieren.",
     treeTitle: "Baumvisualisierung",
     treeUnavailable: "Die Baumdefinition ist nicht mehr verfügbar.",
+    capabilityGrants: {
+      explicit: "Explizite Berechtigungen",
+      inherited: "Geerbte Bereiche",
+      explicitHint:
+        "Jeder Schritt erreicht nur die Tools, Skills und MCP-Server, die er oder ein übergeordneter Schritt auflistet. Ein Schritt, der keine auflistet, erreicht keine.",
+      inheritedHint:
+        "Die Listen eines Schritts schränken ein, was seine übergeordneten Elemente erlaubt haben; ein Schritt, dessen Zweig nichts auflistet, kann jedes Tool oder jede Skill verwenden.",
+      turnOn: "Explizit gewähren",
+      turnOff: "Vererbte Bereiche verwenden",
+    },
     structureTitle: "Struktur",
     ontologyTitle: "Ontologie",
     wholeTreeOverviewTitle: "Gesamtbaumübersicht",
@@ -693,6 +765,7 @@ export const de: TranslationMap = {
     enterpriseHistory: "Verlauf",
     enterpriseTools: "Tools",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Wissen",
   },
   subtitles: {
@@ -724,6 +797,7 @@ export const de: TranslationMap = {
     enterpriseHistory: "Vergangene verwaltete Ausführungen und ihre Traces.",
     enterpriseTools: "Der konfigurierte Tool-Katalog.",
     enterpriseSkills: "Alle für dieses Gateway installierten Skills.",
+    enterpriseMcp: "Registrierte MCP-Server und die Schritte, die sie aufrufen dürfen.",
     knowledge: "Registrierte Wissensgrundlagen und ihr Status.",
   },
   skillWorkshop: {

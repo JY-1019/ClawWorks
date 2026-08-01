@@ -131,4 +131,78 @@ describe("resolveSkillsPromptForRun", () => {
     expect(prompt).not.toContain("/app/skills/weather/SKILL.md");
     expect(prompt).toContain("/app/skills/docs-search/SKILL.md");
   });
+
+  describe("allowedSkills (workflow grant)", () => {
+    const granted = createCanonicalFixtureSkill({
+      name: "refund-playbook",
+      description: "Refunds",
+      filePath: "/app/skills/refund-playbook/SKILL.md",
+      baseDir: "/app/skills/refund-playbook",
+      source: "openclaw-workspace",
+    });
+    const ungranted = createCanonicalFixtureSkill({
+      name: "deploy-runbook",
+      description: "Deploys",
+      filePath: "/app/skills/deploy-runbook/SKILL.md",
+      baseDir: "/app/skills/deploy-runbook",
+      source: "openclaw-workspace",
+    });
+
+    it("rebuilds the snapshot catalog with only the granted skills", () => {
+      const prompt = resolveSkillsPromptForRun({
+        skillsSnapshot: {
+          prompt: "SNAPSHOT",
+          skills: [{ name: granted.name }, { name: ungranted.name }],
+          resolvedSkills: [granted, ungranted],
+        },
+        workspaceDir: "/tmp/openclaw",
+        allowedSkills: ["refund-playbook"],
+      });
+
+      expect(prompt).toContain("/app/skills/refund-playbook/SKILL.md");
+      expect(prompt).not.toContain("/app/skills/deploy-runbook/SKILL.md");
+      expect(prompt).not.toBe("SNAPSHOT");
+    });
+
+    it("empties the catalog when the work-map grants no skill", () => {
+      const prompt = resolveSkillsPromptForRun({
+        skillsSnapshot: {
+          prompt: "SNAPSHOT",
+          skills: [{ name: granted.name }],
+          resolvedSkills: [granted],
+        },
+        workspaceDir: "/tmp/openclaw",
+        allowedSkills: [],
+      });
+
+      expect(prompt).toBe("");
+    });
+
+    it("narrows entries too, so a sandbox run is governed like a plain one", () => {
+      const prompt = resolveSkillsPromptForRun({
+        entries: [
+          { skill: granted, frontmatter: {} },
+          { skill: ungranted, frontmatter: {} },
+        ],
+        workspaceDir: "/tmp/openclaw",
+        allowedSkills: ["refund-playbook"],
+      });
+
+      expect(prompt).toContain("/app/skills/refund-playbook/SKILL.md");
+      expect(prompt).not.toContain("/app/skills/deploy-runbook/SKILL.md");
+    });
+
+    it("leaves the snapshot prompt untouched without a grant", () => {
+      const prompt = resolveSkillsPromptForRun({
+        skillsSnapshot: {
+          prompt: "SNAPSHOT",
+          skills: [{ name: granted.name }],
+          resolvedSkills: [granted],
+        },
+        workspaceDir: "/tmp/openclaw",
+      });
+
+      expect(prompt).toBe("SNAPSHOT");
+    });
+  });
 });

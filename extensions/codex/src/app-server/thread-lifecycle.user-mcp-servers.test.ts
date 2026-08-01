@@ -2,11 +2,16 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness-runtime";
+import {
+  type EmbeddedRunAttemptParams,
+  loadCodexBundleMcpThreadConfig,
+} from "openclaw/plugin-sdk/agent-harness-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexAppServerRuntimeOptions } from "./config.js";
 import { readCodexAppServerBinding, writeCodexAppServerBinding } from "./session-binding.js";
 import { startOrResumeThread } from "./thread-lifecycle.js";
+
+type JsonRecord = Record<string, unknown>;
 
 function threadStartResult(threadId = "thread-1"): Record<string, unknown> {
   return {
@@ -469,6 +474,102 @@ describe("startOrResumeThread — user mcp.servers projection (regression: #8081
       config?: { mcp_servers?: Record<string, unknown> };
     };
     expect(startParams?.config?.mcp_servers).toBeUndefined();
+  });
+
+  it("keeps a registered server's definition whole when a bundle claims the same name", async () => {
+    // Codex composes `mcp_servers` by deep-merging the bundle patch with the user
+    // projection, so a bundle entry left under a REGISTERED name would compose the
+    // two: bundle headers on the configured URL, or — as here — a bundle url
+    // beside a configured command, which Codex rejects outright ("url is not
+    // supported for stdio", RawMcpServerConfig conversion in
+    // codex-rs/config/src/mcp_types.rs). The registered definition owns the name.
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const pluginRoot = path.join(workspaceDir, ".openclaw", "extensions", "shared-probe");
+    await fs.mkdir(path.join(pluginRoot, ".claude-plugin"), { recursive: true });
+    await fs.writeFile(
+      path.join(pluginRoot, ".claude-plugin", "plugin.json"),
+      `${JSON.stringify({ name: "shared-probe" })}\n`,
+      "utf-8",
+    );
+    await fs.writeFile(
+      path.join(pluginRoot, ".mcp.json"),
+      `${JSON.stringify({
+        mcpServers: {
+          shared: {
+            type: "http",
+            url: "https://bundle.example.com/mcp",
+            headers: { Authorization: "Bearer bundle" },
+          },
+          pluginOnly: { type: "http", url: "https://plugin.example.com/mcp" },
+        },
+      })}\n`,
+      "utf-8",
+    );
+    const config = {
+      plugins: { entries: { "shared-probe": { enabled: true } } },
+      mcp: {
+        servers: {
+          shared: {
+            transport: "stdio",
+            command: "node",
+            args: ["/opt/shared-mcp/dist/index.js"],
+          },
+        },
+      },
+    } as unknown as EmbeddedRunAttemptParams["config"];
+    const bundle = await loadCodexBundleMcpThreadConfig({
+      workspaceDir,
+      cfg: config,
+      toolsEnabled: true,
+    });
+    const pluginThreadConfig = {
+      enabled: true,
+      build: async () => ({
+        enabled: true,
+        configPatch: bundle.configPatch,
+        fingerprint: "bundle-1",
+        inputFingerprint: "bundle-1",
+        diagnostics: [],
+      }),
+    } as never;
+    const request = vi.fn(async (method: string, _params: unknown) => {
+      if (method === "thread/start") {
+        return threadStartResult("thread-shared-name");
+      }
+      if (method === "thread/resume") {
+        return threadResumeResult("thread-shared-name");
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+
+    const startArgs = () => ({
+      client: { request } as never,
+      params: createParams(sessionFile, workspaceDir, config),
+      cwd: workspaceDir,
+      dynamicTools: [],
+      appServer: createAppServerOptions(),
+      pluginThreadConfig,
+      bundleMcpServerNames: Object.keys(
+        (bundle.configPatch?.mcp_servers as Record<string, unknown> | undefined) ?? {},
+      ),
+    });
+    await startOrResumeThread(startArgs());
+
+    // Start is where the two halves meet: the resume merge takes the user
+    // projection and the final patch only (thread-lifecycle.ts:639-642), so the
+    // bundle half cannot reach a resumed thread at all.
+    const startCall = request.mock.calls.find(([method]) => method === "thread/start");
+    const servers = (startCall?.[1] as { config?: { mcp_servers?: Record<string, JsonRecord> } })
+      ?.config?.mcp_servers;
+    expect(servers?.shared).toMatchObject({
+      command: "node",
+      args: ["/opt/shared-mcp/dist/index.js"],
+    });
+    expect(servers?.shared?.url).toBeUndefined();
+    expect(servers?.shared?.http_headers).toBeUndefined();
+    expect(servers?.shared?.headers).toBeUndefined();
+    expect(servers?.pluginOnly).toBeDefined();
   });
 
   it("resends user MCP config when resuming a thread with the matching fingerprint", async () => {

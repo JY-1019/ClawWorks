@@ -25,9 +25,13 @@ import {
   cancelEnterpriseBindingPicker,
   openEnterpriseBindingPicker,
   setEnterpriseBindingPickerCustom,
+  beginEnterpriseMcpDraft,
+  editEnterpriseMcpDraft,
   submitAddEnterpriseNode,
+  submitEnterpriseMcpDraft,
   submitEnterpriseBindingPicker,
   toggleEnterpriseBindingPickerValue,
+  toggleEnterpriseCapabilityGrants,
 } from "./enterprise.ts";
 
 type TestRequest = (method: string, payload?: unknown) => Promise<unknown>;
@@ -67,6 +71,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeVersionsLoading: false,
     enterpriseNodeDraft: null,
     enterpriseBindingPicker: null,
+    enterpriseMcpDraft: null,
     enterpriseCatalogPhase: "unloaded",
     enterpriseCatalogErrors: { tools: null, skills: null, foundations: null },
     enterpriseCatalogAgentId: null,
@@ -1868,6 +1873,129 @@ describe("enterprise binding picker (tool grants / declared skills)", () => {
   });
 });
 
+describe("enterprise MCP registration", () => {
+  it("hands a stdio server to the config writer and closes the form", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "acme-tracker",
+      command: "npx",
+      args: "-y @acme/mcp-tracker",
+    });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: (name, server) => written.push([name, server]),
+    });
+
+    expect(written).toEqual([
+      ["acme-tracker", { command: "npx", args: ["-y", "@acme/mcp-tracker"] }],
+    ]);
+    expect(state.enterpriseMcpDraft).toBeNull();
+  });
+
+  it("writes a url for an http server", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "remote",
+      transport: "streamable-http",
+      url: "https://mcp.acme.dev",
+    });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: (name, server) => written.push([name, server]),
+    });
+
+    // The transport is written explicitly: without it the embedded runtime reads
+    // the entry as SSE while Codex reads it as streamable HTTP.
+    expect(written).toEqual([
+      ["remote", { url: "https://mcp.acme.dev", transport: "streamable-http" }],
+    ]);
+  });
+
+  it("refuses a name that is already registered", () => {
+    // Config keys are unique, so this would REPLACE a working server rather than
+    // add one — and take every step's attachment somewhere else with it.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, { name: "github", command: "npx" });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["github"],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("name-taken");
+  });
+
+  it("refuses a URL the runtime could never dial", () => {
+    // The config schema rejects it only at save time, long after this form closed,
+    // leaving a failed Save and nothing to correct it in.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "remote",
+      transport: "sse",
+      url: "ftp://example.com",
+    });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("url-invalid");
+  });
+
+  it("refuses a name the config editor cannot store", () => {
+    // setPathValue drops these segments, so the registration would write nothing
+    // and the form would close as if it had worked.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, { name: "constructor", command: "npx" });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("name-unsupported");
+  });
+
+  it("refuses a registration with no transport", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, { name: "acme-tracker" });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("launch-missing");
+  });
+});
+
 describe("enterprise catalogs", () => {
   function mockCatalogs(request: ReturnType<typeof vi.fn<TestRequest>>) {
     request.mockImplementation(async (method) => {
@@ -1980,5 +2108,92 @@ describe("enterprise catalogs", () => {
     await stale;
 
     expect(state.enterpriseToolGroups.map((group) => group.id)).toEqual(["enterprise"]);
+  });
+});
+
+describe("toggleEnterpriseCapabilityGrants", () => {
+  const exportThenImport = (request: ReturnType<typeof createState>["request"]) => {
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: "acme.support" };
+      }
+      return {};
+    });
+  };
+
+  it("writes the flag onto the exported definition", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    exportThenImport(request);
+
+    await toggleEnterpriseCapabilityGrants(state);
+
+    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
+    if (!importCall) {
+      throw new Error("expected an enterprise.trees.import call");
+    }
+    const parsed = JSON.parse((importCall[1] as { content: string }).content);
+    expect(parsed.capabilityGrants).toBe("explicit");
+    // Whole-tree replace through the ONE write path: the steps come back untouched.
+    expect(parsed.root.id).toBe("acme.support.root");
+    expect(state.enterpriseTreeSaveError).toBeNull();
+  });
+
+  it("removes the key rather than writing a second mode", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = { ...treeDetail("acme.support"), capabilityGrants: "explicit" };
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return {
+          content: JSON.stringify({
+            ...JSON.parse(supportExportContent()),
+            capabilityGrants: "explicit",
+          }),
+        };
+      }
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: "acme.support" };
+      }
+      return {};
+    });
+
+    await toggleEnterpriseCapabilityGrants(state);
+
+    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
+    if (!importCall) {
+      throw new Error("expected an enterprise.trees.import call");
+    }
+    const parsed = JSON.parse((importCall[1] as { content: string }).content);
+    expect("capabilityGrants" in parsed).toBe(false);
+  });
+
+  it("reports a refused write instead of leaving the mode ambiguous", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      throw new GatewayRequestError({
+        code: "UNAUTHORIZED",
+        message: "missing scope: operator.admin",
+      });
+    });
+
+    await toggleEnterpriseCapabilityGrants(state);
+
+    expect(state.enterpriseTreeSaveError).toContain("missing scope: operator.admin");
+    expect(state.enterpriseTreeSaving).toBe(false);
+  });
+
+  it("does nothing without a selected work-map", async () => {
+    const { state, request } = createState();
+
+    await toggleEnterpriseCapabilityGrants(state);
+
+    expect(request).not.toHaveBeenCalled();
   });
 });

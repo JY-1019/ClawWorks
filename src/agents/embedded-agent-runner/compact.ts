@@ -87,6 +87,7 @@ import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defa
 import { resolveOpenClawReferencePaths } from "../docs-path.js";
 import { ensureSessionHeader } from "../embedded-agent-helpers.js";
 import { pickFallbackThinkingLevel } from "../embedded-agent-helpers.js";
+import { resolveRunSkillGrant } from "../enterprise-skill-scope.js";
 import { coerceToFailoverError, describeFailoverError } from "../failover-error.js";
 import { resolveAgentHarnessPolicy } from "../harness/policy.js";
 import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
@@ -774,14 +775,23 @@ async function compactEmbeddedAgentSessionDirectOnce(
       skillsSnapshot: skillsSnapshotForRun,
       workspaceOnly: loadSkillsWorkspaceOnly,
     });
+    // The compacted successor keeps the run's grant — rebuilding either surface
+    // whole here would hand a governed run the skills, and the credentials, its
+    // work-map withheld, and a handoff is exactly where that goes unnoticed.
+    const grantedSkills = resolveRunSkillGrant({
+      runId: params.runId,
+      ...(skillsSnapshotForRun ? { skillsSnapshot: skillsSnapshotForRun } : {}),
+    });
     restoreSkillEnv = skillsSnapshotForRun
       ? applySkillEnvOverridesFromSnapshot({
           snapshot: skillsSnapshotForRun,
           config: params.config,
+          ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
         })
       : applySkillEnvOverrides({
           skills: skillEntries ?? [],
           config: params.config,
+          ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
         });
     const promptSkillEntries = mapSandboxSkillEntriesForPrompt({
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
@@ -795,6 +805,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
       workspaceDir: effectiveSkillsPromptWorkspace,
       agentId: effectiveSkillAgentId,
       eligibility: skillsEligibility,
+      ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
     });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;

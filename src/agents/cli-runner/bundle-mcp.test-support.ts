@@ -57,19 +57,25 @@ export function setupCliBundleMcpTestHarness(): void {
   });
 }
 
-function createEnabledBundleProbeConfig(): OpenClawConfig {
+type ConfiguredMcpServers = NonNullable<NonNullable<OpenClawConfig["mcp"]>["servers"]>;
+
+function createEnabledBundleProbeConfig(mcpServers?: ConfiguredMcpServers): OpenClawConfig {
   return {
     plugins: {
       entries: {
         "bundle-probe": { enabled: true },
       },
     },
+    ...(mcpServers ? { mcp: { servers: mcpServers } } : {}),
   };
 }
 
 export async function prepareBundleProbeCliConfig(params?: {
   additionalConfig?: Parameters<typeof prepareCliBundleMcpConfig>[0]["additionalConfig"];
   env?: Parameters<typeof prepareCliBundleMcpConfig>[0]["env"];
+  runId?: string;
+  /** Operator `mcp.servers` entries, for cases about the registry's own keys. */
+  mcpServers?: ConfiguredMcpServers;
 }) {
   // Bundle discovery reads HOME for per-user plugin roots.
   return await withEnvAsync({ HOME: bundleProbeHomeDir }, async () => {
@@ -81,9 +87,10 @@ export async function prepareBundleProbeCliConfig(params?: {
         args: ["./fake-claude.mjs"],
       },
       workspaceDir: bundleProbeWorkspaceDir,
-      config: createEnabledBundleProbeConfig(),
+      config: createEnabledBundleProbeConfig(params?.mcpServers),
       additionalConfig: params?.additionalConfig,
       env: params?.env,
+      runId: params?.runId,
     });
   });
 }

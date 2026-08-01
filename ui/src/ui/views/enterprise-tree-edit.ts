@@ -92,7 +92,8 @@ export type NodeOntologyListField =
   | "allowedTools"
   | "deniedTools"
   | "skills"
-  | "knowledgeFoundations";
+  | "knowledgeFoundations"
+  | "mcpServers";
 
 /** True when `id` satisfies the dotted-lowercase contract the tree import enforces. */
 export function isValidEnterpriseId(id: string): boolean {

@@ -6,6 +6,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   beginEnterpriseRun,
@@ -17,6 +21,7 @@ import { invalidateWorkflowTreeRegistry } from "../enterprise/tree-registry.js";
 import type { GovernancePolicy } from "../enterprise/types.js";
 import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
+  enterpriseBundleImportCommand,
   enterprisePolicyCompileCommand,
   enterpriseRunsListCommand,
   enterpriseRunsShowCommand,
@@ -142,9 +147,11 @@ describe("enterprise trees commands", () => {
 });
 
 describe("enterprise runs commands", () => {
-  it("shows recorded run traces", () => {
+  it("shows recorded run traces", async () => {
     const runId = "cli-trace-run-1";
-    beginEnterpriseRun({ runId, prompt: "hello from cli test" });
+    // Awaited: mediation persists the run row asynchronously, so the assertions
+    // below ran against an empty store while this was fire-and-forget.
+    await beginEnterpriseRun({ runId, prompt: "hello from cli test" });
     endEnterpriseRun({ runId, status: "completed" });
 
     const listRuntime = makeRuntime();
@@ -258,5 +265,78 @@ describe("enterprise policy compile output", () => {
     // command must strip the reordering char before printing it.
     expect(runtime.errors.join("\n")).not.toContain(rlo);
     expect(runtime.exitCodes).toEqual([1]);
+  });
+});
+
+describe("enterprise bundle import dependencies", () => {
+  const BUNDLE_TREE_ID = "acme.import-deps";
+  const bundle = {
+    schema: "clawworks.workflow-bundle",
+    schemaVersion: 1,
+    trees: [
+      {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: BUNDLE_TREE_ID,
+        version: "1.0.0",
+        name: "Import deps",
+        root: {
+          id: "desk",
+          title: "Handle a request",
+          ontology: { allowedTools: ["message"], mcpServers: ["acme-tracker"] },
+        },
+      },
+    ],
+    knowledgeFoundations: [],
+    // Recomputed from the tree on import; the manifest is for the reader.
+    requiredTools: ["message"],
+    requiredSkills: [],
+    requiredMcpServers: ["acme-tracker"],
+  };
+
+  function importBundleWithConfig(config: OpenClawConfig | null): FakeRuntime {
+    const file = path.join(tempDir, "deps.clawworks-bundle.json");
+    writeFileSync(file, JSON.stringify(bundle), "utf8");
+    if (config) {
+      setRuntimeConfigSnapshot(config);
+    } else {
+      clearRuntimeConfigSnapshot();
+    }
+    const runtime = makeRuntime();
+    enterpriseBundleImportCommand(file, runtime);
+    return runtime;
+  }
+
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
+    removeImportedWorkflowTree(BUNDLE_TREE_ID);
+  });
+
+  it("warns only about MCP servers this deployment has not registered", () => {
+    const runtime = importBundleWithConfig(null);
+
+    expect(runtime.errors.join("\n")).toContain("acme-tracker");
+    expect(runtime.errors.join("\n")).toContain("must be registered under mcp.servers");
+  });
+
+  it("still warns when the registered server is disabled", () => {
+    // A disabled entry is skipped by every projection, so the attachment stays as
+    // inert as a missing registration — calling it satisfied would be backwards.
+    const runtime = importBundleWithConfig({
+      mcp: { servers: { "acme-tracker": { command: "npx", enabled: false } } },
+    } as OpenClawConfig);
+
+    expect(runtime.errors.join("\n")).toContain("must be registered under mcp.servers");
+    expect(runtime.logs.join("\n")).not.toContain("Required MCP servers");
+  });
+
+  it("reports a registered server as a satisfied dependency, not a problem", () => {
+    // A clean import must not read as misconfigured: the attachment resolves.
+    const runtime = importBundleWithConfig({
+      mcp: { servers: { "acme-tracker": { command: "npx" } } },
+    } as OpenClawConfig);
+
+    expect(runtime.errors.join("\n")).not.toContain("must be registered");
+    expect(runtime.logs.join("\n")).toContain("Required MCP servers: acme-tracker");
   });
 });

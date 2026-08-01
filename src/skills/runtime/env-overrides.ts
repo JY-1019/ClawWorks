@@ -14,12 +14,26 @@ import type { SkillEntry, SkillSnapshot } from "../types.js";
 
 const log = createSubsystemLogger("env-overrides");
 
-type EnvUpdate = { key: string };
+type EnvUpdate = { key: string; skillName: string };
 type SkillConfig = NonNullable<ReturnType<typeof resolveSkillConfig>>;
 type ActiveSkillEnvEntry = {
   baseline: string | undefined;
   value: string;
   count: number;
+  /**
+   * Which skills asked for this key, by the name a workflow grant uses, with a
+   * count each. Needed because the environment is PROCESS-wide and shared by
+   * concurrent runs: a run whose work-map withholds a skill has to be able to
+   * recognize the keys that skill owns even when another run injected them.
+   */
+  owners: Map<string, number>;
+  /**
+   * The skill whose value is actually in the environment — the FIRST acquirer,
+   * since a later one does not overwrite it. Two skills can want the same key
+   * with different secrets, so "some owner is granted" would hand a granted
+   * skill's run the withheld skill's value.
+   */
+  valueOwner: string;
 };
 
 /**
@@ -35,10 +49,43 @@ export function getActiveSkillEnvKeys(): ReadonlySet<string> {
   return new Set(activeSkillEnvEntries.keys());
 }
 
-function acquireActiveSkillEnvKey(key: string, value: string): boolean {
+/**
+ * Injected keys that belong ONLY to skills outside this grant.
+ *
+ * The environment is process-wide and outlives one run, so skipping the
+ * injection is not enough on its own: a concurrent run that granted the skill may
+ * have put the key there already, and a child process started for THIS run copies
+ * whatever `process.env` holds. Callers that hand an environment to a subprocess
+ * subtract these (the ACP client strips every skill key the same way).
+ *
+ * A key whose value belongs to a granted skill is NOT listed: it is legitimately
+ * part of this run's environment. When two skills want the same key, the value in
+ * the environment is the first acquirer's, so that is the owner this reads —
+ * sharing a key with a granted skill must not launder a withheld skill's secret.
+ */
+export function resolveSkillEnvKeysOutsideGrant(
+  allowedSkills: readonly string[] | undefined,
+): string[] {
+  if (!allowedSkills) {
+    return [];
+  }
+  const granted = new Set(allowedSkills);
+  // The VALUE's owner decides, not any owner: the environment holds one secret
+  // per key, and it belongs to whoever put it there.
+  return [...activeSkillEnvEntries.entries()]
+    .filter(([, entry]) => !granted.has(entry.valueOwner))
+    .map(([key]) => key);
+}
+
+function addOwner(owners: Map<string, number>, skillName: string) {
+  owners.set(skillName, (owners.get(skillName) ?? 0) + 1);
+}
+
+function acquireActiveSkillEnvKey(key: string, value: string, skillName: string): boolean {
   const active = activeSkillEnvEntries.get(key);
   if (active) {
     active.count += 1;
+    addOwner(active.owners, skillName);
     if (process.env[key] === undefined) {
       process.env[key] = active.value;
     }
@@ -51,16 +98,24 @@ function acquireActiveSkillEnvKey(key: string, value: string): boolean {
     baseline: process.env[key],
     value,
     count: 1,
+    owners: new Map([[skillName, 1]]),
+    valueOwner: skillName,
   });
   return true;
 }
 
-function releaseActiveSkillEnvKey(key: string) {
+function releaseActiveSkillEnvKey(key: string, skillName: string) {
   const active = activeSkillEnvEntries.get(key);
   if (!active) {
     return;
   }
   active.count -= 1;
+  const owned = (active.owners.get(skillName) ?? 0) - 1;
+  if (owned > 0) {
+    active.owners.set(skillName, owned);
+  } else {
+    active.owners.delete(skillName);
+  }
   if (active.count > 0) {
     if (process.env[key] === undefined) {
       process.env[key] = active.value;
@@ -146,6 +201,8 @@ function applySkillConfigEnvOverrides(params: {
   primaryEnv?: string | null;
   requiredEnv?: string[] | null;
   skillKey: string;
+  /** The skill's own name, which is what a workflow grant lists. */
+  skillName: string;
 }) {
   const { updates, skillConfig, primaryEnv, requiredEnv, skillKey } = params;
   const allowedSensitiveKeys = new Set<string>();
@@ -201,10 +258,10 @@ function applySkillConfigEnvOverrides(params: {
   }
 
   for (const [envKey, envValue] of Object.entries(sanitized.allowed)) {
-    if (!acquireActiveSkillEnvKey(envKey, envValue)) {
+    if (!acquireActiveSkillEnvKey(envKey, envValue, params.skillName)) {
       continue;
     }
-    updates.push({ key: envKey });
+    updates.push({ key: envKey, skillName: params.skillName });
     process.env[envKey] = activeSkillEnvEntries.get(envKey)?.value ?? envValue;
   }
 }
@@ -216,17 +273,46 @@ function shouldApplySkillConfigEnvOverrides(skillConfig: SkillConfig): boolean {
 function createEnvReverter(updates: EnvUpdate[]) {
   return () => {
     for (const update of updates) {
-      releaseActiveSkillEnvKey(update.key);
+      releaseActiveSkillEnvKey(update.key, update.skillName);
     }
   };
 }
 
-export function applySkillEnvOverrides(params: { skills: SkillEntry[]; config?: OpenClawConfig }) {
+/**
+ * Skill names a governed run may use, or undefined for "no restriction".
+ *
+ * These overrides put a skill's credentials into the PROCESS environment, where
+ * any allowed tool call or subprocess can read them — so a work-map that
+ * withholds a skill has to withhold its secrets too, not merely hide it from the
+ * catalog (enterpriseRunGrantedSkills).
+ */
+function skillEnvGrantFilter(
+  allowedSkills: readonly string[] | undefined,
+): (name: string) => boolean {
+  if (!allowedSkills) {
+    return () => true;
+  }
+  const granted = new Set(allowedSkills);
+  return (name) => granted.has(name);
+}
+
+export function applySkillEnvOverrides(params: {
+  skills: SkillEntry[];
+  config?: OpenClawConfig;
+  allowedSkills?: readonly string[];
+}) {
   const { skills } = params;
   const config = resolveSkillRuntimeConfig(params.config);
+  const isGranted = skillEnvGrantFilter(params.allowedSkills);
   const updates: EnvUpdate[] = [];
 
   for (const entry of skills) {
+    // By skill NAME, the same identity the catalog and the CLI plugin filter use;
+    // the config key below can differ (resolveSkillKey), and matching on that
+    // would let a renamed key slip an ungranted skill's secrets through.
+    if (!isGranted(entry.skill.name)) {
+      continue;
+    }
     const skillKey = resolveSkillKey(entry.skill, entry);
     const skillConfig = resolveSkillConfig(config, skillKey);
     if (!skillConfig) {
@@ -242,6 +328,7 @@ export function applySkillEnvOverrides(params: { skills: SkillEntry[]; config?: 
       primaryEnv: entry.metadata?.primaryEnv,
       requiredEnv: entry.metadata?.requires?.env,
       skillKey,
+      skillName: entry.skill.name,
     });
   }
 
@@ -251,15 +338,20 @@ export function applySkillEnvOverrides(params: { skills: SkillEntry[]; config?: 
 export function applySkillEnvOverridesFromSnapshot(params: {
   snapshot?: SkillSnapshot;
   config?: OpenClawConfig;
+  allowedSkills?: readonly string[];
 }) {
   const { snapshot } = params;
   const config = resolveSkillRuntimeConfig(params.config);
   if (!snapshot) {
     return () => {};
   }
+  const isGranted = skillEnvGrantFilter(params.allowedSkills);
   const updates: EnvUpdate[] = [];
 
   for (const skill of snapshot.skills) {
+    if (!isGranted(skill.name)) {
+      continue;
+    }
     const skillConfig = resolveSkillConfig(config, skill.name);
     if (!skillConfig) {
       continue;
@@ -274,6 +366,7 @@ export function applySkillEnvOverridesFromSnapshot(params: {
       primaryEnv: skill.primaryEnv,
       requiredEnv: skill.requiredEnv,
       skillKey: skill.name,
+      skillName: skill.name,
     });
   }
 

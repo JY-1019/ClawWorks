@@ -55,6 +55,7 @@ describe("iconForTab", () => {
       enterpriseHistory: "clock",
       enterpriseTools: "wrench",
       enterpriseSkills: "zap",
+      enterpriseMcp: "plug",
       knowledge: "archive",
     });
   });
@@ -96,6 +97,7 @@ describe("titleForTab", () => {
       enterpriseHistory: "History",
       enterpriseTools: "Tools",
       enterpriseSkills: "Skills",
+      enterpriseMcp: "MCP",
       knowledge: "Knowledge",
     });
   });
@@ -131,6 +133,7 @@ describe("subtitleForTab", () => {
       enterpriseHistory: "Past governed runs and their traces.",
       enterpriseTools: "The configured tool catalog.",
       enterpriseSkills: "Every skill installed for this gateway.",
+      enterpriseMcp: "Registered MCP servers and the steps that may call them.",
       knowledge: "Registered knowledge foundations and their status.",
     });
   });

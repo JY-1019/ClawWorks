@@ -78,6 +78,17 @@ describe("validateWorkflowTreeDefinition", () => {
     expect(validateWorkflowTreeDefinition(tree).ok).toBe(false);
   });
 
+  it("accepts explicit capability grants and rejects any other value", () => {
+    // One value, so a typo lands as a validation issue instead of quietly leaving
+    // the work-map on the inherited semantics it meant to opt out of.
+    expect(
+      validateWorkflowTreeDefinition({ ...validTree(), capabilityGrants: "explicit" }).ok,
+    ).toBe(true);
+    expect(validateWorkflowTreeDefinition({ ...validTree(), capabilityGrants: "strict" }).ok).toBe(
+      false,
+    );
+  });
+
   it("accepts empty no-op ontology arrays for load compatibility", () => {
     // Empty arrays are no-ops the runtime treats as omitted (an empty action
     // tool list covers no tool in the matcher), so rejecting them would break

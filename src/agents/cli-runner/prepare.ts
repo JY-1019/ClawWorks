@@ -73,6 +73,7 @@ import {
   mapSandboxSkillEntriesForPrompt,
   resolveSandboxSkillRuntimeInputs,
 } from "../embedded-agent-runner/sandbox-skills.js";
+import { resolveRunSkillGrant } from "../enterprise-skill-scope.js";
 import { resolveHeartbeatPromptForSystemPrompt } from "../heartbeat-system-prompt.js";
 import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
 import { collectRuntimeChannelCapabilities } from "../runtime-capabilities.js";
@@ -118,18 +119,35 @@ async function resolveCliSkillsPrompt(params: {
   sessionKey: string;
   skillsSnapshot: RunCliAgentParams["skillsSnapshot"];
   workspaceDir: string;
+  /** Skill names the governing work-map grants; undefined means "do not narrow". */
+  allowedSkills?: readonly string[];
 }): Promise<string> {
+  const allowedSkills = params.allowedSkills ? { allowedSkills: params.allowedSkills } : {};
   const sandboxWorkspace = await ensureSandboxWorkspaceForSession({
     config: params.config,
     sessionKey: params.sessionKey,
     workspaceDir: params.workspaceDir,
   });
   if (!sandboxWorkspace) {
+    // A grant rebuilds the catalog, and a persisted snapshot (a cron turn reuses
+    // one) carries the prompt without the resolved skills it would rebuild FROM.
+    // Load this agent's entries in that case, or the narrowed catalog would come
+    // back empty and drop the skills the work-map actually granted.
+    const { shouldLoadSkillEntries, skillEntries } = params.allowedSkills
+      ? resolveEmbeddedRunSkillEntries({
+          workspaceDir: params.workspaceDir,
+          config: params.config,
+          agentId: params.agentId,
+          skillsSnapshot: params.skillsSnapshot,
+        })
+      : { shouldLoadSkillEntries: false, skillEntries: [] };
     return resolveSkillsPromptForRun({
       skillsSnapshot: params.skillsSnapshot,
       workspaceDir: params.workspaceDir,
       config: params.config,
       agentId: params.agentId,
+      ...(shouldLoadSkillEntries ? { entries: skillEntries } : {}),
+      ...allowedSkills,
     });
   }
 
@@ -178,6 +196,7 @@ async function resolveCliSkillsPrompt(params: {
     config: params.config,
     agentId: params.agentId,
     eligibility: skillsEligibility,
+    ...allowedSkills,
   });
 }
 
@@ -445,6 +464,7 @@ export async function prepareCliRunContext(
     backend: backendResolved.config,
     workspaceDir,
     config: params.config,
+    runId: params.runId,
     additionalConfig: mcpLoopbackRuntime
       ? prepareDeps.createMcpLoopbackServerConfig(mcpLoopbackRuntime.port)
       : undefined,
@@ -540,11 +560,19 @@ export async function prepareCliRunContext(
           }
         }
       : undefined;
+  // The work-map's skill grant, resolved once for both surfaces this function
+  // feeds: the CLI plugin directory below and the catalog prompt further down.
+  // Null means the run is unmediated or its work-map does not grant explicitly.
+  const grantedSkills = resolveRunSkillGrant({
+    runId: params.runId,
+    ...(params.skillsSnapshot ? { skillsSnapshot: params.skillsSnapshot } : {}),
+  });
   const claudeSkillsPlugin = isSideQuestion
     ? { args: [], cleanup: async () => {} }
     : await prepareDeps.prepareClaudeCliSkillsPlugin({
         backendId: backendResolved.id,
         skillsSnapshot: params.skillsSnapshot,
+        ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
       });
   const preparedCleanup =
     preparedBackendCleanup || claudeSkillsPlugin.args.length > 0
@@ -682,6 +710,7 @@ export async function prepareCliRunContext(
           config: params.config,
           agentId: sessionAgentId,
           sessionKey: params.sessionKey?.trim() || params.sessionId,
+          ...(grantedSkills ? { allowedSkills: grantedSkills } : {}),
         });
   const runtimeChannel = isSideQuestion
     ? undefined

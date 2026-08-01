@@ -219,10 +219,56 @@ export const nl: TranslationMap = {
         "De geconfigureerde toolcatalogus, gegroepeerd zoals de runtime ze groepeert. Een plugin-tool wordt vermeld zodra deze is gedeclareerd, zelfs voordat de configuratie is opgelost, en channel- en MCP-tools bestaan alleen binnen een actieve sessie. Dit toont dus wat geconfigureerd kan worden in plaats van wat op dit moment actief is.",
       attachHint:
         "Dit is de catalogus. Om een stap een tool te laten aanroepen, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen.",
+      attachHintGranted:
+        "Deze work-map verleent tools expliciet. Een stap kan alleen de tools aanroepen die het vermeldt, of de tools die een bovenliggende stap vermeldt. Alle andere tools in deze catalogus worden geweigerd.",
       empty: "Er zijn geen tools beschikbaar op deze Gateway.",
       toolCount: "{count} tool(s)",
       optionalBadge: "optioneel",
       pluginBadge: "Plugin: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "MCP-servers geregistreerd voor deze gateway. Een server hier registreren is hetzelfde als elders in OpenClaw — het komt in mcp.servers terecht — maar onder enterprise-governance blijft een server onbereikbaar totdat een stap deze koppelt.",
+      attachHint:
+        "Om een stap een server te laten aanroepen, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen. Een server die geen enkele stap koppelt, is geregistreerd maar onbereikbaar.",
+      nativeConfigBoundary:
+        "Dit bepaalt welke servers OpenClaw aan een run doorgeeft. Een server die rechtstreeks in de eigen configuratie van een harness is gedeclareerd, zoals het Codex-configuratiebestand, valt hier buiten — die laag behoort tot het harness, niet tot de Gateway.",
+      attachHintUngoverned:
+        "Deze work-map beheert MCP nog niet, dus geregistreerde servers blijven aanroepbaar als gewone tools. Door er een aan een stap te koppelen onder Step bindings wordt deny-by-default ingeschakeld voor de hele work-map.",
+      empty: "Er zijn geen MCP-servers geregistreerd voor deze gateway.",
+      add: "Server registreren",
+      disabled: "uitgeschakeld",
+      unattached: "niet gekoppeld aan een stap",
+      unsaved:
+        "Deze registratie staat alleen in je browser totdat je deze opslaat in de configuratie.",
+      waitingForConfig:
+        "Gateway-configuratie wordt geladen; registreren is beschikbaar zodra deze is ontvangen.",
+      configSaving:
+        "Er wordt momenteel een configuratie opgeslagen. Wacht tot dit is voltooid — een server die nu wordt geregistreerd, zou worden verworpen wanneer de opgeslagen configuratie opnieuw wordt geladen.",
+      configInvalid:
+        "De Gateway-configuratie kan niet worden geparsed, dus dit scherm heeft niets om aan toe te voegen. Herstel het eerst in de configuratie-editor — opslaan vanaf hier zou het bestand vervangen met alleen deze vermelding.",
+      rawDraftPending:
+        "Je hebt niet-opgeslagen wijzigingen in de raw config-editor. Sla ze eerst op of verwerp ze — registreren hier zou dat concept overschrijven.",
+      save: "Opslaan",
+      publish: "Opslaan & publiceren",
+      publishing: "Publiceren...",
+    },
+    mcpDraft: {
+      title: "Een MCP-server registreren",
+      subtitle:
+        "Geef het een naam en één transport. Headers, omgevingsvariabelen, TLS en OAuth horen in het MCP-instellingenscherm.",
+      name: "Naam",
+      command: "Opdracht",
+      args: "Argumenten (gescheiden door spaties)",
+      url: "URL",
+      submit: "Toevoegen aan configuratie",
+      nameEmpty: "Voer een servernaam in.",
+      nameTaken: "Er is al een server met die naam geregistreerd; kies een andere naam.",
+      nameUnsupported:
+        "Die naam kan niet worden opgeslagen in de config editor. Kies een andere (constructor, prototype en __proto__ zijn gereserveerd).",
+      launchMissing: "Voer een opdracht of een URL in zodat de server kan worden gestart.",
+      urlInvalid: "Voer een http:// of https:// URL in; MCP over HTTP kan niets anders bereiken.",
     },
     picker: {
       subtitle: "Doorzoek de catalogus en kies wat deze stap mag gebruiken.",
@@ -247,6 +293,8 @@ export const nl: TranslationMap = {
       none: "Nog geen opgegeven.",
       scopeNarrowing:
         "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Zodra u de eerste vermelding toevoegt, wordt het een allowlist en blijven alleen de vermelde tools beschikbaar.",
+      scopeUngranted:
+        "Deze werkkaart kent tools expliciet toe. De stap bereikt geen tool totdat er een wordt vermeld hier of bij een bovenliggende stap.",
       knowledgeNarrowing:
         "Deze stap heeft nog geen kennislijst, dus kan elke geregistreerde foundation worden bevraagd. Door de eerste vermelding toe te voegen, wordt het beperkt tot de vermelde foundations.",
       skillNameInvalid:
@@ -261,6 +309,10 @@ export const nl: TranslationMap = {
       exportFailed: "Kan de boomdefinitie niet laden om te bewerken.",
       importFailed:
         "Het opslaan is niet bevestigd. Het kan wel of niet zijn toegepast — vernieuw de work-map om dit te controleren voordat u het opnieuw probeert.",
+      mcpFirstAttachment:
+        "Deze werkkaart beheert MCP nog niet. Door hier de eerste server toe te voegen wordt deny-by-default ingeschakeld voor de HELE werkkaart: elke stap zonder bijlage bereikt dan geen enkele MCP-server.",
+      mcpNoneAttached:
+        "Deze stap heeft geen MCP-server gekoppeld en kan dus geen enkele aanroepen. Anders dan tools en knowledge verleent MCP standaard niets.",
       importNotSent:
         "Er is niets opgeslagen: de Gateway-verbinding werd verbroken voordat dit verzonden kon worden. Maak opnieuw verbinding en probeer het nogmaals.",
       importRefused:
@@ -278,6 +330,7 @@ export const nl: TranslationMap = {
         "Er is geen werkkaart geselecteerd, dus er wordt geen stapgebruik getoond. Kies er een in Worktree om te zien welke stappen elk item gebruiken.",
       usedBy: "Gebruikt door {treeName}:",
       declaredBy: "Gedeclareerd door {treeName}:",
+      attachedTo: "Gekoppeld aan {treeName}:",
       treeIssue:
         "De geselecteerde werkkaart kon niet worden geladen, dus de onderstaande stappen komen uit de terugvaldefinitie die de Gateway in plaats daarvan heeft geretourneerd: {message}. In afdwingmodus beheert de mislukte werkkaart niets totdat deze is geladen.",
       treeUnavailable:
@@ -289,8 +342,11 @@ export const nl: TranslationMap = {
       tools: "Tools — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "Kennis — ontology.knowledgeFoundations",
+      mcp: "MCP-servers — ontology.mcpServers",
       skillNotInstalled: "niet geïnstalleerd",
       foundationNotRegistered: "niet geregistreerd",
+      mcpNotRegistered: "niet geregistreerd in mcp.servers",
+      inherited: "Overgenomen van een bovenliggende stap:",
     },
     skillsTab: {
       title: "Skills",
@@ -298,6 +354,8 @@ export const nl: TranslationMap = {
         "Elke skill die voor deze gateway is geïnstalleerd, met wat nodig is om in aanmerking te komen.",
       attachHint:
         "Dit is de catalogus. Om een skill als afhankelijkheid van een stap te declareren, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen.",
+      attachHintGranted:
+        "Deze work-map kent Skills expliciet toe: een run die eraan gekoppeld is, krijgt alleen de Skills aangeboden die de stappen ervan declareren, en elke andere geïnstalleerde Skill wordt achtergehouden voor het model.",
       empty: "Er zijn geen Skills geïnstalleerd.",
       declaredSection: "Gedeclareerd door {treeName}",
       otherSection: "Andere geïnstalleerde skills",
@@ -319,6 +377,7 @@ export const nl: TranslationMap = {
     knowledge: "Kennis: {ids}",
     guidance: "Instructies: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "Gecontroleerd",
     activeBadge: "actief",
     nodeCount: "{count} stap(pen)",
@@ -328,6 +387,16 @@ export const nl: TranslationMap = {
     selectTree: "Selecteer een werkstroomboom om de structuur en ontologie te visualiseren.",
     treeTitle: "Boomvisualisatie",
     treeUnavailable: "Boomdefinitie is niet meer beschikbaar.",
+    capabilityGrants: {
+      explicit: "Expliciete toekenningen",
+      inherited: "Overgenomen scopes",
+      explicitHint:
+        "Elke stap heeft alleen toegang tot de tools, Skills en MCP-servers die in die stap of een bovenliggende stap zijn vermeld. Een stap zonder vermeldingen heeft nergens toegang toe.",
+      inheritedHint:
+        "De lijsten van een stap beperken wat de bovenliggende stappen hebben toegestaan; een stap waarvan de vertakking niets vermeldt, mag elke tool of skill gebruiken.",
+      turnOn: "Expliciet toekennen",
+      turnOff: "Overgenomen bereiken gebruiken",
+    },
     structureTitle: "Structuur",
     ontologyTitle: "Ontologie",
     wholeTreeOverviewTitle: "Volledig boomoverzicht",
@@ -685,6 +754,7 @@ export const nl: TranslationMap = {
     enterpriseHistory: "Geschiedenis",
     enterpriseTools: "Tools",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "Kennis",
   },
   subtitles: {
@@ -715,6 +785,7 @@ export const nl: TranslationMap = {
     enterpriseHistory: "Eerdere beheerde runs en hun traces.",
     enterpriseTools: "De geconfigureerde toolcatalogus.",
     enterpriseSkills: "Elke skill die voor deze gateway is geïnstalleerd.",
+    enterpriseMcp: "Geregistreerde MCP-servers en de stappen die ze mogen aanroepen.",
     knowledge: "Geregistreerde kennisbronnen en hun status.",
   },
   skillWorkshop: {

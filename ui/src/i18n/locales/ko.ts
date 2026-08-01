@@ -214,10 +214,55 @@ export const ko: TranslationMap = {
         "런타임이 그룹화하는 방식으로 정리된 구성된 도구 카탈로그입니다. 플러그인 도구는 선언되면 구성이 확인되기 전에도 나열되며, 채널 및 MCP 도구는 라이브 세션 내에서만 존재하므로 현재 라이브 상태가 아닌 구성 가능한 항목을 보여줍니다.",
       attachHint:
         "이것은 카탈로그입니다. 단계에서 도구를 호출하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요.",
+      attachHintGranted:
+        "이 작업 맵은 도구를 명시적으로 부여합니다. 각 단계는 자신이 나열한 도구 또는 상위 단계가 나열한 도구만 호출할 수 있습니다. 이 카탈로그의 다른 모든 도구는 거부됩니다.",
       empty: "이 Gateway에서 사용 가능한 도구가 없습니다.",
       toolCount: "{count}개 도구",
       optionalBadge: "선택 사항",
       pluginBadge: "플러그인: {pluginId}",
+    },
+    mcpTab: {
+      title: "MCP",
+      subtitle:
+        "이 Gateway에 등록된 MCP 서버입니다. 여기서 등록하는 것은 OpenClaw의 다른 곳에서 등록하는 것과 동일하며 mcp.servers에 저장됩니다. 다만 엔터프라이즈 거버넌스 하에서는 단계에서 연결하기 전까지 서버에 접근할 수 없습니다.",
+      attachHint:
+        "단계에서 서버를 호출하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요. 어떤 단계에도 연결되지 않은 서버는 등록되어 있지만 접근할 수 없습니다.",
+      nativeConfigBoundary:
+        "이 설정은 OpenClaw가 실행에 전달하는 서버를 관리합니다. 하네스 자체 구성(예: Codex 구성 파일)에 직접 선언된 서버는 이 범위 밖에 있습니다. 해당 레이어는 Gateway가 아닌 하네스에 속합니다.",
+      attachHintUngoverned:
+        "이 작업 맵은 아직 MCP를 관리하지 않으므로 등록된 서버는 일반 도구로 계속 호출할 수 있습니다. Step bindings에서 단계에 서버를 연결하면 전체 작업 맵에 대해 기본 거부가 활성화됩니다.",
+      empty: "이 Gateway에 등록된 MCP 서버가 없습니다.",
+      add: "서버 등록",
+      disabled: "비활성화됨",
+      unattached: "어떤 단계에도 연결되지 않음",
+      unsaved: "이 등록 정보는 설정에 저장하기 전까지 브라우저에만 존재합니다.",
+      waitingForConfig: "Gateway 설정을 불러오는 중입니다. 설정이 완료되면 등록할 수 있습니다.",
+      configSaving:
+        "설정 저장이 진행 중입니다. 완료될 때까지 기다려 주세요 — 지금 등록된 서버는 저장된 설정이 다시 로드될 때 삭제됩니다.",
+      configInvalid:
+        "Gateway 설정을 파싱할 수 없어 이 화면에서 추가할 항목이 없습니다. 먼저 설정 편집기에서 수정하세요 — 여기에서 저장하면 파일이 이 항목만으로 대체됩니다.",
+      rawDraftPending:
+        "원시 설정 편집기에 저장하지 않은 변경 사항이 있습니다. 먼저 저장하거나 취소하세요 — 여기서 등록하면 해당 초안을 덮어쓰게 됩니다.",
+      save: "저장",
+      publish: "저장 및 게시",
+      publishing: "게시 중...",
+    },
+    mcpDraft: {
+      title: "MCP 서버 등록",
+      subtitle:
+        "이름을 지정하고 하나의 전송 방식을 선택하세요. 헤더, 환경 변수, TLS, OAuth는 MCP 설정 화면에서 구성합니다.",
+      name: "이름",
+      command: "명령",
+      args: "인수 (공백으로 구분)",
+      url: "URL",
+      submit: "구성에 추가",
+      nameEmpty: "서버 이름을 입력하세요.",
+      nameTaken: "해당 이름의 서버가 이미 등록되어 있습니다. 다른 이름을 선택하세요.",
+      nameUnsupported:
+        "해당 이름은 config editor에 저장할 수 없습니다. 다른 이름을 선택하세요 (constructor, prototype, __proto__는 예약어입니다).",
+      launchMissing: "서버를 실행할 수 있도록 명령어 또는 URL을 입력하세요.",
+      urlInvalid:
+        "http:// 또는 https:// URL을 입력하세요. MCP over HTTP는 다른 프로토콜에 연결할 수 없습니다.",
     },
     picker: {
       subtitle: "카탈로그를 검색하고 이 단계에서 사용할 항목을 선택하세요.",
@@ -242,6 +287,8 @@ export const ko: TranslationMap = {
       none: "아직 선언된 항목이 없습니다.",
       scopeNarrowing:
         "이 단계에는 아직 도구 허용 목록이 없으므로 거부된 도구를 제외한 모든 도구를 허용합니다. 첫 번째 항목을 추가하면 허용 목록으로 전환되며 나열된 도구만 사용할 수 있습니다.",
+      scopeUngranted:
+        "이 워크맵은 도구를 명시적으로 부여합니다. 여기 또는 상위 단계에 도구가 나열되기 전까지 해당 단계는 어떤 도구에도 접근할 수 없습니다.",
       knowledgeNarrowing:
         "이 단계에는 아직 지식 허용 목록이 없으므로 등록된 모든 파운데이션을 쿼리할 수 있습니다. 첫 번째 항목을 추가하면 나열된 파운데이션으로 제한됩니다.",
       skillNameInvalid:
@@ -256,6 +303,10 @@ export const ko: TranslationMap = {
       exportFailed: "편집할 트리 정의를 불러올 수 없습니다.",
       importFailed:
         "저장이 확인되지 않았습니다. 적용되었을 수도 있고 그렇지 않을 수도 있습니다. 다시 시도하기 전에 작업 맵을 새로고침하여 확인하세요.",
+      mcpFirstAttachment:
+        "이 작업 맵은 아직 MCP를 관리하지 않습니다. 여기에 첫 번째 서버를 추가하면 전체 작업 맵에 대해 기본 거부가 활성화됩니다. 즉, 첨부 항목이 없는 모든 단계는 어떤 MCP 서버에도 접근할 수 없게 됩니다.",
+      mcpNoneAttached:
+        "이 단계에는 연결된 MCP 서버가 없으므로 아무것도 호출할 수 없습니다. 도구 및 지식과 달리 MCP는 기본적으로 아무것도 부여하지 않습니다.",
       importNotSent:
         "저장된 항목이 없습니다: 전송되기 전에 Gateway 연결이 끊어졌습니다. 다시 연결한 후 재시도하세요.",
       importRefused: "서버가 이 변경을 거부하여 저장된 항목이 없습니다: {message}",
@@ -270,6 +321,7 @@ export const ko: TranslationMap = {
         "작업 맵이 선택되지 않아 단계 사용량이 표시되지 않습니다. Worktree에서 작업 맵을 선택하여 각 항목을 사용하는 단계를 확인하세요.",
       usedBy: "{treeName}에서 사용 중:",
       declaredBy: "{treeName}에 의해 선언됨:",
+      attachedTo: "{treeName}에 연결됨:",
       treeIssue:
         "선택한 작업 맵을 불러오지 못하여, 아래 단계는 Gateway가 대신 반환한 대체 정의에서 가져온 것입니다: {message}. 적용 모드에서는 실패한 작업 맵이 로드될 때까지 아무것도 제어하지 않습니다.",
       treeUnavailable:
@@ -281,14 +333,19 @@ export const ko: TranslationMap = {
       tools: "도구 — ontology.allowedTools",
       skills: "Skills — ontology.skills",
       knowledge: "지식 — ontology.knowledgeFoundations",
+      mcp: "MCP 서버 — ontology.mcpServers",
       skillNotInstalled: "설치되지 않음",
       foundationNotRegistered: "등록되지 않음",
+      mcpNotRegistered: "mcp.servers에 등록되지 않음",
+      inherited: "상위 단계에서 상속됨:",
     },
     skillsTab: {
       title: "Skills",
       subtitle: "이 Gateway에 설치된 모든 Skills과 자격 요건입니다.",
       attachHint:
         "이것은 카탈로그입니다. 단계의 종속성으로 선언하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요.",
+      attachHintGranted:
+        "이 작업 맵은 Skills를 명시적으로 부여합니다. 이 맵에 바인딩된 실행은 해당 단계에서 선언한 Skills만 제공되며, 설치된 다른 모든 Skills는 모델에서 제외됩니다.",
       empty: "설치된 Skills이 없습니다.",
       declaredSection: "{treeName}에서 선언됨",
       otherSection: "기타 설치된 Skills",
@@ -310,6 +367,7 @@ export const ko: TranslationMap = {
     knowledge: "Knowledge: {ids}",
     guidance: "지침: {text}",
     skills: "Skills: {ids}",
+    mcpServers: "MCP: {ids}",
     audit: "감사 완료",
     activeBadge: "활성",
     nodeCount: "{count}개 단계",
@@ -319,6 +377,16 @@ export const ko: TranslationMap = {
     selectTree: "워크플로 트리를 선택하여 구조와 온톨로지를 시각화하세요.",
     treeTitle: "트리 시각화",
     treeUnavailable: "트리 정의를 더 이상 사용할 수 없습니다.",
+    capabilityGrants: {
+      explicit: "명시적 권한 부여",
+      inherited: "상속된 범위",
+      explicitHint:
+        "각 단계는 해당 단계 또는 상위 단계에 나열된 도구, Skills 및 MCP 서버에만 접근할 수 있습니다. 아무것도 나열하지 않은 단계는 아무것에도 접근할 수 없습니다.",
+      inheritedHint:
+        "단계의 목록은 상위 단계에서 허용한 범위를 좁힙니다. 분기 목록에 아무것도 없는 단계는 모든 도구 또는 Skills를 사용할 수 있습니다.",
+      turnOn: "명시적으로 부여",
+      turnOff: "상속된 범위 사용",
+    },
     structureTitle: "구조",
     ontologyTitle: "온톨로지",
     wholeTreeOverviewTitle: "전체 트리 개요",
@@ -675,6 +743,7 @@ export const ko: TranslationMap = {
     enterpriseHistory: "히스토리",
     enterpriseTools: "도구",
     enterpriseSkills: "Skills",
+    enterpriseMcp: "MCP",
     knowledge: "지식",
   },
   subtitles: {
@@ -705,6 +774,7 @@ export const ko: TranslationMap = {
     enterpriseHistory: "과거 관리된 실행 및 해당 트레이스.",
     enterpriseTools: "구성된 도구 카탈로그입니다.",
     enterpriseSkills: "이 Gateway에 설치된 모든 Skills입니다.",
+    enterpriseMcp: "등록된 MCP 서버 및 이를 호출할 수 있는 단계입니다.",
     knowledge: "등록된 지식 기반 및 상태입니다.",
   },
   skillWorkshop: {

@@ -327,6 +327,13 @@ export async function startCodexAttemptThread(params: {
                 nativeProviderWebSearchSupport: params.nativeProviderWebSearchSupport,
                 nativeCodeModeOnlyEnabled: params.appServer.codeModeOnly,
                 userMcpServersEnabled: params.nativeToolSurfaceEnabled,
+                // The bundle half of `mcp_servers`; the user projection needs it to
+                // judge namespace collisions across the merged thread config.
+                bundleMcpServerNames: Object.keys(
+                  (params.bundleMcpThreadConfig?.configPatch?.mcp_servers as
+                    | Record<string, unknown>
+                    | undefined) ?? {},
+                ),
                 mcpServersFingerprint: params.bundleMcpThreadConfig.fingerprint,
                 mcpServersFingerprintEvaluated: params.bundleMcpThreadConfig.evaluated,
                 environmentSelection: startupEnvironmentSelection,
