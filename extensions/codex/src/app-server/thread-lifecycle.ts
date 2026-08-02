@@ -26,6 +26,7 @@ import {
   normalizeCodexDynamicToolName,
   shouldDisableCodexToolSearchForModel,
 } from "./dynamic-tool-profile.js";
+import { resolveGovernedCodexSkillsThreadConfig } from "./governed-skills.js";
 import { invalidInlineImageText, sanitizeInlineImageDataUrl } from "./image-payload-sanitizer.js";
 import {
   isCodexPluginThreadBindingStale,
@@ -353,19 +354,14 @@ export async function startOrResumeThread(params: {
           peerServerNames: params.bundleMcpServerNames ?? [],
         });
   const userMcpServersFingerprint = fingerprintUserMcpServersConfigPatch(userMcpServersConfigPatch);
-  // A work-map that grants skills explicitly governs OpenClaw's catalog, which
-  // this harness renders itself — but Codex ALSO scans its own skill roots and
-  // injects their instructions by default. Turning that block off is what keeps a
-  // governed thread from being offered skills the work-map never granted; the
-  // narrowed OpenClaw catalog still reaches the model through the prompt.
-  // `skills.include_instructions` is Codex's own switch for it
-  // (../codex/codex-rs/config/src/skills_config.rs:30-32).
-  const governedSkillsConfigPatch = resolveRunSkillGrant({
-    ...(params.params.runId ? { runId: params.params.runId } : {}),
-    ...(params.params.skillsSnapshot ? { skillsSnapshot: params.params.skillsSnapshot } : {}),
-  })
-    ? { skills: { include_instructions: false } }
-    : undefined;
+  // Codex scans its own skill roots too, so a governed thread has to turn that
+  // block off or it is offered skills the work-map never granted.
+  const governedSkillsConfigPatch = resolveGovernedCodexSkillsThreadConfig(
+    resolveRunSkillGrant({
+      ...(params.params.runId ? { runId: params.params.runId } : {}),
+      ...(params.params.skillsSnapshot ? { skillsSnapshot: params.params.skillsSnapshot } : {}),
+    }),
+  );
   const environmentSelectionFingerprint = fingerprintEnvironmentSelection(
     params.environmentSelection,
   );

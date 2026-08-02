@@ -731,6 +731,118 @@ async function main(): Promise<number> {
     }
   }
 
+  // ---- The SHIPPED explicit-grants example, end to end. An operator can import
+  // this file as-is, so what it promises has to be what the runtime does: all
+  // four families deny-by-default, and its knowledge foundation inlined so the
+  // import needs nothing else.
+  {
+    const EXPLICIT_BUNDLE_TREE_ID = "acme.explicit-grants";
+    const EXPLICIT_FOUNDATION_ID = "acme.research-handbook";
+    const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
+    const examplePath = path.resolve("examples/enterprise/explicit-grants.clawworks-bundle.yaml");
+    const exampleBundle = importWorkflowBundle({
+      content: readFileSync(examplePath, "utf8"),
+      format: "yaml",
+    });
+    record(
+      "the shipped explicit-grants example imports cleanly",
+      exampleBundle.ok,
+      exampleBundle.ok ? EXPLICIT_BUNDLE_TREE_ID : JSON.stringify(exampleBundle.issues),
+    );
+    if (exampleBundle.ok) {
+      // Self-contained: an example that names a foundation it does not carry
+      // would retrieve nothing on the recipient's deployment.
+      expectEqual("its knowledge foundation ships inline", exampleBundle.foundations, [
+        EXPLICIT_FOUNDATION_ID,
+      ]);
+      expectEqual("it leaves no foundation unconfigured", exampleBundle.missingFoundations, []);
+      // The skill it declares has to be one this repo bundles AND one that needs
+      // no external binary: a skill whose `requires.bins` is missing on the host
+      // is filtered out of the run, which would make the example's skills axis
+      // inert on exactly the machines it is meant to demonstrate on.
+      expectEqual(
+        "its declared skill is bundled here and needs no external binary",
+        exampleBundle.requiredSkills.map((name) => {
+          const file = path.resolve("skills", name, "SKILL.md");
+          if (!existsSync(file)) {
+            return `MISSING:${name}`;
+          }
+          return /"bins"\s*:\s*\[[^\]]/.test(readFileSync(file, "utf8"))
+            ? `NEEDS-BIN:${name}`
+            : name;
+        }),
+        ["taskflow-inbox-triage"],
+      );
+      expectEqual(
+        "it names the MCP server an operator must register",
+        [...(exampleBundle.requiredMcpServers ?? [])],
+        ["acme-tracker"],
+      );
+      invalidateWorkflowTreeRegistry();
+
+      const exampleRunId = "golden-example-explicit";
+      await beginEnterpriseRun({
+        runId: exampleRunId,
+        prompt: "check the handbook",
+        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } } as never,
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: EXPLICIT_BUNDLE_TREE_ID,
+          routes: [],
+          rationale: "example",
+        }),
+      });
+      setEnterpriseStepForTurn(exampleRunId);
+      const examplePlan = getEnterpriseActiveRun(exampleRunId)?.plan;
+      expectEqual(
+        "the example run grants capabilities explicitly",
+        examplePlan?.capabilityGrants,
+        "explicit",
+      );
+      // TOOLS: the active step (research.gather) grants `knowledge_search` and
+      // nothing else, so the root's wider floor does NOT widen it back — the
+      // intersection still applies under explicit grants. (Root-grant
+      // inheritance itself is proven below, on a step that grants none.)
+      expectEqual(
+        "the example's reading step may search the handbook",
+        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "knowledge_search" })
+          ?.blocked ?? false,
+        false,
+      );
+      expectEqual(
+        "but not reply, which only its root and a later step grant",
+        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "message" })?.blocked ?? false,
+        true,
+      );
+      expectEqual(
+        "a tool the example never grants is denied",
+        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "exec" })?.blocked ?? false,
+        true,
+      );
+      // SKILLS: exactly what the steps attach, nothing else.
+      expectEqual(
+        "the example run's skill catalog is its declared skill",
+        examplePlan?.grantedSkills,
+        ["taskflow-inbox-triage"],
+      );
+      // MCP: the tracker is registered here, but the FIRST step attaches nothing.
+      expectEqual(
+        "the example's first step cannot reach the tracker it registered",
+        evaluateEnterpriseToolCall({
+          runId: exampleRunId,
+          toolName: "acme-tracker__create_issue",
+          mcpTool: {
+            serverName: "acme-tracker",
+            safeServerName: "acme-tracker",
+            toolName: "create_issue",
+          },
+        })?.blocked ?? false,
+        true,
+      );
+      endEnterpriseRun({ runId: exampleRunId, status: "completed" });
+    }
+  }
+
   // ---- A work-map that grants capabilities explicitly, through the real path.
   // Written here rather than shipped as an example: the examples deliberately
   // carry the inherited semantics, and this needs a tree where a step grants
@@ -813,7 +925,90 @@ async function main(): Promise<number> {
         })?.blocked ?? false,
         true,
       );
+      // What a plugin-owned harness asks core before it narrows its own surface:
+      // the Codex app-server turns off Codex's native skills block on the
+      // strength of this answer, and that wire shape lives in the plugin.
+      const { resolveRunSkillGrant } = await import("../src/agents/enterprise-skill-scope.js");
+      expectEqual(
+        "a harness asking core gets this run's skill grant",
+        resolveRunSkillGrant({ runId: explicitRunId }),
+        ["desk-intake", "ticket-triage"],
+      );
+      expectEqual(
+        "and gets nothing to narrow for a run no work-map governs",
+        resolveRunSkillGrant({ runId: "golden-not-a-run" }),
+        null,
+      );
       endEnterpriseRun({ runId: explicitRunId, status: "completed" });
+    }
+  }
+
+  // ---- The CLI overlay resolves the PLUGIN half before attachments. A plugin
+  // server the run's ceiling rejects must not take a legitimately attached one
+  // with it: the two collide only after sanitization, and the denial below names
+  // the plugin's raw key, which no spelling of the attached server matches.
+  {
+    const ORDER_TREE_ID = "golden.mcp-order";
+    const orderTree = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: ORDER_TREE_ID,
+      version: "1.0.0",
+      name: "MCP filter order",
+      match: { triggers: ["user"], priority: 60 },
+      root: {
+        id: "order",
+        title: "Handle the request",
+        ontology: {
+          mcpServers: ["my server"],
+          // A root allow-list is what makes the collision check run at all (with
+          // none, the ceiling narrows nothing and admits every peer). It grants
+          // the attached server whole, in both spellings a runtime can emit.
+          allowedTools: ["my_server__*", "mcp__my_server__*", "my-server__*", "mcp__my-server__*"],
+          // Names the PLUGIN key only. `my server` materializes to `my_server` /
+          // `my-server`, none of which this pattern matches.
+          deniedTools: ["my:server"],
+        },
+      },
+    };
+    const importedOrder = importWorkflowTreeContent({
+      content: JSON.stringify(orderTree),
+      format: "json",
+    });
+    record(
+      "the MCP filter-order work-map imports cleanly",
+      importedOrder.ok,
+      importedOrder.ok ? ORDER_TREE_ID : JSON.stringify(importedOrder.issues),
+    );
+    if (importedOrder.ok) {
+      invalidateWorkflowTreeRegistry();
+      const orderRunId = "golden-mcp-order";
+      await beginEnterpriseRun({
+        runId: orderRunId,
+        prompt: "file it",
+        config: { mcp: { servers: { "my server": { command: "npx" } } } } as never,
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: ORDER_TREE_ID,
+          routes: [],
+          rationale: "order",
+        }),
+      });
+      const { enterpriseRunAttachedMcpServers, enterpriseRunBoundableMcpServers } =
+        await import("../src/enterprise/active-runs.js");
+      const admittedPlugins = enterpriseRunBoundableMcpServers(orderRunId, ["my:server"], []);
+      expectEqual("the denial drops the plugin server first", [...(admittedPlugins ?? [])], []);
+      expectEqual(
+        "the attachment survives once that doomed peer is out",
+        [...(enterpriseRunAttachedMcpServers(orderRunId, [...(admittedPlugins ?? [])]) ?? [])],
+        ["my server"],
+      );
+      expectEqual(
+        "counting the doomed peer instead would have withheld both",
+        [...(enterpriseRunAttachedMcpServers(orderRunId, ["my:server"]) ?? [])],
+        [],
+      );
+      endEnterpriseRun({ runId: orderRunId, status: "completed" });
     }
   }
 

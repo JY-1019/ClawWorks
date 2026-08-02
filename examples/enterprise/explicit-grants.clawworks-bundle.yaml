@@ -1,0 +1,154 @@
+# ClawWorks example: a work-map that grants capabilities EXPLICITLY.
+#
+# Import it from a source checkout with:
+#   pnpm openclaw enterprise bundle import examples/enterprise/explicit-grants.clawworks-bundle.yaml
+#
+# The other examples use the inherited semantics: a scope narrows what an
+# ancestor allowed, and a step that scopes nothing may use anything. This one
+# sets `capabilityGrants: explicit`, which flips THREE families to
+# deny-by-default — a step reaches only what it, or a step above it, attaches:
+#
+#   tools                per-step `allowedTools`; a path that names nothing
+#                        reaches NO tool, `message` included
+#   skills               per-step `skills`; the run's catalog is narrowed to
+#                        these, and the withheld ones' credentials are withheld
+#                        from subprocesses too
+#   mcpServers           per-step attachment; a registered server no step
+#                        attaches is unreachable
+#
+# `knowledgeFoundations` is NOT part of the switch: it stays an allowlist where an
+# omitted or empty list means "every configured foundation", inherited down the
+# branch. This work-map scopes it on every step anyway, which is what you want
+# when the foundations are not all meant for every step.
+#
+# Everything except the MCP server is self-contained: the knowledge foundation
+# ships inline (below) and the declared skill is one this repository bundles and
+# needs no external binary, so an import runs as-is. `acme-tracker` is deployment configuration — register it
+# under `mcp.servers` (Enterprise -> MCP, or `openclaw mcp add`) and the
+# attachment resolves; until then the MCP screen reports it unregistered.
+schema: clawworks.workflow-bundle
+schemaVersion: 1
+trees:
+  - schema: clawworks.workflow-tree
+    schemaVersion: 1
+    id: acme.explicit-grants
+    version: 1.0.0
+    name: Explicit grants (example)
+    description: >-
+      Research-and-report work-map where tools, skills, and MCP servers are
+      granted per step (deny-by-default). Knowledge foundations stay an
+      allowlist and are scoped per step here as well.
+    match:
+      triggers: [user]
+      priority: 15
+    # The switch. Remove it and this work-map behaves like the others: the steps
+    # below that list nothing would allow everything instead of nothing.
+    capabilityGrants: explicit
+    root:
+      id: research
+      title: Research and report
+      ontology:
+        # The ROOT grant is what non-advancing runtimes (Claude CLI, Codex, ACP)
+        # are judged by for their whole run, so it carries the floor every step
+        # needs. The MCP globs are here for the same reason: those runtimes
+        # report a flattened tool name with no MCP origin, so the attachment
+        # alone cannot authorize the call — both spellings, one per runtime's
+        # renaming.
+        allowedTools:
+          [
+            knowledge_search,
+            message,
+            "acme-tracker__*",
+            "mcp__acme-tracker__*",
+            "acme_tracker__*",
+            "mcp__acme_tracker__*",
+          ]
+        knowledgeFoundations: [acme.research-handbook]
+        contextHints:
+          - Cite the handbook section you relied on in every answer.
+        expectedOutput: A short written answer, or a filed ticket when it needs a human.
+      children:
+        - id: research.gather
+          title: Gather what the handbook says
+          ontology:
+            # Narrower than the root: this step reads, it does not reply. Under
+            # explicit grants the intersection still applies, so `message` is
+            # unreachable here even though the root grants it.
+            allowedTools: [knowledge_search]
+            knowledgeFoundations: [acme.research-handbook]
+            # The one skill this work-map grants. Every OTHER installed skill is
+            # withheld from the run: not offered to the model, not materialized
+            # for a CLI harness, and its configured credentials are not injected.
+            skills: [taskflow-inbox-triage]
+            expectedOutput: The handbook passages that answer the question, quoted.
+        - id: research.answer
+          title: Answer the requester
+          ontology:
+            allowedTools: [message]
+            actions:
+              - id: reply
+                description: Send the handbook-backed answer.
+                tools: [message]
+            constraints:
+              - id: handbook-only
+                description: State only what the handbook covers; escalate anything it does not.
+            expectedOutput: A reply that names the handbook section it used.
+        - id: research.escalate
+          title: File a ticket for a human
+          ontology:
+            # The only step that reaches the tracker. The other two attach no
+            # server, so neither can call it — the root's globs bound what the
+            # server may do, they do not grant it to a step.
+            mcpServers: [acme-tracker]
+            allowedTools:
+              [
+                message,
+                "acme-tracker__*",
+                "mcp__acme-tracker__*",
+                "acme_tracker__*",
+                "mcp__acme_tracker__*",
+              ]
+            expectedOutput: A ticket reference plus a short note to the requester.
+knowledgeFoundations:
+  - id: acme.research-handbook
+    descriptor:
+      # "local": this deployment administers the corpus once imported. The
+      # content ships inside the bundle, so nothing external has to be reachable.
+      kind: local
+      displayName: Research handbook (example)
+      detail: inlined in explicit-grants.clawworks-bundle.yaml
+      description: Sourcing rules and escalation limits for the explicit-grants example.
+    snippets:
+      - foundationId: acme.research-handbook
+        title: Sourcing
+        source: handbook/sourcing.md
+        text: >-
+          Answer only from this handbook. When a question is not covered, say so
+          and escalate rather than reasoning from general knowledge — an answer
+          the handbook does not support is worse than no answer.
+      - foundationId: acme.research-handbook
+        title: Escalation limits
+        source: handbook/escalation.md
+        text: >-
+          File a ticket when the question needs a decision this handbook does not
+          make, when it names a customer account, or when the requester asks for
+          an exception. Include the question verbatim and the section you checked.
+      - foundationId: acme.research-handbook
+        title: Tone
+        source: handbook/tone.md
+        text: >-
+          Lead with the answer, then the section it came from. Keep replies under
+          a screen; link the section instead of quoting it at length.
+# Derived from the tree above. Import recomputes all three from the tree rather
+# than trusting these, so they are a manifest for the reader, not a contract.
+requiredTools:
+  [
+    "acme-tracker__*",
+    "acme_tracker__*",
+    knowledge_search,
+    "mcp__acme-tracker__*",
+    "mcp__acme_tracker__*",
+    message,
+  ]
+requiredSkills: [taskflow-inbox-triage]
+requiredMcpServers: [acme-tracker]
