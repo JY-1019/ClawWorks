@@ -589,6 +589,87 @@ describe("enterprise capability grants (browser)", () => {
     expect(text).not.toContain("it allows every tool except any it denies");
   });
 
+  it("does not claim a step has no knowledge when an ancestor granted one", () => {
+    // support.triage lists a foundation itself; a child of a granting step would
+    // inherit it, so the ungranted warning must not fire on inheritance.
+    const inheritingTree = {
+      ...EXPLICIT_TREE,
+      nodes: [
+        ...EXPLICIT_TREE.nodes,
+        {
+          id: "support.triage.child",
+          parentId: "support.triage",
+          depth: 2,
+          title: "Child",
+          ontology: {},
+        },
+      ],
+    } as EnterpriseTreeDetail;
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: inheritingTree.id,
+        treeDetail: inheritingTree,
+        selectedNodeId: "support.triage.child",
+      }),
+    );
+
+    expect(container.textContent ?? "").not.toContain("queries no foundation until one is listed");
+  });
+
+  it("warns about knowledge in observe mode too, where that grant still applies", () => {
+    // The tool/skill/MCP grants are enforce-only, but the knowledge grant applies
+    // while observing as well — claiming "every registered foundation" there
+    // would be the opposite of what the run does.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: EXPLICIT_TREE.id,
+        treeDetail: EXPLICIT_TREE,
+        selectedNodeId: "support",
+        enterpriseMode: "observe",
+      }),
+    );
+
+    expect(container.textContent ?? "").toContain("queries no foundation until one is listed");
+  });
+
+  it("still warns when two ancestors' lists leave the step nothing", () => {
+    // Every non-empty level is an independent gate: a root granting A and a
+    // parent granting B leaves the child with neither, so the union would claim
+    // access the runtime refuses.
+    const disjointTree = {
+      ...EXPLICIT_TREE,
+      nodes: [
+        { ...EXPLICIT_TREE.nodes[0], ontology: { knowledgeFoundations: ["acme.a"] } },
+        {
+          id: "support.triage",
+          parentId: "support",
+          depth: 1,
+          title: "Triage",
+          ontology: { knowledgeFoundations: ["acme.b"] },
+        },
+        {
+          id: "support.triage.child",
+          parentId: "support.triage",
+          depth: 2,
+          title: "Child",
+          ontology: {},
+        },
+      ],
+    } as EnterpriseTreeDetail;
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: disjointTree.id,
+        treeDetail: disjointTree,
+        selectedNodeId: "support.triage.child",
+      }),
+    );
+
+    expect(container.textContent ?? "").toContain("queries no foundation until one is listed");
+  });
+
   it("treats an explicit work-map as governing MCP even with no attachment", () => {
     const container = renderInto(
       createProps({ section: "mcp", treeDetail: EXPLICIT_TREE, mcpServers: [] }),

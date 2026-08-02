@@ -590,7 +590,13 @@ export function buildEnterprisePromptSection(
   // grants nothing reads as unrestricted and every call spends a turn on a denial.
   if (plan.capabilityGrants === "explicit") {
     lines.push(
-      "This workflow grants capabilities explicitly: on each step you may use only the tools, skills, and MCP servers listed on it or on a step above it. Anything not listed is denied, and a step that lists no tools has none.",
+      plan.mode === "enforce"
+        ? "This workflow grants capabilities explicitly: on each step you may use only the tools, skills, MCP servers, and knowledge sources listed on it or on a step above it. Anything not listed is denied, and a step that lists no tools has none."
+        : // Observe records decisions without blocking, so the deny-by-default
+          // half is not in force. A step's own knowledge list still scopes
+          // retrieval here, as it does in every mode — promising otherwise would
+          // have the model ask for a foundation the tool then refuses.
+          "This workflow grants capabilities explicitly: each step names the tools, skills, MCP servers, and knowledge sources it is meant to use. This run records what falls outside that instead of blocking it, except for knowledge, which stays scoped to what each step names.",
     );
   }
   lines.push("Steps:");

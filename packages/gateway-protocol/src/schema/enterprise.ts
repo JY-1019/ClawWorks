@@ -232,9 +232,14 @@ export const EnterpriseTreeDetailSchema = Type.Object(
     match: Type.Optional(EnterpriseTreeMatchSchema),
     /**
      * `"explicit"` when the work-map grants capabilities per step: a step reaches
-     * only the tools, skills, and MCP servers its own path attaches. Absent for
-     * the inherited semantics every tree written before this field carries, which
-     * is why a client must read absence as "not explicit" rather than defaulting.
+     * only the tools, skills, MCP servers, and knowledge foundations its own path
+     * attaches. Absent for the inherited semantics every tree written before this
+     * field carries, which is why a client must read absence as "not explicit"
+     * rather than defaulting.
+     *
+     * The first three apply under `enterprise.mode: "enforce"`; the knowledge
+     * grant applies while observing as well, since a step's knowledge list has
+     * always scoped retrieval in every mode.
      */
     capabilityGrants: Type.Optional(Type.Literal("explicit")),
     nodes: Type.Array(EnterpriseTreeNodeSchema),

@@ -286,6 +286,8 @@ export const zh_TW: TranslationMap = {
         "此工作地圖明確授予工具。該步驟在此處或上方步驟列出工具之前，無法使用任何工具。",
       knowledgeNarrowing:
         "此步驟尚未設定知識允許清單，因此可以查詢所有已註冊的基礎知識庫。新增第一筆項目後，將僅限於清單中列出的基礎知識庫。",
+      knowledgeUngranted:
+        "此工作地圖明確授予知識。在此處或上方步驟中列出知識庫之前，該步驟不會查詢任何知識庫。",
       skillNameInvalid: "請使用有效的 Skill 名稱：僅限小寫字母、數字和單個連字號，最多 64 個字元。",
       foundationIdInvalid: "請使用基礎知識庫 ID：以點分隔的小寫字串，例如 acme.runbooks。",
       ancestorGate:
@@ -370,7 +372,7 @@ export const zh_TW: TranslationMap = {
       explicit: "明確授權",
       inherited: "繼承的範圍",
       explicitHint:
-        "每個步驟只能存取其自身或上層步驟所列出的工具、Skills 和 MCP 伺服器。未列出任何項目的步驟將無法存取任何資源。",
+        "每個步驟僅能存取其本身或上層步驟所列出的工具、Skills、MCP 伺服器和知識基礎。未列出任何項目的步驟將無法存取任何資源。",
       inheritedHint:
         "步驟的列表會縮小其上層所允許的範圍；未列出任何內容的分支步驟可使用任何工具或 Skills。",
       turnOn: "明確授權",

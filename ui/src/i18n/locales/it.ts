@@ -295,6 +295,8 @@ export const it: TranslationMap = {
         "Questa mappa di lavoro concede gli strumenti in modo esplicito. Il passaggio non raggiunge alcuno strumento finché uno non viene elencato qui o in un passaggio superiore.",
       knowledgeNarrowing:
         "Questo step non ha ancora una allowlist di conoscenze, quindi può interrogare ogni foundation registrata. Aggiungendo la prima voce, verrà limitato alle foundation elencate.",
+      knowledgeUngranted:
+        "Questa mappa di lavoro concede la conoscenza in modo esplicito. Il passaggio non interroga alcuna base fino a quando una non viene elencata qui o in un passaggio superiore.",
       skillNameInvalid:
         "Usa un nome di skill: lettere minuscole, cifre e trattini singoli, massimo 64 caratteri.",
       foundationIdInvalid:
@@ -389,7 +391,7 @@ export const it: TranslationMap = {
       explicit: "Concessioni esplicite",
       inherited: "Ambiti ereditati",
       explicitHint:
-        "Ogni passaggio raggiunge solo gli strumenti, le Skills e i server MCP che esso o un passaggio superiore elenca. Un passaggio che non ne elenca nessuno non raggiunge nulla.",
+        "Ogni passaggio accede solo agli strumenti, alle Skills, ai server MCP e alle basi di conoscenza che esso o un passaggio superiore elenca. Un passaggio che non ne elenca nessuno non accede a nessuno.",
       inheritedHint:
         "Le liste di uno step restringono ciò che i suoi predecessori hanno consentito; uno step il cui ramo non elenca nulla può utilizzare qualsiasi strumento o skill.",
       turnOn: "Concedi esplicitamente",

@@ -200,7 +200,8 @@ Each node carries executable metadata in its `ontology`:
   [explicit capability grants](#capability-grants) an omitted list allows
   nothing instead.
 - `knowledgeFoundations`: knowledge foundation ids the step may query. Empty or
-  omitted allows every configured foundation.
+  omitted allows every configured foundation, except under
+  [explicit capability grants](#capability-grants), where the list IS the grant.
 - `mcpServers`: MCP servers the step may call, by their `mcp.servers` config
   name. This is the one scope that DENIES by default — but only for a work-map
   that uses it: attach a server anywhere in the tree and every step is governed,
@@ -233,8 +234,9 @@ id: acme.incident-response
 capabilityGrants: explicit
 ```
 
-With `capabilityGrants: explicit`, **tools, skills, and MCP servers are all
-deny-by-default**: a step reaches only what it or a step above it attaches.
+With `capabilityGrants: explicit`, **tools, skills, MCP servers, and knowledge
+foundations are all deny-by-default**: a step reaches only what it or a step above
+it attaches.
 
 - **Tools**: a call has to be named by some `allowedTools` list on the
   root-to-step path. A path that lists nothing calls nothing — including
@@ -247,6 +249,19 @@ deny-by-default**: a step reaches only what it or a step above it attaches.
   for the run — nor handed to a CLI subprocess the run starts. Nothing is
   installed or uninstalled by this; the agent's own skill filter still applies
   first, so a work-map can only narrow what the agent already had.
+- **Knowledge foundations**: a step queries only the foundations its path names.
+  Without the switch an omitted or empty list means every configured foundation,
+  which is the right default for a work-map that scopes nothing — but it is the
+  opposite of what an explicit work-map means by silence. A `knowledge_search`
+  that targets an ungranted foundation is reported as skipped, never widened, and
+  the tool is not offered at all when no executable path grants a foundation the
+  deployment has.
+
+  This one applies in **observe mode too**, unlike the three above. Knowledge
+  scope has never been something observe relaxes — a step's own list has always
+  filtered retrieval — so the grant is read the same way in both modes, and an
+  observing dry run shows exactly what enforce will do.
+
 - **MCP servers**: already deny-by-default whenever a work-map attaches one
   (above); explicit grants turn the same rule on for a work-map that attaches
   none, and additionally withhold a plugin's MCP servers from a native runtime

@@ -294,6 +294,8 @@ export const tr: TranslationMap = {
         "Bu iş haritası araçları açıkça tanımlar. Adım, buraya veya üstündeki bir adıma bir araç eklenene kadar hiçbir araca erişemez.",
       knowledgeNarrowing:
         "Bu adımın henüz bir bilgi izin listesi yok, bu nedenle kayıtlı tüm temelleri sorgulayabilir. İlk girişi eklemek, sorgulamayı listelenen temellerle sınırlar.",
+      knowledgeUngranted:
+        "Bu iş haritası bilgiyi açıkça verir. Adım, burada veya üstündeki bir adımda listelenene kadar hiçbir temeli sorgulamaz.",
       skillNameInvalid:
         "Bir skill adı kullanın: küçük harfler, rakamlar ve tek tireler, en fazla 64 karakter.",
       foundationIdInvalid:
@@ -385,7 +387,7 @@ export const tr: TranslationMap = {
       explicit: "Açık izinler",
       inherited: "Devralınan kapsamlar",
       explicitHint:
-        "Her adım yalnızca kendisinin veya üstündeki bir adımın listelediği araçlara, Skills'e ve MCP sunucularına erişebilir. Hiçbirini listelemeyen bir adım hiçbirine erişemez.",
+        "Her adım yalnızca kendisinin veya üstündeki bir adımın listelediği araçlara, Skills'e, MCP sunucularına ve bilgi temellerine erişir. Hiçbirini listelemeyen bir adım hiçbirine erişemez.",
       inheritedHint:
         "Bir adımın listeleri, üst öğelerinin izin verdiği kapsamı daraltır; dalında hiçbir şey listelenmemiş bir adım herhangi bir aracı veya beceriyi kullanabilir.",
       turnOn: "Açıkça ver",

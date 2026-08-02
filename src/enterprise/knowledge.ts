@@ -11,7 +11,7 @@
  */
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { evaluateKnowledgeRetrievalGovernance } from "./governance.js";
-import { findPlanNode, resolvePlanNodePath } from "./plan.js";
+import { enterpriseStepSequence, findPlanNode, resolvePlanNodePath } from "./plan.js";
 import { getEnterpriseActiveRun, type EnterpriseRunTraceSink } from "./runtime.js";
 import type {
   EnterprisePlanNode,
@@ -382,10 +382,42 @@ export async function snapshotEnterpriseKnowledgeFoundation(
  * bundle one it owns). Gates whether `knowledge_search` is exposed to the model,
  * so an unrelated workflow does not receive a dead tool after a bundle import for
  * some other tree.
+ *
+ * A work-map that grants knowledge explicitly narrows this too: with no granted
+ * foundation anywhere in the PLAN, every retrieval would come back empty, and a
+ * tool that can only fail is worse than an absent one. Plan-wide rather than
+ * per-step on purpose — the model-visible tool list has to stay stable for the
+ * whole run (prompt cache), and the per-call scope still decides each retrieval.
  */
 export function runHasRetrievableKnowledgeFoundations(runId: string): boolean {
   const run = getEnterpriseActiveRun(runId);
-  return run ? retrievalFoundationIds(run.plan.treeId).length > 0 : false;
+  if (!run) {
+    return false;
+  }
+  const retrievable = retrievalFoundationIds(run.plan.treeId);
+  if (retrievable.length === 0) {
+    return false;
+  }
+  if (run.plan.capabilityGrants !== "explicit") {
+    return true;
+  }
+  // The paths a run can execute: the ROOT, where a non-advancing runtime (CLI,
+  // Codex, ACP) spends its whole life, and each LEAF the embedded step loop can
+  // reach. Interior nodes are excluded — no run stops there — which is what makes
+  // an interior-only grant correctly read as unusable.
+  //
+  // Root AND leaves, not one or the other: which runtime this plan gets is not
+  // known here, and the answer must stay STABLE for the whole run because it
+  // decides a model-visible tool (a list that changes between turns costs the
+  // prompt cache). Erring toward exposure keeps a tool a root-scoped run can
+  // really use; the per-call scope still refuses anything the active path denies.
+  const executable = [run.plan.nodes[0]?.nodeId, ...enterpriseStepSequence(run.plan)].filter(
+    (nodeId): nodeId is string => typeof nodeId === "string",
+  );
+  return executable.some((nodeId) => {
+    const path = resolvePlanNodePath(run.plan, nodeId);
+    return retrievable.some((foundationId) => foundationAllowedByPath(path, foundationId, true));
+  });
 }
 
 /** List the documents a foundation holds, for the operator inspector. */
@@ -421,15 +453,26 @@ export function removeEnterpriseKnowledgeDocument(
  * Whether the active step's ontology allow-list admits a foundation. Each node
  * on the root→active path that declares a non-empty `knowledgeFoundations` set
  * is an independent gate (like tool scope); nodes that omit it don't restrict.
+ *
+ * Under `capabilityGrants: "explicit"` silence denies instead: the foundation
+ * also has to be NAMED by some node on the path, so a step that attaches no
+ * knowledge queries none. Same shape as the tool grant in governance.ts — the
+ * per-node gates are unchanged, this only asks the question they cannot: did any
+ * level attach it?
  */
 function foundationAllowedByPath(
   path: readonly EnterprisePlanNode[],
   foundationId: string,
+  grantsExplicitly = false,
 ): boolean {
-  return path.every((node) => {
+  const narrowed = path.every((node) => {
     const declared = node.ontology.knowledgeFoundations;
     return !declared?.length || declared.includes(foundationId);
   });
+  if (!narrowed || !grantsExplicitly) {
+    return narrowed;
+  }
+  return path.some((node) => node.ontology.knowledgeFoundations?.includes(foundationId) === true);
 }
 
 /** One knowledge foundation a workflow references, with a short summary for routing. */
@@ -529,6 +572,16 @@ export async function resolveEnterpriseKnowledge(params: {
   // explicit empty set is honored as "narrow to nothing", never widened back to
   // all — targeting is a convenience narrowing that must never broaden scope.
   const requested = params.foundations ? new Set(params.foundations) : undefined;
+  // The work-map grants capabilities explicitly, so an unattached foundation is
+  // out of scope rather than merely unnarrowed.
+  //
+  // Mode-independent ON PURPOSE, unlike the skill/MCP withholding. Knowledge scope
+  // has never been something observe relaxes: a step's own `knowledgeFoundations`
+  // list has always filtered retrieval in every mode, and this is the same field
+  // read under the same rule. Splitting it by mode made an observing dry run show
+  // a result enforce would not produce, which is the opposite of what observe is
+  // for.
+  const grantsExplicitly = run.plan.capabilityGrants === "explicit";
 
   const snippets: KnowledgeSnippet[] = [];
   const skipped: SkippedKnowledgeFoundation[] = [];
@@ -537,7 +590,7 @@ export async function resolveEnterpriseKnowledge(params: {
   // allow-list. Sorted for a deterministic model-facing order.
   if (requested) {
     for (const foundationId of [...requested].toSorted()) {
-      if (!foundationAllowedByPath(path, foundationId)) {
+      if (!foundationAllowedByPath(path, foundationId, grantsExplicitly)) {
         skipped.push({ foundationId, reason: "not in this step's knowledge allow-list" });
       }
     }
@@ -547,7 +600,7 @@ export async function resolveEnterpriseKnowledge(params: {
   // its knowledge never leaks into an unrelated run whose ontology omits an
   // allow-list (which the path gate below reads as allow-all).
   for (const foundationId of retrievalFoundationIds(run.plan.treeId)) {
-    if (!foundationAllowedByPath(path, foundationId)) {
+    if (!foundationAllowedByPath(path, foundationId, grantsExplicitly)) {
       continue; // outside the step's ontology allow-list; not a governance denial
     }
     if (requested && !requested.has(foundationId)) {

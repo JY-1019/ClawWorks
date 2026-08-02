@@ -290,6 +290,8 @@ export const en: TranslationMap = {
         "This work-map grants tools explicitly. The step reaches no tool until one is listed here or on a step above it.",
       knowledgeNarrowing:
         "This step has no knowledge allowlist yet, so it can query every registered foundation. Adding the first entry restricts it to the listed foundations.",
+      knowledgeUngranted:
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed here or on a step above it.",
       skillNameInvalid:
         "Use a skill name: lowercase letters, digits, and single hyphens, at most 64 characters.",
       foundationIdInvalid:
@@ -379,7 +381,7 @@ export const en: TranslationMap = {
       explicit: "Explicit grants",
       inherited: "Inherited scopes",
       explicitHint:
-        "Each step reaches only the tools, skills, and MCP servers it or a step above it lists. A step that lists none reaches none.",
+        "Each step reaches only the tools, skills, MCP servers, and knowledge foundations it or a step above it lists. A step that lists none reaches none.",
       inheritedHint:
         "A step's lists narrow what its ancestors allowed; a step whose branch lists nothing may use any tool or skill.",
       turnOn: "Grant explicitly",

@@ -34,6 +34,7 @@ function run(opts: {
   mode?: "enforce" | "observe";
   treeId?: string;
   knowledgeFoundations?: string[];
+  capabilityGrants?: "explicit";
   policies?: GovernancePolicy[];
   sink?: (event: SinkEvent) => void;
 }): EnterpriseActiveRun {
@@ -56,6 +57,7 @@ function run(opts: {
       },
     ],
     activeNodeId: "support",
+    ...(opts.capabilityGrants ? { capabilityGrants: opts.capabilityGrants } : {}),
     mode: opts.mode ?? "enforce",
     createdAt: 0,
   };
@@ -165,6 +167,59 @@ describe("resolveEnterpriseKnowledge", () => {
       "acme.a",
       "acme.b",
     ]);
+  });
+
+  it("queries nothing when an explicit work-map attaches no foundation", async () => {
+    // The fourth family of capabilityGrants: silence denies here too, so a step
+    // that attaches no knowledge queries none — the opposite of the default.
+    registerEnterpriseActiveRun(run({ capabilityGrants: "explicit" }));
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+    registerEnterpriseKnowledgeFoundation("acme.b", foundation("refund b"));
+
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(result.mediated).toBe(true);
+    expect(result.snippets).toEqual([]);
+  });
+
+  it("queries exactly what an explicit work-map attaches", async () => {
+    registerEnterpriseActiveRun(
+      run({ capabilityGrants: "explicit", knowledgeFoundations: ["acme.a"] }),
+    );
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+    registerEnterpriseKnowledgeFoundation("acme.b", foundation("refund b"));
+
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(result.snippets.map((snippet) => snippet.foundationId)).toEqual(["acme.a"]);
+  });
+
+  it("reports an ungranted target as skipped rather than querying it", async () => {
+    registerEnterpriseActiveRun(
+      run({ capabilityGrants: "explicit", knowledgeFoundations: ["acme.a"] }),
+    );
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+    registerEnterpriseKnowledgeFoundation("acme.b", foundation("refund b"));
+
+    const result = await resolveEnterpriseKnowledge({
+      runId: "run-k",
+      query: "refund",
+      foundations: ["acme.b"],
+    });
+    expect(result.snippets).toEqual([]);
+    expect(result.skipped).toEqual([
+      { foundationId: "acme.b", reason: "not in this step's knowledge allow-list" },
+    ]);
+  });
+
+  it("applies the explicit grant in observe too, so a dry run shows what enforce will do", async () => {
+    // Knowledge scope is not something observe relaxes: a step's own list has
+    // always filtered retrieval in every mode, and the grant is the same field
+    // read under the same rule. Splitting it by mode would make the dry run show
+    // a result enforce never produces.
+    registerEnterpriseActiveRun(run({ mode: "observe", capabilityGrants: "explicit" }));
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(result.snippets).toEqual([]);
   });
 
   it("scopes a bundle foundation to its owning tree, never leaking across workflows", async () => {
@@ -376,6 +431,33 @@ describe("resolveEnterpriseKnowledge", () => {
     expect(result.snippets.map((snippet) => snippet.foundationId)).toEqual(["acme.secret"]);
     expect(result.skipped).toHaveLength(0);
     expect(events.some((event) => event.payload.enforced === false)).toBe(true);
+  });
+});
+
+describe("runHasRetrievableKnowledgeFoundations", () => {
+  it("hides the search tool when an explicit work-map grants no foundation", () => {
+    // Every retrieval would come back empty, and a tool that can only fail is
+    // worse than an absent one.
+    registerEnterpriseActiveRun(run({ capabilityGrants: "explicit" }));
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
+  });
+
+  it("keeps it when the work-map grants one the deployment has", () => {
+    registerEnterpriseActiveRun(
+      run({ capabilityGrants: "explicit", knowledgeFoundations: ["acme.a"] }),
+    );
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(true);
+  });
+
+  it("hides it in observe too, since the grant applies there as well", () => {
+    registerEnterpriseActiveRun(run({ mode: "observe", capabilityGrants: "explicit" }));
+    registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
+
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
   });
 });
 

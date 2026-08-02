@@ -293,6 +293,8 @@ export const es: TranslationMap = {
         "Este mapa de trabajo otorga herramientas de forma explícita. El paso no tiene acceso a ninguna herramienta hasta que se incluya una aquí o en un paso superior.",
       knowledgeNarrowing:
         "Este paso aún no tiene una lista de conocimientos permitidos, por lo que puede consultar todas las fundaciones registradas. Agregar la primera entrada lo restringe a las fundaciones enumeradas.",
+      knowledgeUngranted:
+        "Este mapa de trabajo otorga conocimiento de forma explícita. El paso no consulta ninguna base hasta que se liste una aquí o en un paso superior.",
       skillNameInvalid:
         "Use un nombre de skill: letras minúsculas, dígitos y guiones simples, máximo 64 caracteres.",
       foundationIdInvalid:
@@ -387,7 +389,7 @@ export const es: TranslationMap = {
       explicit: "Concesiones explícitas",
       inherited: "Ámbitos heredados",
       explicitHint:
-        "Cada paso accede únicamente a las herramientas, Skills y servidores MCP que él mismo o un paso superior enumere. Un paso que no enumere ninguno no accede a ninguno.",
+        "Cada paso accede únicamente a las herramientas, Skills, servidores MCP y bases de conocimiento que él mismo o un paso superior enumere. Un paso que no enumere ninguno no accede a ninguno.",
       inheritedHint:
         "Las listas de un paso restringen lo que sus ancestros permitieron; un paso cuya rama no lista nada puede usar cualquier herramienta o skill.",
       turnOn: "Conceder explícitamente",

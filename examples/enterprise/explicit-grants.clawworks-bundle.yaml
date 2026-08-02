@@ -5,7 +5,7 @@
 #
 # The other examples use the inherited semantics: a scope narrows what an
 # ancestor allowed, and a step that scopes nothing may use anything. This one
-# sets `capabilityGrants: explicit`, which flips THREE families to
+# sets `capabilityGrants: explicit`, which flips all four families to
 # deny-by-default — a step reaches only what it, or a step above it, attaches:
 #
 #   tools                per-step `allowedTools`; a path that names nothing
@@ -15,11 +15,9 @@
 #                        from subprocesses too
 #   mcpServers           per-step attachment; a registered server no step
 #                        attaches is unreachable
-#
-# `knowledgeFoundations` is NOT part of the switch: it stays an allowlist where an
-# omitted or empty list means "every configured foundation", inherited down the
-# branch. This work-map scopes it on every step anyway, which is what you want
-# when the foundations are not all meant for every step.
+#   knowledgeFoundations per-step allowlist; a step whose path names none queries
+#                        none, and a targeted search for an ungranted one is
+#                        reported as skipped
 #
 # Everything except the MCP server is self-contained: the knowledge foundation
 # ships inline (below) and the declared skill is one this repository bundles and
@@ -35,9 +33,9 @@ trees:
     version: 1.0.0
     name: Explicit grants (example)
     description: >-
-      Research-and-report work-map where tools, skills, and MCP servers are
-      granted per step (deny-by-default). Knowledge foundations stay an
-      allowlist and are scoped per step here as well.
+      Research-and-report work-map where every capability is granted per step:
+      tools, skills, MCP servers, and knowledge foundations are all
+      deny-by-default.
     match:
       triggers: [user]
       priority: 15

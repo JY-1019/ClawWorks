@@ -552,6 +552,34 @@ describe("buildEnterprisePromptSection", () => {
     expect(section).toContain("a step that lists no tools has none");
   });
 
+  it("tells an observing run that nothing is blocked", () => {
+    // Observe records without blocking, and knowledge retrieval stays whole
+    // there — a digest claiming denial would make the model avoid work the run
+    // would have allowed.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-explicit-observe",
+      requestText: "triage",
+      mode: "observe",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.desk-explicit-observe",
+        version: "1.0.0",
+        name: "Desk",
+        match: { triggers: ["user"] },
+        capabilityGrants: "explicit",
+        root: { id: "desk", title: "Handle a request", ontology: { allowedTools: ["message"] } },
+      },
+      matchedBy: "planner",
+    });
+
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).toContain("records what falls outside that instead of blocking it");
+    // ...while still naming the one family observe does NOT relax.
+    expect(section).toContain("except for knowledge, which stays scoped");
+    expect(section).not.toContain("Anything not listed is denied");
+  });
+
   it("leaves a work-map without the switch unchanged", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-inherited",

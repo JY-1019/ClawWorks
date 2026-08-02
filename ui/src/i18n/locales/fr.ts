@@ -296,6 +296,8 @@ export const fr: TranslationMap = {
         "Cette carte de travail accorde les outils de manière explicite. L'étape n'a accès à aucun outil tant qu'un outil n'est pas listé ici ou dans une étape parente.",
       knowledgeNarrowing:
         "Cette étape n'a pas encore de liste d'autorisation de connaissances, elle peut donc interroger toutes les fondations enregistrées. L'ajout de la première entrée la restreint aux fondations listées.",
+      knowledgeUngranted:
+        "Cette carte de travail accorde les connaissances de manière explicite. L'étape ne consulte aucune base tant qu'aucune n'est listée ici ou dans une étape parente.",
       skillNameInvalid:
         "Utilisez un nom de skill : lettres minuscules, chiffres et tirets simples, 64 caractères maximum.",
       foundationIdInvalid:
@@ -390,7 +392,7 @@ export const fr: TranslationMap = {
       explicit: "Autorisations explicites",
       inherited: "Portées héritées",
       explicitHint:
-        "Chaque étape n'accède qu'aux outils, Skills et serveurs MCP qu'elle ou une étape parente référence. Une étape qui n'en liste aucun n'accède à rien.",
+        "Chaque étape n'accède qu'aux outils, Skills, serveurs MCP et bases de connaissances qu'elle ou une étape parente répertorie. Une étape qui n'en répertorie aucun n'accède à aucun.",
       inheritedHint:
         "Les listes d'une étape restreignent ce que ses ancêtres ont autorisé ; une étape dont la branche ne liste rien peut utiliser n'importe quel outil ou skill.",
       turnOn: "Accorder explicitement",

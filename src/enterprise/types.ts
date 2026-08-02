@@ -184,7 +184,11 @@ export type OntologyBinding = {
   allowedTools?: string[];
   /** Tool name globs denied for this node. Deny wins over allow. */
   deniedTools?: string[];
-  /** Knowledge foundation ids this node may query. Empty/omitted = all configured foundations. */
+  /**
+   * Knowledge foundation ids this node may query. Empty/omitted = all configured
+   * foundations, except under `capabilityGrants: "explicit"`, where this list IS
+   * the grant: a step queries only what it or an ancestor names.
+   */
   knowledgeFoundations?: string[];
   /**
    * MCP servers this step may call, by their `mcp.servers` config name.
@@ -274,7 +278,8 @@ export const WORKFLOW_TREE_SCHEMA_VERSION = 1 as const;
  * How a work-map hands capabilities to its steps.
  *
  * `"explicit"` makes every family deny-by-default — a step may use only the
- * tools, skills, and MCP servers its own root→step path attaches. Omitted keeps
+ * tools, skills, MCP servers, and knowledge foundations its own root→step path
+ * attaches. Omitted keeps
  * the inherited semantics `allowedTools` and `skills` already have (a scope
  * narrows what an ancestor allowed; a path that scopes nothing allows
  * everything), which is what every tree written before this field carries.

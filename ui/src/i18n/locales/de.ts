@@ -303,6 +303,8 @@ export const de: TranslationMap = {
         "Diese Work-Map gewährt Tools explizit. Der Schritt erreicht kein Tool, bis eines hier oder in einem darüberliegenden Schritt aufgeführt ist.",
       knowledgeNarrowing:
         "Dieser Schritt hat noch keine Wissens-Allowlist, daher kann er jede registrierte Foundation abfragen. Der erste Eintrag beschränkt ihn auf die aufgeführten Foundations.",
+      knowledgeUngranted:
+        "Diese Work-Map gewährt Wissen explizit. Der Schritt fragt keine Grundlage ab, bis eine hier oder in einem darüberliegenden Schritt aufgeführt wird.",
       skillNameInvalid:
         "Verwenden Sie einen Skill-Namen: Kleinbuchstaben, Ziffern und einzelne Bindestriche, maximal 64 Zeichen.",
       foundationIdInvalid:
@@ -400,7 +402,7 @@ export const de: TranslationMap = {
       explicit: "Explizite Berechtigungen",
       inherited: "Geerbte Bereiche",
       explicitHint:
-        "Jeder Schritt erreicht nur die Tools, Skills und MCP-Server, die er oder ein übergeordneter Schritt auflistet. Ein Schritt, der keine auflistet, erreicht keine.",
+        "Jeder Schritt erreicht nur die Tools, Skills, MCP-Server und Wissensgrundlagen, die er oder ein übergeordneter Schritt auflistet. Ein Schritt, der keine auflistet, erreicht keine.",
       inheritedHint:
         "Die Listen eines Schritts schränken ein, was seine übergeordneten Elemente erlaubt haben; ein Schritt, dessen Zweig nichts auflistet, kann jedes Tool oder jede Skill verwenden.",
       turnOn: "Explizit gewähren",

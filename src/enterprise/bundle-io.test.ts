@@ -21,6 +21,7 @@ import {
   registerEnterpriseKnowledgeFoundation,
 } from "./knowledge.js";
 import { importWorkflowTreeContent, removeImportedWorkflowTree } from "./tree-io.js";
+import { treeHasUnboundedKnowledgeScope } from "./tree-references.js";
 import { getWorkflowTreeRegistryEntry } from "./tree-registry.js";
 import { deleteEnterpriseWorkflowTree, upsertEnterpriseWorkflowTree } from "./tree-store.sqlite.js";
 import type { WorkflowBundle, WorkflowTreeDefinition } from "./types.js";
@@ -510,5 +511,32 @@ describe("workflow bundle import", () => {
     const result = importWorkflowBundle({ content: "{ not json", format: "json" }, storeOptions);
     expect(result.ok).toBe(false);
     expect(listBundledKnowledgeFoundations(storeOptions).records).toEqual([]);
+  });
+});
+
+describe("bundle export knowledge scope with explicit grants", () => {
+  it("does not call an explicit work-map's knowledge scope unbounded", () => {
+    // Silence denies under the switch in every mode, so the ids the tree names
+    // ARE the whole retrievable set: warning about a missing root list would tell
+    // the operator to widen a scope the switch already closed.
+    const tree = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.explicit-kb",
+      version: "1.0.0",
+      name: "Explicit KB",
+      capabilityGrants: "explicit",
+      root: {
+        id: "root",
+        title: "Root",
+        children: [
+          { id: "root.read", title: "Read", ontology: { knowledgeFoundations: ["acme.kb"] } },
+        ],
+      },
+    } as Parameters<typeof treeHasUnboundedKnowledgeScope>[0];
+
+    expect(treeHasUnboundedKnowledgeScope(tree)).toBe(false);
+    const inherited = { ...tree, capabilityGrants: undefined };
+    expect(treeHasUnboundedKnowledgeScope(inherited)).toBe(true);
   });
 });

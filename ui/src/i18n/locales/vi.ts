@@ -291,6 +291,8 @@ export const vi: TranslationMap = {
         "Bản đồ công việc này cấp công cụ một cách rõ ràng. Bước này không truy cập được công cụ nào cho đến khi một công cụ được liệt kê ở đây hoặc ở bước phía trên.",
       knowledgeNarrowing:
         "Bước này chưa có danh sách cho phép kiến thức, vì vậy nó có thể truy vấn mọi foundation đã đăng ký. Thêm mục đầu tiên sẽ giới hạn nó chỉ trong các foundation được liệt kê.",
+      knowledgeUngranted:
+        "Bản đồ công việc này cấp quyền truy cập kiến thức một cách rõ ràng. Bước này không truy vấn nền tảng nào cho đến khi một nền tảng được liệt kê ở đây hoặc ở bước phía trên.",
       skillNameInvalid:
         "Sử dụng tên skill: chữ cái thường, chữ số và dấu gạch ngang đơn, tối đa 64 ký tự.",
       foundationIdInvalid:
@@ -384,7 +386,7 @@ export const vi: TranslationMap = {
       explicit: "Cấp quyền rõ ràng",
       inherited: "Phạm vi kế thừa",
       explicitHint:
-        "Mỗi bước chỉ truy cập được các công cụ, Skills và máy chủ MCP mà nó hoặc bước phía trên nó liệt kê. Bước nào không liệt kê gì thì không truy cập được gì.",
+        "Mỗi bước chỉ truy cập được các công cụ, skills, máy chủ MCP và nền tảng kiến thức mà nó hoặc một bước phía trên nó liệt kê. Bước nào không liệt kê gì thì không truy cập được gì.",
       inheritedHint:
         "Danh sách của một bước sẽ thu hẹp những gì các bước cha đã cho phép; một bước mà nhánh không liệt kê gì có thể sử dụng bất kỳ công cụ hoặc skill nào.",
       turnOn: "Cấp quyền rõ ràng",

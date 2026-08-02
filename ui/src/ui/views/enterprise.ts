@@ -596,6 +596,36 @@ function constrainingAncestorIds(
  * necessarily server-less — and telling the operator it can call none would
  * contradict what the run actually allows.
  */
+/**
+ * Foundations the step actually inherits: the INTERSECTION of every ancestor list
+ * that declares one, which is what foundationAllowedByPath enforces — each
+ * non-empty level is an independent gate, so a root granting A and a parent
+ * granting B leaves the child with neither. A union would claim access the
+ * runtime refuses.
+ */
+function inheritedKnowledgeFoundations(props: EnterpriseProps, nodeId: string): string[] {
+  const nodes = props.treeDetail?.nodes;
+  if (!nodes) {
+    return [];
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let inherited: string[] | null = null;
+  let current = byId.get(nodeId)?.parentId ?? null;
+  while (current) {
+    const node = byId.get(current);
+    if (!node) {
+      break;
+    }
+    const declared = node.ontology.knowledgeFoundations;
+    if (declared?.length) {
+      inherited =
+        inherited === null ? [...declared] : inherited.filter((id) => declared.includes(id));
+    }
+    current = node.parentId;
+  }
+  return inherited ?? [];
+}
+
 function inheritedMcpServers(props: EnterpriseProps, nodeId: string): string[] {
   const nodes = props.treeDetail?.nodes;
   if (!nodes) {
@@ -980,6 +1010,17 @@ function renderDeclaredOnlySkillRow(
  */
 function workMapGrantsExplicitly(props: EnterpriseProps): boolean {
   return props.enterpriseMode === "enforce" && props.treeDetail?.capabilityGrants === "explicit";
+}
+
+/**
+ * Same switch, read for KNOWLEDGE. Observe counts here: unlike the tool, skill,
+ * and MCP grants, the knowledge grant applies in observe too (a step's knowledge
+ * list has always scoped retrieval in every mode), so an observing screen that
+ * claimed "every registered foundation" would say the opposite of what runs.
+ * `off` still governs nothing.
+ */
+function workMapGrantsKnowledgeExplicitly(props: EnterpriseProps): boolean {
+  return props.enterpriseMode !== "off" && props.treeDetail?.capabilityGrants === "explicit";
 }
 
 /**
@@ -2115,7 +2156,18 @@ function nodeBindingAdders(
       options: [...retrievableIds].toSorted().map((value) => ({ value })),
       // Same path-gate shape as tools: an omitted list lets the step query every
       // registered foundation, so the first entry restricts it.
-      scopeWarning: foundations.length === 0 ? t("enterprise.entryDraft.knowledgeNarrowing") : null,
+      // Same inversion as the tool list above: under explicit grants an empty
+      // list means the step queries NO foundation, not every one — unless an
+      // ancestor already granted one, which the step inherits down the path.
+      // Saying "no access" there would prompt a duplicate entry.
+      scopeWarning:
+        foundations.length === 0
+          ? workMapGrantsKnowledgeExplicitly(props)
+            ? inheritedKnowledgeFoundations(props, node.id).length > 0
+              ? null
+              : t("enterprise.entryDraft.knowledgeUngranted")
+            : t("enterprise.entryDraft.knowledgeNarrowing")
+          : null,
       constrainingAncestors: constrainingAncestorIds(props, node.id, "knowledgeFoundations"),
       valueNote: (value) =>
         foundationsKnown && !retrievableIds.has(value)

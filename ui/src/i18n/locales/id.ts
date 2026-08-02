@@ -295,6 +295,8 @@ export const id: TranslationMap = {
         "Work-map ini memberikan alat secara eksplisit. Langkah ini tidak dapat mengakses alat apa pun sampai satu alat dicantumkan di sini atau pada langkah di atasnya.",
       knowledgeNarrowing:
         "Langkah ini belum memiliki daftar izin pengetahuan, sehingga dapat mengkueri setiap fondasi yang terdaftar. Menambahkan entri pertama akan membatasinya hanya pada fondasi yang tercantum.",
+      knowledgeUngranted:
+        "Peta kerja ini memberikan pengetahuan secara eksplisit. Langkah ini tidak mengkueri fondasi apa pun hingga satu dicantumkan di sini atau pada langkah di atasnya.",
       skillNameInvalid:
         "Gunakan nama skill: huruf kecil, angka, dan tanda hubung tunggal, maksimal 64 karakter.",
       foundationIdInvalid: "Gunakan id fondasi: segmen huruf kecil bertitik, contoh acme.runbooks.",
@@ -387,7 +389,7 @@ export const id: TranslationMap = {
       explicit: "Pemberian eksplisit",
       inherited: "Cakupan yang diwarisi",
       explicitHint:
-        "Setiap langkah hanya dapat mengakses tools, skills, dan server MCP yang dicantumkan oleh langkah tersebut atau langkah di atasnya. Langkah yang tidak mencantumkan apa pun tidak dapat mengakses apa pun.",
+        "Setiap langkah hanya dapat mengakses tools, skills, MCP server, dan knowledge foundations yang tercantum pada langkah tersebut atau langkah di atasnya. Langkah yang tidak mencantumkan apa pun tidak dapat mengakses apa pun.",
       inheritedHint:
         "Daftar pada suatu langkah mempersempit apa yang diizinkan oleh langkah induknya; langkah yang cabangnya tidak mencantumkan apa pun dapat menggunakan tool atau skill apa pun.",
       turnOn: "Berikan secara eksplisit",

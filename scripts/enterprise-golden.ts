@@ -825,6 +825,32 @@ async function main(): Promise<number> {
         examplePlan?.grantedSkills,
         ["taskflow-inbox-triage"],
       );
+      // KNOWLEDGE: the fourth family. The reading step attaches the handbook, so
+      // it retrieves; nothing else in the deployment is reachable from it.
+      const { resolveEnterpriseKnowledge } = await import("../src/enterprise/knowledge.js");
+      const granted = await resolveEnterpriseKnowledge({
+        runId: exampleRunId,
+        // A term that really appears in the inlined snippets: retrieval scores the
+        // snippet TEXT, not its title.
+        query: "handbook ticket",
+      });
+      expectEqual(
+        "the example's granted foundation answers a search",
+        // Unique ids: one query can match several snippets of the same corpus.
+        [...new Set(granted.snippets.map((snippet) => snippet.foundationId))],
+        [EXPLICIT_FOUNDATION_ID],
+      );
+      expectEqual(
+        "and a search aimed at a foundation it never granted is skipped",
+        (
+          await resolveEnterpriseKnowledge({
+            runId: exampleRunId,
+            query: "handbook ticket",
+            foundations: ["acme.support-desk-handbook"],
+          })
+        ).skipped.map((entry) => entry.foundationId),
+        ["acme.support-desk-handbook"],
+      );
       // MCP: the tracker is registered here, but the FIRST step attaches nothing.
       expectEqual(
         "the example's first step cannot reach the tracker it registered",

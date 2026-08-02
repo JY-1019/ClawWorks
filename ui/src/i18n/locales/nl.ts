@@ -297,6 +297,8 @@ export const nl: TranslationMap = {
         "Deze werkkaart kent tools expliciet toe. De stap bereikt geen tool totdat er een wordt vermeld hier of bij een bovenliggende stap.",
       knowledgeNarrowing:
         "Deze stap heeft nog geen kennislijst, dus kan elke geregistreerde foundation worden bevraagd. Door de eerste vermelding toe te voegen, wordt het beperkt tot de vermelde foundations.",
+      knowledgeUngranted:
+        "Deze work-map verleent kennis expliciet. De stap bevraagt geen foundation totdat er een hier of bij een bovenliggende stap is vermeld.",
       skillNameInvalid:
         "Gebruik een skillnaam: kleine letters, cijfers en enkele koppeltekens, maximaal 64 tekens.",
       foundationIdInvalid:
@@ -391,7 +393,7 @@ export const nl: TranslationMap = {
       explicit: "Expliciete toekenningen",
       inherited: "Overgenomen scopes",
       explicitHint:
-        "Elke stap heeft alleen toegang tot de tools, Skills en MCP-servers die in die stap of een bovenliggende stap zijn vermeld. Een stap zonder vermeldingen heeft nergens toegang toe.",
+        "Elke stap heeft alleen toegang tot de tools, Skills, MCP-servers en kennisbronnen die in die stap of een bovenliggende stap zijn vermeld. Een stap zonder vermeldingen heeft nergens toegang toe.",
       inheritedHint:
         "De lijsten van een stap beperken wat de bovenliggende stappen hebben toegestaan; een stap waarvan de vertakking niets vermeldt, mag elke tool of skill gebruiken.",
       turnOn: "Expliciet toekennen",

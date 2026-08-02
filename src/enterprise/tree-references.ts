@@ -37,8 +37,17 @@ export function collectReferencedFoundationIds(tree: WorkflowTreeDefinition): st
  * bound — if the root omits its allow-list, retrieval at the root reads as
  * allow-all and the whole tree is unbounded, however its descendants scope. Used
  * to warn that a bundle export cannot capture the implicit set.
+ *
+ * A work-map that grants capabilities explicitly is never unbounded: silence
+ * denies there — in every mode, since knowledge scope is not something observe
+ * relaxes — so the ids it names ARE the whole retrievable set and the export
+ * captures them. Warning about a missing root list would tell the operator to
+ * widen a scope the switch already closed.
  */
 export function treeHasUnboundedKnowledgeScope(tree: WorkflowTreeDefinition): boolean {
+  if (tree.capabilityGrants === "explicit") {
+    return false;
+  }
   return !tree.root.ontology?.knowledgeFoundations?.length;
 }
 

@@ -296,6 +296,8 @@ export const pl: TranslationMap = {
         "Ta mapa pracy przyznaje narzędzia jawnie. Krok nie ma dostępu do żadnego narzędzia, dopóki nie zostanie ono wymienione tutaj lub w kroku nadrzędnym.",
       knowledgeNarrowing:
         "Ten krok nie ma jeszcze listy dozwolonych źródeł wiedzy, więc może odpytywać każdą zarejestrowaną podstawę. Dodanie pierwszego wpisu ogranicza go do wymienionych podstaw.",
+      knowledgeUngranted:
+        "Ta mapa pracy przyznaje wiedzę jawnie. Krok nie odpytuje żadnej bazy, dopóki nie zostanie ona wymieniona tutaj lub w kroku nadrzędnym.",
       skillNameInvalid:
         "Użyj nazwy umiejętności: małe litery, cyfry i pojedyncze myślniki, maksymalnie 64 znaki.",
       foundationIdInvalid:
@@ -386,7 +388,7 @@ export const pl: TranslationMap = {
       explicit: "Jawne przyznania",
       inherited: "Dziedziczone zakresy",
       explicitHint:
-        "Każdy krok ma dostęp tylko do narzędzi, Skills i serwerów MCP, które są wymienione w nim lub w kroku nadrzędnym. Krok, który nie wymienia żadnych, nie ma dostępu do żadnych.",
+        "Każdy krok ma dostęp tylko do narzędzi, Skills, serwerów MCP i baz wiedzy, które są wymienione w nim lub w kroku nadrzędnym. Krok, który nie wymienia żadnych, nie ma dostępu do żadnych.",
       inheritedHint:
         "Listy kroku zawężają to, co dozwolili jego przodkowie; krok, którego gałąź nie zawiera żadnych pozycji, może używać dowolnego narzędzia lub umiejętności.",
       turnOn: "Przyznaj jawnie",

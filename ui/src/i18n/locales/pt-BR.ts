@@ -293,6 +293,8 @@ export const pt_BR: TranslationMap = {
         "Este mapa de trabalho concede ferramentas explicitamente. A etapa não alcança nenhuma ferramenta até que uma seja listada aqui ou em uma etapa acima.",
       knowledgeNarrowing:
         "Este passo ainda não possui uma lista de permissões de conhecimento, portanto pode consultar todas as fundações registradas. Adicionar a primeira entrada restringe o acesso às fundações listadas.",
+      knowledgeUngranted:
+        "Este mapa de trabalho concede conhecimento explicitamente. A etapa não consulta nenhuma base até que uma seja listada aqui ou em uma etapa acima.",
       skillNameInvalid:
         "Use um nome de skill: letras minúsculas, dígitos e hífens simples, no máximo 64 caracteres.",
       foundationIdInvalid:
@@ -385,7 +387,7 @@ export const pt_BR: TranslationMap = {
       explicit: "Concessões explícitas",
       inherited: "Escopos herdados",
       explicitHint:
-        "Cada etapa acessa apenas as ferramentas, Skills e servidores MCP que ela ou uma etapa acima dela lista. Uma etapa que não lista nenhum não acessa nenhum.",
+        "Cada etapa acessa apenas as ferramentas, Skills, servidores MCP e bases de conhecimento que ela ou uma etapa acima dela lista. Uma etapa que não lista nenhum não acessa nenhum.",
       inheritedHint:
         "As listas de uma etapa restringem o que seus ancestrais permitiram; uma etapa cuja ramificação não lista nada pode usar qualquer ferramenta ou skill.",
       turnOn: "Conceder explicitamente",

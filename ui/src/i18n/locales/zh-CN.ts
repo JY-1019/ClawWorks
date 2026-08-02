@@ -285,6 +285,8 @@ export const zh_CN: TranslationMap = {
         "此工作地图需要显式授予工具权限。在此处或上级步骤中列出工具之前，该步骤无法访问任何工具。",
       knowledgeNarrowing:
         "此步骤尚未设置知识允许列表，因此可以查询所有已注册的知识基础。添加第一个条目后，将仅限于列出的知识基础。",
+      knowledgeUngranted:
+        "此工作地图明确授予知识。在此处或其上方的步骤中列出知识库之前，该步骤不会查询任何知识库。",
       skillNameInvalid: "请使用有效的 Skill 名称：仅限小写字母、数字和单个连字符，最多 64 个字符。",
       foundationIdInvalid: "请使用知识基础 ID：小写点分段格式，例如 acme.runbooks。",
       ancestorGate:
@@ -369,7 +371,7 @@ export const zh_CN: TranslationMap = {
       explicit: "显式授权",
       inherited: "继承的范围",
       explicitHint:
-        "每个步骤只能访问它自身或其上级步骤中列出的工具、Skills 和 MCP 服务器。未列出任何内容的步骤将无法访问任何资源。",
+        "每个步骤仅能访问其自身或上级步骤中列出的工具、Skills、MCP 服务器和知识库。未列出任何内容的步骤将无法访问任何资源。",
       inheritedHint:
         "步骤的列表会缩小其上级所允许的范围；分支中未列出任何内容的步骤可以使用任何工具或 Skills。",
       turnOn: "显式授权",
