@@ -15,13 +15,13 @@ troubleshooting, see the main [FAQ](/help/faq).
 
 <AccordionGroup>
   <Accordion title='What is the "default model"?'>
-    OpenClaw's default model is whatever you set as:
+    ClawWorks's default model is whatever you set as:
 
     ```
     agents.defaults.model.primary
     ```
 
-    Models are referenced as `provider/model` (example: `openai/gpt-5.5` or `anthropic/claude-sonnet-4-6`). If you omit the provider, OpenClaw first tries an alias, then a unique configured-provider match for that exact model id, and only then falls back to the configured default provider as a deprecated compatibility path. If that provider no longer exposes the configured default model, OpenClaw falls back to the first configured provider/model instead of surfacing a stale removed-provider default. You should still **explicitly** set `provider/model`.
+    Models are referenced as `provider/model` (example: `openai/gpt-5.5` or `anthropic/claude-sonnet-4-6`). If you omit the provider, ClawWorks first tries an alias, then a unique configured-provider match for that exact model id, and only then falls back to the configured default provider as a deprecated compatibility path. If that provider no longer exposes the configured default model, ClawWorks falls back to the first configured provider/model instead of surfacing a stale removed-provider default. You should still **explicitly** set `provider/model`.
 
   </Accordion>
 
@@ -91,7 +91,7 @@ troubleshooting, see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="What do OpenClaw, Flawd, and Krill use for models?">
+  <Accordion title="What do ClawWorks, Flawd, and Krill use for models?">
     - These deployments can differ and may change over time; there is no fixed provider recommendation.
     - Check the current runtime setting on each gateway with `openclaw models status`.
     - For security-sensitive/tool-enabled agents, use the strongest latest-generation model available.
@@ -147,11 +147,11 @@ troubleshooting, see the main [FAQ](/help/faq).
   <Accordion title="If two providers expose the same model id, which one does /model use?">
     `/model provider/model` selects that exact provider route for the session.
 
-    For example, `qianfan/deepseek-v4-flash` and `deepseek/deepseek-v4-flash` are different model refs even though both contain `deepseek-v4-flash`. OpenClaw should not silently switch from one provider to the other just because the bare model id matches.
+    For example, `qianfan/deepseek-v4-flash` and `deepseek/deepseek-v4-flash` are different model refs even though both contain `deepseek-v4-flash`. ClawWorks should not silently switch from one provider to the other just because the bare model id matches.
 
     A user-selected `/model` ref is also strict for fallback policy. If that selected provider/model is unavailable, the reply fails visibly instead of answering from `agents.defaults.model.fallbacks`. Configured fallback chains still apply to configured defaults, cron job primaries, and auto-selected fallback state.
 
-    If a run that started from a non-session override is allowed to use fallback, OpenClaw tries the requested provider/model first, then configured fallbacks, and only then the configured primary. That prevents duplicate bare model ids from jumping directly back to the default provider.
+    If a run that started from a non-session override is allowed to use fallback, ClawWorks tries the requested provider/model first, then configured fallbacks, and only then the configured primary. That prevents duplicate bare model ids from jumping directly back to the default provider.
 
     See [Models](/concepts/models) and [Model failover](/concepts/model-failover).
 
@@ -195,7 +195,7 @@ troubleshooting, see the main [FAQ](/help/faq).
     }
     ```
 
-    For OpenAI, fast mode maps to `service_tier = "priority"` on supported native Responses requests. Session `/fast` overrides beat config defaults. Codex app-server turns can only receive the tier at turn start, so `auto` applies on the next OpenClaw-started model turn rather than inside one already-running app-server turn.
+    For OpenAI, fast mode maps to `service_tier = "priority"` on supported native Responses requests. Session `/fast` overrides beat config defaults. Codex app-server turns can only receive the tier at turn start, so `auto` applies on the next ClawWorks-started model turn rather than inside one already-running app-server turn.
 
     See [Thinking and fast mode](/tools/thinking) and [OpenAI fast mode](/providers/openai#fast-mode).
 
@@ -223,7 +223,7 @@ troubleshooting, see the main [FAQ](/help/faq).
 
     Fix checklist:
 
-    1. Upgrade to a current OpenClaw release (or run from source `main`), then restart the gateway.
+    1. Upgrade to a current ClawWorks release (or run from source `main`), then restart the gateway.
     2. Make sure MiniMax is configured (wizard or JSON), or that MiniMax auth
        exists in env/auth profiles so the matching provider can be injected
        (`MINIMAX_API_KEY` for `minimax`, `MINIMAX_OAUTH_TOKEN` or stored MiniMax
@@ -283,7 +283,7 @@ troubleshooting, see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Are opus / sonnet / gpt built-in shortcuts?">
-    Yes. OpenClaw ships a few default shorthands (only applied when the model exists in `agents.defaults.models`):
+    Yes. ClawWorks ships a few default shorthands (only applied when the model exists in `agents.defaults.models`):
 
     - `opus` → `anthropic/claude-opus-4-8`
     - `sonnet` → `anthropic/claude-sonnet-4-6`
@@ -363,7 +363,7 @@ troubleshooting, see the main [FAQ](/help/faq).
 
     - Run `openclaw agents add <id>` and configure auth during the wizard.
     - Or copy only portable static `api_key` / `token` profiles from the main agent's auth store into the new agent's auth store.
-    - For OAuth profiles, sign in from the new agent when it needs its own account; otherwise OpenClaw can read through to the default/main agent without cloning refresh tokens.
+    - For OAuth profiles, sign in from the new agent when it needs its own account; otherwise ClawWorks can read through to the default/main agent without cloning refresh tokens.
 
     Do **not** reuse `agentDir` across agents; it causes auth/session collisions.
 
@@ -379,9 +379,9 @@ troubleshooting, see the main [FAQ](/help/faq).
     1. **Auth profile rotation** within the same provider.
     2. **Model fallback** to the next model in `agents.defaults.model.fallbacks`.
 
-    Cooldowns apply to failing profiles (exponential backoff), so OpenClaw can keep responding even when a provider is rate-limited or temporarily failing.
+    Cooldowns apply to failing profiles (exponential backoff), so ClawWorks can keep responding even when a provider is rate-limited or temporarily failing.
 
-    The rate-limit bucket includes more than plain `429` responses. OpenClaw
+    The rate-limit bucket includes more than plain `429` responses. ClawWorks
     also treats messages like `Too many concurrent requests`,
     `ThrottlingException`, `concurrency limit reached`,
     `workers_ai ... quota limit exceeded`, `resource exhausted`, and periodic
@@ -390,12 +390,12 @@ troubleshooting, see the main [FAQ](/help/faq).
 
     Some billing-looking responses are not `402`, and some HTTP `402`
     responses also stay in that transient bucket. If a provider returns
-    explicit billing text on `401` or `403`, OpenClaw can still keep that in
+    explicit billing text on `401` or `403`, ClawWorks can still keep that in
     the billing lane, but provider-specific text matchers stay scoped to the
     provider that owns them (for example OpenRouter `Key limit exceeded`). If a `402`
     message instead looks like a retryable usage-window or
     organization/workspace spend limit (`daily limit reached, resets tomorrow`,
-    `organization spending limit exceeded`), OpenClaw treats it as
+    `organization spending limit exceeded`), ClawWorks treats it as
     `rate_limit`, not a long billing disable.
 
     Context-overflow errors are different: signatures such as
@@ -406,7 +406,7 @@ troubleshooting, see the main [FAQ](/help/faq).
     fallback.
 
     Generic server-error text is intentionally narrower than "anything with
-    unknown/error in it". OpenClaw does treat provider-scoped transient shapes
+    unknown/error in it". ClawWorks does treat provider-scoped transient shapes
     such as Anthropic bare `An unknown error occurred`, OpenRouter bare
     `Provider returned error`, stop-reason errors like `Unhandled stop reason:
     error`, JSON `api_error` payloads with transient server text
@@ -455,7 +455,7 @@ troubleshooting, see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Why did it also try Google Gemini and fail?">
-    If your model config includes Google Gemini as a fallback (or you switched to a Gemini shorthand), OpenClaw will try it during model fallback. If you haven't configured Google credentials, you'll see `No API key found for provider "google"`.
+    If your model config includes Google Gemini as a fallback (or you switched to a Gemini shorthand), ClawWorks will try it during model fallback. If you haven't configured Google credentials, you'll see `No API key found for provider "google"`.
 
     Fix: either provide Google auth, or remove/avoid Google models in `agents.defaults.model.fallbacks` / aliases so fallback doesn't route there.
 
@@ -464,7 +464,7 @@ troubleshooting, see the main [FAQ](/help/faq).
     Cause: the session history contains **thinking blocks without signatures** (often from
     an aborted/partial stream). Google Antigravity requires signatures for thinking blocks.
 
-    Fix: OpenClaw now strips unsigned thinking blocks for Google Antigravity Claude. If it still appears, start a **new session** or set `/thinking off` for that agent.
+    Fix: ClawWorks now strips unsigned thinking blocks for Google Antigravity Claude. If it still appears, start a **new session** or set `/thinking off` for that agent.
 
   </Accordion>
 </AccordionGroup>
@@ -486,7 +486,7 @@ Related: [/concepts/oauth](/concepts/oauth) (OAuth flows, token storage, multi-a
   </Accordion>
 
   <Accordion title="What are typical profile IDs?">
-    OpenClaw uses provider-prefixed IDs like:
+    ClawWorks uses provider-prefixed IDs like:
 
     - `anthropic:default` (common when no email identity exists)
     - `anthropic:<email>` for OAuth identities
@@ -497,7 +497,7 @@ Related: [/concepts/oauth](/concepts/oauth) (OAuth flows, token storage, multi-a
   <Accordion title="Can I control which auth profile is tried first?">
     Yes. Config supports optional metadata for profiles and an ordering per provider (`auth.order.<provider>`). This does **not** store secrets; it maps IDs to provider/mode and sets rotation order.
 
-    OpenClaw may temporarily skip a profile if it's in a short **cooldown** (rate limits/timeouts/auth failures) or a longer **disabled** state (billing/insufficient credits). To inspect this, run `openclaw models status --json` and check `auth.unusableProfiles`. Tuning: `auth.cooldowns.billingBackoffHours*`.
+    ClawWorks may temporarily skip a profile if it's in a short **cooldown** (rate limits/timeouts/auth failures) or a longer **disabled** state (billing/insufficient credits). To inspect this, run `openclaw models status --json` and check `auth.unusableProfiles`. Tuning: `auth.cooldowns.billingBackoffHours*`.
 
     Rate-limit cooldowns can be model-scoped. A profile that is cooling down
     for one model can still be usable for a sibling model on the same provider,
@@ -537,10 +537,10 @@ Related: [/concepts/oauth](/concepts/oauth) (OAuth flows, token storage, multi-a
   </Accordion>
 
   <Accordion title="OAuth vs API key - what is the difference?">
-    OpenClaw supports both:
+    ClawWorks supports both:
 
     - **OAuth / CLI login** often leverages subscription access where the
-      provider supports it. For Anthropic, OpenClaw's Claude CLI backend uses
+      provider supports it. For Anthropic, ClawWorks's Claude CLI backend uses
       Claude Code `claude -p`; Anthropic currently treats that as Agent
       SDK/programmatic usage. Anthropic paused the June 15, 2026 separate Agent
       SDK credit change, so for now this still draws from subscription usage

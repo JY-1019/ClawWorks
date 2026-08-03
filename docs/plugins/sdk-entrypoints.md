@@ -27,11 +27,11 @@ JavaScript when available:
 
 `extensions` and `setupEntry` remain valid source entries for workspace and git
 checkout development. `runtimeExtensions` and `runtimeSetupEntry` are preferred
-when OpenClaw loads an installed package and let npm packages avoid runtime
+when ClawWorks loads an installed package and let npm packages avoid runtime
 TypeScript compilation. Explicit runtime entries are required: `runtimeSetupEntry`
 requires `setupEntry`, and missing `runtimeExtensions` or `runtimeSetupEntry`
 artifacts fail install/discovery instead of silently falling back to source. If
-an installed package only declares a TypeScript source entry, OpenClaw will use a
+an installed package only declares a TypeScript source entry, ClawWorks will use a
 matching built `dist/*.js` peer when one exists, then fall back to the TypeScript
 source.
 
@@ -51,7 +51,7 @@ and inferred built JavaScript peers do not make an escaping `extensions` or
 
 For simple plugins that only add agent tools. `defineToolPlugin` keeps the
 authoring source small, infers config and tool parameter types from TypeBox
-schemas, wraps plain return values in the OpenClaw tool-result format, and
+schemas, wraps plain return values in the ClawWorks tool-result format, and
 exposes static metadata that `openclaw plugins build` writes into the plugin
 manifest.
 
@@ -80,14 +80,14 @@ export default defineToolPlugin({
 });
 ```
 
-- `configSchema` is optional. When omitted, OpenClaw uses a strict empty object
+- `configSchema` is optional. When omitted, ClawWorks uses a strict empty object
   schema and the generated manifest still includes `configSchema`.
 - `execute` returns a plain string or JSON-serializable value. The helper wraps
   it as a text tool result with `details`.
 - Tool names are static. `openclaw plugins build` derives `contracts.tools`
   from the declared tools, so authors do not duplicate names by hand.
 - Runtime loading stays strict. Installed plugins still need
-  `openclaw.plugin.json` and `package.json` `openclaw.extensions`; OpenClaw does
+  `openclaw.plugin.json` and `package.json` `openclaw.extensions`; ClawWorks does
   not execute plugin code to infer missing manifest data.
 
 ## `definePluginEntry`
@@ -127,7 +127,7 @@ export default definePluginEntry({
 - `id` must match your `openclaw.plugin.json` manifest.
 - `kind` is for exclusive slots: `"memory"` or `"context-engine"`.
 - `configSchema` can be a function for lazy evaluation.
-- OpenClaw resolves and memoizes that schema on first access, so expensive schema
+- ClawWorks resolves and memoizes that schema on first access, so expensive schema
   builders only run once.
 
 ## `defineChannelPluginEntry`
@@ -176,20 +176,20 @@ export default defineChannelPluginEntry({
   Use it as the canonical place for channel-owned CLI descriptors so root help
   stays non-activating, discovery snapshots include static command metadata, and
   normal CLI command registration remains compatible with full plugin loads.
-- Discovery registration is non-activating, not import-free. OpenClaw may
+- Discovery registration is non-activating, not import-free. ClawWorks may
   evaluate the trusted plugin entry and channel plugin module to build the
   snapshot, so keep top-level imports side-effect-free and put sockets,
   clients, workers, and services behind `"full"`-only paths.
 - `registerFull` only runs when `api.registrationMode === "full"`. It is skipped
   during setup-only loading.
-- Like `definePluginEntry`, `configSchema` can be a lazy factory and OpenClaw
+- Like `definePluginEntry`, `configSchema` can be a lazy factory and ClawWorks
   memoizes the resolved schema on first access.
 - For plugin-owned root CLI commands, prefer `api.registerCli(..., { descriptors: [...] })`
   when you want the command to stay lazy-loaded without disappearing from the
   root CLI parse tree. For paired-node feature commands, prefer
   `api.registerNodeCliFeature(...)` so the command lands under `openclaw nodes`.
   For other nested plugin commands, add `parentPath` and register commands on
-  the `program` object passed to the registrar; OpenClaw resolves it to the
+  the `program` object passed to the registrar; ClawWorks resolves it to the
   parent command before calling the plugin. For channel plugins, prefer
   registering those descriptors from `registerCliMetadata(...)` and keep
   `registerFull(...)` focused on runtime-only work.
@@ -211,7 +211,7 @@ import { defineSetupPluginEntry } from "openclaw/plugin-sdk/channel-core";
 export default defineSetupPluginEntry(myChannelPlugin);
 ```
 
-OpenClaw loads this instead of the full entry when a channel is disabled,
+ClawWorks loads this instead of the full entry when a channel is disabled,
 unconfigured, or when deferred loading is enabled. See
 [Setup and Config](/plugins/sdk-setup#setup-entry) for when this matters.
 
@@ -298,7 +298,7 @@ register(api) {
 ```
 
 Discovery mode builds a non-activating registry snapshot. It may still evaluate
-the plugin entry and the channel plugin object so OpenClaw can register channel
+the plugin entry and the channel plugin object so ClawWorks can register channel
 capabilities and static CLI descriptors. Treat module evaluation in discovery as
 trusted but lightweight: no network clients, subprocesses, listeners, database
 connections, background workers, credential reads, or other live runtime side
@@ -313,18 +313,18 @@ provider/client SDK bootstraps still belong in `"full"`.
 For CLI registrars specifically:
 
 - use `descriptors` when the registrar owns one or more root commands and you
-  want OpenClaw to lazy-load the real CLI module on first invocation
+  want ClawWorks to lazy-load the real CLI module on first invocation
 - make sure those descriptors cover every top-level command root exposed by the
   registrar
 - keep descriptor command names to letters, numbers, hyphen, and underscore,
-  starting with a letter or number; OpenClaw rejects descriptor names outside
+  starting with a letter or number; ClawWorks rejects descriptor names outside
   that shape and strips terminal control sequences from descriptions before
   rendering help
 - use `commands` alone only for eager compatibility paths
 
 ## Plugin shapes
 
-OpenClaw classifies loaded plugins by their registration behavior:
+ClawWorks classifies loaded plugins by their registration behavior:
 
 | Shape                 | Description                                        |
 | --------------------- | -------------------------------------------------- |

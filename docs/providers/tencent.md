@@ -2,7 +2,7 @@
 summary: "Tencent Cloud TokenHub setup for Hy3 preview"
 title: "Tencent Cloud (TokenHub)"
 read_when:
-  - You want to use Tencent Hy3 preview with OpenClaw
+  - You want to use Tencent Hy3 preview with ClawWorks
   - You need the TokenHub API key setup
 ---
 
@@ -78,7 +78,7 @@ openclaw onboard --non-interactive \
 Hy3 preview is Tencent Hunyuan's large MoE language model for reasoning, long-context instruction following, code, and agent workflows. Tencent's OpenAI-compatible examples use `hy3-preview` as the model id and support standard chat-completions tool calling plus `reasoning_effort`.
 
 <Tip>
-  The model id is `hy3-preview`. Do not confuse it with Tencent's `HY-3D-*` models, which are 3D generation APIs and are not the OpenClaw chat model configured by this provider.
+  The model id is `hy3-preview`. Do not confuse it with Tencent's `HY-3D-*` models, which are 3D generation APIs and are not the ClawWorks chat model configured by this provider.
 </Tip>
 
 ## Tiered pricing
@@ -97,7 +97,7 @@ Rates are per million tokens in USD as advertised by Tencent. Override pricing u
 
 <AccordionGroup>
   <Accordion title="Endpoint override">
-    OpenClaw defaults to Tencent Cloud's `https://tokenhub.tencentmaas.com/v1` endpoint. Tencent also documents an international TokenHub endpoint:
+    ClawWorks defaults to Tencent Cloud's `https://tokenhub.tencentmaas.com/v1` endpoint. Tencent also documents an international TokenHub endpoint:
 
     ```bash
     openclaw config set models.providers.tencent-tokenhub.baseUrl "https://tokenhub-intl.tencentmaas.com/v1"

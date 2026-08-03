@@ -8,7 +8,7 @@ title: "Ambient room events"
 sidebarTitle: "Ambient room events"
 ---
 
-Ambient room events let OpenClaw process unmentioned group or channel chatter as quiet context. The agent can update memory and session state, but the room stays silent unless the agent explicitly calls the `message` tool.
+Ambient room events let ClawWorks process unmentioned group or channel chatter as quiet context. The agent can update memory and session state, but the room stays silent unless the agent explicitly calls the `message` tool.
 
 For always-on group chats, this is the recommended mode: combine `messages.groupChat.unmentionedInbound: "room_event"` with `messages.groupChat.visibleReplies: "message_tool"`. Use it when the agent should listen, decide when a reply is useful, and avoid the old prompt pattern of answering `NO_REPLY`.
 
@@ -178,7 +178,7 @@ The agent-specific `agents.list[].groupChat.unmentionedInbound` value overrides 
 
 `messages.groupChat.visibleReplies` defaults to `"automatic"` for normal group/channel user requests. Keep that default when you want final assistant text to post visibly without requiring an explicit message-tool call.
 
-For ambient always-on rooms, `messages.groupChat.visibleReplies: "message_tool"` is still recommended, especially with latest-generation, tool-reliable models such as GPT 5.5. It lets the agent decide when to speak by calling the message tool. If the model returns final text without calling the tool, OpenClaw keeps that final text private and logs suppressed delivery metadata.
+For ambient always-on rooms, `messages.groupChat.visibleReplies: "message_tool"` is still recommended, especially with latest-generation, tool-reliable models such as GPT 5.5. It lets the agent decide when to speak by calling the message tool. If the model returns final text without calling the tool, ClawWorks keeps that final text private and logs suppressed delivery metadata.
 
 Room events stay strict even when other group requests use automatic replies. Unmentioned ambient room events still require `message(action=send)` for visible output.
 

@@ -1,7 +1,7 @@
 ---
 summary: "CLI reference for `openclaw policy` conformance checks"
 read_when:
-  - You want to check OpenClaw settings against an authored policy.jsonc
+  - You want to check ClawWorks settings against an authored policy.jsonc
   - You want policy findings in doctor lint
   - You need a policy attestation hash for audit evidence
 title: "Policy"
@@ -10,23 +10,23 @@ title: "Policy"
 # `openclaw policy`
 
 `openclaw policy` is provided by the bundled Policy plugin. Policy is an
-enterprise conformance layer over existing OpenClaw settings. It does not add a
+enterprise conformance layer over existing ClawWorks settings. It does not add a
 second configuration system. `policy.jsonc` defines authored requirements,
-OpenClaw observes the active workspace as evidence, and policy health checks
+ClawWorks observes the active workspace as evidence, and policy health checks
 report drift through `doctor --lint`. The final conformance signal is a clean
 `doctor --lint` run; policy contributes findings to that shared lint surface
 instead of creating a separate health gate.
 
 Policy currently manages configured channels, MCP servers, model providers,
 network SSRF posture, ingress/channel access posture, Gateway exposure posture, agent workspace posture,
-data-handling posture, OpenClaw config secret provider/auth profile posture, and governed tool
+data-handling posture, ClawWorks config secret provider/auth profile posture, and governed tool
 declarations. For example, IT or a workspace operator can record that Telegram
 is not an approved channel provider, restrict MCP servers and model refs to
 approved entries, require private-network fetch/browser access to remain
 disabled, require direct-message session isolation and channel ingress posture
 to stay within reviewed bounds, require Gateway bind/auth/HTTP exposure to stay within reviewed
 bounds, require agent workspace access and tool denies to stay in a reviewed
-posture, require OpenClaw config SecretRefs to use managed providers, require
+posture, require ClawWorks config SecretRefs to use managed providers, require
 config auth profiles to carry provider/mode metadata, require governed tools to
 carry risk and sensitivity metadata, require sensitive logging redaction, deny
 telemetry content capture, require session retention maintenance, deny session
@@ -35,7 +35,7 @@ conformance gate.
 
 Use policy when a workspace needs a durable statement such as "these channels
 must not be enabled" or "governed tools must declare approval metadata" and a
-repeatable way to prove that OpenClaw still conforms to that statement. Use
+repeatable way to prove that ClawWorks still conforms to that statement. Use
 regular config and workspace docs alone when you only need local behavior and
 do not need policy findings or attestation output.
 
@@ -53,7 +53,7 @@ doctor can report the missing artifact.
 
 Policy is authored, not generated from the user's current settings. A minimal
 policy for channels, MCP servers, model providers, network posture, ingress/channel access, Gateway
-exposure, agent workspace posture, configured sandbox runtime posture, OpenClaw
+exposure, agent workspace posture, configured sandbox runtime posture, ClawWorks
 data-handling posture, config secret provider/auth profile posture, exec approval
 file posture, and tool metadata looks like this:
 
@@ -177,11 +177,11 @@ file posture, and tool metadata looks like this:
 ```
 
 The rules are the authority. A category block is only a namespace; checks run
-when a concrete rule is present. OpenClaw reads current `channels.*` settings
+when a concrete rule is present. ClawWorks reads current `channels.*` settings
 `mcp.servers.*`, `models.providers.*`, selected agent model refs, network SSRF
 settings, direct-message session scope, channel DM policy, channel group policy,
 channel/group mention gates, Gateway bind/auth/Control UI/Tailscale/remote/HTTP
-posture, OpenClaw config agent sandbox workspace access and tool deny posture,
+posture, ClawWorks config agent sandbox workspace access and tool deny posture,
 data-handling config posture, config secret
 provider and SecretRef provenance, config auth profile metadata, configured
 global/per-agent tool posture, and `TOOLS.md` declarations as evidence, then
@@ -192,7 +192,7 @@ strict config conformance. For read-only agent posture, configure sandbox mode
 on the applicable defaults or agent and set `workspaceAccess` to `none` or
 `ro`; omitted or `off` sandbox mode does not satisfy a read-only/no-write
 policy. `agents.workspace.denyTools` supports `exec`, `process`, `write`,
-`edit`, and `apply_patch`; OpenClaw config `group:fs` covers file mutation tools
+`edit`, and `apply_patch`; ClawWorks config `group:fs` covers file mutation tools
 and `group:runtime` covers shell/process tools. Tool posture policy observes
 `tools.profile`, `tools.allow`, `tools.alsoAllow`, `tools.deny`,
 `tools.fs.workspaceOnly`, `tools.exec.security`, `tools.exec.ask`,
@@ -214,7 +214,7 @@ data or secrets exist.
 ### Policy rule reference
 
 Each policy field below is optional. A check runs only when the matching rule is
-present in `policy.jsonc`. The observed state is existing OpenClaw config or
+present in `policy.jsonc`. The observed state is existing ClawWorks config or
 workspace metadata; policy reports drift but does not rewrite runtime behavior
 unless a repair path is explicitly available and enabled.
 Policy files are strict: unsupported sections or rule keys are reported as
@@ -234,7 +234,7 @@ supports `tools.*`, `agents.workspace.*`, `sandbox.*`, `dataHandling.memory.*`,
 and `execApprovals.*`. Channel-scoped
 ingress uses `channelIds`, which supports `ingress.channels.*`. Unsupported
 sections are rejected instead of being ignored. If an `agentIds` entry is not
-present in `agents.list[]`, OpenClaw evaluates the scoped rule against inherited
+present in `agents.list[]`, ClawWorks evaluates the scoped rule against inherited
 global/default posture for that runtime agent id.
 
 ```jsonc
@@ -305,7 +305,7 @@ equally or more restrictive according to policy metadata; weaker duplicate
 claims are rejected. Strictness metadata treats allow-lists as subsets,
 deny-lists as supersets, and required booleans as fixed requirements.
 
-Container posture policy is evaluated only against evidence OpenClaw can
+Container posture policy is evaluated only against evidence ClawWorks can
 observe for the matched agent. If an enabled `sandbox.containers.*` rule applies
 to an agent whose sandbox backend cannot expose that field, policy reports
 `policy/sandbox-container-posture-unobservable` instead of treating the claim as
@@ -522,7 +522,7 @@ openclaw policy compare --baseline official.policy.jsonc --policy policy.jsonc -
 ```
 
 `policy compare` compares policy file syntax to policy file syntax. It does not
-inspect OpenClaw runtime state, evidence, credentials, or secrets. The command
+inspect ClawWorks runtime state, evidence, credentials, or secrets. The command
 uses the same policy rule metadata that governs scoped overlays: allowlists must
 stay equal or narrower, denylists must stay equal or broader, required booleans
 must keep their required value, ordered strings must move only toward the more
@@ -741,7 +741,7 @@ Example JSON output:
 ```
 
 The policy hash identifies the authored rule artifact. The evidence block
-records the observed OpenClaw state used by the policy checks. The
+records the observed ClawWorks state used by the policy checks. The
 `workspace.hash` value identifies that evidence payload for the checked scope.
 The findings hash identifies the exact finding set returned by the check.
 `checkedAt` records when the evaluation ran. The attestation hash identifies
@@ -978,7 +978,7 @@ Example agent workspace finding:
 `workspaceRepairs` is explicitly enabled. Without that opt-in, policy checks
 report what they would repair and leave settings unchanged.
 
-In this version, repair can disable channels that are enabled in OpenClaw config
+In this version, repair can disable channels that are enabled in ClawWorks config
 but denied by `channels.denyRules`. Enable `workspaceRepairs` only after the
 policy file has been reviewed, because a valid deny rule can turn off a
 configured channel:

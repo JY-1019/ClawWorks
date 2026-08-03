@@ -1,12 +1,12 @@
 ---
-summary: "Use Xiaomi MiMo pay-as-you-go and Token Plan models with OpenClaw"
+summary: "Use Xiaomi MiMo pay-as-you-go and Token Plan models with ClawWorks"
 read_when:
-  - You want Xiaomi MiMo models in OpenClaw
+  - You want Xiaomi MiMo models in ClawWorks
   - You need Xiaomi MiMo auth or Token Plan setup
 title: "Xiaomi MiMo"
 ---
 
-Xiaomi MiMo is the API platform for **MiMo** models. OpenClaw includes a bundled Xiaomi plugin with two text-provider presets:
+Xiaomi MiMo is the API platform for **MiMo** models. ClawWorks includes a bundled Xiaomi plugin with two text-provider presets:
 
 - `xiaomi` for pay-as-you-go keys (`sk-...`)
 - `xiaomi-token-plan` for Token Plan keys (`tp-...`) with regional endpoint presets
@@ -127,11 +127,11 @@ an `assistant` message and optional style guidance as a `user` message.
 
 Supported built-in voices include `mimo_default`, `default_zh`, `default_en`,
 `Mia`, `Chloe`, `Milo`, and `Dean`. Preset-voice models use `audio.voice`, so
-OpenClaw sends `speakerVoice` for `mimo-v2.5-tts` and `mimo-v2-tts`.
+ClawWorks sends `speakerVoice` for `mimo-v2.5-tts` and `mimo-v2-tts`.
 
 Xiaomi's voicedesign model, `mimo-v2.5-tts-voicedesign`, generates the voice
 from a natural-language style prompt instead of a preset voice id. Configure
-`style` with the desired voice description; OpenClaw sends it as the `user`
+`style` with the desired voice description; ClawWorks sends it as the `user`
 message, sends the spoken text as the `assistant` message, and omits
 `audio.voice` for this model.
 
@@ -152,7 +152,7 @@ message, sends the spoken text as the `assistant` message, and omits
 }
 ```
 
-For voice-note targets such as Feishu and Telegram, OpenClaw transcodes Xiaomi
+For voice-note targets such as Feishu and Telegram, ClawWorks transcodes Xiaomi
 output to 48kHz Opus with `ffmpeg` before delivery.
 
 ## Config example
@@ -278,7 +278,7 @@ Pricing comes from the bundled manifest (Token Plan models include tiered cache-
     Choosing providers, model refs, and failover behavior.
   </Card>
   <Card title="Configuration reference" href="/gateway/configuration-reference" icon="gear">
-    Full OpenClaw configuration reference.
+    Full ClawWorks configuration reference.
   </Card>
   <Card title="Xiaomi MiMo console" href="https://platform.xiaomimimo.com" icon="arrow-up-right-from-square">
     Xiaomi MiMo dashboard and API key management.

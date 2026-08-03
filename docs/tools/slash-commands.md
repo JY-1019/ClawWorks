@@ -13,7 +13,7 @@ Host-only bash commands use `! <cmd>` (with `/bash <cmd>` as an alias).
 
 When a conversation is bound to an ACP session, normal text routes to the ACP
 harness. Gateway management commands remain local: `/acp ...` always reaches
-the OpenClaw command handler, and `/status` plus `/unfocus` stay local whenever
+the ClawWorks command handler, and `/status` plus `/unfocus` stay local whenever
 command handling is enabled for the surface.
 
 ## Three command types
@@ -110,7 +110,7 @@ command handling is enabled for the surface.
 </ParamField>
 
 <ParamField path="commands.mcp" type="boolean" default="false">
-  Enables `/mcp` (reads/writes OpenClaw-managed MCP config under `mcp.servers`). Owner-only.
+  Enables `/mcp` (reads/writes ClawWorks-managed MCP config under `mcp.servers`). Owner-only.
 </ParamField>
 
 <ParamField path="commands.plugins" type="boolean" default="false">
@@ -266,10 +266,10 @@ plugins.
     | Command | Requires | Description |
     | --- | --- | --- |
     | `/config show\|get\|set\|unset` | `commands.config: true` | Read or write `openclaw.json`. Owner-only |
-    | `/mcp show\|get\|set\|unset` | `commands.mcp: true` | Read or write OpenClaw-managed MCP server config. Owner-only |
+    | `/mcp show\|get\|set\|unset` | `commands.mcp: true` | Read or write ClawWorks-managed MCP server config. Owner-only |
     | `/plugins list\|inspect\|show\|get\|install\|enable\|disable` | `commands.plugins: true` | Inspect or mutate plugin state. Owner-only for writes. Alias: `/plugin` |
     | `/debug show\|set\|unset\|reset` | `commands.debug: true` | Runtime-only config overrides. Owner-only |
-    | `/restart` | `commands.restart: true` (default) | Restart OpenClaw |
+    | `/restart` | `commands.restart: true` (default) | Restart ClawWorks |
     | `/send on\|off\|inherit` | owner | Set send policy |
   </Accordion>
 
@@ -399,7 +399,7 @@ updates persist across restarts.
 /mcp unset context7
 ```
 
-`/mcp` stores config in OpenClaw config, not embedded-agent project settings.
+`/mcp` stores config in ClawWorks config, not embedded-agent project settings.
 
 ## `/debug` — runtime-only overrides
 

@@ -1,13 +1,13 @@
 ---
-summary: "fal image, video, and music generation setup in OpenClaw"
+summary: "fal image, video, and music generation setup in ClawWorks"
 title: "Fal"
 read_when:
-  - You want to use fal image generation in OpenClaw
+  - You want to use fal image generation in ClawWorks
   - You need the FAL_KEY auth flow
   - You want fal defaults for image_generate, video_generate, or music_generate
 ---
 
-OpenClaw ships a bundled `fal` provider for hosted image, video, and music
+ClawWorks ships a bundled `fal` provider for hosted image, video, and music
 generation.
 
 | Property | Value                                                         |
@@ -62,7 +62,7 @@ such as `4:1`, `1:4`, `8:1`, and `1:8`; Krea 2 validates its own smaller
 aspect-ratio subset.
 </Warning>
 
-Krea 2 models use fal's native Krea payload schema. OpenClaw sends
+Krea 2 models use fal's native Krea payload schema. ClawWorks sends
 `aspect_ratio`, `creativity`, and `image_style_references` instead of the
 generic `image_size` / edit-endpoint payload used by Flux. The model refs are:
 
@@ -75,15 +75,15 @@ looks. Krea defaults to `fal.creativity: "medium"`; supported values are
 `raw`, `low`, `medium`, and `high`.
 
 Krea 2 exposes aspect ratio, not `image_size`, in fal's request schema. Prefer
-`aspectRatio`; OpenClaw maps `size` to the closest supported Krea aspect ratio
+`aspectRatio`; ClawWorks maps `size` to the closest supported Krea aspect ratio
 and rejects `resolution` for Krea rather than dropping it.
 
 Use `outputFormat: "png"` when you want PNG output from fal models that expose
 `output_format`. fal does not declare an explicit transparent-background
-control in OpenClaw, so `background: "transparent"` is reported as an ignored
+control in ClawWorks, so `background: "transparent"` is reported as an ignored
 override for fal models.
 Krea 2 endpoints do not expose an `output_format` request field through fal, so
-OpenClaw rejects `outputFormat` overrides for Krea requests.
+ClawWorks rejects `outputFormat` overrides for Krea requests.
 
 To use fal as the default image provider:
 

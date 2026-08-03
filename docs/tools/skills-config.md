@@ -100,7 +100,7 @@ Most skills configuration lives under `skills` in
 
 Use `security.installPolicy` when operators need a trusted local command to
 approve or block skill and plugin installs with host-specific policy. The policy
-runs after OpenClaw has staged source material and before the install or update
+runs after ClawWorks has staged source material and before the install or update
 continues. It applies to ClawHub skills, uploaded skills, Git/local skills,
 skill dependency installers, and plugin install/update sources.
 
@@ -138,7 +138,7 @@ skill dependency installers, and plugin install/update sources.
 </ParamField>
 
 <ParamField path="security.installPolicy.exec.command" type="string">
-  Absolute path to the trusted policy executable. OpenClaw runs it without a
+  Absolute path to the trusted policy executable. ClawWorks runs it without a
   shell and validates the path before use.
 </ParamField>
 
@@ -163,7 +163,7 @@ skill dependency installers, and plugin install/update sources.
 </ParamField>
 
 <ParamField path="security.installPolicy.exec.passEnv" type="string[]">
-  Environment variable names copied from the OpenClaw process into the policy
+  Environment variable names copied from the ClawWorks process into the policy
   process. Only named variables are passed.
 </ParamField>
 
@@ -190,7 +190,7 @@ one JSON object on stdout: `{ "protocolVersion": 1, "decision": "allow" }` or
 exit, timeout, malformed JSON, missing fields, or unsupported protocol versions
 fail closed.
 
-OpenClaw does not execute install policy during normal Gateway startup. Installs
+ClawWorks does not execute install policy during normal Gateway startup. Installs
 and updates fail closed when policy is enabled but unavailable. `openclaw doctor`
 performs static validation, and `openclaw doctor --deep` executes a synthetic
 install probe against the configured command.

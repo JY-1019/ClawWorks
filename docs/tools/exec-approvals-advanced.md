@@ -140,7 +140,7 @@ Custom profile example:
 }
 ```
 
-If you explicitly opt `jq` into `safeBins`, OpenClaw still rejects the `env` builtin in safe-bin
+If you explicitly opt `jq` into `safeBins`, ClawWorks still rejects the `env` builtin in safe-bin
 mode so `jq -n env` cannot dump the host process environment without an explicit allowlist path
 or approval prompt.
 
@@ -153,7 +153,7 @@ Approval-backed interpreter/runtime runs are intentionally conservative:
   file snapshot.
 - Common package-manager wrapper forms that still resolve to one direct local file (for example
   `pnpm exec`, `pnpm node`, `npm exec`, `npx`) are unwrapped before binding.
-- If OpenClaw cannot identify exactly one concrete local file for an interpreter/runtime command
+- If ClawWorks cannot identify exactly one concrete local file for an interpreter/runtime command
   (for example package scripts, eval forms, runtime-specific loader chains, or ambiguous multi-file
   forms), approval-backed execution is denied instead of claiming semantic coverage it does not
   have.
@@ -164,12 +164,12 @@ When approvals are required, the exec tool returns immediately with an approval 
 correlate later approved-run system events (`Exec finished`, and `Exec running` when configured).
 If no decision arrives before the timeout, the request is treated as an approval timeout and
 surfaced as a terminal host-command denial. For main-agent async approvals with an originating
-session, OpenClaw also resumes that session with an internal followup so the agent observes that
+session, ClawWorks also resumes that session with an internal followup so the agent observes that
 the command did not run instead of later repairing a missing result.
 
 ### Followup delivery behavior
 
-After an approved async exec finishes, OpenClaw sends a followup `agent` turn to the same session.
+After an approved async exec finishes, ClawWorks sends a followup `agent` turn to the same session.
 Denied async approvals use the same main-session followup path for the denial status, but they do
 not register elevated runtime handoffs and they do not run the command. Denials without a resumable
 main session are either suppressed or reported through a safe direct route when one exists.
@@ -274,9 +274,9 @@ agent-facing path. The agent should not also echo a duplicate plain chat
 manual approval is the only remaining path.
 
 If a native approval client is configured but no native runtime is active for
-the originating channel, OpenClaw keeps the local deterministic `/approve`
+the originating channel, ClawWorks keeps the local deterministic `/approve`
 prompt visible. If the native runtime is active and attempts delivery but no
-target receives the card, OpenClaw sends a same-chat fallback notice with the
+target receives the card, ClawWorks sends a same-chat fallback notice with the
 exact `/approve <id> <decision>` command so the request can still be resolved.
 
 Generic model:
@@ -344,7 +344,7 @@ Shared behavior:
 - Matrix native DM/channel routing and reaction shortcuts handle both exec and plugin approvals;
   plugin authorization still comes from `channels.matrix.dm.allowFrom`
 - Matrix native prompts include `com.openclaw.approval` custom event content on the first prompt
-  event so OpenClaw-aware Matrix clients can read structured approval state while stock clients
+  event so ClawWorks-aware Matrix clients can read structured approval state while stock clients
   keep the plain-text `/approve` fallback
 - the requester does not need to be an approver
 - the originating chat can approve directly with `/approve` when that chat already supports commands and replies
@@ -356,7 +356,7 @@ Shared behavior:
 - if no operator UI or configured approval client can accept the request, the prompt falls back to `askFallback`
 
 Sensitive owner-only group commands such as `/diagnostics` and `/export-trajectory` use private
-owner routing for approval prompts and final results. OpenClaw first tries a private route on the
+owner routing for approval prompts and final results. ClawWorks first tries a private route on the
 same surface where the owner ran the command. If that surface has no private owner route, it falls
 back to the first available owner route from `commands.ownerAllowFrom`, so a Discord group command
 can still send the approval and result to the owner's Telegram DM when Telegram is the configured
@@ -364,7 +364,7 @@ primary private interface. The group chat only gets a short acknowledgement.
 
 Telegram defaults to approver DMs (`target: "dm"`). You can switch to `channel` or `both` when you
 want approval prompts to appear in the originating Telegram chat/topic as well. For Telegram forum
-topics, OpenClaw preserves the topic for the approval prompt and the post-approval follow-up.
+topics, ClawWorks preserves the topic for the approval prompt and the post-approval follow-up.
 
 See:
 

@@ -1,20 +1,20 @@
 ---
-summary: "Run the OpenClaw Gateway on EasyRunner with Podman and Caddy"
+summary: "Run the ClawWorks Gateway on EasyRunner with Podman and Caddy"
 read_when:
-  - Deploying OpenClaw on EasyRunner
+  - Deploying ClawWorks on EasyRunner
   - Running the Gateway behind EasyRunner's Caddy proxy
   - Choosing persistent volumes and auth for a hosted Gateway
 title: "EasyRunner"
 ---
 
-EasyRunner can host the OpenClaw Gateway as a small containerized app behind its
+EasyRunner can host the ClawWorks Gateway as a small containerized app behind its
 Caddy proxy. This guide assumes an EasyRunner host that runs Podman-compatible
 Compose apps and exposes HTTPS through Caddy.
 
 ## Before you begin
 
 - An EasyRunner server with a domain routed to it.
-- A built or published OpenClaw container image.
+- A built or published ClawWorks container image.
 - A persistent config volume for `/home/node/.openclaw`.
 - A persistent workspace volume for `/workspace`.
 - A strong Gateway token or password.
@@ -55,7 +55,7 @@ Replace `openclaw.example.com` with your Gateway hostname. Store
 `OPENCLAW_GATEWAY_TOKEN` in EasyRunner's secret/environment manager instead of
 committing it to the app definition.
 
-## Configure OpenClaw
+## Configure ClawWorks
 
 Inside the persistent config volume, keep the Gateway reachable only through
 the proxy and require auth:
@@ -90,7 +90,7 @@ startup SecretRef, plugin, or channel auth failures.
 
 ## Updates and backups
 
-- Pull or build the new OpenClaw image, then redeploy the EasyRunner app.
+- Pull or build the new ClawWorks image, then redeploy the EasyRunner app.
 - Back up the `openclaw-config` volume before updates.
 - Back up `openclaw-workspace` if agents write durable project data there.
 - Run `openclaw doctor` after major updates to catch config migrations and

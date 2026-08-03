@@ -8,7 +8,7 @@ read_when:
   - You hit `compaction_loop_persisted` aborts after a context-overflow retry
 ---
 
-OpenClaw has two cooperating guardrails for repetitive tool-call patterns:
+ClawWorks has two cooperating guardrails for repetitive tool-call patterns:
 
 1. **Loop detection** (`tools.loopDetection.enabled`) — disabled by default. Watches the rolling tool-call history for repeated patterns and unknown-tool retries.
 2. **Post-compaction guard** (`tools.loopDetection.postCompactionGuard`) — enabled by default unless `tools.loopDetection.enabled` is explicitly `false`. Arms after every compaction-retry and aborts the run when the agent emits the same `(tool, args, result)` triple within the window.
@@ -129,7 +129,7 @@ The guard is gated by the master `tools.loopDetection.enabled` flag with one twi
 
 ## Logs and expected behavior
 
-When a loop is detected, OpenClaw reports a loop event and either dampens or blocks the next tool-cycle depending on severity. This protects users from runaway token spend and lockups while preserving normal tool access.
+When a loop is detected, ClawWorks reports a loop event and either dampens or blocks the next tool-cycle depending on severity. This protects users from runaway token spend and lockups while preserving normal tool access.
 
 - Warnings come first.
 - Suppression follows when patterns persist past the warning threshold.

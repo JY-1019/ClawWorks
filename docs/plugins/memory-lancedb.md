@@ -24,7 +24,7 @@ Install `memory-lancedb` before setting `plugins.slots.memory = "memory-lancedb"
 openclaw plugins install @openclaw/memory-lancedb
 ```
 
-The plugin is published to npm and is not bundled into the OpenClaw runtime image.
+The plugin is published to npm and is not bundled into the ClawWorks runtime image.
 The installer writes the plugin entry and switches the memory slot when no other
 plugin owns it.
 
@@ -162,7 +162,7 @@ the Ollama provider documented in [Ollama](/providers/ollama).
 }
 ```
 
-Set `dimensions` for non-standard embedding models. OpenClaw knows the
+Set `dimensions` for non-standard embedding models. ClawWorks knows the
 dimensions for `text-embedding-3-small` and `text-embedding-3-large`; custom
 models need the value in config so LanceDB can create the vector column.
 
@@ -311,12 +311,12 @@ supports `${ENV_VAR}` expansion:
 ## Runtime dependencies
 
 `memory-lancedb` depends on the native `@lancedb/lancedb` package. Packaged
-OpenClaw treats that package as part of the plugin package. Gateway startup
+ClawWorks treats that package as part of the plugin package. Gateway startup
 does not repair plugin dependencies; if the dependency is missing, reinstall or
 update the plugin package and restart the Gateway.
 
 If an older install logs a missing `dist/package.json` or missing
-`@lancedb/lancedb` error during plugin load, upgrade OpenClaw and restart the
+`@lancedb/lancedb` error during plugin load, upgrade ClawWorks and restart the
 Gateway.
 
 If the plugin logs that LanceDB is unavailable on `darwin-x64`, use the default

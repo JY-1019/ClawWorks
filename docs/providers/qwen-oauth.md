@@ -1,5 +1,5 @@
 ---
-summary: "Use the Qwen Portal provider id with OpenClaw"
+summary: "Use the Qwen Portal provider id with ClawWorks"
 read_when:
   - You want to configure the qwen-oauth provider id
   - You previously used Qwen Portal OAuth credentials
@@ -44,7 +44,7 @@ export QWEN_API_KEY="<your-qwen-portal-token>" # pragma: allowlist secret
 
 ## How this differs from Qwen
 
-OpenClaw has two Qwen-facing provider ids:
+ClawWorks has two Qwen-facing provider ids:
 
 | Provider     | Endpoint family                                          | Best for                                                                               |
 | ------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -60,7 +60,7 @@ provider instead.
 
 - You already have a working Qwen Portal token.
 - You are preserving a legacy Qwen OAuth or Qwen CLI workflow while moving to
-  OpenClaw's provider model.
+  ClawWorks's provider model.
 - You need to test compatibility with the Qwen Portal endpoint specifically.
 
 Choose [Qwen](/providers/qwen) for new setup, broader endpoint choices, Standard

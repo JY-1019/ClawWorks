@@ -1,7 +1,7 @@
 ---
-summary: "OpenClaw capabilities across channels, routing, media, and UX."
+summary: "ClawWorks capabilities across channels, routing, media, and UX."
 read_when:
-  - You want a full list of what OpenClaw supports
+  - You want a full list of what ClawWorks supports
 title: "Features"
 ---
 
@@ -86,6 +86,6 @@ title: "Features"
     Connect Telegram, WhatsApp, Discord, Slack, and more from one Gateway.
   </Card>
   <Card title="Plugins" href="/tools/plugin" icon="plug">
-    Bundled and third-party plugins that extend OpenClaw.
+    Bundled and third-party plugins that extend ClawWorks.
   </Card>
 </CardGroup>

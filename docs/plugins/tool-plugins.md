@@ -3,14 +3,14 @@ summary: "Build simple typed agent tools with defineToolPlugin and openclaw plug
 title: "Tool plugins"
 sidebarTitle: "Tool Plugins"
 read_when:
-  - You want to build a simple OpenClaw plugin that only adds agent tools
+  - You want to build a simple ClawWorks plugin that only adds agent tools
   - You want to use defineToolPlugin instead of hand-writing plugin manifest metadata
   - You need to scaffold, generate, validate, test, or publish a tool-only plugin
 ---
 
-Tool plugins add agent-callable tools to OpenClaw without adding a channel,
+Tool plugins add agent-callable tools to ClawWorks without adding a channel,
 model provider, hook, service, or setup backend. Use `defineToolPlugin` when the
-plugin owns a fixed list of tools and you want OpenClaw to generate the manifest
+plugin owns a fixed list of tools and you want ClawWorks to generate the manifest
 metadata that keeps those tools discoverable without loading runtime code.
 
 The recommended flow is:
@@ -31,7 +31,7 @@ or [Provider Plugins](/plugins/sdk-provider-plugins) instead.
 - Node >= 22.
 - TypeScript ESM package output.
 - `typebox` for config and tool parameter schemas.
-- `openclaw >=2026.5.17`, the first OpenClaw version that exports
+- `openclaw >=2026.5.17`, the first ClawWorks version that exports
   `openclaw/plugin-sdk/tool-plugin`.
 - A package root that can ship `dist/`, `openclaw.plugin.json`, and
   `package.json`.
@@ -125,7 +125,7 @@ tool({
 ```
 
 `openclaw plugins build` writes the matching `toolMetadata.<tool>.optional`
-manifest entry, so OpenClaw can discover the tool without loading plugin
+manifest entry, so ClawWorks can discover the tool without loading plugin
 runtime code.
 
 Use `factory` when a tool needs the runtime tool context before it can be
@@ -153,12 +153,12 @@ services, providers, commands, or other runtime surfaces.
 
 ## Return values
 
-`defineToolPlugin` wraps plain return values into the OpenClaw tool-result
+`defineToolPlugin` wraps plain return values into the ClawWorks tool-result
 format:
 
 - Return a string when the model should see that exact text.
 - Return a JSON-compatible value when you want the model to see formatted JSON
-  and OpenClaw to keep the original value in `details`.
+  and ClawWorks to keep the original value in `details`.
 
 ```typescript
 tool({
@@ -189,7 +189,7 @@ capabilities.
 
 ## Configuration
 
-`configSchema` is optional. If you omit it, OpenClaw uses a strict empty object
+`configSchema` is optional. If you omit it, ClawWorks uses a strict empty object
 schema and the generated manifest still includes `configSchema`.
 
 ```typescript
@@ -225,13 +225,13 @@ export default defineToolPlugin({
 });
 ```
 
-OpenClaw reads plugin config from the plugin entry in the Gateway config. Do not
+ClawWorks reads plugin config from the plugin entry in the Gateway config. Do not
 hard-code secrets in source or in docs examples. Use config, environment
 variables, or SecretRefs according to the plugin's security model.
 
 ## Generated metadata
 
-OpenClaw discovers installed plugins from cold metadata. It must be able to read
+ClawWorks discovers installed plugins from cold metadata. It must be able to read
 the plugin manifest before importing plugin runtime code. `defineToolPlugin`
 therefore exposes static metadata, and `openclaw plugins build` writes that
 metadata into the package.
@@ -266,7 +266,7 @@ For a one-tool plugin, the generated manifest looks like this:
 }
 ```
 
-`contracts.tools` is the important discovery contract. It tells OpenClaw which
+`contracts.tools` is the important discovery contract. It tells ClawWorks which
 plugin owns each tool without loading every installed plugin runtime. If the
 manifest is stale, the tool may be missing from discovery or the wrong plugin
 may be blamed for a registration error.
@@ -318,7 +318,7 @@ npm test
 
 ## Install and inspect locally
 
-From a separate OpenClaw checkout or installed CLI, install the package path:
+From a separate ClawWorks checkout or installed CLI, install the package path:
 
 ```bash
 openclaw plugins install ./stock-quotes
@@ -353,7 +353,7 @@ openclaw plugins install clawhub:your-org/stock-quotes
 ```
 
 Bare npm package specs remain supported during the launch cutover, but ClawHub
-is the preferred discovery and distribution surface for OpenClaw plugins.
+is the preferred discovery and distribution surface for ClawWorks plugins.
 
 ## Troubleshooting
 

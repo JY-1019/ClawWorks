@@ -7,7 +7,7 @@ read_when:
 title: "Messages"
 ---
 
-OpenClaw handles inbound messages through a pipeline of session resolution, queueing, streaming, tool execution, and reasoning visibility. This page maps the path from inbound message to reply.
+ClawWorks handles inbound messages through a pipeline of session resolution, queueing, streaming, tool execution, and reasoning visibility. This page maps the path from inbound message to reply.
 
 ## Message flow (high level)
 
@@ -29,7 +29,7 @@ See [Configuration](/gateway/configuration) for full schema.
 
 ## Inbound dedupe
 
-Channels can redeliver the same message after reconnects. OpenClaw keeps a
+Channels can redeliver the same message after reconnects. ClawWorks keeps a
 short-lived cache keyed by channel/account/peer/session/message id so duplicate
 deliveries do not trigger another agent run.
 
@@ -81,7 +81,7 @@ Details: [Session management](/concepts/session).
 Tool result `content` is the model-visible result. Tool result `details` is
 runtime metadata for UI rendering, diagnostics, media delivery, and plugins.
 
-OpenClaw keeps that boundary explicit:
+ClawWorks keeps that boundary explicit:
 
 - `toolResult.details` is stripped before provider replay and compaction input.
 - Persisted session transcripts keep only bounded `details`; oversized metadata
@@ -91,7 +91,7 @@ OpenClaw keeps that boundary explicit:
 
 ## Inbound bodies and history context
 
-OpenClaw separates the **prompt body** from the **command body**:
+ClawWorks separates the **prompt body** from the **command body**:
 
 - `BodyForAgent`: primary model-facing text for the current message. Channel
   plugins should keep this focused on the sender's current prompt-bearing text.
@@ -162,7 +162,7 @@ Details: [Streaming + chunking](/concepts/streaming).
 
 ## Reasoning visibility and tokens
 
-OpenClaw can expose or hide model reasoning:
+ClawWorks can expose or hide model reasoning:
 
 - `/reasoning on|off|stream` controls visibility.
 - Reasoning content still counts toward token usage when produced by the model.
@@ -182,19 +182,19 @@ Details: [Configuration](/gateway/config-agents#messages) and channel docs.
 ## Silent replies
 
 The exact silent token `NO_REPLY` / `no_reply` means "do not deliver a user-visible reply".
-When a turn also has pending tool media, such as generated TTS audio, OpenClaw
+When a turn also has pending tool media, such as generated TTS audio, ClawWorks
 strips the silent text but still delivers the media attachment.
-OpenClaw resolves that behavior by conversation type:
+ClawWorks resolves that behavior by conversation type:
 
 - Direct conversations never receive `NO_REPLY` prompt guidance. If a direct
-  run accidentally returns a bare silent token, OpenClaw suppresses it instead
+  run accidentally returns a bare silent token, ClawWorks suppresses it instead
   of rewriting or delivering it.
 - Groups/channels allow silence by default only for automatic group replies.
   In `message_tool` visible-reply mode, silence means the model does not call
   `message(action=send)`.
 - Internal orchestration allows silence by default.
 
-OpenClaw also uses silent replies for generic internal runner failures in
+ClawWorks also uses silent replies for generic internal runner failures in
 non-direct chats, so groups/channels do not see gateway error boilerplate.
 Classified failures with user-facing recovery copy, such as missing auth,
 rate-limit, or overload notices, can still be delivered. Direct chats show

@@ -8,7 +8,7 @@ read_when:
 title: "Tavily"
 ---
 
-[Tavily](https://tavily.com) is a search API designed for AI applications. OpenClaw exposes it in two ways:
+[Tavily](https://tavily.com) is a search API designed for AI applications. ClawWorks exposes it in two ways:
 
 - as the `web_search` provider for the generic search tool
 - as explicit plugin tools: `tavily_search` and `tavily_extract`

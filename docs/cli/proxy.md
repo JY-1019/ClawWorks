@@ -2,7 +2,7 @@
 summary: "CLI reference for `openclaw proxy`, including operator-managed proxy validation and the local debug proxy capture inspector"
 read_when:
   - You need to validate operator-managed proxy routing before deployment
-  - You need to capture OpenClaw transport traffic locally for debugging
+  - You need to capture ClawWorks transport traffic locally for debugging
   - You want to inspect debug proxy sessions, blobs, or built-in query presets
 title: "Proxy"
 ---
@@ -13,7 +13,7 @@ Validate operator-managed proxy routing, or run the local explicit debug proxy
 and inspect captured traffic.
 
 Use `validate` to preflight an operator-managed forward proxy before enabling
-OpenClaw proxy routing. The other commands are debugging tools for
+ClawWorks proxy routing. The other commands are debugging tools for
 transport-level investigation: they can start a local proxy, run a child command
 with capture enabled, list capture sessions, query common traffic patterns, read
 captured blobs, and purge local capture data.
@@ -35,7 +35,7 @@ openclaw proxy purge
 
 `openclaw proxy validate` checks the effective operator-managed proxy URL from
 `--proxy-url`, config, or `OPENCLAW_PROXY_URL`. Managed proxy URLs can use
-`http://` for a plain forward-proxy listener or `https://` when OpenClaw must
+`http://` for a plain forward-proxy listener or `https://` when ClawWorks must
 open TLS to the proxy endpoint before sending proxy requests. It reports a
 config problem when no proxy is enabled and configured; use `--proxy-url` for a
 one-off preflight before changing config. Add `--proxy-ca-file` to trust a
@@ -78,7 +78,7 @@ semantics.
 
 - `start` defaults to `127.0.0.1` unless `--host` is set.
 - `run` starts a local debug proxy and then runs the command after `--`.
-- The debug proxy's direct upstream forwarding opens upstream sockets for diagnostics. When OpenClaw managed proxy mode is active, direct forwarding for proxy requests and CONNECT tunnels is disabled by default; set `OPENCLAW_DEBUG_PROXY_ALLOW_DIRECT_CONNECT_WITH_MANAGED_PROXY=1` only for approved local diagnostics.
+- The debug proxy's direct upstream forwarding opens upstream sockets for diagnostics. When ClawWorks managed proxy mode is active, direct forwarding for proxy requests and CONNECT tunnels is disabled by default; set `OPENCLAW_DEBUG_PROXY_ALLOW_DIRECT_CONNECT_WITH_MANAGED_PROXY=1` only for approved local diagnostics.
 - `validate` exits with code 1 when proxy config or destination checks fail.
 - Captures are local debugging data; use `openclaw proxy purge` when finished.
 

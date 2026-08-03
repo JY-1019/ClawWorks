@@ -1,13 +1,13 @@
 ---
 summary: "File logs, console output, CLI tailing, and the Control UI Logs tab"
 read_when:
-  - You need a beginner-friendly overview of OpenClaw logging
+  - You need a beginner-friendly overview of ClawWorks logging
   - You want to configure log levels, formats, or redaction
   - You are troubleshooting and need to find logs quickly
 title: "Logging"
 ---
 
-OpenClaw has two main log surfaces:
+ClawWorks has two main log surfaces:
 
 - **File logs** (JSON lines) written by the Gateway.
 - **Console output** shown in terminals and the Gateway Debug UI.
@@ -24,7 +24,7 @@ By default, the Gateway writes a rolling log file under:
 The date uses the gateway host's local timezone.
 
 Each file rotates when it reaches `logging.maxFileBytes` (default: 100 MB).
-OpenClaw keeps up to five numbered archives beside the active file, such as
+ClawWorks keeps up to five numbered archives beside the active file, such as
 `openclaw-YYYY-MM-DD.1.log`, and keeps writing to a fresh active log instead of
 suppressing diagnostics.
 
@@ -115,7 +115,7 @@ available:
 - `session_id`: active session id/key when the log call carries session context.
 - `channel`: active channel when the log call carries channel context.
 
-OpenClaw preserves the original structured log arguments alongside these fields
+ClawWorks preserves the original structured log arguments alongside these fields
 so existing parsers that read numbered tslog argument keys keep working.
 
 Talk, realtime voice, and managed-room activity emits bounded lifecycle log
@@ -206,7 +206,7 @@ Available flags:
   including when native provider tools are hidden because code mode owns the
   tool surface.
 
-These flags log through normal OpenClaw logging, so `openclaw logs --follow`
+These flags log through normal ClawWorks logging, so `openclaw logs --follow`
 and the Control UI Logs tab show them. Without the flags, the same diagnostics
 remain available at `debug` level.
 
@@ -219,7 +219,7 @@ without debug flags.
 ### Trace correlation
 
 File logs are JSONL. When a log call carries a valid diagnostic trace context,
-OpenClaw writes the trace fields as top-level JSON keys (`traceId`, `spanId`,
+ClawWorks writes the trace fields as top-level JSON keys (`traceId`, `spanId`,
 `parentSpanId`, `traceFlags`) so external log processors can correlate the line
 with OTEL spans and provider `traceparent` propagation.
 
@@ -260,7 +260,7 @@ OTEL model-call spans/metrics when diagnostics export is enabled.
 
 ### Redaction
 
-OpenClaw can redact sensitive tokens before they hit console output, file logs,
+ClawWorks can redact sensitive tokens before they hit console output, file logs,
 OTLP log records, persisted session transcript text, or Control UI tool
 event payloads (tool start args, partial/final result payloads, derived
 exec output, and patch summaries):
@@ -278,7 +278,7 @@ names such as card number, CVC/CVV, shared payment token, and payment credential
 when they appear as JSON fields, URL parameters, CLI flags, or assignments.
 
 `logging.redactSensitive: "off"` only disables this general log/transcript
-policy. OpenClaw still redacts safety-boundary payloads that can be shown to UI
+policy. ClawWorks still redacts safety-boundary payloads that can be shown to UI
 clients, support bundles, diagnostics observers, approval prompts, or agent
 tools. Examples include Control UI tool-call events, `sessions_history` output,
 diagnostics support exports, provider error observations, exec approval command

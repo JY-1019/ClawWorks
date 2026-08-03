@@ -1,12 +1,12 @@
 ---
 summary: "Zalo personal account support via native zca-js (QR login), capabilities, and configuration"
 read_when:
-  - Setting up Zalo Personal for OpenClaw
+  - Setting up Zalo Personal for ClawWorks
   - Debugging Zalo Personal login or message flow
 title: "Zalo personal"
 ---
 
-Status: experimental. This integration automates a **personal Zalo account** via native `zca-js` inside OpenClaw.
+Status: experimental. This integration automates a **personal Zalo account** via native `zca-js` inside ClawWorks.
 
 <Warning>
 This is an unofficial integration and may result in account suspension or ban. Use at your own risk.
@@ -14,7 +14,7 @@ This is an unofficial integration and may result in account suspension or ban. U
 
 ## Bundled plugin
 
-Zalo Personal ships as a bundled plugin in current OpenClaw releases, so normal
+Zalo Personal ships as a bundled plugin in current ClawWorks releases, so normal
 packaged builds do not need a separate install.
 
 If you are on an older build or a custom install that excludes Zalo Personal,
@@ -30,7 +30,7 @@ No external `zca`/`openzca` CLI binary is required.
 ## Quick setup (beginner)
 
 1. Ensure the Zalo Personal plugin is available.
-   - Current packaged OpenClaw releases already bundle it.
+   - Current packaged ClawWorks releases already bundle it.
    - Older/custom installs can add it manually with the commands above.
 2. Login (QR, on the Gateway machine):
    - `openclaw channels login --channel zalouser`
@@ -99,7 +99,7 @@ Approve via:
   - `channels.zalouser.groupAllowFrom` (controls which senders in allowed groups can trigger the bot; static sender access groups can be referenced with `accessGroup:<name>`)
 - Block all groups: `channels.zalouser.groupPolicy = "disabled"`.
 - The configure wizard can prompt for group allowlists.
-- On startup, OpenClaw resolves group/user names in allowlists to IDs and logs the mapping only when `channels.zalouser.dangerouslyAllowNameMatching: true` is enabled.
+- On startup, ClawWorks resolves group/user names in allowlists to IDs and logs the mapping only when `channels.zalouser.dangerouslyAllowNameMatching: true` is enabled.
 - Group allowlist matching is ID-only by default. Unresolved names are ignored for auth unless `channels.zalouser.dangerouslyAllowNameMatching: true` is enabled.
 - `channels.zalouser.dangerouslyAllowNameMatching: true` is a break-glass compatibility mode that re-enables mutable startup name resolution and runtime group-name matching.
 - If `groupAllowFrom` is unset, runtime falls back to `allowFrom` for group sender checks.
@@ -129,7 +129,7 @@ Example:
 - This applies both to allowlisted groups and open group mode.
 - Quoting a bot message counts as an implicit mention for group activation.
 - Authorized control commands (for example `/new`) can bypass mention gating.
-- When a group message is skipped because mention is required, OpenClaw stores it as pending group history and includes it on the next processed group message.
+- When a group message is skipped because mention is required, ClawWorks stores it as pending group history and includes it on the next processed group message.
 - Group history limit defaults to `messages.groupChat.historyLimit` (fallback `50`). You can override per account with `channels.zalouser.historyLimit`.
 
 Example:
@@ -150,7 +150,7 @@ Example:
 
 ## Multi-account
 
-Accounts map to `zalouser` profiles in OpenClaw state. Example:
+Accounts map to `zalouser` profiles in ClawWorks state. Example:
 
 ```json5
 {
@@ -173,7 +173,7 @@ The Zalo Personal plugin can also read profile selection from environment variab
 - `ZALOUSER_PROFILE`: profile name to use when no `profile` is set in channel or account config.
 - `ZCA_PROFILE`: legacy fallback profile name, used only when `ZALOUSER_PROFILE` is not set.
 
-Profile names select the saved Zalo login credentials in OpenClaw state. Resolution order is:
+Profile names select the saved Zalo login credentials in ClawWorks state. Resolution order is:
 
 1. Explicit `profile` in config.
 2. `ZALOUSER_PROFILE`.
@@ -186,11 +186,11 @@ session.
 
 ## Typing, reactions, and delivery acknowledgements
 
-- OpenClaw sends a typing event before dispatching a reply (best-effort).
+- ClawWorks sends a typing event before dispatching a reply (best-effort).
 - Message reaction action `react` is supported for `zalouser` in channel actions.
   - Use `remove: true` to remove a specific reaction emoji from a message.
   - Reaction semantics: [Reactions](/tools/reactions)
-- For inbound messages that include event metadata, OpenClaw sends delivered + seen acknowledgements (best-effort).
+- For inbound messages that include event metadata, ClawWorks sends delivered + seen acknowledgements (best-effort).
 
 ## Troubleshooting
 
@@ -206,7 +206,7 @@ session.
 **Upgraded from old CLI-based setup:**
 
 - Remove any old external `zca` process assumptions.
-- The channel now runs fully in OpenClaw without external CLI binaries.
+- The channel now runs fully in ClawWorks without external CLI binaries.
 
 ## Related
 

@@ -63,7 +63,7 @@ openclaw doctor
 
 ## System control (systemd user unit)
 
-OpenClaw installs a systemd **user** service by default. Use a **system**
+ClawWorks installs a systemd **user** service by default. Use a **system**
 service for shared or always-on servers. `openclaw gateway install` and
 `openclaw onboard --install-daemon` already render the current canonical unit
 for you; write one by hand only when you need a custom system/service-manager
@@ -103,10 +103,10 @@ systemctl --user enable --now openclaw-gateway[-<profile>].service
 
 On Linux, the kernel chooses an OOM victim when a host, VM, or container cgroup
 runs out of memory. The Gateway can be a poor victim because it owns long-lived
-sessions and channel connections. OpenClaw therefore biases transient child
+sessions and channel connections. ClawWorks therefore biases transient child
 processes to be killed before the Gateway when possible.
 
-For eligible Linux child spawns, OpenClaw starts the child through a short
+For eligible Linux child spawns, ClawWorks starts the child through a short
 `/bin/sh` wrapper that raises the child's own `oom_score_adj` to `1000`, then
 `exec`s the real command. This is an unprivileged operation because the child is
 only increasing its own OOM kill likelihood.
@@ -116,7 +116,7 @@ Covered child process surfaces include:
 - supervisor-managed command children,
 - PTY shell children,
 - MCP stdio server children,
-- OpenClaw-launched browser/Chrome processes.
+- ClawWorks-launched browser/Chrome processes.
 
 The wrapper is Linux-only and is skipped when `/bin/sh` is unavailable. It is
 also skipped if the child env sets `OPENCLAW_CHILD_OOM_SCORE_ADJ=0`, `false`,

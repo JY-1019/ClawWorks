@@ -9,7 +9,7 @@ Manage sandbox runtimes for isolated agent execution.
 
 ## Overview
 
-OpenClaw can run agents in isolated sandbox runtimes for security. The `sandbox` commands help you inspect and recreate those runtimes after updates or configuration changes.
+ClawWorks can run agents in isolated sandbox runtimes for security. The `sandbox` commands help you inspect and recreate those runtimes after updates or configuration changes.
 
 Today that usually means:
 
@@ -166,7 +166,7 @@ Prefer `openclaw sandbox recreate` over manual backend-specific cleanup. It uses
 
 ## Registry migration
 
-OpenClaw stores sandbox runtime metadata in the shared SQLite state database. Older installs may still have legacy sandbox registry files:
+ClawWorks stores sandbox runtime metadata in the shared SQLite state database. Older installs may still have legacy sandbox registry files:
 
 - `~/.openclaw/sandbox/containers.json`
 - `~/.openclaw/sandbox/browsers.json`

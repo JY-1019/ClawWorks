@@ -7,7 +7,7 @@ title: "Webhooks plugin"
 ---
 
 The Webhooks plugin adds authenticated HTTP routes that bind external
-automation to OpenClaw TaskFlows.
+automation to ClawWorks TaskFlows.
 
 Use it when you want a trusted system such as Zapier, n8n, a CI job, or an
 internal service to create and drive managed TaskFlows without writing a custom

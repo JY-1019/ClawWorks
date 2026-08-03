@@ -1,14 +1,14 @@
 ---
-summary: "Use Venice AI privacy-focused models in OpenClaw"
+summary: "Use Venice AI privacy-focused models in ClawWorks"
 read_when:
-  - You want privacy-focused inference in OpenClaw
+  - You want privacy-focused inference in ClawWorks
   - You want Venice AI setup guidance
 title: "Venice AI"
 ---
 
 Venice AI provides **privacy-focused AI inference** with support for uncensored models and access to major proprietary models through their anonymized proxy. All inference is private by default — no training on your data, no logging.
 
-## Why Venice in OpenClaw
+## Why Venice in ClawWorks
 
 - **Private inference** for open-source models (no logging).
 - **Uncensored models** when you need them.
@@ -52,7 +52,7 @@ Anonymized models are **not** fully private. Venice strips metadata before forwa
     2. Go to **Settings > API Keys > Create new key**
     3. Copy your API key (format: `vapi_xxxxxxxxxxxx`)
   </Step>
-  <Step title="Configure OpenClaw">
+  <Step title="Configure ClawWorks">
     Choose your preferred setup method:
 
     <Tabs>
@@ -91,7 +91,7 @@ Anonymized models are **not** fully private. Venice strips metadata before forwa
 
 ## Model selection
 
-After setup, OpenClaw shows all available Venice models. Pick based on your needs:
+After setup, ClawWorks shows all available Venice models. Pick based on your needs:
 
 - **Default model**: `venice/kimi-k2-5` for strong private reasoning plus vision.
 - **High-capability option**: `venice/claude-opus-4-6` for the strongest anonymized Venice path.
@@ -131,10 +131,10 @@ Use the table below to pick the right model for your use case.
 ## DeepSeek V4 replay behavior
 
 If Venice exposes DeepSeek V4 models such as `venice/deepseek-v4-pro` or
-`venice/deepseek-v4-flash`, OpenClaw fills the required DeepSeek V4
+`venice/deepseek-v4-flash`, ClawWorks fills the required DeepSeek V4
 `reasoning_content` replay placeholder on assistant messages when the proxy
 omits it. Venice rejects DeepSeek's native top-level `thinking` control, so
-OpenClaw keeps that provider-specific replay fix separate from the native
+ClawWorks keeps that provider-specific replay fix separate from the native
 DeepSeek provider's thinking controls.
 
 ## Built-in catalog (41 total)
@@ -191,7 +191,7 @@ DeepSeek provider's thinking controls.
 
 ## Model discovery
 
-OpenClaw ships a manifest-backed Venice seed catalog for read-only model listing. Runtime refresh can still discover models from the Venice API, and falls back to the manifest catalog if the API is unreachable.
+ClawWorks ships a manifest-backed Venice seed catalog for read-only model listing. Runtime refresh can still discover models from the Venice API, and falls back to the manifest catalog if the API is unreachable.
 
 The `/models` endpoint is public (no auth needed for listing), but inference requires a valid API key.
 

@@ -30,7 +30,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git
     ```
 
-    This installs OpenClaw **from a git checkout**, so the agent can read the code + docs and
+    This installs ClawWorks **from a git checkout**, so the agent can read the code + docs and
     reason about the exact version you are running. You can always switch back to stable later
     by re-running the installer without `--install-method git`.
 
@@ -78,7 +78,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="Recommended way to install and set up OpenClaw">
+  <Accordion title="Recommended way to install and set up ClawWorks">
     The repo recommends running from source and using onboarding:
 
     ```bash
@@ -140,7 +140,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     In most setups you do **not** need both:
 
     - If the chat already supports commands and replies, same-chat `/approve` works through the shared path.
-    - If a supported native channel can infer approvers safely, OpenClaw now auto-enables DM-first native approvals when `channels.<channel>.execApprovals.enabled` is unset or `"auto"`.
+    - If a supported native channel can infer approvers safely, ClawWorks now auto-enables DM-first native approvals when `channels.<channel>.execApprovals.enabled` is unset or `"auto"`.
     - When native approval cards/buttons are available, that native UI is the primary path; the agent should only include a manual `/approve` command if the tool result says chat approvals are unavailable or manual approval is the only path.
     - Use `approvals.exec` only when prompts must also be forwarded to other chats or explicit ops rooms.
     - Use `channels.<channel>.execApprovals.target: "channel"` or `"both"` only when you explicitly want approval prompts posted back into the originating room/topic.
@@ -214,7 +214,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     keeps your bot "exactly the same" (memory, session history, auth, and channel
     state) as long as you copy **both** locations:
 
-    1. Install OpenClaw on the new machine.
+    1. Install ClawWorks on the new machine.
     2. Copy `$OPENCLAW_STATE_DIR` (default: `~/.openclaw`) from the old machine.
     3. Copy your workspace (default: `~/.openclaw/workspace`).
     4. Run `openclaw doctor` and restart the Gateway service.
@@ -421,7 +421,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     openclaw gateway restart
     ```
 
-    If you still reproduce this on latest OpenClaw, track/report it in:
+    If you still reproduce this on latest ClawWorks, track/report it in:
 
     - [Issue #30640](https://github.com/openclaw/openclaw/issues/30640)
 
@@ -439,7 +439,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="How do I install OpenClaw on Linux?">
+  <Accordion title="How do I install ClawWorks on Linux?">
     Short answer: follow the Linux guide, then run onboarding.
 
     - Linux quick path + service install: [Linux](/platforms/linux).
@@ -448,7 +448,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="How do I install OpenClaw on a VPS?">
+  <Accordion title="How do I install ClawWorks on a VPS?">
     Any Linux VPS works. Install on the server, then use SSH/Tailscale to reach the Gateway.
 
     Guides: [exe.dev](/install/exe-dev), [Hetzner](/install/hetzner), [Fly.io](/install/fly).
@@ -477,7 +477,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="Can I ask OpenClaw to update itself?">
+  <Accordion title="Can I ask ClawWorks to update itself?">
     Short answer: **possible, not recommended**. The update flow can restart the
     Gateway (which drops the active session), may need a clean git checkout, and
     can prompt for confirmation. Safer: run updates from a shell as the operator.
@@ -519,23 +519,23 @@ and troubleshooting see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Do I need a Claude or OpenAI subscription to run this?">
-    No. You can run OpenClaw with **API keys** (Anthropic/OpenAI/others) or with
+    No. You can run ClawWorks with **API keys** (Anthropic/OpenAI/others) or with
     **local-only models** so your data stays on your device. Subscriptions (Claude
     Pro/Max or OpenAI Codex) are optional ways to authenticate those providers.
 
-    For Anthropic in OpenClaw, the practical split is:
+    For Anthropic in ClawWorks, the practical split is:
 
     - **Anthropic API key**: normal Anthropic API billing
-    - **Claude CLI / Claude subscription auth in OpenClaw**: Anthropic staff
-      told us this usage is allowed again, and OpenClaw is treating `claude -p`
+    - **Claude CLI / Claude subscription auth in ClawWorks**: Anthropic staff
+      told us this usage is allowed again, and ClawWorks is treating `claude -p`
       usage as sanctioned for this integration unless Anthropic publishes a new
       policy
 
     For long-lived gateway hosts, Anthropic API keys are still the more
     predictable setup. OpenAI Codex OAuth is explicitly supported for external
-    tools like OpenClaw.
+    tools like ClawWorks.
 
-    OpenClaw also supports other hosted subscription-style options including
+    ClawWorks also supports other hosted subscription-style options including
     **Qwen Cloud Coding Plan**, **MiniMax Coding Plan**, and
     **Z.AI / GLM Coding Plan**.
 
@@ -549,8 +549,8 @@ and troubleshooting see the main [FAQ](/help/faq).
   <Accordion title="Can I use Claude Max subscription without an API key?">
     Yes.
 
-    Anthropic staff told us OpenClaw-style Claude CLI usage is allowed again, so
-    OpenClaw treats Claude subscription auth and `claude -p` usage as sanctioned
+    Anthropic staff told us ClawWorks-style Claude CLI usage is allowed again, so
+    ClawWorks treats Claude subscription auth and `claude -p` usage as sanctioned
     for this integration unless Anthropic publishes a new policy. If you want
     the most predictable server-side setup, use an Anthropic API key instead.
 
@@ -559,14 +559,14 @@ and troubleshooting see the main [FAQ](/help/faq).
   <Accordion title="Do you support Claude subscription auth (Claude Pro or Max)?">
     Yes.
 
-    Anthropic staff told us this usage is allowed again, so OpenClaw treats
+    Anthropic staff told us this usage is allowed again, so ClawWorks treats
     Claude CLI reuse and `claude -p` usage as sanctioned for this integration
     unless Anthropic publishes a new policy.
 
-    Anthropic setup-token is still available as a supported OpenClaw token path, but OpenClaw now prefers Claude CLI reuse and `claude -p` when available.
+    Anthropic setup-token is still available as a supported ClawWorks token path, but ClawWorks now prefers Claude CLI reuse and `claude -p` when available.
     For production or multi-user workloads, Anthropic API key auth is still the
     safer, more predictable choice. If you want other subscription-style hosted
-    options in OpenClaw, see [OpenAI](/providers/openai), [Qwen / Model
+    options in ClawWorks, see [OpenAI](/providers/openai), [Qwen / Model
     Cloud](/providers/qwen), [MiniMax](/providers/minimax), and [GLM
     Models](/providers/zai).
 
@@ -587,21 +587,21 @@ and troubleshooting see the main [FAQ](/help/faq).
     `Extra usage is required for long context requests`, the request is trying to use
     Anthropic's 1M context window (a GA-capable 1M Claude 4.x model or legacy
     `context1m: true` config). That only works when your credential is eligible
-    for long-context billing (API key billing or the OpenClaw Claude-login path
+    for long-context billing (API key billing or the ClawWorks Claude-login path
     with Extra Usage enabled).
 
-    Tip: set a **fallback model** so OpenClaw can keep replying while a provider is rate-limited.
+    Tip: set a **fallback model** so ClawWorks can keep replying while a provider is rate-limited.
     See [Models](/cli/models), [OAuth](/concepts/oauth), and
     [/gateway/troubleshooting#anthropic-429-extra-usage-required-for-long-context](/gateway/troubleshooting#anthropic-429-extra-usage-required-for-long-context).
 
   </Accordion>
 
   <Accordion title="Is AWS Bedrock supported?">
-    Yes. OpenClaw has a bundled **Amazon Bedrock (Converse)** provider. With AWS env markers present, OpenClaw can auto-discover the streaming/text Bedrock catalog and merge it as an implicit `amazon-bedrock` provider; otherwise you can explicitly enable `plugins.entries.amazon-bedrock.config.discovery.enabled` or add a manual provider entry. See [Amazon Bedrock](/providers/bedrock) and [Model providers](/providers/models). If you prefer a managed key flow, an OpenAI-compatible proxy in front of Bedrock is still a valid option.
+    Yes. ClawWorks has a bundled **Amazon Bedrock (Converse)** provider. With AWS env markers present, ClawWorks can auto-discover the streaming/text Bedrock catalog and merge it as an implicit `amazon-bedrock` provider; otherwise you can explicitly enable `plugins.entries.amazon-bedrock.config.discovery.enabled` or add a manual provider entry. See [Amazon Bedrock](/providers/bedrock) and [Model providers](/providers/models). If you prefer a managed key flow, an OpenAI-compatible proxy in front of Bedrock is still a valid option.
   </Accordion>
 
   <Accordion title="How does Codex auth work?">
-    OpenClaw supports **OpenAI Code (Codex)** via OAuth (ChatGPT sign-in). Use
+    ClawWorks supports **OpenAI Code (Codex)** via OAuth (ChatGPT sign-in). Use
     `openai/gpt-5.5` for the common setup: ChatGPT/Codex subscription auth plus
     native Codex app-server execution. Legacy Codex GPT refs are
     legacy config repaired by `openclaw doctor --fix`. Direct OpenAI API-key
@@ -610,7 +610,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     See [Model providers](/concepts/model-providers) and [Onboarding (CLI)](/start/wizard).
   </Accordion>
 
-  <Accordion title="Why does OpenClaw still mention legacy OpenAI Codex prefix?">
+  <Accordion title="Why does ClawWorks still mention legacy OpenAI Codex prefix?">
     `openai` is the provider and auth-profile id for both OpenAI API keys and
     ChatGPT/Codex OAuth. You may still see legacy OpenAI Codex prefix in legacy config and
     migration warnings.
@@ -634,7 +634,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     those limits can differ from the ChatGPT website/app experience, even when
     both are tied to the same account.
 
-    OpenClaw can show the currently visible provider usage/quota windows in
+    ClawWorks can show the currently visible provider usage/quota windows in
     `openclaw models status`, but it does not invent or normalize ChatGPT-web
     entitlements into direct API access. If you want the direct OpenAI Platform
     billing/limit path, use `openai/*` with an API key.
@@ -642,9 +642,9 @@ and troubleshooting see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Do you support OpenAI subscription auth (Codex OAuth)?">
-    Yes. OpenClaw fully supports **OpenAI Code (Codex) subscription OAuth**.
+    Yes. ClawWorks fully supports **OpenAI Code (Codex) subscription OAuth**.
     OpenAI explicitly allows subscription OAuth usage in external tools/workflows
-    like OpenClaw. Onboarding can run the OAuth flow for you.
+    like ClawWorks. Onboarding can run the OAuth flow for you.
 
     See [OAuth](/concepts/oauth), [Model providers](/concepts/model-providers), and [Onboarding (CLI)](/start/wizard).
 
@@ -668,7 +668,7 @@ and troubleshooting see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Is a local model OK for casual chats?">
-    Usually no. OpenClaw needs large context + strong safety; small cards truncate and leak. If you must, run the **largest** model build you can locally (LM Studio) and see [/gateway/local-models](/gateway/local-models). Smaller/quantized models increase prompt-injection risk - see [Security](/gateway/security).
+    Usually no. ClawWorks needs large context + strong safety; small cards truncate and leak. If you must, run the **largest** model build you can locally (LM Studio) and see [/gateway/local-models](/gateway/local-models). Smaller/quantized models increase prompt-injection risk - see [Security](/gateway/security).
   </Accordion>
 
   <Accordion title="How do I keep hosted model traffic in a specific region?">
@@ -676,7 +676,7 @@ and troubleshooting see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Do I have to buy a Mac Mini to install this?">
-    No. OpenClaw runs on macOS or Linux (Windows via WSL2). A Mac mini is optional - some people
+    No. ClawWorks runs on macOS or Linux (Windows via WSL2). A Mac mini is optional - some people
     buy one as an always-on host, but a small VPS, home server, or Raspberry Pi-class box works too.
 
     You only need a Mac **for macOS-only tools**. For iMessage, use [iMessage](/channels/imessage) with `imsg` on any Mac signed into Messages. If the Gateway runs on Linux or elsewhere, set `channels.imessage.cliPath` to an SSH wrapper that runs `imsg` on that Mac. If you want other macOS-only tools, run the Gateway on a Mac or pair a macOS node.
@@ -699,7 +699,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="If I buy a Mac mini to run OpenClaw, can I connect it to my MacBook Pro?">
+  <Accordion title="If I buy a Mac mini to run ClawWorks, can I connect it to my MacBook Pro?">
     Yes. The **Mac mini can run the Gateway**, and your MacBook Pro can connect as a
     **node** (companion device). Nodes don't run the Gateway - they provide extra
     capabilities like screen/camera/canvas and `system.run` on that device.
@@ -744,7 +744,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="Can multiple people use one WhatsApp number with different OpenClaw instances?">
+  <Accordion title="Can multiple people use one WhatsApp number with different ClawWorks instances?">
     Yes, via **multi-agent routing**. Bind each sender's WhatsApp **DM** (peer `kind: "direct"`, sender E.164 like `+15551234567`) to a different `agentId`, so each person gets their own workspace and session store. Replies still come from the **same WhatsApp account**, and DM access control (`channels.whatsapp.dmPolicy` / `channels.whatsapp.allowFrom`) is global per WhatsApp account. See [Multi-Agent Routing](/concepts/multi-agent) and [WhatsApp](/channels/whatsapp).
   </Accordion>
 
@@ -762,7 +762,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     brew install <formula>
     ```
 
-    If you run OpenClaw via systemd, ensure the service PATH includes `/home/linuxbrew/.linuxbrew/bin` (or your brew prefix) so `brew`-installed tools resolve in non-login shells.
+    If you run ClawWorks via systemd, ensure the service PATH includes `/home/linuxbrew/.linuxbrew/bin` (or your brew prefix) so `brew`-installed tools resolve in non-login shells.
     Recent builds also prepend common user bin dirs on Linux systemd services (for example `~/.local/bin`, `~/.npm-global/bin`, `~/.local/share/pnpm`, `~/.bun/bin`) and honor `PNPM_HOME`, `NPM_CONFIG_PREFIX`, `BUN_INSTALL`, `VOLTA_HOME`, `ASDF_DATA_DIR`, `NVM_DIR`, and `FNM_DIR` when set.
 
   </Accordion>
@@ -778,8 +778,8 @@ and troubleshooting see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="Can I switch between npm and git installs later?">
-    Yes. Use `openclaw update --channel ...` when OpenClaw is already installed.
-    This **does not delete your data** - it only changes the OpenClaw code install.
+    Yes. Use `openclaw update --channel ...` when ClawWorks is already installed.
+    This **does not delete your data** - it only changes the ClawWorks code install.
     Your state (`~/.openclaw`) and workspace (`~/.openclaw/workspace`) stay untouched.
 
     From npm to git:
@@ -823,13 +823,13 @@ and troubleshooting see the main [FAQ](/help/faq).
     - **Pros:** always-on, stable network, no laptop sleep issues, easier to keep running.
     - **Cons:** often run headless (use screenshots), remote file access only, you must SSH for updates.
 
-    **OpenClaw-specific note:** WhatsApp/Telegram/Slack/Mattermost/Discord all work fine from a VPS. The only real trade-off is **headless browser** vs a visible window. See [Browser](/tools/browser).
+    **ClawWorks-specific note:** WhatsApp/Telegram/Slack/Mattermost/Discord all work fine from a VPS. The only real trade-off is **headless browser** vs a visible window. See [Browser](/tools/browser).
 
     **Recommended default:** VPS if you had gateway disconnects before. Local is great when you're actively using the Mac and want local file access or UI automation with a visible browser.
 
   </Accordion>
 
-  <Accordion title="How important is it to run OpenClaw on a dedicated machine?">
+  <Accordion title="How important is it to run ClawWorks on a dedicated machine?">
     Not required, but **recommended for reliability and isolation**.
 
     - **Dedicated host (VPS/Mac mini/Raspberry Pi):** always-on, fewer sleep/reboot interruptions, cleaner permissions, easier to keep running.
@@ -841,7 +841,7 @@ and troubleshooting see the main [FAQ](/help/faq).
   </Accordion>
 
   <Accordion title="What are the minimum VPS requirements and recommended OS?">
-    OpenClaw is lightweight. For a basic Gateway + one chat channel:
+    ClawWorks is lightweight. For a basic Gateway + one chat channel:
 
     - **Absolute minimum:** 1 vCPU, 1GB RAM, ~500MB disk.
     - **Recommended:** 1-2 vCPU, 2GB RAM or more for headroom (logs, media, multiple channels). Node tools and browser automation can be resource hungry.
@@ -852,7 +852,7 @@ and troubleshooting see the main [FAQ](/help/faq).
 
   </Accordion>
 
-  <Accordion title="Can I run OpenClaw in a VM and what are the requirements?">
+  <Accordion title="Can I run ClawWorks in a VM and what are the requirements?">
     Yes. Treat a VM the same as a VPS: it needs to be always on, reachable, and have enough
     RAM for the Gateway and any channels you enable.
 

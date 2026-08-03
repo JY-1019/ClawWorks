@@ -8,7 +8,7 @@ title: "Video generation"
 sidebarTitle: "Video generation"
 ---
 
-OpenClaw agents can generate videos from text prompts, reference images, or
+ClawWorks agents can generate videos from text prompts, reference images, or
 existing videos. Sixteen provider backends are supported, each with
 different model options, input modes, and feature sets. The agent picks the
 right provider automatically based on your configuration and available API
@@ -20,7 +20,7 @@ provider is available. If you do not see it in your agent tools, set a
 provider API key or configure `agents.defaults.videoGenerationModel`.
 </Note>
 
-OpenClaw treats video generation as three runtime modes:
+ClawWorks treats video generation as three runtime modes:
 
 - `generate` - text-to-video requests with no reference media.
 - `imageToVideo` - request includes one or more reference images.
@@ -59,14 +59,14 @@ active mode before submission and reports supported modes in `action=list`.
 Video generation is asynchronous. When the agent calls `video_generate` in a
 session:
 
-1. OpenClaw submits the request to the provider and immediately returns a task id.
+1. ClawWorks submits the request to the provider and immediately returns a task id.
 2. The provider processes the job in the background (typically 30 seconds to several minutes depending on the provider and resolution; slow queue-backed providers can run up to the configured timeout).
-3. When the video is ready, OpenClaw wakes the same session with an internal completion event.
+3. When the video is ready, ClawWorks wakes the same session with an internal completion event.
 4. The agent tells the user through the session's normal visible-reply mode:
    final reply delivery when automatic, or `message(action="send")` when the
    session requires the message tool. If the requester session is inactive or
    its active wake fails, and some generated video is still missing from the
-   completion reply, OpenClaw sends an idempotent direct fallback with only the
+   completion reply, ClawWorks sends an idempotent direct fallback with only the
    missing video.
 
 While a job is in flight, duplicate `video_generate` calls in the same
@@ -78,10 +78,10 @@ Outside of session-backed agent runs (for example, direct tool invocations),
 the tool falls back to inline generation and returns the final media path
 in the same turn.
 
-Generated video files are saved under OpenClaw-managed media storage when
+Generated video files are saved under ClawWorks-managed media storage when
 the provider returns bytes. The default generated-video save cap follows
 the video media limit, and `agents.defaults.mediaMaxMb` raises it for
-larger renders. When a provider also returns a hosted output URL, OpenClaw
+larger renders. When a provider also returns a hosted output URL, ClawWorks
 can deliver that URL instead of failing the task if local persistence
 rejects an oversized file.
 
@@ -201,9 +201,9 @@ role or use `first_frame` for single-image image-to-video.
 ### Style controls
 
 <ParamField path="aspectRatio" type="string">
-  Aspect-ratio hint such as `1:1`, `16:9`, `9:16`, `adaptive`, or a provider-specific value. OpenClaw normalizes or ignores unsupported values per provider.
+  Aspect-ratio hint such as `1:1`, `16:9`, `9:16`, `adaptive`, or a provider-specific value. ClawWorks normalizes or ignores unsupported values per provider.
 </ParamField>
-<ParamField path="resolution" type="string">Resolution hint such as `480P`, `720P`, `768P`, `1080P`, `4K`, or a provider-specific value. OpenClaw normalizes or ignores unsupported values per provider.</ParamField>
+<ParamField path="resolution" type="string">Resolution hint such as `480P`, `720P`, `768P`, `1080P`, `4K`, or a provider-specific value. ClawWorks normalizes or ignores unsupported values per provider.</ParamField>
 <ParamField path="durationSeconds" type="number">
   Target duration in seconds (rounded to nearest provider-supported value).
 </ParamField>
@@ -226,7 +226,7 @@ dimensions). Providers that do not declare it surface the value via
 </ParamField>
 <ParamField path="model" type="string">Provider/model override (e.g. `runway/gen4.5`).</ParamField>
 <ParamField path="filename" type="string">Output filename hint.</ParamField>
-<ParamField path="timeoutMs" type="number">Optional provider operation timeout in milliseconds. When omitted, OpenClaw uses `agents.defaults.videoGenerationModel.timeoutMs` if configured, otherwise the plugin-authored provider default when one exists.</ParamField>
+<ParamField path="timeoutMs" type="number">Optional provider operation timeout in milliseconds. When omitted, ClawWorks uses `agents.defaults.videoGenerationModel.timeoutMs` if configured, otherwise the plugin-authored provider default when one exists.</ParamField>
 <ParamField path="providerOptions" type="object">
   Provider-specific options as a JSON object (e.g. `{"seed": 42, "draft": true}`).
   Providers that declare a typed schema validate the keys and types; unknown
@@ -236,7 +236,7 @@ dimensions). Providers that do not declare it surface the value via
 </ParamField>
 
 <Note>
-Not all providers support all parameters. OpenClaw normalizes duration to
+Not all providers support all parameters. ClawWorks normalizes duration to
 the closest provider-supported value, and remaps translated geometry hints
 such as size-to-aspect-ratio when a fallback provider exposes a different
 control surface. Truly unsupported overrides are ignored on a best-effort
@@ -291,7 +291,7 @@ aggregated error includes the skip reason for each.
 
 ## Model selection
 
-OpenClaw resolves the model in this order:
+ClawWorks resolves the model in this order:
 
 1. **`model` tool parameter** - if the agent specifies one in the call.
 2. **`videoGenerationModel.primary`** from config.
@@ -380,7 +380,7 @@ only the explicit `model`, `primary`, and `fallbacks` entries.
     image-to-video through the configured graph.
   </Accordion>
   <Accordion title="fal">
-    Uses a queue-backed flow for long-running jobs. OpenClaw waits up to 20
+    Uses a queue-backed flow for long-running jobs. ClawWorks waits up to 20
     minutes by default before treating an in-progress fal queue job as timed
     out. Most fal video models
     accept a single image reference. Seedance 2.0 reference-to-video
@@ -403,7 +403,7 @@ only the explicit `model`, `primary`, and `fallbacks` entries.
     a warning.
   </Accordion>
   <Accordion title="OpenRouter">
-    Uses OpenRouter's asynchronous `/videos` API. OpenClaw submits the
+    Uses OpenRouter's asynchronous `/videos` API. ClawWorks submits the
     job, polls `polling_url`, and downloads either `unsigned_urls` or the
     documented job content endpoint. The bundled `google/veo-3.1-fast` default
     advertises 4/6/8 second durations, `720P`/`1080P` resolutions, and
@@ -514,7 +514,7 @@ select `runway/gen4_aleph`.
 
 ## Configuration
 
-Set the default video-generation model in your OpenClaw config:
+Set the default video-generation model in your ClawWorks config:
 
 ```json5
 {

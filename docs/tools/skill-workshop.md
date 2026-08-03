@@ -8,7 +8,7 @@ title: "Skill Workshop"
 sidebarTitle: "Skill Workshop"
 ---
 
-Skill Workshop is OpenClaw's governed path for creating and updating workspace
+Skill Workshop is ClawWorks's governed path for creating and updating workspace
 skills.
 
 Agents and operators do not write active `SKILL.md` files directly through this
@@ -199,7 +199,7 @@ agent session or the CLI.
 }
 ```
 
-- `autonomous.enabled`: allows OpenClaw to create pending proposals from durable
+- `autonomous.enabled`: allows ClawWorks to create pending proposals from durable
   conversation signals after successful turns. Default: `false`.
 - `allowSymlinkTargetWrites`: allows apply to write through workspace skill
   symlinks whose real target is listed in `skills.load.allowSymlinkTargets`.

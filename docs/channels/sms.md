@@ -1,12 +1,12 @@
 ---
 summary: "Twilio SMS channel setup, access controls, and webhook configuration"
 read_when:
-  - You want to connect OpenClaw to SMS through Twilio
+  - You want to connect ClawWorks to SMS through Twilio
   - You need SMS webhook or allowlist setup
 title: "SMS"
 ---
 
-OpenClaw can receive and send SMS through a Twilio phone number or Messaging Service. The Gateway registers an inbound webhook route, validates Twilio request signatures by default, and sends replies back through Twilio's Messages API.
+ClawWorks can receive and send SMS through a Twilio phone number or Messaging Service. The Gateway registers an inbound webhook route, validates Twilio request signatures by default, and sends replies back through Twilio's Messages API.
 
 <CardGroup cols={3}>
   <Card title="Pairing" icon="link" href="/channels/pairing">
@@ -27,7 +27,7 @@ You need:
 - The official SMS plugin installed with `openclaw plugins install @openclaw/sms`.
 - A Twilio account with an SMS-capable phone number, or a Twilio Messaging Service.
 - The Twilio Account SID and Auth Token.
-- A public HTTPS URL that reaches your OpenClaw Gateway.
+- A public HTTPS URL that reaches your ClawWorks Gateway.
 - A sender policy choice: `pairing` for private use, `allowlist` for preapproved phone numbers, or `open` only for intentionally public SMS access.
 
 Use one Twilio number for both SMS and Voice Call if the number has both capabilities. Configure the SMS webhook and Voice webhook separately in Twilio; this page only covers the SMS webhook.
@@ -169,7 +169,7 @@ Then enable the channel in config:
 
 ### SecretRef auth token
 
-`authToken` can be a SecretRef. Use this when the Gateway should resolve the Twilio Auth Token from the OpenClaw secrets runtime instead of storing plaintext config:
+`authToken` can be a SecretRef. Use this when the Gateway should resolve the Twilio Auth Token from the ClawWorks secrets runtime instead of storing plaintext config:
 
 ```json5
 {
@@ -277,7 +277,7 @@ The CLI requires an explicit `--target`. `defaultTo` is for automation and agent
 
 Agent replies from inbound SMS conversations automatically go back to the sender through the configured Twilio sender.
 
-SMS output is plain text. OpenClaw strips markdown, flattens fenced code blocks, preserves readable links, and chunks long replies before sending them through Twilio.
+SMS output is plain text. ClawWorks strips markdown, flattens fenced code blocks, preserves readable links, and chunks long replies before sending them through Twilio.
 
 ## Verify Setup
 
@@ -299,7 +299,7 @@ openclaw channels status --channel sms --probe --json
 For outbound-only testing, use:
 
 ```bash
-openclaw message send --channel sms --target sms:+15557654321 --message "OpenClaw SMS test"
+openclaw message send --channel sms --target sms:+15557654321 --message "ClawWorks SMS test"
 ```
 
 ### End-to-end test from macOS iMessage/SMS
@@ -307,7 +307,7 @@ openclaw message send --channel sms --target sms:+15557654321 --message "OpenCla
 On a Mac that can send carrier SMS through Messages, you can use `imsg` to drive the sender side without touching your phone:
 
 ```bash
-imsg send --to "+15551234567" --service sms --text "OpenClaw SMS E2E $(date -u +%Y%m%dT%H%M%SZ)" --json
+imsg send --to "+15551234567" --service sms --text "ClawWorks SMS E2E $(date -u +%Y%m%dT%H%M%SZ)" --json
 openclaw pairing list sms
 openclaw pairing approve sms <CODE>
 imsg send --to "+15551234567" --service sms --text "reply exactly SMS pong" --json
@@ -317,7 +317,7 @@ The first message should create a pairing request. The second message should rec
 
 ## Webhook security
 
-By default, OpenClaw validates `X-Twilio-Signature` using `publicWebhookUrl` and `authToken`. Keep `publicWebhookUrl` byte-for-byte aligned with the URL configured in Twilio, including scheme, host, path, and query string.
+By default, ClawWorks validates `X-Twilio-Signature` using `publicWebhookUrl` and `authToken`. Keep `publicWebhookUrl` byte-for-byte aligned with the URL configured in Twilio, including scheme, host, path, and query string.
 
 For local tunnel testing only, you can set:
 
@@ -362,7 +362,7 @@ Each account should use a distinct `webhookPath`.
 
 ## Troubleshooting
 
-### Twilio returns 403 or OpenClaw rejects the webhook
+### Twilio returns 403 or ClawWorks rejects the webhook
 
 Check that `publicWebhookUrl` exactly matches the URL configured in Twilio, including scheme, host, path, and query string. Twilio signs the public URL string, so proxy rewrites and alternate hostnames can break signature validation.
 

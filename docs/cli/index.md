@@ -1,5 +1,5 @@
 ---
-summary: "OpenClaw CLI index: command list, global flags, and links to per-command pages"
+summary: "ClawWorks CLI index: command list, global flags, and links to per-command pages"
 read_when:
   - Finding the right `openclaw` subcommand
   - Looking up global flags or output styling rules

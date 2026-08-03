@@ -1,7 +1,7 @@
 ---
-summary: "Use StepFun models with OpenClaw"
+summary: "Use StepFun models with ClawWorks"
 read_when:
-  - You want StepFun models in OpenClaw
+  - You want StepFun models in ClawWorks
   - You need StepFun setup guidance
 title: "StepFun"
 ---

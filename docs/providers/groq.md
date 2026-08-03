@@ -2,7 +2,7 @@
 summary: "Groq setup (auth + model selection + Whisper transcription)"
 title: "Groq"
 read_when:
-  - You want to use Groq with OpenClaw
+  - You want to use Groq with ClawWorks
   - You need the API key env var or CLI auth choice
   - You are configuring Whisper audio transcription on Groq
 ---
@@ -72,7 +72,7 @@ export GROQ_API_KEY=gsk_...
 
 ## Built-in catalog
 
-OpenClaw ships a manifest-backed Groq catalog with both reasoning and non-reasoning entries. Run `openclaw models list --provider groq` to see the static rows for your installed version, or check [console.groq.com/docs/models](https://console.groq.com/docs/models) for Groq's authoritative list.
+ClawWorks ships a manifest-backed Groq catalog with both reasoning and non-reasoning entries. Run `openclaw models list --provider groq` to see the static rows for your installed version, or check [console.groq.com/docs/models](https://console.groq.com/docs/models) for Groq's authoritative list.
 
 | Model ref                                        | Name                    | Reasoning | Input        | Context |
 | ------------------------------------------------ | ----------------------- | --------- | ------------ | ------- |
@@ -87,18 +87,18 @@ OpenClaw ships a manifest-backed Groq catalog with both reasoning and non-reason
 | `groq/groq/compound-mini`                        | Compound Mini           | yes       | text         | 131,072 |
 
 <Tip>
-  The catalog evolves with each OpenClaw release. `openclaw models list --provider groq` shows the rows known to your installed version; cross-check with [console.groq.com/docs/models](https://console.groq.com/docs/models) for newly-added or deprecated models.
+  The catalog evolves with each ClawWorks release. `openclaw models list --provider groq` shows the rows known to your installed version; cross-check with [console.groq.com/docs/models](https://console.groq.com/docs/models) for newly-added or deprecated models.
 </Tip>
 
 ## Reasoning models
 
-OpenClaw maps its shared `/think` levels to Groq's model-specific `reasoning_effort` values:
+ClawWorks maps its shared `/think` levels to Groq's model-specific `reasoning_effort` values:
 
 - For `qwen/qwen3-32b`, disabled thinking sends `none` and enabled thinking sends `default`.
-- For Groq GPT OSS reasoning models (`openai/gpt-oss-*`), OpenClaw sends `low`, `medium`, or `high` based on `/think` level. Disabled thinking omits `reasoning_effort` because those models do not support a disabled value.
+- For Groq GPT OSS reasoning models (`openai/gpt-oss-*`), ClawWorks sends `low`, `medium`, or `high` based on `/think` level. Disabled thinking omits `reasoning_effort` because those models do not support a disabled value.
 - DeepSeek R1 Distill, Qwen QwQ, and Compound use Groq's native reasoning surface; `/think` controls visibility but the model always reasons.
 
-See [Thinking modes](/tools/thinking) for the shared `/think` levels and how OpenClaw translates them per provider.
+See [Thinking modes](/tools/thinking) for the shared `/think` levels and how ClawWorks translates them per provider.
 
 ## Audio transcription
 
@@ -137,7 +137,7 @@ To make Groq the default audio backend:
   </Accordion>
 
   <Accordion title="Custom Groq model ids">
-    OpenClaw accepts any Groq model id at runtime. Use the exact id shown by Groq and prefix it with `groq/`. The static catalog covers the common cases; uncatalogued ids fall through to the default OpenAI-compatible template.
+    ClawWorks accepts any Groq model id at runtime. Use the exact id shown by Groq and prefix it with `groq/`. The static catalog covers the common cases; uncatalogued ids fall through to the default OpenAI-compatible template.
 
     ```json5
     {

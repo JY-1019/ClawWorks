@@ -9,7 +9,7 @@ title: "Browser"
 
 # `openclaw browser`
 
-Manage OpenClaw's browser control surface and run browser actions (lifecycle, profiles, tabs, snapshots, screenshots, navigation, input, state emulation, and debugging).
+Manage ClawWorks's browser control surface and run browser actions (lifecycle, profiles, tabs, snapshots, screenshots, navigation, input, state emulation, and debugging).
 
 Related:
 
@@ -68,11 +68,11 @@ Notes:
   readiness is green but you want proof that the current tab can be inspected.
 - For `attachOnly` and remote CDP profiles, `openclaw browser stop` closes the
   active control session and clears temporary emulation overrides even when
-  OpenClaw did not launch the browser process itself.
+  ClawWorks did not launch the browser process itself.
 - For local managed profiles, `openclaw browser stop` stops the spawned browser
   process.
 - `openclaw browser start --headless` applies only to that start request and
-  only when OpenClaw launches a local managed browser. It does not rewrite
+  only when ClawWorks launches a local managed browser. It does not rewrite
   `browser.headless` or profile config, and it is a no-op for an already-running
   browser.
 - On Linux hosts without `DISPLAY` or `WAYLAND_DISPLAY`, local managed profiles
@@ -106,7 +106,7 @@ Related: [Browser tool](/tools/browser#missing-browser-command-or-tool)
 
 Profiles are named browser routing configs. In practice:
 
-- `openclaw`: launches or attaches to a dedicated OpenClaw-managed Chrome instance (isolated user data dir).
+- `openclaw`: launches or attaches to a dedicated ClawWorks-managed Chrome instance (isolated user data dir).
 - `user`: controls your existing signed-in Chrome session via Chrome DevTools MCP.
 - custom CDP profiles: point at a local or remote CDP endpoint.
 
@@ -146,7 +146,7 @@ The request field is still named `targetId` for compatibility, but it accepts
 these tab references. Treat raw target ids as diagnostic handles, not durable
 agent memory.
 When Chromium replaces the underlying raw target during a navigation or form
-submit, OpenClaw keeps the stable `tabId`/label attached to the replacement tab
+submit, ClawWorks keeps the stable `tabId`/label attached to the replacement tab
 when it can prove the match. Raw target ids remain volatile; prefer
 `suggestedTargetId`.
 
@@ -219,7 +219,7 @@ you want back. Use `evaluate --timeout-ms <ms>` when the page-side function may
 need longer than the default evaluate timeout.
 
 Action responses return the current raw `targetId` after action-triggered page
-replacement when OpenClaw can prove the replacement tab. Scripts should still
+replacement when ClawWorks can prove the replacement tab. Scripts should still
 store and pass `suggestedTargetId`/labels for long-lived workflows.
 
 File + dialog helpers:
@@ -233,17 +233,17 @@ openclaw browser dialog --accept
 openclaw browser dialog --dismiss --dialog-id d1
 ```
 
-Managed Chrome profiles save ordinary click-triggered downloads into the OpenClaw
+Managed Chrome profiles save ordinary click-triggered downloads into the ClawWorks
 downloads directory (`/tmp/openclaw/downloads` by default, or the configured temp
 root). Use `waitfordownload` or `download` when the agent needs to wait for a
 specific file and return its path; those explicit waiters own the next download.
-Uploads accept files from the OpenClaw temp uploads root and OpenClaw-managed
+Uploads accept files from the ClawWorks temp uploads root and ClawWorks-managed
 inbound media, including `media://inbound/<id>` and sandbox-relative
 `media/inbound/<id>` references. Nested media refs, traversal, and arbitrary
 local paths remain rejected.
 When an action opens a modal dialog, the action response returns
 `blockedByDialog` with `browserState.dialogs.pending`; pass `--dialog-id` to
-answer it directly. Dialogs handled outside OpenClaw appear under
+answer it directly. Dialogs handled outside ClawWorks appear under
 `browserState.dialogs.recent`.
 
 ## State and storage

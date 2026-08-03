@@ -74,7 +74,7 @@ Common non-interactive add surfaces include:
 - Tlon fields: `--ship`, `--url`, `--code`, `--group-channels`, `--dm-allowlist`, `--auto-discover-channels`
 - `--use-env` for default-account env-backed auth where supported
 
-If a channel plugin needs to be installed during a flag-driven add command, OpenClaw uses the channel's default install source without opening the interactive plugin install prompt.
+If a channel plugin needs to be installed during a flag-driven add command, ClawWorks uses the channel's default install source without opening the interactive plugin install prompt.
 
 When you run `openclaw channels add` without flags, the interactive wizard can prompt:
 
@@ -86,7 +86,7 @@ If you confirm bind now, the wizard asks which agent should own each configured 
 
 You can also manage the same routing rules later with `openclaw agents bindings`, `openclaw agents bind`, and `openclaw agents unbind` (see [agents](/cli/agents)).
 
-When you add a non-default account to a channel that is still using single-account top-level settings, OpenClaw promotes account-scoped top-level values into the channel's account map before writing the new account. Most channels land those values in `channels.<channel>.accounts.default`, but bundled channels can preserve an existing matching promoted account instead. Matrix is the current example: if one named account already exists, or `defaultAccount` points at an existing named account, promotion preserves that account instead of creating a new `accounts.default`.
+When you add a non-default account to a channel that is still using single-account top-level settings, ClawWorks promotes account-scoped top-level values into the channel's account map before writing the new account. Most channels land those values in `channels.<channel>.accounts.default`, but bundled channels can preserve an existing matching promoted account instead. Matrix is the current example: if one named account already exists, or `defaultAccount` points at an existing named account, promotion preserves that account instead of creating a new `accounts.default`.
 
 Routing behavior stays consistent:
 

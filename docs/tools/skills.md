@@ -10,7 +10,7 @@ read_when:
 
 Skills are markdown instruction files that teach the agent how and when to use
 tools. Each skill lives in a directory containing a `SKILL.md` file with YAML
-frontmatter and a markdown body. OpenClaw loads bundled skills plus any local
+frontmatter and a markdown body. ClawWorks loads bundled skills plus any local
 overrides, and filters them at load time based on environment, config, and
 binary presence.
 
@@ -31,7 +31,7 @@ binary presence.
 
 ## Loading order
 
-OpenClaw loads from these sources, **highest precedence first**. When the same
+ClawWorks loads from these sources, **highest precedence first**. When the same
 skill name appears in multiple places, the highest source wins.
 
 | Priority    | Source                 | Path                                    |
@@ -43,7 +43,7 @@ skill name appears in multiple places, the highest source wins.
 | 5           | Bundled skills         | shipped with the install                |
 | 6 — lowest  | Extra directories      | `skills.load.extraDirs` + plugin skills |
 
-Skill roots support grouped layouts. OpenClaw discovers a skill whenever
+Skill roots support grouped layouts. ClawWorks discovers a skill whenever
 `SKILL.md` appears anywhere under a configured root:
 
 ```text
@@ -56,9 +56,9 @@ allowlist key all come from the `name` frontmatter field (or the directory name
 when `name` is missing).
 
 <Note>
-  Codex CLI's native `$CODEX_HOME/skills` directory is **not** an OpenClaw
+  Codex CLI's native `$CODEX_HOME/skills` directory is **not** a ClawWorks
   skill root. Use `openclaw migrate plan codex` to inventory those skills, then
-  `openclaw migrate codex` to copy them into your OpenClaw workspace.
+  `openclaw migrate codex` to copy them into your ClawWorks workspace.
 </Note>
 
 ## Per-agent vs shared skills
@@ -243,7 +243,7 @@ When the user asks to generate an image, use the `image_generate` tool...
 ```
 
 <Note>
-  OpenClaw follows the [AgentSkills](https://agentskills.io) spec. The
+  ClawWorks follows the [AgentSkills](https://agentskills.io) spec. The
   frontmatter parser supports **single-line keys only** — `metadata` must be a
   single-line JSON object. Use `{baseDir}` in the body to reference the skill
   folder path.
@@ -261,7 +261,7 @@ When the user asks to generate an image, use the `image_generate` tool...
 </ParamField>
 
 <ParamField path="disable-model-invocation" type="boolean" default="false">
-  When `true`, OpenClaw keeps the skill's instructions out of the agent's normal
+  When `true`, ClawWorks keeps the skill's instructions out of the agent's normal
   prompt. The skill is still available as a slash command when `user-invocable`
   is also `true`.
 </ParamField>
@@ -283,7 +283,7 @@ When the user asks to generate an image, use the `image_generate` tool...
 
 ## Gating
 
-OpenClaw filters skills at load time using `metadata.openclaw` (single-line
+ClawWorks filters skills at load time using `metadata.openclaw` (single-line
 JSON in the frontmatter). A skill with no `metadata.openclaw` block is always
 eligible unless explicitly disabled.
 
@@ -382,7 +382,7 @@ metadata:
   <Accordion title="Installer selection rules">
     - When multiple installers are listed, the gateway picks one preferred
       option (brew when available, otherwise node).
-    - If all installers are `download`, OpenClaw lists each entry so you can
+    - If all installers are `download`, ClawWorks lists each entry so you can
       see all available artifacts.
     - Specs can include `os: ["darwin"|"linux"|"win32"]` to filter by platform.
     - Node installs honor `skills.install.nodeManager` in `openclaw.json`
@@ -392,7 +392,7 @@ metadata:
       go → download.
   </Accordion>
   <Accordion title="Per-installer details">
-    - **Homebrew:** OpenClaw does not auto-install Homebrew or translate brew
+    - **Homebrew:** ClawWorks does not auto-install Homebrew or translate brew
       formulas into system package commands. In Linux containers without
       `brew`, brew-only installers are hidden; use a custom image or install
       the dependency manually.
@@ -470,11 +470,11 @@ Toggle and configure bundled or managed skills under `skills.entries` in
 
 ## Environment injection
 
-When an agent run starts, OpenClaw:
+When an agent run starts, ClawWorks:
 
 <Steps>
   <Step title="Reads skill metadata">
-    OpenClaw resolves the effective skill list for the agent, applying gating
+    ClawWorks resolves the effective skill list for the agent, applying gating
     rules, allowlists, and config overrides.
   </Step>
   <Step title="Injects env and API keys">
@@ -497,13 +497,13 @@ When an agent run starts, OpenClaw:
   to pass secrets into sandboxed runs.
 </Warning>
 
-For the bundled `claude-cli` backend, OpenClaw also materializes the same
+For the bundled `claude-cli` backend, ClawWorks also materializes the same
 eligible skill snapshot as a temporary Claude Code plugin and passes it via
 `--plugin-dir`. Other CLI backends use the prompt catalog only.
 
 ## Snapshots and refresh
 
-OpenClaw snapshots eligible skills **when a session starts** and reuses that
+ClawWorks snapshots eligible skills **when a session starts** and reuses that
 list for all subsequent turns in the session. Changes to skills or config take
 effect on the next new session.
 
@@ -513,12 +513,12 @@ Skills refresh mid-session in two cases:
 - A new eligible remote node connects.
 
 The refreshed list is picked up on the next agent turn. If the effective agent
-allowlist changes, OpenClaw refreshes the snapshot to keep visible skills
+allowlist changes, ClawWorks refreshes the snapshot to keep visible skills
 aligned.
 
 <AccordionGroup>
   <Accordion title="Skills watcher">
-    By default, OpenClaw watches skill folders and bumps the snapshot when
+    By default, ClawWorks watches skill folders and bumps the snapshot when
     `SKILL.md` files change. Configure under `skills.load`:
 
     ```json5
@@ -543,19 +543,19 @@ aligned.
   </Accordion>
   <Accordion title="Remote macOS nodes (Linux gateway)">
     If the Gateway runs on Linux but a **macOS node** is connected with
-    `system.run` allowed, OpenClaw can treat macOS-only skills as eligible when
+    `system.run` allowed, ClawWorks can treat macOS-only skills as eligible when
     the required binaries are present on that node. The agent should run those
     skills via the `exec` tool with `host=node`.
 
     Offline nodes do **not** make remote-only skills visible. If a node stops
-    answering bin probes, OpenClaw clears its cached bin matches.
+    answering bin probes, ClawWorks clears its cached bin matches.
 
   </Accordion>
 </AccordionGroup>
 
 ## Token impact
 
-When skills are eligible, OpenClaw injects a compact XML block into the system
+When skills are eligible, ClawWorks injects a compact XML block into the system
 prompt. The cost is deterministic:
 
 ```text

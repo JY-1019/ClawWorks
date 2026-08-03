@@ -7,7 +7,7 @@ read_when:
 
 # HEARTBEAT.md template
 
-`HEARTBEAT.md` lives in the agent workspace. Keep the file empty, or with only Markdown comments and headings, when you want OpenClaw to skip heartbeat model calls.
+`HEARTBEAT.md` lives in the agent workspace. Keep the file empty, or with only Markdown comments and headings, when you want ClawWorks to skip heartbeat model calls.
 
 The default runtime template is:
 

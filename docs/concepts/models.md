@@ -16,7 +16,7 @@ sidebarTitle: "Models CLI"
     Quick provider overview and examples.
   </Card>
   <Card title="Agent runtimes" href="/concepts/agent-runtimes">
-    OpenClaw, Codex, and other agent loop runtimes.
+    ClawWorks, Codex, and other agent loop runtimes.
   </Card>
   <Card title="Configuration reference" href="/gateway/config-agents#agent-defaults">
     Model config keys.
@@ -27,7 +27,7 @@ Model refs choose a provider and model. They do not usually choose the low-level
 
 ## How model selection works
 
-OpenClaw selects models in this order:
+ClawWorks selects models in this order:
 
 <Steps>
   <Step title="Primary model">
@@ -43,7 +43,7 @@ OpenClaw selects models in this order:
 
 <AccordionGroup>
   <Accordion title="Related model surfaces">
-    - `agents.defaults.models` is the allowlist/catalog of models OpenClaw can use (plus aliases). Use `provider/*` entries to limit visible providers while keeping provider discovery dynamic.
+    - `agents.defaults.models` is the allowlist/catalog of models ClawWorks can use (plus aliases). Use `provider/*` entries to limit visible providers while keeping provider discovery dynamic.
     - `agents.defaults.imageModel` is used **only when** the primary model can't accept images.
     - `agents.defaults.pdfModel` is used by the `pdf` tool. If omitted, the tool falls back to `agents.defaults.imageModel`, then the resolved session/default model.
     - `agents.defaults.imageGenerationModel` is used by the shared image-generation capability. If omitted, `image_generate` can still infer an auth-backed provider default. It tries the current default provider first, then the remaining registered image-generation providers in provider-id order. If you set a specific provider/model, also configure that provider's auth/API key.
@@ -59,8 +59,8 @@ OpenClaw selects models in this order:
 The same `provider/model` can mean different things depending on where it came from:
 
 - Configured defaults (`agents.defaults.model.primary` and agent-specific primaries) are the normal starting point and use `agents.defaults.model.fallbacks`.
-- Auto fallback selections are temporary recovery state. They are stored with `modelOverrideSource: "auto"` so later turns can keep using the fallback chain without probing a known-bad primary every time; OpenClaw periodically probes the original primary again, clears the auto selection when it recovers, and announces fallback/recovery transitions once per state change.
-- User session selections are exact. `/model`, the model picker, `session_status(model=...)`, and `sessions.patch` store `modelOverrideSource: "user"`; if that selected provider/model is unreachable, OpenClaw fails visibly instead of falling through to another configured model.
+- Auto fallback selections are temporary recovery state. They are stored with `modelOverrideSource: "auto"` so later turns can keep using the fallback chain without probing a known-bad primary every time; ClawWorks periodically probes the original primary again, clears the auto selection when it recovers, and announces fallback/recovery transitions once per state change.
+- User session selections are exact. `/model`, the model picker, `session_status(model=...)`, and `sessions.patch` store `modelOverrideSource: "user"`; if that selected provider/model is unreachable, ClawWorks fails visibly instead of falling through to another configured model.
 - Changing `agents.defaults.model.primary` does not rewrite existing session selections. If status says `This session is pinned to X; config primary Y will apply to new/unpinned sessions.`, clear the current session selection with `/model default` so it inherits the configured primary again.
 - Cron `--model` / payload `model` is a per-job primary. It still uses configured fallbacks unless the job supplies explicit payload `fallbacks` (use `fallbacks: []` for a strict cron run).
 - CLI default-model and allowlist pickers respect `models.mode: "replace"` by listing explicit `models.providers.*.models` instead of loading the full built-in catalog.
@@ -118,7 +118,7 @@ openclaw config set agents.defaults.models '{"openai/gpt-5.4":{}}' --strict-json
 
 ## "Model is not allowed" (and why replies stop)
 
-If `agents.defaults.models` is set, it becomes the **allowlist** for `/model` and for session overrides. When a user selects a model that isn't in that allowlist, OpenClaw returns:
+If `agents.defaults.models` is set, it becomes the **allowlist** for `/model` and for session overrides. When a user selects a model that isn't in that allowlist, ClawWorks returns:
 
 ```
 Model "provider/model" is not allowed. Use /models to list providers, or /models <provider> to list models.
@@ -204,7 +204,7 @@ You can switch models for the current session without restarting:
   <Accordion title="Persistence and live switching">
     - `/model` persists the new session selection immediately.
     - If the agent is idle, the next run uses the new model right away.
-    - If a run is already active, OpenClaw marks a live switch as pending and only restarts into the new model at a clean retry point.
+    - If a run is already active, ClawWorks marks a live switch as pending and only restarts into the new model at a clean retry point.
     - If tool activity or reply output has already started, the pending switch can stay queued until a later retry opportunity or the next user turn.
     - `/model default` clears the session selection and returns the session to the configured default model.
     - A user-selected `/model` ref is strict for that session: if the selected provider/model is unreachable, the reply fails visibly instead of silently answering from `agents.defaults.model.fallbacks`. This is different from configured defaults and cron job primaries, which can still use fallback chains.
@@ -214,10 +214,10 @@ You can switch models for the current session without restarting:
   <Accordion title="Ref parsing">
     - Model refs are parsed by splitting on the **first** `/`. Use `provider/model` when typing `/model <ref>`.
     - If the model ID itself contains `/` (OpenRouter-style), you must include the provider prefix (example: `/model openrouter/moonshotai/kimi-k2`).
-    - If you omit the provider, OpenClaw resolves the input in this order:
+    - If you omit the provider, ClawWorks resolves the input in this order:
       1. alias match
       2. unique configured-provider match for that exact unprefixed model id
-      3. deprecated fallback to the configured default provider — if that provider no longer exposes the configured default model, OpenClaw instead falls back to the first configured provider/model to avoid surfacing a stale removed-provider default.
+      3. deprecated fallback to the configured default provider — if that provider no longer exposes the configured default model, ClawWorks instead falls back to the first configured provider/model to avoid surfacing a stale removed-provider default.
   </Accordion>
 </AccordionGroup>
 
@@ -338,7 +338,7 @@ Input:
 - Optional filters: `--max-age-days`, `--min-params`, `--provider`, `--max-candidates`
 - Request/probe controls: `--timeout`, `--concurrency`
 
-When live probes run in a TTY, you can select fallbacks interactively. In non-interactive mode, pass `--yes` to accept defaults. Metadata-only results are informational; `--set-default` and `--set-image` require live probes so OpenClaw does not configure an unusable keyless OpenRouter model.
+When live probes run in a TTY, you can select fallbacks interactively. In non-interactive mode, pass `--yes` to accept defaults. Metadata-only results are informational; `--set-default` and `--set-image` require live probes so ClawWorks does not configure an unusable keyless OpenRouter model.
 
 ## Models registry (`models.json`)
 
@@ -359,12 +359,12 @@ Custom providers in `models.providers` are written into `models.json` under the 
 </AccordionGroup>
 
 <Note>
-Marker persistence is source-authoritative: OpenClaw writes markers from the active source config snapshot (pre-resolution), not from resolved runtime secret values. This applies whenever OpenClaw regenerates `models.json`, including command-driven paths like `openclaw agent`.
+Marker persistence is source-authoritative: ClawWorks writes markers from the active source config snapshot (pre-resolution), not from resolved runtime secret values. This applies whenever ClawWorks regenerates `models.json`, including command-driven paths like `openclaw agent`.
 </Note>
 
 ## Related
 
-- [Agent runtimes](/concepts/agent-runtimes) — OpenClaw, Codex, and other agent loop runtimes
+- [Agent runtimes](/concepts/agent-runtimes) — ClawWorks, Codex, and other agent loop runtimes
 - [Configuration reference](/gateway/config-agents#agent-defaults) — model config keys
 - [Image generation](/tools/image-generation) — image model configuration
 - [Model failover](/concepts/model-failover) — fallback chains

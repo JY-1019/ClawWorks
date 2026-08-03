@@ -81,7 +81,7 @@ Set `memorySearch.provider` to switch away from OpenAI.
 
 ## How indexing works
 
-OpenClaw indexes `MEMORY.md` and `memory/*.md` into chunks (~400 tokens with
+ClawWorks indexes `MEMORY.md` and `memory/*.md` into chunks (~400 tokens with
 80-token overlap) and stores them in a per-agent SQLite database.
 
 - **Index location:** the owning agent database at
@@ -132,7 +132,7 @@ Set `memorySearch.provider: "local"` when you want local embeddings.
 **Stale results?** Run `openclaw memory index --force` to rebuild. The watcher
 may miss changes in rare edge cases.
 
-**sqlite-vec not loading?** OpenClaw falls back to in-process cosine similarity
+**sqlite-vec not loading?** ClawWorks falls back to in-process cosine similarity
 automatically. `openclaw memory status --deep` reports the local vector store
 separately from the embedding provider, so `Vector store: unavailable` points
 at sqlite-vec loading while `Embeddings: unavailable` points at provider/auth

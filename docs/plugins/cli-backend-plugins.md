@@ -5,10 +5,10 @@ sidebarTitle: "CLI backend plugins"
 read_when:
   - You are building a local AI CLI backend plugin
   - You want to register a backend for model refs such as acme-cli/model
-  - You need to map a third-party CLI into OpenClaw's text fallback runner
+  - You need to map a third-party CLI into ClawWorks's text fallback runner
 ---
 
-CLI backend plugins let OpenClaw call a local AI CLI as a text inference
+CLI backend plugins let ClawWorks call a local AI CLI as a text inference
 backend. The backend appears as a provider prefix in model refs:
 
 ```text
@@ -32,7 +32,7 @@ A CLI backend plugin has three contracts:
 
 | Contract             | File                   | Purpose                                                   |
 | -------------------- | ---------------------- | --------------------------------------------------------- |
-| Package entry        | `package.json`         | Points OpenClaw at the plugin runtime module              |
+| Package entry        | `package.json`         | Points ClawWorks at the plugin runtime module             |
 | Manifest ownership   | `openclaw.plugin.json` | Declares the backend id before runtime loads              |
 | Runtime registration | `index.ts`             | Calls `api.registerCliBackend(...)` with command defaults |
 
@@ -80,7 +80,7 @@ register runtime behavior. Runtime behavior starts when the plugin entry calls
     {
       "id": "acme-cli",
       "name": "Acme CLI",
-      "description": "Run Acme's local AI CLI through OpenClaw",
+      "description": "Run Acme's local AI CLI through ClawWorks",
       "cliBackends": ["acme-cli"],
       "setup": {
         "cliBackends": ["acme-cli"],
@@ -96,7 +96,7 @@ register runtime behavior. Runtime behavior starts when the plugin entry calls
     }
     ```
 
-    `cliBackends` is the runtime ownership list. It lets OpenClaw auto-load the
+    `cliBackends` is the runtime ownership list. It lets ClawWorks auto-load the
     plugin when config or model selection mentions `acme-cli/...`.
 
     `setup.cliBackends` is the descriptor-first setup surface. Add it when
@@ -154,7 +154,7 @@ register runtime behavior. Runtime behavior starts when the plugin entry calls
     export default definePluginEntry({
       id: "acme-cli",
       name: "Acme CLI",
-      description: "Run Acme's local AI CLI through OpenClaw",
+      description: "Run Acme's local AI CLI through ClawWorks",
       register(api) {
         api.registerCliBackend(buildAcmeCliBackend());
       },
@@ -170,7 +170,7 @@ register runtime behavior. Runtime behavior starts when the plugin entry calls
 
 ## Config shape
 
-`CliBackendConfig` describes how OpenClaw should launch and parse the CLI:
+`CliBackendConfig` describes how ClawWorks should launch and parse the CLI:
 
 | Field                                     | Use                                                         |
 | ----------------------------------------- | ----------------------------------------------------------- |
@@ -180,10 +180,10 @@ register runtime behavior. Runtime behavior starts when the plugin entry calls
 | `output` / `resumeOutput`                 | Parser: `json`, `jsonl`, or `text`                          |
 | `input`                                   | Prompt transport: `arg` or `stdin`                          |
 | `modelArg`                                | Flag used before the model id                               |
-| `modelAliases`                            | Map OpenClaw model ids to CLI-native ids                    |
+| `modelAliases`                            | Map ClawWorks model ids to CLI-native ids                   |
 | `sessionArg` / `sessionArgs`              | How to pass a session id                                    |
 | `sessionMode`                             | `always`, `existing`, or `none`                             |
-| `sessionIdFields`                         | JSON fields OpenClaw reads from CLI output                  |
+| `sessionIdFields`                         | JSON fields ClawWorks reads from CLI output                 |
 | `systemPromptArg` / `systemPromptFileArg` | System prompt transport                                     |
 | `systemPromptWhen`                        | `first`, `always`, or `never`                               |
 | `imageArg` / `imageMode`                  | Image path support                                          |
@@ -204,12 +204,12 @@ only for behavior that really belongs to the backend.
 | `prepareExecution(ctx)`            | Create temporary auth or config bridges before launch                       |
 | `transformSystemPrompt(ctx)`       | Apply a final CLI-specific system prompt transform                          |
 | `textTransforms`                   | Bidirectional prompt/output replacements                                    |
-| `defaultAuthProfileId`             | Prefer a specific OpenClaw auth profile                                     |
+| `defaultAuthProfileId`             | Prefer a specific ClawWorks auth profile                                    |
 | `authEpochMode`                    | Decide how auth changes invalidate stored CLI sessions                      |
 | `nativeToolMode`                   | Declare whether the CLI has always-on native tools                          |
 | `sideQuestionToolMode`             | Declare disabled native tools for `/btw` side questions                     |
-| `bundleMcp` / `bundleMcpMode`      | Opt into OpenClaw's loopback MCP tool bridge                                |
-| `ownsNativeCompaction`             | Backend owns its own compaction - OpenClaw defers                           |
+| `bundleMcp` / `bundleMcpMode`      | Opt into ClawWorks's loopback MCP tool bridge                               |
+| `ownsNativeCompaction`             | Backend owns its own compaction - ClawWorks defers                          |
 
 Keep these hooks provider-owned. Do not add CLI-specific branches to core when a
 backend hook can express the behavior.
@@ -219,18 +219,18 @@ ephemeral `/btw` calls. Use it when the CLI needs different one-shot flags, such
 as disabling native tools, session persistence, or resume behavior for BTW. If a
 backend normally has `nativeToolMode: "always-on"` but its side-question argv
 reliably disables those tools, also set `sideQuestionToolMode: "disabled"`;
-otherwise OpenClaw fails closed when BTW requires a no-tools CLI run.
+otherwise ClawWorks fails closed when BTW requires a no-tools CLI run.
 
-### `ownsNativeCompaction`: opting out of OpenClaw compaction
+### `ownsNativeCompaction`: opting out of ClawWorks compaction
 
 If your backend runs an agent that compacts its **own** transcript, set
-`ownsNativeCompaction: true` so OpenClaw's safeguard summarizer never runs against its
+`ownsNativeCompaction: true` so ClawWorks's safeguard summarizer never runs against its
 sessions - the CLI compaction lifecycle returns a no-op and the turn proceeds. `claude-cli`
 declares it because Claude Code compacts internally with no harness endpoint. Native-harness
 sessions such as Codex keep routing to their harness compaction endpoint instead.
 
 **Only declare it when all of the following hold**, or a deferred over-budget session can
-stay over budget / go stale (OpenClaw no longer rescues it):
+stay over budget / go stale (ClawWorks no longer rescues it):
 
 - the backend reliably compacts or bounds its own transcript as it nears its window;
 - it persists a resumable session so the compacted state survives turns
@@ -240,7 +240,7 @@ stay over budget / go stale (OpenClaw no longer rescues it):
 
 ## MCP tool bridge
 
-CLI backends do not receive OpenClaw tools by default. If the CLI can consume an
+CLI backends do not receive ClawWorks tools by default. If the CLI can consume an
 MCP configuration, opt in explicitly:
 
 ```typescript
@@ -266,7 +266,7 @@ Supported bridge modes are:
 
 Only enable the bridge when the CLI can actually consume it. If the CLI has its
 own built-in tool layer that cannot be disabled, set `nativeToolMode:
-"always-on"` so OpenClaw can fail closed when a caller requires no native tools.
+"always-on"` so ClawWorks can fail closed when a caller requires no native tools.
 
 ## User configuration
 

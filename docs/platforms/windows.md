@@ -1,13 +1,13 @@
 ---
 summary: "Windows support: Windows Hub, native CLI and Gateway, WSL2 gateway setup, node mode, and troubleshooting"
 read_when:
-  - Installing OpenClaw on Windows
+  - Installing ClawWorks on Windows
   - Choosing between Windows Hub, native Windows, and WSL2
   - Setting up the Windows companion app or Windows node mode
 title: "Windows"
 ---
 
-OpenClaw ships a native **Windows Hub** companion app plus Windows CLI support.
+ClawWorks ships a native **Windows Hub** companion app plus Windows CLI support.
 Use Windows Hub when you want a desktop app with setup, tray status, chat,
 Command Center diagnostics, and Windows node capabilities. Use the PowerShell
 installer when you want the CLI/Gateway directly. Use WSL2 when you want the
@@ -16,9 +16,9 @@ most Linux-compatible Gateway runtime.
 ## Recommended: Windows Hub
 
 Windows Hub is the native WinUI companion app for Windows 10 20H2+ and Windows 11. It installs without administrator privileges and is published with signed
-x64 and ARM64 installers on OpenClaw releases.
+x64 and ARM64 installers on ClawWorks releases.
 
-Download the latest stable installer from the [OpenClaw releases page](https://github.com/openclaw/openclaw/releases):
+Download the latest stable installer from the [ClawWorks releases page](https://github.com/openclaw/openclaw/releases):
 
 - [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/download/v2026.6.5/OpenClawCompanion-Setup-x64.exe)
 - [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/download/v2026.6.5/OpenClawCompanion-Setup-arm64.exe)
@@ -26,7 +26,7 @@ Download the latest stable installer from the [OpenClaw releases page](https://g
 
 If a download link above returns a 404, visit the [releases page](https://github.com/openclaw/openclaw/releases) and look for the `OpenClawCompanion-Setup-*` assets on the latest release.
 
-After install, launch **OpenClaw Companion** from the Start menu or the system
+After install, launch **ClawWorks Companion** from the Start menu or the system
 tray. The installer also adds shortcuts for Gateway Setup, Chat, Settings,
 Check for Updates, and uninstall.
 
@@ -63,7 +63,7 @@ tray to confirm connection, pairing, node status, and channel health.
 
 ## Windows node mode
 
-Windows Hub can register as a first-class OpenClaw node. The agent can then use
+Windows Hub can register as a first-class ClawWorks node. The agent can then use
 declared Windows-native capabilities through the Gateway.
 
 Common commands include:
@@ -93,7 +93,7 @@ allows. Privacy-sensitive commands such as `screen.record`, `camera.snap`, and
 
 Windows Hub can expose the same Windows-native capability registry as a local
 MCP server on loopback. This is useful when you want local MCP clients to drive
-Windows capabilities without a running OpenClaw Gateway.
+Windows capabilities without a running ClawWorks Gateway.
 
 Enable it in Windows Hub Settings under the developer/advanced section. The app
 shows the loopback endpoint and bearer token after the server is enabled.
@@ -109,7 +109,7 @@ Mode matrix:
 
 ## Native Windows CLI and Gateway
 
-For terminal-first use, install OpenClaw from PowerShell:
+For terminal-first use, install ClawWorks from PowerShell:
 
 ```powershell
 iwr -useb https://openclaw.ai/install.ps1 | iex
@@ -125,9 +125,9 @@ openclaw gateway status --json
 
 Native Windows CLI and Gateway flows are supported and continue to improve.
 Managed startup uses Windows Scheduled Tasks when available. The task keeps the
-readable `gateway.cmd` script in the OpenClaw state dir, but launches it through
+readable `gateway.cmd` script in the ClawWorks state dir, but launches it through
 a generated `gateway.vbs` WScript wrapper so the background Gateway does not open
-a visible console window. If task creation is denied, OpenClaw falls back to a
+a visible console window. If task creation is denied, ClawWorks falls back to a
 per-user Startup-folder login item.
 
 To install the Gateway service:
@@ -174,7 +174,7 @@ Restart WSL from PowerShell:
 wsl --shutdown
 ```
 
-Then install OpenClaw inside WSL with the Linux quickstart:
+Then install ClawWorks inside WSL with the Linux quickstart:
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
@@ -254,7 +254,7 @@ Notes:
 ### The tray icon does not appear
 
 Check Task Manager for `OpenClaw.Tray.WinUI.exe`. If it is running, open the
-hidden tray-icons area and pin it. If it is not running, launch **OpenClaw
+hidden tray-icons area and pin it. If it is not running, launch **ClawWorks
 Companion** from the Start menu.
 
 ### Local setup fails

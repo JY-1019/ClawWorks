@@ -1,5 +1,5 @@
 ---
-summary: "Optional Docker-based setup and onboarding for OpenClaw"
+summary: "Optional Docker-based setup and onboarding for ClawWorks"
 read_when:
   - You want a containerized gateway instead of local installs
   - You are validating the Docker flow
@@ -10,7 +10,7 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
 
 ## Is Docker right for me?
 
-- **Yes**: you want an isolated, throwaway gateway environment or to run OpenClaw on a host without local installs.
+- **Yes**: you want an isolated, throwaway gateway environment or to run ClawWorks on a host without local installs.
 - **No**: you are running on your own machine and just want the fastest dev loop. Use the normal install flow instead.
 - **Sandboxing note**: the default sandbox backend uses Docker when sandboxing is enabled, but sandboxing is off by default and does **not** require the full gateway to run in Docker. SSH and OpenShell sandbox backends are also available. See [Sandboxing](/gateway/sandboxing).
 
@@ -52,7 +52,7 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     ```
 
     Use `ghcr.io/openclaw/openclaw` or `openclaw/openclaw`. Avoid community
-    Docker Hub mirrors because OpenClaw does not control their release timing,
+    Docker Hub mirrors because ClawWorks does not control their release timing,
     rebuilds, or retention policy. Common official tags: `main`, `latest`,
     `<version>` (e.g. `2026.2.26`), and beta versions such as
     `2026.2.26-beta.1`. Beta tags do not move `latest` or `main`.
@@ -76,7 +76,7 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     If `OPENCLAW_SANDBOX=1`, offline setup also checks the configured default
     and active per-agent sandbox images on the daemon behind
     `OPENCLAW_DOCKER_SOCKET`. Docker-backed browser images must also carry the
-    current OpenClaw browser contract label. When a required image is missing or
+    current ClawWorks browser contract label. When a required image is missing or
     incompatible, setup exits without changing sandbox configuration instead of
     reporting success with an unusable sandbox.
 
@@ -181,7 +181,7 @@ The setup script accepts these optional environment variables:
 | `OTEL_SEMCONV_STABILITY_OPT_IN`            | Opt in to latest experimental GenAI semantic attributes               |
 | `OPENCLAW_OTEL_PRELOADED`                  | Skip starting a second OpenTelemetry SDK when one is preloaded        |
 
-The official Docker image does not ship Homebrew. During onboarding, OpenClaw
+The official Docker image does not ship Homebrew. During onboarding, ClawWorks
 hides brew-only skill dependency installers when it is running in a Linux
 container without `brew`; those dependencies must be provided by a custom image
 or installed manually. For dependencies available from Debian packages, use
@@ -267,7 +267,7 @@ Use bind mode values in `gateway.bind` (`lan` / `loopback` / `custom` /
 
 ### Host Local Providers
 
-When OpenClaw runs in Docker, `127.0.0.1` inside the container is the container
+When ClawWorks runs in Docker, `127.0.0.1` inside the container is the container
 itself, not your host machine. Use `host.docker.internal` for AI providers that
 run on the host:
 
@@ -294,8 +294,8 @@ mapping yourself, for example
 
 ### Claude CLI backend in Docker
 
-The official OpenClaw Docker image does not pre-install Claude Code. Install and
-log in to Claude Code inside the container user that runs OpenClaw, then persist
+The official ClawWorks Docker image does not pre-install Claude Code. Install and
+log in to Claude Code inside the container user that runs ClawWorks, then persist
 that container home so image upgrades do not erase the binary or Claude auth
 state.
 
@@ -340,7 +340,7 @@ docker compose -f docker-compose.yml -f docker-compose.extra.yml run --rm \
 ```
 
 The native installer writes the `claude` binary under
-`/home/node/.local/bin/claude`. Tell OpenClaw to use that container path:
+`/home/node/.local/bin/claude`. Tell ClawWorks to use that container path:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.extra.yml run --rm \
@@ -409,7 +409,7 @@ paths survive container replacement. When any variable is unset, the bundled
 also missing. That keeps `docker compose up` from emitting an empty-source
 volume spec on bare environments.
 
-That mounted config directory is where OpenClaw keeps:
+That mounted config directory is where ClawWorks keeps:
 
 - `openclaw.json` for behavior config
 - `agents/<agentId>/agent/auth-profiles.json` for stored provider OAuth/API-key auth
@@ -420,7 +420,7 @@ OAuth-backed auth profile token material. Keep it with your Docker host state,
 but separate from `OPENCLAW_CONFIG_DIR`.
 
 Installed downloadable plugins store their package state under the mounted
-OpenClaw home, so plugin install records and package roots survive container
+ClawWorks home, so plugin install records and package roots survive container
 replacement. Gateway startup does not generate bundled-plugin dependency trees.
 
 For full persistence details on VM deployments, see
@@ -463,7 +463,7 @@ See [ClawDock](/install/clawdock) for the full helper guide.
     The script mounts `docker.sock` only after sandbox prerequisites pass. If
     sandbox setup cannot complete, the script resets `agents.defaults.sandbox.mode`
     to `off`. Codex code-mode turns are still constrained to Codex
-    `workspace-write` while the OpenClaw sandbox is active; do not mount the
+    `workspace-write` while the ClawWorks sandbox is active; do not mount the
     host Docker socket into agent sandbox containers.
 
   </Accordion>
@@ -525,7 +525,7 @@ See [ClawDock](/install/clawdock) for the full helper guide.
     mounted plugin directory owner disagree. Prefer running the container as the
     default uid 1000 and fixing the bind mount ownership. Only chown
     `/path/to/openclaw-config/npm` to `root:root` if you intentionally run
-    OpenClaw as root long term.
+    ClawWorks as root long term.
 
   </Accordion>
 
@@ -567,7 +567,7 @@ See [ClawDock](/install/clawdock) for the full helper guide.
          node /app/node_modules/playwright-core/cli.js install chromium
        ```
     6. **Persist browser downloads**: use `OPENCLAW_HOME_VOLUME` or
-       `OPENCLAW_EXTRA_MOUNTS`. OpenClaw auto-detects the Docker image's
+       `OPENCLAW_EXTRA_MOUNTS`. ClawWorks auto-detects the Docker image's
        Playwright-managed Chromium on Linux.
 
   </Accordion>
@@ -652,7 +652,7 @@ For npm installs without a source checkout, see [Sandboxing § Images and setup]
   </Accordion>
 
   <Accordion title="Custom tools not found in sandbox">
-    OpenClaw runs commands with `sh -lc` (login shell), which sources
+    ClawWorks runs commands with `sh -lc` (login shell), which sources
     `/etc/profile` and may reset PATH. Set `docker.env.PATH` to prepend your
     custom tool paths, or add a script under `/etc/profile.d/` in your Dockerfile.
   </Accordion>
@@ -690,5 +690,5 @@ For npm installs without a source checkout, see [Sandboxing § Images and setup]
 - [Install Overview](/install) — all installation methods
 - [Podman](/install/podman) — Podman alternative to Docker
 - [ClawDock](/install/clawdock) — Docker Compose community setup
-- [Updating](/install/updating) — keeping OpenClaw up to date
+- [Updating](/install/updating) — keeping ClawWorks up to date
 - [Configuration](/gateway/configuration) — gateway configuration after install

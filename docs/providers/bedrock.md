@@ -1,12 +1,12 @@
 ---
-summary: "Use Amazon Bedrock (Converse API) models with OpenClaw"
+summary: "Use Amazon Bedrock (Converse API) models with ClawWorks"
 read_when:
-  - You want to use Amazon Bedrock models with OpenClaw
+  - You want to use Amazon Bedrock models with ClawWorks
   - You need AWS credential/region setup for model calls
 title: "Amazon Bedrock"
 ---
 
-OpenClaw can use **Amazon Bedrock** models via its **Bedrock Converse**
+ClawWorks can use **Amazon Bedrock** models via its **Bedrock Converse**
 streaming provider. Bedrock auth uses the **AWS SDK default credential chain**,
 not an API key.
 
@@ -79,7 +79,7 @@ Choose your preferred auth method and follow the setup steps.
     </Steps>
 
     <Tip>
-    With env-marker auth (`AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, or `AWS_BEARER_TOKEN_BEDROCK`), OpenClaw auto-enables the implicit Bedrock provider for model discovery without extra config.
+    With env-marker auth (`AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, or `AWS_BEARER_TOKEN_BEDROCK`), ClawWorks auto-enables the implicit Bedrock provider for model discovery without extra config.
     </Tip>
 
   </Tab>
@@ -89,7 +89,7 @@ Choose your preferred auth method and follow the setup steps.
 
     <Steps>
       <Step title="Enable discovery explicitly">
-        When using IMDS, OpenClaw cannot detect AWS auth from env markers alone, so you must opt in:
+        When using IMDS, ClawWorks cannot detect AWS auth from env markers alone, so you must opt in:
 
         ```bash
         openclaw config set plugins.entries.amazon-bedrock.config.discovery.enabled true
@@ -133,16 +133,16 @@ Choose your preferred auth method and follow the setup steps.
 
 ## Automatic model discovery
 
-OpenClaw can automatically discover Bedrock models that support **streaming**
+ClawWorks can automatically discover Bedrock models that support **streaming**
 and **text output**. Discovery uses `bedrock:ListFoundationModels` and
 `bedrock:ListInferenceProfiles`, and results are cached (default: 1 hour).
 
 How the implicit provider is enabled:
 
 - If `plugins.entries.amazon-bedrock.config.discovery.enabled` is `true`,
-  OpenClaw will try discovery even when no AWS env marker is present.
+  ClawWorks will try discovery even when no AWS env marker is present.
 - If `plugins.entries.amazon-bedrock.config.discovery.enabled` is unset,
-  OpenClaw only auto-adds the
+  ClawWorks only auto-adds the
   implicit Bedrock provider when it sees one of these AWS auth markers:
   `AWS_BEARER_TOKEN_BEDROCK`, `AWS_ACCESS_KEY_ID` +
   `AWS_SECRET_ACCESS_KEY`, or `AWS_PROFILE`.
@@ -151,7 +151,7 @@ How the implicit provider is enabled:
   needed `enabled: true` to opt in.
 
 <Note>
-For explicit `models.providers["amazon-bedrock"]` entries, OpenClaw can still resolve Bedrock env-marker auth early from AWS env markers such as `AWS_BEARER_TOKEN_BEDROCK` without forcing full runtime auth loading. The actual model-call auth path still uses the AWS SDK default chain.
+For explicit `models.providers["amazon-bedrock"]` entries, ClawWorks can still resolve Bedrock env-marker auth early from AWS env markers such as `AWS_BEARER_TOKEN_BEDROCK` without forcing full runtime auth loading. The actual model-call auth path still uses the AWS SDK default chain.
 </Note>
 
 <AccordionGroup>
@@ -181,7 +181,7 @@ For explicit `models.providers["amazon-bedrock"]` entries, OpenClaw can still re
 
     | Option | Default | Description |
     | ------ | ------- | ----------- |
-    | `enabled` | auto | In auto mode, OpenClaw only enables the implicit Bedrock provider when it sees a supported AWS env marker. Set `true` to force discovery. |
+    | `enabled` | auto | In auto mode, ClawWorks only enables the implicit Bedrock provider when it sees a supported AWS env marker. Set `true` to force discovery. |
     | `region` | `AWS_REGION` / `AWS_DEFAULT_REGION` / `us-east-1` | AWS region used for discovery API calls. |
     | `providerFilter` | (all) | Matches Bedrock provider names (for example `anthropic`, `amazon`). |
     | `refreshInterval` | `3600` | Cache duration in seconds. Set to `0` to disable caching. |
@@ -194,7 +194,7 @@ For explicit `models.providers["amazon-bedrock"]` entries, OpenClaw can still re
 ## Quick setup (AWS path)
 
 This walkthrough creates an IAM role, attaches Bedrock permissions, associates
-the instance profile, and enables OpenClaw discovery on the EC2 host.
+the instance profile, and enables ClawWorks discovery on the EC2 host.
 
 ```bash
 # 1. Create IAM role and instance profile
@@ -238,7 +238,7 @@ openclaw models list
 
 <AccordionGroup>
   <Accordion title="Inference profiles">
-    OpenClaw discovers **regional and global inference profiles** alongside
+    ClawWorks discovers **regional and global inference profiles** alongside
     foundation models. When a profile maps to a known foundation model, the
     profile inherits that model's capabilities (context window, max tokens,
     reasoning, vision) and the correct Bedrock request region is injected
@@ -300,7 +300,7 @@ openclaw models list
   </Accordion>
 
   <Accordion title="Claude Opus 4.7 temperature">
-    Bedrock rejects the `temperature` parameter for Claude Opus 4.7. OpenClaw
+    Bedrock rejects the `temperature` parameter for Claude Opus 4.7. ClawWorks
     omits `temperature` automatically for any Opus 4.7 Bedrock ref, including
     foundation model ids, named inference profiles, application inference
     profiles whose underlying model resolves to Opus 4.7 via
@@ -313,12 +313,12 @@ openclaw models list
   <Accordion title="Claude Fable 5">
     Use `amazon-bedrock/anthropic.claude-fable-5` in `us-east-1`, or the
     regional inference ids such as `us.anthropic.claude-fable-5`.
-    OpenClaw applies Fable's 1M context window, 128K output limit, always-on
+    ClawWorks applies Fable's 1M context window, 128K output limit, always-on
     adaptive thinking, and supported effort mapping. `/think off` and
     `/think minimal` map to `low`; unsupported temperature and forced tool
     choice controls are omitted. Streaming output is held until Bedrock
     returns a terminal status so mid-stream refusals do not expose partial text.
-    Fable supports only the standard service tier; OpenClaw ignores configured
+    Fable supports only the standard service tier; ClawWorks ignores configured
     `flex`, `priority`, and `reserved` tiers for this model.
 
     AWS requires an explicit `provider_data_share` data-retention opt-in before
@@ -405,7 +405,7 @@ openclaw models list
     - If you rely on auto mode, set one of the supported AWS auth env markers on the
       gateway host. If you prefer IMDS/shared-config auth without env markers, set
       `plugins.entries.amazon-bedrock.config.discovery.enabled: true`.
-    - OpenClaw surfaces the credential source in this order: `AWS_BEARER_TOKEN_BEDROCK`,
+    - ClawWorks surfaces the credential source in this order: `AWS_BEARER_TOKEN_BEDROCK`,
       then `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`, then `AWS_PROFILE`, then the
       default AWS SDK chain.
     - Reasoning support depends on the model; check the Bedrock model card for

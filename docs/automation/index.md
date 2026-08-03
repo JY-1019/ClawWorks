@@ -2,13 +2,13 @@
 doc-schema-version: 1
 summary: "Overview of automation mechanisms: tasks, cron, hooks, standing orders, and Task Flow"
 read_when:
-  - Deciding how to automate work with OpenClaw
+  - Deciding how to automate work with ClawWorks
   - Choosing between heartbeat, cron, commitments, hooks, and standing orders
   - Looking for the right automation entry point
 title: "Automation"
 ---
 
-OpenClaw runs work in the background through tasks, scheduled jobs, inferred
+ClawWorks runs work in the background through tasks, scheduled jobs, inferred
 commitments, event hooks, and standing instructions. This page helps you choose
 the right mechanism and understand how they fit together.
 
@@ -78,7 +78,7 @@ See [Background Tasks](/automation/tasks).
 
 ### Inferred commitments
 
-Commitments are opt-in, short-lived follow-up memories. OpenClaw infers them
+Commitments are opt-in, short-lived follow-up memories. ClawWorks infers them
 from normal conversations, scopes them to the same agent and channel, and
 delivers due check-ins through heartbeat. Exact user-requested reminders still
 belong to cron.

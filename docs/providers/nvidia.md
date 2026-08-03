@@ -1,7 +1,7 @@
 ---
-summary: "Use NVIDIA's OpenAI-compatible API in OpenClaw"
+summary: "Use NVIDIA's OpenAI-compatible API in ClawWorks"
 read_when:
-  - You want to use open models in OpenClaw for free
+  - You want to use open models in ClawWorks for free
   - You need NVIDIA_API_KEY setup
   - You want to use Nemotron 3 Ultra through NVIDIA
 title: "NVIDIA"
@@ -9,7 +9,7 @@ title: "NVIDIA"
 
 NVIDIA provides an OpenAI-compatible API at `https://integrate.api.nvidia.com/v1` for
 open models for free. Authenticate with an API key from
-[build.nvidia.com](https://build.nvidia.com/settings/api-keys). OpenClaw
+[build.nvidia.com](https://build.nvidia.com/settings/api-keys). ClawWorks
 defaults the NVIDIA provider to Nemotron 3 Ultra, NVIDIA's 550B total / 55B
 active reasoning model for long-context agentic work.
 
@@ -67,21 +67,21 @@ openclaw onboard --auth-choice nvidia-api-key --nvidia-api-key "nvapi-..."
 
 ## Featured catalog
 
-When an NVIDIA API key is configured, OpenClaw setup and model-selection paths
+When an NVIDIA API key is configured, ClawWorks setup and model-selection paths
 try NVIDIA's public featured-model catalog from
 `https://assets.ngc.nvidia.com/products/api-catalog/featured-models.json` and
 caches the ranked result for 24 hours. New featured models from build.nvidia.com
 therefore appear in setup and model-selection surfaces without waiting for an
-OpenClaw release. When the live feed is available, the first returned model is
+ClawWorks release. When the live feed is available, the first returned model is
 the default option shown during NVIDIA setup.
 
 The fetch uses a fixed HTTPS host policy for `assets.ngc.nvidia.com`. If no
 NVIDIA API key is configured, or if that public catalog is unavailable or
-malformed, OpenClaw falls back to the bundled catalog and bundled default below.
+malformed, ClawWorks falls back to the bundled catalog and bundled default below.
 
 ## Nemotron 3 Ultra
 
-Nemotron 3 Ultra is the default NVIDIA model in OpenClaw. NVIDIA's build page for
+Nemotron 3 Ultra is the default NVIDIA model in ClawWorks. NVIDIA's build page for
 [`nvidia/nemotron-3-ultra-550b-a55b`](https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b)
 lists it as an available free endpoint with a 1M-token context specification.
 The bundled catalog records a 16,384-token max output to match NVIDIA's current
@@ -115,7 +115,7 @@ visible answer instead of exposing reasoning text.
   </Accordion>
 
   <Accordion title="Catalog and pricing">
-    OpenClaw prefers NVIDIA's public featured-model catalog when NVIDIA auth is
+    ClawWorks prefers NVIDIA's public featured-model catalog when NVIDIA auth is
     configured and caches it for 24 hours. The bundled fallback catalog is static
     and keeps deprecated shipped refs for upgrade compatibility. Costs default
     to `0` in source since NVIDIA currently offers free API access for the
@@ -129,7 +129,7 @@ visible answer instead of exposing reasoning text.
 
   <Accordion title="Nemotron 3 Ultra reasoning params">
     NVIDIA's Ultra sample request uses `chat_template_kwargs.enable_thinking`
-    and `reasoning_budget` for reasoning output. OpenClaw's bundled Ultra row
+    and `reasoning_budget` for reasoning output. ClawWorks's bundled Ultra row
     disables template thinking by default for normal chat use. If you need to
     opt into NVIDIA reasoning output or force other NVIDIA-specific request
     fields, set per-model params and keep provider-specific overrides scoped to

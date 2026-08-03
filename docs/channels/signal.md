@@ -10,7 +10,7 @@ Status: external CLI integration. Gateway talks to `signal-cli` over HTTP — ei
 
 ## Prerequisites
 
-- OpenClaw installed on your server (Linux flow below tested on Ubuntu 24).
+- ClawWorks installed on your server (Linux flow below tested on Ubuntu 24).
 - One of:
   - `signal-cli` available on the host (native mode), **or**
   - `bbernhard/signal-cli-rest-api` Docker container (container mode).
@@ -20,7 +20,7 @@ Status: external CLI integration. Gateway talks to `signal-cli` over HTTP — ei
 ## Quick setup (beginner)
 
 1. Use a **separate Signal number** for the bot (recommended).
-2. Install the OpenClaw plugin:
+2. Install the ClawWorks plugin:
 
 ```bash
 openclaw plugins install @openclaw/signal
@@ -30,7 +30,7 @@ openclaw plugins install @openclaw/signal
 4. Choose one setup path:
    - **Path A (QR link):** `signal-cli link -n "OpenClaw"` and scan with Signal.
    - **Path B (SMS register):** register a dedicated number with captcha + SMS verification.
-5. Configure OpenClaw and restart the gateway.
+5. Configure ClawWorks and restart the gateway.
 6. Send a first DM and approve pairing (`openclaw pairing approve signal <CODE>`).
 
 Minimal config:
@@ -145,7 +145,7 @@ signal-cli -a +<BOT_PHONE_NUMBER> register --captcha '<SIGNALCAPTCHA_URL>'
 signal-cli -a +<BOT_PHONE_NUMBER> verify <VERIFICATION_CODE>
 ```
 
-4. Configure OpenClaw, restart gateway, verify channel:
+4. Configure ClawWorks, restart gateway, verify channel:
 
 ```bash
 # If you run the gateway as a user systemd service:
@@ -173,7 +173,7 @@ Upstream references:
 
 ## External daemon mode (httpUrl)
 
-If you want to manage `signal-cli` yourself (slow JVM cold starts, container init, or shared CPUs), run the daemon separately and point OpenClaw at it:
+If you want to manage `signal-cli` yourself (slow JVM cold starts, container init, or shared CPUs), run the daemon separately and point ClawWorks at it:
 
 ```json5
 {
@@ -186,7 +186,7 @@ If you want to manage `signal-cli` yourself (slow JVM cold starts, container ini
 }
 ```
 
-This skips auto-spawn and the startup wait inside OpenClaw. For slow starts when auto-spawning, set `channels.signal.startupTimeoutMs`.
+This skips auto-spawn and the startup wait inside ClawWorks. For slow starts when auto-spawning, set `channels.signal.startupTimeoutMs`.
 
 ## Container mode (bbernhard/signal-cli-rest-api)
 
@@ -195,7 +195,7 @@ Instead of running `signal-cli` natively, you can use the [bbernhard/signal-cli-
 Requirements:
 
 - The container **must** run with `MODE=json-rpc` for real-time message receiving.
-- Register or link your Signal account inside the container before connecting OpenClaw.
+- Register or link your Signal account inside the container before connecting ClawWorks.
 
 Example `docker-compose.yml` service:
 
@@ -210,7 +210,7 @@ signal-cli:
     - signal-cli-data:/home/.local/share/signal-cli
 ```
 
-OpenClaw config:
+ClawWorks config:
 
 ```json5
 {
@@ -226,7 +226,7 @@ OpenClaw config:
 }
 ```
 
-The `apiMode` field controls which protocol OpenClaw uses:
+The `apiMode` field controls which protocol ClawWorks uses:
 
 | Value         | Behavior                                                                             |
 | ------------- | ------------------------------------------------------------------------------------ |
@@ -234,14 +234,14 @@ The `apiMode` field controls which protocol OpenClaw uses:
 | `"native"`    | Force native signal-cli (JSON-RPC at `/api/v1/rpc`, SSE at `/api/v1/events`)         |
 | `"container"` | Force bbernhard container (REST at `/v2/send`, WebSocket at `/v1/receive/{account}`) |
 
-When `apiMode` is `"auto"`, OpenClaw caches the detected mode for 30 seconds to avoid repeated probes. Container receive is only selected for streaming after `/v1/receive/{account}` upgrades to WebSocket, which requires `MODE=json-rpc`.
+When `apiMode` is `"auto"`, ClawWorks caches the detected mode for 30 seconds to avoid repeated probes. Container receive is only selected for streaming after `/v1/receive/{account}` upgrades to WebSocket, which requires `MODE=json-rpc`.
 
-Container mode supports the same Signal channel operations as native mode where the container exposes matching APIs: sends, receives, attachments, typing indicators, read/viewed receipts, reactions, groups, and styled text. OpenClaw translates its native Signal RPC calls into the container's REST payloads, including `group.{base64(internal_id)}` group IDs and `text_mode: "styled"` for formatted text.
+Container mode supports the same Signal channel operations as native mode where the container exposes matching APIs: sends, receives, attachments, typing indicators, read/viewed receipts, reactions, groups, and styled text. ClawWorks translates its native Signal RPC calls into the container's REST payloads, including `group.{base64(internal_id)}` group IDs and `text_mode: "styled"` for formatted text.
 
 Operational notes:
 
-- Use `autoStart: false` with container mode. OpenClaw should not spawn a native daemon when `apiMode: "container"` is selected.
-- Use `MODE=json-rpc` for receiving. `MODE=normal` can make `/v1/about` look healthy, but `/v1/receive/{account}` does not WebSocket-upgrade, so OpenClaw will not select container receive streaming in `auto` mode.
+- Use `autoStart: false` with container mode. ClawWorks should not spawn a native daemon when `apiMode: "container"` is selected.
+- Use `MODE=json-rpc` for receiving. `MODE=normal` can make `/v1/about` look healthy, but `/v1/receive/{account}` does not WebSocket-upgrade, so ClawWorks will not select container receive streaming in `auto` mode.
 - Set `apiMode: "container"` when you know the `httpUrl` points at bbernhard's REST API. Set `apiMode: "native"` when you know it points at native `signal-cli` JSON-RPC/SSE. Use `"auto"` when the deployment may vary.
 - Container attachment downloads honor the same media byte limits as native mode. Oversized responses are rejected before being fully buffered when the server sends `Content-Length`, and while streaming otherwise.
 
@@ -285,8 +285,8 @@ Groups:
 
 ## Typing + read receipts
 
-- **Typing indicators**: OpenClaw sends typing signals via `signal-cli sendTyping` and refreshes them while a reply is running.
-- **Read receipts**: when `channels.signal.sendReadReceipts` is true, OpenClaw forwards read receipts for allowed DMs.
+- **Typing indicators**: ClawWorks sends typing signals via `signal-cli sendTyping` and refreshes them while a reply is running.
+- **Read receipts**: when `channels.signal.sendReadReceipts` is true, ClawWorks forwards read receipts for allowed DMs.
 - Signal-cli does not expose read receipts for groups.
 
 ## Reactions (message tool)

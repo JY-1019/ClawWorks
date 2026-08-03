@@ -10,7 +10,7 @@ title: "Gateway logging"
 
 For a user-facing overview (CLI + Control UI + config), see [/logging](/logging).
 
-OpenClaw has two log "surfaces":
+ClawWorks has two log "surfaces":
 
 - **Console output** (what you see in the terminal / Debug UI).
 - **File logs** (JSON lines) written by the gateway logger.
@@ -73,7 +73,7 @@ You can tune console verbosity independently via:
 
 ## Redaction
 
-OpenClaw can mask sensitive tokens before log or transcript output leaves the
+ClawWorks can mask sensitive tokens before log or transcript output leaves the
 process. This logging redaction policy is applied at console, file-log, OTLP
 log-record, and session transcript text sinks, so matching secret values are
 masked before JSONL lines or messages are written to disk.

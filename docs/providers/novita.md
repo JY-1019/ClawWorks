@@ -1,13 +1,13 @@
 ---
-summary: "Use NovitaAI's OpenAI-compatible API with OpenClaw"
+summary: "Use NovitaAI's OpenAI-compatible API with ClawWorks"
 read_when:
-  - You want to run OpenClaw with NovitaAI models
+  - You want to run ClawWorks with NovitaAI models
   - You need the Novita provider id, key, or endpoint
 title: "NovitaAI"
 ---
 
 NovitaAI is a hosted AI infrastructure provider with an OpenAI-compatible model
-API. In OpenClaw it is a bundled model provider, so the provider id is
+API. In ClawWorks it is a bundled model provider, so the provider id is
 `novita`, credentials go through the normal model auth flow, and model refs look
 like `novita/deepseek/deepseek-v3-0324`.
 
@@ -16,7 +16,7 @@ routes without running your own inference server. The bundled catalog focuses on
 chat models that are practical for agent turns, including DeepSeek, Moonshot,
 MiniMax, GLM, and Qwen routes exposed by Novita.
 
-This provider uses Novita's OpenAI-compatible endpoint. OpenClaw handles
+This provider uses Novita's OpenAI-compatible endpoint. ClawWorks handles
 provider registration, auth, aliases, model ref normalization, and base URL
 selection; Novita controls live model availability, account permissions,
 pricing, and rate limits.
@@ -68,7 +68,7 @@ The bundled catalog seeds commonly available NovitaAI route ids, including:
 - `novita/deepseek/deepseek-r1-0528`
 - `novita/qwen/qwen3-235b-a22b-fp8`
 
-The catalog is a starting point for OpenClaw model selection. Your account,
+The catalog is a starting point for ClawWorks model selection. Your account,
 region, or Novita's current catalog may add, remove, or restrict routes. Check
 the provider from the CLI before setting a long-lived default:
 

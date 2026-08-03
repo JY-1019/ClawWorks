@@ -12,7 +12,7 @@ read_when:
 The `web_search` tool searches the web using your configured provider and
 returns results. Results are cached by query for 15 minutes (configurable).
 
-OpenClaw also includes `x_search` for X (formerly Twitter) posts and
+ClawWorks also includes `x_search` for X (formerly Twitter) posts and
 `web_fetch` for lightweight URL fetching. In this phase, `web_fetch` stays
 local while `web_search` and `x_search` can use xAI Responses under the hood.
 
@@ -42,7 +42,7 @@ local while `web_search` and `x_search` can use xAI Responses under the hood.
     The agent can now call `web_search`:
 
     ```javascript
-    await web_search({ query: "OpenClaw plugin SDK" });
+    await web_search({ query: "ClawWorks plugin SDK" });
     ```
 
     For X posts, use:
@@ -128,16 +128,16 @@ local while `web_search` and `x_search` can use xAI Responses under the hood.
 
 ## Native OpenAI web search
 
-Direct OpenAI Responses models use OpenAI's hosted `web_search` tool automatically when OpenClaw web search is enabled and no managed provider is pinned. This is provider-owned behavior in the bundled OpenAI plugin and only applies to native OpenAI API traffic, not OpenAI-compatible proxy base URLs or Azure routes. Set `tools.web.search.provider` to another provider such as `brave` to keep the managed `web_search` tool for OpenAI models, or set `tools.web.search.enabled: false` to disable both managed search and native OpenAI search.
+Direct OpenAI Responses models use OpenAI's hosted `web_search` tool automatically when ClawWorks web search is enabled and no managed provider is pinned. This is provider-owned behavior in the bundled OpenAI plugin and only applies to native OpenAI API traffic, not OpenAI-compatible proxy base URLs or Azure routes. Set `tools.web.search.provider` to another provider such as `brave` to keep the managed `web_search` tool for OpenAI models, or set `tools.web.search.enabled: false` to disable both managed search and native OpenAI search.
 
 ## Native Codex web search
 
 The Codex app-server runtime uses Codex's hosted `web_search` tool automatically
 when web search is enabled and no managed provider is selected. Native hosted
-search and OpenClaw's managed `web_search` dynamic tool are mutually exclusive,
-so managed search cannot bypass native domain restrictions. OpenClaw uses the
+search and ClawWorks's managed `web_search` dynamic tool are mutually exclusive,
+so managed search cannot bypass native domain restrictions. ClawWorks uses the
 managed tool when hosted search is unavailable, explicitly disabled, or
-replaced by a selected managed provider. OpenClaw keeps Codex's standalone
+replaced by a selected managed provider. ClawWorks keeps Codex's standalone
 `web.run` extension disabled because production app-server traffic rejects its
 user-defined `web` namespace.
 
@@ -150,7 +150,7 @@ user-defined `web` namespace.
   external access for unrestricted app-server turns; set `"live"` to request
   live access explicitly
 - Set `tools.web.search.provider` to a managed provider such as `brave` to use
-  OpenClaw's managed `web_search` instead
+  ClawWorks's managed `web_search` instead
 - Set `tools.web.search.openaiCodex.enabled: false` to opt out of Codex-hosted
   search; other managed providers remain available
 - Restricting the Codex native tool surface also keeps managed `web_search`
@@ -196,8 +196,8 @@ Direct OpenAI ChatGPT Responses traffic can also use OpenAI's hosted
 ```
 
 For runtimes and providers that do not support native Codex search, Codex can
-use the managed `web_search` fallback through OpenClaw's dynamic tool namespace.
-Use an explicit managed provider when you need OpenClaw's provider-specific
+use the managed `web_search` fallback through ClawWorks's dynamic tool namespace.
+Use an explicit managed provider when you need ClawWorks's provider-specific
 network controls instead of Codex-hosted search.
 
 Selecting `provider: "codex"` enables the bundled `codex` plugin and uses the
@@ -208,8 +208,8 @@ runs through Codex.
 
 ## Network safety
 
-Managed HTTP `web_search` provider calls use OpenClaw's guarded fetch path. For
-trusted provider API hosts, OpenClaw allows Surge, Clash, and sing-box fake-IP
+Managed HTTP `web_search` provider calls use ClawWorks's guarded fetch path. For
+trusted provider API hosts, ClawWorks allows Surge, Clash, and sing-box fake-IP
 DNS answers in `198.18.0.0/15` and `fc00::/7` only for that provider hostname.
 Other private, loopback, link-local, and metadata destinations remain blocked.
 Codex Hosted Search is the exception: its bounded worker delegates network
@@ -225,7 +225,7 @@ trusted proxy owns those synthetic ranges.
 Provider lists in docs and setup flows are alphabetical. Auto-detection keeps a
 separate precedence order.
 
-If no `provider` is set, OpenClaw checks providers in this order and uses the
+If no `provider` is set, ClawWorks checks providers in this order and uses the
 first one that is ready:
 
 API-backed providers first:
@@ -248,7 +248,7 @@ Configured endpoint providers after that:
 Key-free providers such as **Parallel Search (Free)**, **DuckDuckGo**,
 **Ollama Web Search**, and **Codex Hosted Search** are available only when you
 select them explicitly with `tools.web.search.provider` or through
-`openclaw configure --section web`. OpenClaw does not send managed
+`openclaw configure --section web`. ClawWorks does not send managed
 `web_search` queries to a key-free provider just because no API-backed provider
 is configured.
 
@@ -263,7 +263,7 @@ to route them through the managed path.
   installed API-backed web search providers, including Brave, Exa, Firecrawl,
   Gemini, Grok, Kimi, MiniMax, Parallel, Perplexity, and Tavily,
   whether the provider is picked explicitly via `tools.web.search.provider` or
-  selected through auto-detect. In auto-detect mode, OpenClaw resolves only the
+  selected through auto-detect. In auto-detect mode, ClawWorks resolves only the
   selected provider key -- non-selected SecretRefs stay inactive, so you can
   keep multiple providers configured without paying resolution cost for the
   ones you are not using.
@@ -300,13 +300,13 @@ declared by bundled and installed plugin manifests. A typo such as `"brvae"`
 fails config validation instead of silently falling back to auto-detection. If a
 configured provider only has stale plugin evidence, such as a leftover
 `plugins.entries.<plugin>` block after uninstalling a third-party plugin,
-OpenClaw keeps startup resilient and reports a warning so you can reinstall the
+ClawWorks keeps startup resilient and reports a warning so you can reinstall the
 plugin or run `openclaw doctor --fix` to clean up the stale config.
 
 `web_fetch` fallback provider selection is separate:
 
 - choose it with `tools.web.fetch.provider`
-- or omit that field and let OpenClaw auto-detect the first ready web-fetch
+- or omit that field and let ClawWorks auto-detect the first ready web-fetch
   provider from configured credentials
 - non-sandboxed `web_fetch` can use installed plugin providers that declare
   `contracts.webFetchProviders`; sandboxed fetches allow bundled providers and
@@ -315,7 +315,7 @@ plugin or run `openclaw doctor --fix` to clean up the stale config.
   `plugins.entries.firecrawl.config.webFetch.*`
 
 When you choose **Kimi** during `openclaw onboard` or
-`openclaw configure --section web`, OpenClaw can also ask for:
+`openclaw configure --section web`, ClawWorks can also ask for:
 
 - the Moonshot API region (`https://api.moonshot.ai/v1` or `https://api.moonshot.cn/v1`)
 - the default Kimi web-search model (defaults to `kimi-k2.6`)
@@ -325,9 +325,9 @@ same xAI auth profile as chat, or the `XAI_API_KEY` / plugin web-search
 credential used by Grok web search.
 Legacy `tools.web.x_search.*` config is auto-migrated by `openclaw doctor --fix`.
 When you choose Grok during `openclaw onboard` or `openclaw configure --section web`,
-OpenClaw can also offer optional `x_search` setup with the same credential.
+ClawWorks can also offer optional `x_search` setup with the same credential.
 This is a separate follow-up step inside the Grok path, not a separate top-level
-web-search provider choice. If you pick another provider, OpenClaw does not
+web-search provider choice. If you pick another provider, ClawWorks does not
 show the `x_search` prompt.
 
 ### Storing API keys
@@ -404,7 +404,7 @@ show the `x_search` prompt.
 
 `x_search` queries X (formerly Twitter) posts using xAI and returns
 AI-synthesized answers with citations. It accepts natural-language queries and
-optional structured filters. OpenClaw only enables the built-in xAI `x_search`
+optional structured filters. ClawWorks only enables the built-in xAI `x_search`
 tool on the request that serves this tool call.
 
 <Note>
@@ -482,7 +482,7 @@ await x_search({
 
 ```javascript
 // Basic search
-await web_search({ query: "OpenClaw plugin SDK" });
+await web_search({ query: "ClawWorks plugin SDK" });
 
 // German-specific search
 await web_search({ query: "TV online schauen", country: "DE", language: "de" });

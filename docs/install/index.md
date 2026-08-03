@@ -1,5 +1,5 @@
 ---
-summary: "Install OpenClaw - installer script, npm/pnpm/bun, from source, Docker, and more"
+summary: "Install ClawWorks - installer script, npm/pnpm/bun, from source, Docker, and more"
 read_when:
   - You need an install method other than the Getting Started quickstart
   - You want to deploy to a cloud platform
@@ -15,7 +15,7 @@ title: "Install"
 
 ## Recommended: installer script
 
-The fastest way to install. It detects your OS, installs Node if needed, installs OpenClaw, and launches onboarding.
+The fastest way to install. It detects your OS, installs Node if needed, installs ClawWorks, and launches onboarding.
 
 <Note>
 Windows desktop users can also install the native [Windows Hub](/platforms/windows#recommended-windows-hub) companion app, which includes setup, tray status, chat, node mode, and local MCP mode.
@@ -55,7 +55,7 @@ For all flags and CI/automation options, see [Installer internals](/install/inst
 
 ### Local prefix installer (`install-cli.sh`)
 
-Use this when you want OpenClaw and Node kept under a local prefix such as
+Use this when you want ClawWorks and Node kept under a local prefix such as
 `~/.openclaw`, without depending on a system-wide Node install:
 
 ```bash
@@ -82,7 +82,7 @@ If you already manage Node yourself:
 
     <Note>
     The hosted installer clears npm freshness filters such as `min-release-age`
-    for the OpenClaw package install. If you install manually with npm, your own
+    for the ClawWorks package install. If you install manually with npm, your own
     npm policy still applies.
     </Note>
 
@@ -168,7 +168,7 @@ If you want managed startup after install:
 
 ## Hosting and deployment
 
-Deploy OpenClaw on a cloud server or VPS:
+Deploy ClawWorks on a cloud server or VPS:
 
 <CardGroup cols={3}>
   <Card title="VPS" href="/vps">
@@ -207,13 +207,13 @@ Deploy OpenClaw on a cloud server or VPS:
 
 <CardGroup cols={3}>
   <Card title="Updating" href="/install/updating" icon="refresh-cw">
-    Keep OpenClaw up to date.
+    Keep ClawWorks up to date.
   </Card>
   <Card title="Migrating" href="/install/migrating" icon="arrow-right">
     Move to a new machine.
   </Card>
   <Card title="Uninstall" href="/install/uninstall" icon="trash-2">
-    Remove OpenClaw completely.
+    Remove ClawWorks completely.
   </Card>
 </CardGroup>
 

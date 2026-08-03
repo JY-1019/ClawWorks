@@ -37,14 +37,14 @@ Typical infer-focused skill coverage:
 
 ## Why use infer
 
-`openclaw infer` provides one consistent CLI for provider-backed inference tasks inside OpenClaw.
+`openclaw infer` provides one consistent CLI for provider-backed inference tasks inside ClawWorks.
 
 Benefits:
 
-- Use the providers and models already configured in OpenClaw instead of wiring up one-off wrappers for each backend.
+- Use the providers and models already configured in ClawWorks instead of wiring up one-off wrappers for each backend.
 - Keep model, image, audio transcription, TTS, video, web, and embedding workflows under one command tree.
 - Use a stable `--json` output shape for scripts, automation, and agent-driven workflows.
-- Prefer a first-party OpenClaw surface when the task is fundamentally "run inference."
+- Prefer a first-party ClawWorks surface when the task is fundamentally "run inference."
 - Use the normal local path without requiring the gateway for most infer commands.
 
 For end-to-end provider checks, prefer `openclaw infer ...` once lower-level
@@ -172,9 +172,9 @@ Notes:
 - Local `model run` is the narrowest CLI smoke for provider/model/auth health because, for non-Codex providers, it sends only the supplied prompt to the selected model.
 - Local `model run --model <provider/model>` can use exact bundled static catalog rows from `models list --all` before that provider is written to config. Provider auth is still required; missing credentials fail as auth errors, not `Unknown model`.
 - For Mistral Medium 3.5 reasoning probes, leave temperature unset/default. Mistral rejects `reasoning_effort="high"` plus `temperature: 0`; use `mistral/mistral-medium-3-5` with default temperature or a non-zero reasoning-mode value such as `0.7`.
-- Codex Responses local probes are the narrow exception: OpenClaw adds a minimal system instruction so the transport can populate its required `instructions` field, without adding full agent context, tools, memory, or session transcript.
+- Codex Responses local probes are the narrow exception: ClawWorks adds a minimal system instruction so the transport can populate its required `instructions` field, without adding full agent context, tools, memory, or session transcript.
 - Local `model run --file` keeps that lean path and attaches image content directly to the single user message. Common image files such as PNG, JPEG, and WebP work when their MIME type is detected as `image/*`; unsupported or unrecognized files fail before the provider is called.
-- `model run --file` is best when you want to test the selected multimodal text model directly. Use `infer image describe` when you want OpenClaw's image-understanding provider selection and default image-model routing.
+- `model run --file` is best when you want to test the selected multimodal text model directly. Use `infer image describe` when you want ClawWorks's image-understanding provider selection and default image-model routing.
 - The selected model must support image input; text-only models may reject the request at the provider layer.
 - `model run --prompt` must contain non-whitespace text; empty prompts are rejected before local providers or the Gateway are called.
 - Local `model run` exits non-zero when the provider returns no text output, so unreachable local providers and empty completions do not look like successful probes.
@@ -289,8 +289,8 @@ Notes:
 Use `web` for search and fetch workflows.
 
 ```bash
-openclaw infer web search --query "OpenClaw docs" --json
-openclaw infer web search --query "OpenClaw infer web providers" --json
+openclaw infer web search --query "ClawWorks docs" --json
+openclaw infer web search --query "ClawWorks infer web providers" --json
 openclaw infer web fetch --url https://docs.openclaw.ai/cli/infer --json
 openclaw infer web providers --json
 ```
@@ -336,7 +336,7 @@ Top-level fields are stable:
 - `outputs`
 - `error`
 
-For generated media commands, `outputs` contains files written by OpenClaw. Use
+For generated media commands, `outputs` contains files written by ClawWorks. Use
 the `path`, `mimeType`, `size`, and any media-specific dimensions in that array
 for automation instead of parsing human-readable stdout.
 

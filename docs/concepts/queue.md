@@ -32,7 +32,7 @@ When unset, all inbound channel surfaces use:
 
 Same-turn steering is the default. A prompt that arrives mid-run is injected
 into the active runtime when the run can accept steering, so no second session
-run is started. If the active run cannot accept steering, OpenClaw waits for the
+run is started. If the active run cannot accept steering, ClawWorks waits for the
 active run to finish before starting the prompt.
 
 ## Queue modes
@@ -40,7 +40,7 @@ active run to finish before starting the prompt.
 `/queue` controls what normal inbound messages do while a session already has
 an active run:
 
-- `steer`: inject messages into the active runtime. OpenClaw delivers all pending steering messages **after the current assistant turn finishes executing its tool calls**, before the next LLM call; Codex app-server receives one batched `turn/steer`. If the run is not actively streaming or steering is unavailable, OpenClaw waits until the active run ends before starting the prompt.
+- `steer`: inject messages into the active runtime. ClawWorks delivers all pending steering messages **after the current assistant turn finishes executing its tool calls**, before the next LLM call; Codex app-server receives one batched `turn/steer`. If the run is not actively streaming or steering is unavailable, ClawWorks waits until the active run ends before starting the prompt.
 - `followup`: do not steer. Enqueue each message for a later agent turn after the current run ends.
 - `collect`: do not steer. Coalesce queued messages into a **single** followup turn after the quiet window. If messages target different channels/threads, they drain individually to preserve routing.
 - `interrupt`: abort the active run for that session, then run the newest message.
@@ -94,7 +94,7 @@ message should abort the current run.
 
 ## Precedence
 
-For mode selection, OpenClaw resolves:
+For mode selection, ClawWorks resolves:
 
 1. Inline or stored per-session `/queue` override.
 2. `messages.queue.byChannel.<channel>`.

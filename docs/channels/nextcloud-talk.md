@@ -9,7 +9,7 @@ Status: bundled plugin (webhook bot). Direct messages, rooms, reactions, and mar
 
 ## Bundled plugin
 
-Nextcloud Talk ships as a bundled plugin in current OpenClaw releases, so
+Nextcloud Talk ships as a bundled plugin in current ClawWorks releases, so
 normal packaged builds do not need a separate install.
 
 If you are on an older build or a custom install that excludes Nextcloud Talk,
@@ -35,16 +35,16 @@ Details: [Plugins](/tools/plugin)
 ## Quick setup (beginner)
 
 1. Ensure the Nextcloud Talk plugin is available.
-   - Current packaged OpenClaw releases already bundle it.
+   - Current packaged ClawWorks releases already bundle it.
    - Older/custom installs can add it manually with the commands above.
 2. On your Nextcloud server, create a bot:
 
    ```bash
-   ./occ talk:bot:install "OpenClaw" "<shared-secret>" "<webhook-url>" --feature webhook --feature response --feature reaction
+   ./occ talk:bot:install "ClawWorks" "<shared-secret>" "<webhook-url>" --feature webhook --feature response --feature reaction
    ```
 
 3. Enable the bot in the target room settings.
-4. Configure OpenClaw:
+4. Configure ClawWorks:
    - Config: `channels.nextcloud-talk.baseUrl` + `channels.nextcloud-talk.botSecret`
    - Or env: `NEXTCLOUD_TALK_BOT_SECRET` (default account only)
 

@@ -59,7 +59,7 @@ Options:
 
 Owner bootstrap:
 
-- If `commands.ownerAllowFrom` is empty when you approve a pairing code, OpenClaw also records the approved sender as the command owner, using a channel-scoped entry such as `telegram:123456789`.
+- If `commands.ownerAllowFrom` is empty when you approve a pairing code, ClawWorks also records the approved sender as the command owner, using a channel-scoped entry such as `telegram:123456789`.
 - This only bootstraps the first owner. Later pairing approvals do not replace or expand `commands.ownerAllowFrom`.
 - The command owner is the human operator account allowed to run owner-only commands and approve dangerous actions such as `/diagnostics`, `/export-trajectory`, `/config`, and exec approvals.
 

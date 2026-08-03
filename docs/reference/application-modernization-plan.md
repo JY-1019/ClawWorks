@@ -2,7 +2,7 @@
 summary: "Comprehensive application modernization plan with frontend delivery skill updates"
 title: "Application modernization plan"
 read_when:
-  - Planning a broad OpenClaw application modernization pass
+  - Planning a broad ClawWorks application modernization pass
   - Updating frontend implementation standards for app or Control UI work
   - Turning a broad product quality review into phased engineering work
 ---
@@ -149,7 +149,7 @@ This gives high user value with limited architecture risk.
 ## Frontend skill update
 
 Use this section to update the frontend-focused `SKILL.md` supplied with the
-modernization task. If adopting this guidance as a repo-local OpenClaw skill,
+modernization task. If adopting this guidance as a repo-local ClawWorks skill,
 create `.agents/skills/openclaw-frontend/SKILL.md` first, keep the frontmatter
 that belongs in that target skill, then add or replace the body guidance with
 the following content.

@@ -6,7 +6,7 @@ read_when:
 title: "SenseAudio"
 ---
 
-SenseAudio can transcribe inbound audio and voice-note attachments through OpenClaw's shared `tools.media.audio` pipeline. OpenClaw posts multipart audio to the OpenAI-compatible transcription endpoint and injects the returned text as `{{Transcript}}` plus an `[Audio]` block.
+SenseAudio can transcribe inbound audio and voice-note attachments through ClawWorks's shared `tools.media.audio` pipeline. ClawWorks posts multipart audio to the OpenAI-compatible transcription endpoint and injects the returned text as `{{Transcript}}` plus an `[Audio]` block.
 
 | Property      | Value                                            |
 | ------------- | ------------------------------------------------ |
@@ -42,7 +42,7 @@ SenseAudio can transcribe inbound audio and voice-note attachments through OpenC
     ```
   </Step>
   <Step title="Send a voice note">
-    Send an audio message through any connected channel. OpenClaw uploads the
+    Send an audio message through any connected channel. ClawWorks uploads the
     audio to SenseAudio and uses the transcript in the reply pipeline.
   </Step>
 </Steps>
@@ -58,7 +58,7 @@ SenseAudio can transcribe inbound audio and voice-note attachments through OpenC
 | `headers`  | `tools.media.audio.request.headers`   | Extra request headers               |
 
 <Note>
-SenseAudio is batch STT only in OpenClaw. Voice Call realtime transcription
+SenseAudio is batch STT only in ClawWorks. Voice Call realtime transcription
 continues to use providers with streaming STT support.
 </Note>
 

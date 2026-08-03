@@ -3,7 +3,7 @@ summary: "Install the official llama.cpp provider for local GGUF memory embeddin
 read_when:
   - You want memory search embeddings from a local GGUF model
   - You are configuring memorySearch.provider = "local"
-  - You need the OpenClaw plugin that owns the node-llama-cpp runtime
+  - You need the ClawWorks plugin that owns the node-llama-cpp runtime
 title: "llama.cpp Provider"
 sidebarTitle: "llama.cpp Provider"
 ---
@@ -19,8 +19,8 @@ openclaw plugins install @openclaw/llama-cpp-provider
 ```
 
 The main `openclaw` npm package does not include `node-llama-cpp`. Keeping the
-native dependency in this plugin prevents normal OpenClaw npm updates from
-deleting a manually installed runtime inside the OpenClaw package directory.
+native dependency in this plugin prevents normal ClawWorks npm updates from
+deleting a manually installed runtime inside the ClawWorks package directory.
 
 ## Configuration
 

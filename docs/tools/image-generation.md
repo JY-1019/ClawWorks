@@ -10,12 +10,12 @@ sidebarTitle: "Image generation"
 
 The `image_generate` tool lets the agent create and edit images using your
 configured providers. In chat sessions, image generation runs asynchronously:
-OpenClaw records a background task, returns the task id immediately, and wakes
+ClawWorks records a background task, returns the task id immediately, and wakes
 the agent when the provider finishes. The completion agent follows the
 session's normal visible-reply mode: automatic final reply delivery when
 configured, or `message(action="send")` when the session requires the message
 tool. If the requester session is inactive or its active wake fails, and some
-generated images are still missing from the completion reply, OpenClaw sends an
+generated images are still missing from the completion reply, ClawWorks sends an
 idempotent direct fallback with only the missing images.
 
 <Note>
@@ -47,7 +47,7 @@ or sign in with OpenAI ChatGPT/Codex OAuth.
     ```
 
     ChatGPT/Codex OAuth uses the same `openai/gpt-image-2` model ref. When an
-    `openai` OAuth profile is configured, OpenClaw routes image requests
+    `openai` OAuth profile is configured, ClawWorks routes image requests
     through that OAuth profile instead of first trying
     `OPENAI_API_KEY`. Explicit `models.providers.openai` config (API key,
     custom/Azure base URL) opts back into the direct OpenAI Images API
@@ -190,7 +190,7 @@ current session:
 
 <Note>
 Not all providers support all parameters. When a fallback provider supports a
-nearby geometry option instead of the exact requested one, OpenClaw remaps to
+nearby geometry option instead of the exact requested one, ClawWorks remaps to
 the closest supported size, aspect ratio, or resolution before submission.
 Unsupported output hints are dropped for providers that do not declare
 support and reported in the tool result. Tool results report the applied
@@ -222,7 +222,7 @@ translation.
 
 ### Provider selection order
 
-OpenClaw tries providers in this order:
+ClawWorks tries providers in this order:
 
 1. **`model` parameter** from the tool call (if the agent specifies one).
 2. **`imageGenerationModel.primary`** from config.
@@ -241,7 +241,7 @@ from each attempt.
     not continue to configured primary/fallback or auto-detected providers.
   </Accordion>
   <Accordion title="Auto-detection is auth-aware">
-    A provider default only enters the candidate list when OpenClaw can
+    A provider default only enters the candidate list when ClawWorks can
     actually authenticate that provider. Set
     `agents.defaults.mediaGenerationAutoProviderFallback: false` to use only
     explicit `model`, `primary`, and `fallbacks` entries.
@@ -254,7 +254,7 @@ from each attempt.
     defaults; Microsoft Foundry MAI, xAI, and Azure OpenAI image generation use
     600 seconds. Codex dynamic-tool calls use a 120 second `image_generate`
     bridge default and honor the same timeout budget when configured, bounded by
-    OpenClaw's 600000 ms dynamic-tool bridge maximum.
+    ClawWorks's 600000 ms dynamic-tool bridge maximum.
   </Accordion>
   <Accordion title="Inspect at runtime">
     Use `action: "list"` to inspect the currently registered providers,
@@ -283,11 +283,11 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
 <AccordionGroup>
   <Accordion title="OpenAI gpt-image-2 (and gpt-image-1.5)">
     OpenAI image generation defaults to `openai/gpt-image-2`. If an
-    `openai` OAuth profile is configured, OpenClaw reuses the same
+    `openai` OAuth profile is configured, ClawWorks reuses the same
     OAuth profile used by Codex subscription chat models and sends the
     image request through the Codex Responses backend. Legacy Codex base
     URLs such as `https://chatgpt.com/backend-api` are canonicalized to
-    `https://chatgpt.com/backend-api/codex` for image requests. OpenClaw
+    `https://chatgpt.com/backend-api/codex` for image requests. ClawWorks
     does **not** silently fall back to `OPENAI_API_KEY` for that request -
     to force direct OpenAI Images API routing, configure
     `models.providers.openai` explicitly with an API key, custom base URL,
@@ -300,9 +300,9 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
 
     `gpt-image-2` supports both text-to-image generation and
     reference-image editing through the same `image_generate` tool.
-    OpenClaw forwards `prompt`, `count`, `size`, `quality`, `outputFormat`,
+    ClawWorks forwards `prompt`, `count`, `size`, `quality`, `outputFormat`,
     and reference images to OpenAI. OpenAI does **not** receive
-    `aspectRatio` or `resolution` directly; when possible OpenClaw maps
+    `aspectRatio` or `resolution` directly; when possible ClawWorks maps
     those into a supported `size`, otherwise the tool reports them as
     ignored overrides.
 
@@ -323,7 +323,7 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
 
     `openai.background` accepts `transparent`, `opaque`, or `auto`;
     transparent outputs require `outputFormat` `png` or `webp` and a
-    transparency-capable OpenAI image model. OpenClaw routes default
+    transparency-capable OpenAI image model. ClawWorks routes default
     `gpt-image-2` transparent-background requests to `gpt-image-1.5`.
     `openai.outputCompression` applies to JPEG/WebP outputs and is ignored
     for PNG outputs.
@@ -370,7 +370,7 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
 
     Prompt-only generation can use a custom deployment name with just the
     Foundry endpoint configured. Edits with custom deployment names need
-    onboarding/model metadata so OpenClaw can verify that the deployment is
+    onboarding/model metadata so ClawWorks can verify that the deployment is
     backed by `MAI-Image-2.5-Flash` or `MAI-Image-2.5`.
 
     Current MAI image models are `MAI-Image-2.5-Flash`, `MAI-Image-2.5`,
@@ -396,7 +396,7 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
     }
     ```
 
-    OpenClaw forwards `prompt`, `count`, reference images, and
+    ClawWorks forwards `prompt`, `count`, reference images, and
     Gemini-compatible `aspectRatio` / `resolution` hints to OpenRouter.
     Current built-in OpenRouter image model shortcuts include
     `google/gemini-3.1-flash-image-preview`,
@@ -406,7 +406,7 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
   </Accordion>
   <Accordion title="fal Krea 2">
     Krea 2 models on fal use fal's native Krea schema instead of the generic
-    `image_size` schema used by Flux. OpenClaw sends:
+    `image_size` schema used by Flux. ClawWorks sends:
 
     - `aspect_ratio` for aspect-ratio hints
     - `creativity`, defaulting to `medium`
@@ -428,7 +428,7 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
     ```
 
     Krea 2 currently returns one image per request. Prefer `aspectRatio` for
-    Krea; OpenClaw maps `size` to the closest supported Krea aspect ratio and
+    Krea; ClawWorks maps `size` to the closest supported Krea aspect ratio and
     rejects `resolution` for Krea rather than dropping it. Use `fal.creativity`
     when you want a native Krea creativity level:
 
@@ -461,9 +461,9 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
     - References: one `image` or up to five `images`
     - Aspect ratios: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `2:3`, `3:2`
     - Resolutions: `1K`, `2K`
-    - Outputs: returned as OpenClaw-managed image attachments
+    - Outputs: returned as ClawWorks-managed image attachments
 
-    OpenClaw intentionally does not expose xAI-native `quality`, `mask`,
+    ClawWorks intentionally does not expose xAI-native `quality`, `mask`,
     `user`, or extra native-only aspect ratios until those controls exist
     in the shared cross-provider `image_generate` contract.
 
@@ -475,7 +475,7 @@ to 10 for GPT Image 2 edits, up to 10 style references for Krea 2, and up to
 <Tabs>
   <Tab title="Generate (4K landscape)">
 ```text
-/tool image_generate action=generate model=openai/gpt-image-2 prompt="A clean editorial poster for OpenClaw image generation" size=3840x2160 count=1
+/tool image_generate action=generate model=openai/gpt-image-2 prompt="A clean editorial poster for ClawWorks image generation" size=3840x2160 count=1
 ```
   </Tab>
   <Tab title="Generate (transparent PNG)">

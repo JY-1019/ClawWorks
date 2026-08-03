@@ -9,7 +9,7 @@ title: "Transcripts CLI"
 
 # `openclaw transcripts`
 
-Inspect transcripts written by OpenClaw's core `transcripts` tool. This CLI is
+Inspect transcripts written by ClawWorks's core `transcripts` tool. This CLI is
 read-only; capture, import, and summarization are owned by the agent tool and
 configured auto-start sources.
 
@@ -17,7 +17,7 @@ Use the CLI when you want to find yesterday's notes, open the Markdown file in
 an editor, feed a transcript to another tool, or debug where a session landed on
 disk. It does not start or stop capture.
 
-Artifacts live under the OpenClaw state directory:
+Artifacts live under the ClawWorks state directory:
 
 ```text
 $OPENCLAW_STATE_DIR/transcripts/YYYY-MM-DD/<session>/

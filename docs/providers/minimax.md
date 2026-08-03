@@ -1,12 +1,12 @@
 ---
-summary: "Use MiniMax models in OpenClaw"
+summary: "Use MiniMax models in ClawWorks"
 read_when:
-  - You want MiniMax models in OpenClaw
+  - You want MiniMax models in ClawWorks
   - You need MiniMax setup guidance
 title: "MiniMax"
 ---
 
-OpenClaw's MiniMax provider defaults to **MiniMax M3**.
+ClawWorks's MiniMax provider defaults to **MiniMax M3**.
 
 MiniMax also provides:
 
@@ -176,7 +176,7 @@ Choose your preferred auth method and follow the setup steps.
     ```
 
     <Warning>
-    On the Anthropic-compatible streaming path, OpenClaw disables MiniMax M2.x thinking by default unless you explicitly set `thinking` yourself. M2.x's streaming endpoint emits `reasoning_content` in OpenAI-style delta chunks instead of native Anthropic thinking blocks, which can leak internal reasoning into visible output if left enabled implicitly. MiniMax-M3 (and forward-compatible M3.x) is exempt from this default: M3 emits proper Anthropic thinking blocks and requires thinking active to produce visible content, so OpenClaw keeps M3 on the provider's omitted/adaptive thinking path.
+    On the Anthropic-compatible streaming path, ClawWorks disables MiniMax M2.x thinking by default unless you explicitly set `thinking` yourself. M2.x's streaming endpoint emits `reasoning_content` in OpenAI-style delta chunks instead of native Anthropic thinking blocks, which can leak internal reasoning into visible output if left enabled implicitly. MiniMax-M3 (and forward-compatible M3.x) is exempt from this default: M3 emits proper Anthropic thinking blocks and requires thinking active to produce visible content, so ClawWorks keeps M3 on the provider's omitted/adaptive thinking path.
     </Warning>
 
     <Note>
@@ -253,7 +253,7 @@ through the CN endpoint; the default global endpoint is
 `https://api.minimax.io`.
 
 When onboarding or API-key setup writes explicit `models.providers.minimax`
-entries, OpenClaw materializes `MiniMax-M3`, `MiniMax-M2.7`, and
+entries, ClawWorks materializes `MiniMax-M3`, `MiniMax-M2.7`, and
 `MiniMax-M2.7-highspeed` as chat models. M3 advertises text and image input;
 image understanding remains exposed separately through the plugin-owned
 `MiniMax-VL-01` media provider.
@@ -276,7 +276,7 @@ The bundled `minimax` plugin registers MiniMax T2A v2 as a speech provider for
   `minimax-portal` OAuth/token auth profiles, then Token Plan environment
   keys (`MINIMAX_OAUTH_TOKEN`, `MINIMAX_CODE_PLAN_KEY`,
   `MINIMAX_CODING_API_KEY`), then `MINIMAX_API_KEY`.
-- If no TTS host is configured, OpenClaw reuses the configured
+- If no TTS host is configured, ClawWorks reuses the configured
   `minimax-portal` OAuth host and strips Anthropic-compatible path suffixes
   such as `/anthropic`.
 - Normal audio attachments stay MP3.
@@ -284,7 +284,7 @@ The bundled `minimax` plugin registers MiniMax T2A v2 as a speech provider for
   MP3 to 48kHz Opus with `ffmpeg`, because the Feishu/Lark file API only
   accepts `file_type: "opus"` for native audio messages.
 - MiniMax T2A accepts fractional `speed` and `vol`, but `pitch` is sent as an
-  integer; OpenClaw truncates fractional `pitch` values before the API request.
+  integer; ClawWorks truncates fractional `pitch` values before the API request.
 
 | Setting                                         | Env var                | Default                       | Description                      |
 | ----------------------------------------------- | ---------------------- | ----------------------------- | -------------------------------- |
@@ -400,7 +400,7 @@ See [MiniMax Search](/tools/minimax-search) for full web search configuration an
   </Accordion>
 
   <Accordion title="Thinking defaults">
-    On `api: "anthropic-messages"`, OpenClaw injects `thinking: { type: "disabled" }` for MiniMax M2.x models unless thinking is already explicitly set in params/config.
+    On `api: "anthropic-messages"`, ClawWorks injects `thinking: { type: "disabled" }` for MiniMax M2.x models unless thinking is already explicitly set in params/config.
 
     This prevents M2.x's streaming endpoint from emitting `reasoning_content` in OpenAI-style delta chunks, which would leak internal reasoning into visible output.
 
@@ -438,8 +438,8 @@ See [MiniMax Search](/tools/minimax-search) for full web search configuration an
   <Accordion title="Coding Plan usage details">
     - Coding Plan usage API: `https://api.minimaxi.com/v1/token_plan/remains` or `https://api.minimax.io/v1/token_plan/remains` (requires a coding plan key).
     - Usage polling derives the host from `models.providers.minimax-portal.baseUrl` or `models.providers.minimax.baseUrl` when configured, so global setups using `https://api.minimax.io/anthropic` poll `api.minimax.io`. Missing or malformed base URLs keep the CN fallback for compatibility.
-    - OpenClaw normalizes MiniMax coding-plan usage to the same `% left` display used by other providers. MiniMax's raw `usage_percent` / `usagePercent` fields are remaining quota, not consumed quota, so OpenClaw inverts them. Count-based fields win when present.
-    - When the API returns `model_remains`, OpenClaw prefers the chat-model entry, derives the window label from `start_time` / `end_time` when needed, and includes the selected model name in the plan label so coding-plan windows are easier to distinguish.
+    - ClawWorks normalizes MiniMax coding-plan usage to the same `% left` display used by other providers. MiniMax's raw `usage_percent` / `usagePercent` fields are remaining quota, not consumed quota, so ClawWorks inverts them. Count-based fields win when present.
+    - When the API returns `model_remains`, ClawWorks prefers the chat-model entry, derives the window label from `start_time` / `end_time` when needed, and includes the selected model name in the plan label so coding-plan windows are easier to distinguish.
     - Usage snapshots treat `minimax`, `minimax-cn`, and `minimax-portal` as the same MiniMax quota surface, and prefer stored MiniMax OAuth before falling back to Coding Plan key env vars.
 
   </Accordion>

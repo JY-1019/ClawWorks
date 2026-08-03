@@ -9,7 +9,7 @@ title: "Coming from BlueBubbles"
 
 The bundled `imessage` plugin now reaches the same private API surface as BlueBubbles (`react`, `edit`, `unsend`, `reply`, `sendWithEffect`, group management, attachments) by driving [`steipete/imsg`](https://github.com/steipete/imsg) over JSON-RPC. If you already run a Mac with `imsg` installed, you can drop the BlueBubbles server and let the plugin talk to Messages.app directly.
 
-BlueBubbles support was removed. OpenClaw supports iMessage through `imsg` only. This guide is for migrating old `channels.bluebubbles` configs to `channels.imessage`; there is no other supported migration path.
+BlueBubbles support was removed. ClawWorks supports iMessage through `imsg` only. This guide is for migrating old `channels.bluebubbles` configs to `channels.imessage`; there is no other supported migration path.
 
 <Note>
 For the short announcement and operator summary, see [BlueBubbles removal and the imsg iMessage path](/announcements/bluebubbles-imessage).
@@ -35,13 +35,13 @@ Use this checklist when you already know your old BlueBubbles config and want th
 
 ## What imsg does
 
-`imsg` is a local macOS CLI for Messages. OpenClaw starts `imsg rpc` as a child process and talks JSON-RPC over stdin/stdout. There is no HTTP server, webhook URL, background daemon, launch agent, or port to expose.
+`imsg` is a local macOS CLI for Messages. ClawWorks starts `imsg rpc` as a child process and talks JSON-RPC over stdin/stdout. There is no HTTP server, webhook URL, background daemon, launch agent, or port to expose.
 
 - Reads come from `~/Library/Messages/chat.db` using a read-only SQLite handle.
 - Live inbound messages come from `imsg watch` / `watch.subscribe`, which follows `chat.db` filesystem events with a polling fallback.
 - Sends use Messages.app automation for normal text and file sends.
 - Advanced actions use `imsg launch` to inject the `imsg` helper into Messages.app. That is what unlocks read receipts, typing indicators, rich sends, edit, unsend, threaded reply, tapbacks, and group management.
-- Linux builds can inspect a copied `chat.db`, but cannot send, watch the live Mac database, or drive Messages.app. For OpenClaw iMessage, run `imsg` on the signed-in Mac or through an SSH wrapper to that Mac.
+- Linux builds can inspect a copied `chat.db`, but cannot send, watch the live Mac database, or drive Messages.app. For ClawWorks iMessage, run `imsg` on the signed-in Mac or through an SSH wrapper to that Mac.
 
 ## Before you start
 
@@ -55,17 +55,17 @@ Use this checklist when you already know your old BlueBubbles config and want th
 
    If `imsg chats` fails with `unable to open database file`, empty output, or `authorization denied`, grant Full Disk Access to the terminal, editor, Node process, Gateway service, or SSH parent process that launches `imsg`, then reopen that parent process.
 
-2. Verify the read, watch, send, and RPC surfaces before changing OpenClaw config:
+2. Verify the read, watch, send, and RPC surfaces before changing ClawWorks config:
 
    ```bash
    imsg chats --limit 10 --json | jq -s
    imsg history --chat-id 42 --limit 10 --attachments --json | jq -s
    imsg watch --chat-id 42 --reactions --json
-   imsg send --chat-id 42 --text "OpenClaw imsg test"
+   imsg send --chat-id 42 --text "ClawWorks imsg test"
    imsg rpc --help
    ```
 
-   Replace `42` with a real chat id from `imsg chats`. Sending requires Automation permission for Messages.app. If OpenClaw will run through SSH, run these commands through the same SSH wrapper or user context that OpenClaw will use. If reads/probes work but sends fail with AppleEvents `-1743`, check whether Automation landed on `/usr/libexec/sshd-keygen-wrapper`; see [SSH wrapper sends fail with AppleEvents -1743](/channels/imessage#ssh-wrapper-sends-fail-with-appleevents-1743).
+   Replace `42` with a real chat id from `imsg chats`. Sending requires Automation permission for Messages.app. If ClawWorks will run through SSH, run these commands through the same SSH wrapper or user context that ClawWorks will use. If reads/probes work but sends fail with AppleEvents `-1743`, check whether Automation landed on `/usr/libexec/sshd-keygen-wrapper`; see [SSH wrapper sends fail with AppleEvents -1743](/channels/imessage#ssh-wrapper-sends-fail-with-appleevents-1743).
 
 3. Enable the private API bridge when you need advanced actions:
 
@@ -76,7 +76,7 @@ Use this checklist when you already know your old BlueBubbles config and want th
 
    `imsg launch` requires SIP to be disabled. Basic send, history, and watch work without `imsg launch`; advanced actions do not.
 
-4. After you add an enabled `channels.imessage` config, verify the bridge through OpenClaw:
+4. After you add an enabled `channels.imessage` config, verify the bridge through ClawWorks:
 
    ```bash
    openclaw channels status --probe
@@ -197,7 +197,7 @@ If the gateway logs `imessage: dropping group message from chat_id=<id>` or the 
    openclaw channels status --probe --channel imessage   # expect imessage.privateApi.available: true
    ```
 
-   `channels status --probe` only probes configured, enabled accounts. Do not restart the Gateway with both BlueBubbles and iMessage enabled unless you intentionally want both channel monitors running. If you are not cutting over immediately, set `channels.imessage.enabled` back to `false` before restarting the Gateway. Use the direct `imsg` commands in [Before you start](#before-you-start) to validate the Mac before enabling OpenClaw traffic.
+   `channels status --probe` only probes configured, enabled accounts. Do not restart the Gateway with both BlueBubbles and iMessage enabled unless you intentionally want both channel monitors running. If you are not cutting over immediately, set `channels.imessage.enabled` back to `false` before restarting the Gateway. Use the direct `imsg` commands in [Before you start](#before-you-start) to validate the Mac before enabling ClawWorks traffic.
 
 3. **Cut over.** Once the enabled iMessage account reports healthy, remove the BlueBubbles config and keep iMessage enabled:
 
@@ -217,7 +217,7 @@ If the gateway logs `imessage: dropping group message from chat_id=<id>` or the 
 
 6. **Verify the action surface** — from a paired DM, ask the agent to react, edit, unsend, reply, send a photo, and (in a group) rename the group / add or remove a participant. Each action should land natively in Messages.app. If any throws "iMessage `<action>` requires the imsg private API bridge", run `imsg launch` again and refresh `channels status --probe`.
 
-7. **Remove the BlueBubbles server and config** once iMessage DMs, groups, and actions are verified. OpenClaw will not use `channels.bluebubbles`.
+7. **Remove the BlueBubbles server and config** once iMessage DMs, groups, and actions are verified. ClawWorks will not use `channels.bluebubbles`.
 
 ## Action parity at a glance
 

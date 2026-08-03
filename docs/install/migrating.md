@@ -1,17 +1,17 @@
 ---
 summary: "Migration hub: cross-system imports, machine-to-machine moves, and plugin upgrades"
 read_when:
-  - You are moving OpenClaw to a new laptop or server
+  - You are moving ClawWorks to a new laptop or server
   - You are coming from another agent system and want to keep state
   - You are upgrading an in-place plugin
 title: "Migration guide"
 ---
 
-OpenClaw supports three migration paths: importing from another agent system, moving an existing install to a new machine, and upgrading a plugin in place.
+ClawWorks supports three migration paths: importing from another agent system, moving an existing install to a new machine, and upgrading a plugin in place.
 
 ## Import from another agent system
 
-Use the bundled migration providers to bring instructions, MCP servers, skills, model config, and (opt-in) API keys into OpenClaw. Plans are previewed before any change, secrets are redacted in reports, and apply is backed by a verified backup.
+Use the bundled migration providers to bring instructions, MCP servers, skills, model config, and (opt-in) API keys into ClawWorks. Plans are previewed before any change, secrets are redacted in reports, and apply is backed by a verified backup.
 
 <CardGroup cols={2}>
   <Card title="Migrating from Claude" href="/install/migrating-claude" icon="brain">
@@ -24,7 +24,7 @@ Use the bundled migration providers to bring instructions, MCP servers, skills, 
 
 The CLI entry point is [`openclaw migrate`](/cli/migrate). Onboarding can also offer migration when it detects a known source (`openclaw onboard --flow import`).
 
-## Move OpenClaw to a new machine
+## Move ClawWorks to a new machine
 
 Copy the **state directory** (`~/.openclaw/` by default) and your **workspace** to preserve:
 
@@ -54,7 +54,7 @@ Run `openclaw status` on the old machine to confirm your state directory path. C
 
   </Step>
 
-  <Step title="Install OpenClaw on the new machine">
+  <Step title="Install ClawWorks on the new machine">
     [Install](/install) the CLI (and Node if needed) on the new machine. It is fine if onboarding creates a fresh `~/.openclaw/`. You will overwrite it next.
   </Step>
 
@@ -134,4 +134,4 @@ In-place plugin upgrades preserve the same plugin id and config keys but may mov
 - [`openclaw migrate`](/cli/migrate): CLI reference for cross-system imports.
 - [Install overview](/install): all installation methods.
 - [Doctor](/gateway/doctor): post-migration health check.
-- [Uninstall](/install/uninstall): removing OpenClaw cleanly.
+- [Uninstall](/install/uninstall): removing ClawWorks cleanly.

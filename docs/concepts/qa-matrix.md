@@ -9,7 +9,7 @@ title: "Matrix QA"
 
 The Matrix QA lane runs the bundled `@openclaw/matrix` plugin against a disposable Tuwunel homeserver in Docker, with temporary driver, SUT, and observer accounts plus seeded rooms. It is the live transport-real coverage for Matrix.
 
-This is maintainer-only tooling. Packaged OpenClaw releases intentionally omit `qa-lab`, so `openclaw qa` is only available from a source checkout. Source checkouts load the bundled runner directly - no plugin install step is needed.
+This is maintainer-only tooling. Packaged ClawWorks releases intentionally omit `qa-lab`, so `openclaw qa` is only available from a source checkout. Source checkouts load the bundled runner directly - no plugin install step is needed.
 
 For broader QA framework context, see [QA overview](/concepts/qa-e2e-automation).
 
@@ -24,9 +24,9 @@ Plain `pnpm openclaw qa matrix` runs `--profile all` and does not stop on first 
 ## What the lane does
 
 1. Provisions a disposable Tuwunel homeserver in Docker (default image `ghcr.io/matrix-construct/tuwunel:v1.5.1`, server name `matrix-qa.test`, port `28008`).
-2. Registers three temporary users - `driver` (sends inbound traffic), `sut` (the OpenClaw Matrix account under test), `observer` (third-party traffic capture).
+2. Registers three temporary users - `driver` (sends inbound traffic), `sut` (the ClawWorks Matrix account under test), `observer` (third-party traffic capture).
 3. Seeds rooms required by the selected scenarios (main, threading, media, restart, secondary, allowlist, E2EE, verification DM, etc.).
-4. Starts a child OpenClaw gateway with the real Matrix plugin scoped to the SUT account; `qa-channel` is not loaded in the child.
+4. Starts a child ClawWorks gateway with the real Matrix plugin scoped to the SUT account; `qa-channel` is not loaded in the child.
 5. Runs scenarios in sequence, observing events through the driver/observer Matrix clients.
 6. Tears down the homeserver, writes report and summary artifacts, then exits.
 

@@ -3,25 +3,25 @@ summary: "Current integration path for external apps, scripts, dashboards, CI jo
 title: "Gateway integrations for external apps"
 sidebarTitle: "External apps"
 read_when:
-  - You are building an external app, script, dashboard, CI job, or IDE extension that talks to OpenClaw
+  - You are building an external app, script, dashboard, CI job, or IDE extension that talks to ClawWorks
   - You are choosing between Gateway RPC and the Plugin SDK
   - You are integrating with Gateway agent runs, sessions, events, approvals, models, or tools
 ---
 
-External apps should talk to OpenClaw through the Gateway protocol today. Use
+External apps should talk to ClawWorks through the Gateway protocol today. Use
 Gateway WebSocket and RPC methods when a script, dashboard, CI job, IDE
 extension, or another process wants to start agent runs, stream events, wait for
 results, cancel work, or inspect Gateway resources.
 
 <Warning>
-  There is no public npm client package yet. Do not add OpenClaw client package
+  There is no public npm client package yet. Do not add ClawWorks client package
   names as application dependencies until release notes announce a published
   package and this page includes install instructions.
 </Warning>
 
 <Note>
-  This page is for code outside the OpenClaw process. Plugin code that runs
-  inside OpenClaw should use documented `openclaw/plugin-sdk/*` subpaths instead.
+  This page is for code outside the ClawWorks process. Plugin code that runs
+  inside ClawWorks should use documented `openclaw/plugin-sdk/*` subpaths instead.
 </Note>
 
 ## What is available today
@@ -42,8 +42,8 @@ until the packages are published and versioned.
 1. Run or discover a Gateway.
 2. Connect over the [Gateway protocol](/gateway/protocol).
 3. Call documented RPC methods from [Gateway RPC reference](/reference/rpc).
-4. Pin the OpenClaw version you test against.
-5. Recheck the RPC reference when upgrading OpenClaw.
+4. Pin the ClawWorks version you test against.
+5. Recheck the RPC reference when upgrading ClawWorks.
 
 For agent runs, start with the `agent` RPC and pair it with `agent.wait` when
 you need a terminal result. For durable conversation state, use the `sessions.*`
@@ -52,7 +52,7 @@ event families your app understands.
 
 ## App code vs plugin code
 
-Use Gateway RPC when code lives outside OpenClaw:
+Use Gateway RPC when code lives outside ClawWorks:
 
 - Node scripts that start or observe agent runs
 - CI jobs that call a Gateway
@@ -61,7 +61,7 @@ Use Gateway RPC when code lives outside OpenClaw:
 - external bridges that do not need to become channel plugins
 - integration tests with fake or real Gateway transports
 
-Use the Plugin SDK when code runs inside OpenClaw:
+Use the Plugin SDK when code runs inside ClawWorks:
 
 - provider plugins
 - channel plugins
@@ -70,7 +70,7 @@ Use the Plugin SDK when code runs inside OpenClaw:
 - trusted runtime helpers
 
 External apps should not import `openclaw/plugin-sdk/*`; those subpaths are for
-plugins loaded by OpenClaw.
+plugins loaded by ClawWorks.
 
 ## Related
 

@@ -1,12 +1,12 @@
 ---
-summary: "Use Gradium text-to-speech in OpenClaw"
+summary: "Use Gradium text-to-speech in ClawWorks"
 read_when:
   - You want Gradium for text-to-speech
   - You need Gradium API key, voice, or directive token configuration
 title: "Gradium"
 ---
 
-[Gradium](https://gradium.ai) is a text-to-speech provider for OpenClaw. The plugin can render normal audio replies (WAV), voice-note-compatible Opus output, and 8 kHz u-law audio for telephony surfaces.
+[Gradium](https://gradium.ai) is a text-to-speech provider for ClawWorks. The plugin can render normal audio replies (WAV), voice-note-compatible Opus output, and 8 kHz u-law audio for telephony surfaces.
 
 | Property      | Value                                |
 | ------------- | ------------------------------------ |
@@ -26,7 +26,7 @@ openclaw gateway restart
 
 ## Setup
 
-Create a Gradium API key, then expose it to OpenClaw with either an env var or the config key.
+Create a Gradium API key, then expose it to ClawWorks with either an env var or the config key.
 
 <Tabs>
   <Tab title="Env var">
@@ -124,7 +124,7 @@ The runtime picks the output format from the target surface. The provider does n
 
 ## Auto-select order
 
-Among configured TTS providers, Gradium's auto-select order is `30`. See [Text-to-Speech](/tools/tts) for how OpenClaw picks the active provider when `messages.tts.provider` is not pinned.
+Among configured TTS providers, Gradium's auto-select order is `30`. See [Text-to-Speech](/tools/tts) for how ClawWorks picks the active provider when `messages.tts.provider` is not pinned.
 
 ## Related
 

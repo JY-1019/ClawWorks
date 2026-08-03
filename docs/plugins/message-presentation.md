@@ -8,7 +8,7 @@ read_when:
   - Debugging provider-specific card/block/component rendering regressions
 ---
 
-Message presentation is OpenClaw's shared contract for rich outbound chat UI.
+Message presentation is ClawWorks's shared contract for rich outbound chat UI.
 It lets agents, CLI commands, approval flows, and plugins describe the message
 intent once, while each channel plugin renders the best native shape it can.
 

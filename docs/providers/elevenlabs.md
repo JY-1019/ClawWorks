@@ -1,16 +1,16 @@
 ---
-summary: "Use ElevenLabs speech, Scribe STT, and realtime transcription with OpenClaw"
+summary: "Use ElevenLabs speech, Scribe STT, and realtime transcription with ClawWorks"
 read_when:
-  - You want ElevenLabs text-to-speech in OpenClaw
+  - You want ElevenLabs text-to-speech in ClawWorks
   - You want ElevenLabs Scribe speech-to-text for audio attachments
   - You want ElevenLabs realtime transcription for Voice Call or Google Meet
 title: "ElevenLabs"
 ---
 
-OpenClaw uses ElevenLabs for text-to-speech, batch speech-to-text with Scribe
+ClawWorks uses ElevenLabs for text-to-speech, batch speech-to-text with Scribe
 v2, and streaming STT with Scribe v2 Realtime.
 
-| Capability               | OpenClaw surface                                                     | Default                  |
+| Capability               | ClawWorks surface                                                    | Default                  |
 | ------------------------ | -------------------------------------------------------------------- | ------------------------ |
 | Text-to-speech           | `messages.tts` / `talk`                                              | `eleven_multilingual_v2` |
 | Batch speech-to-text     | `tools.media.audio`                                                  | `scribe_v2`              |
@@ -43,14 +43,14 @@ export ELEVENLABS_API_KEY="..."
 }
 ```
 
-Set `modelId` to `eleven_v3` to use ElevenLabs v3 TTS. OpenClaw keeps
+Set `modelId` to `eleven_v3` to use ElevenLabs v3 TTS. ClawWorks keeps
 `eleven_multilingual_v2` as the default for existing installs.
 
 Discord voice channels use ElevenLabs' streaming TTS endpoint when ElevenLabs is
 the selected `voice.tts`/`messages.tts` provider. Playback starts from the
-returned audio stream instead of waiting for OpenClaw to download and write the
+returned audio stream instead of waiting for ClawWorks to download and write the
 whole audio file first. `latencyTier` maps to ElevenLabs'
-`optimize_streaming_latency` query parameter for models that accept it; OpenClaw
+`optimize_streaming_latency` query parameter for models that accept it; ClawWorks
 omits that parameter for `eleven_v3`, which rejects it.
 
 ## Speech-to-text
@@ -70,7 +70,7 @@ Use Scribe v2 for inbound audio attachments and short recorded voice segments:
 }
 ```
 
-OpenClaw sends multipart audio to ElevenLabs `/v1/speech-to-text` with
+ClawWorks sends multipart audio to ElevenLabs `/v1/speech-to-text` with
 `model_id: "scribe_v2"`. Language hints map to `language_code` when present.
 
 ## Streaming STT

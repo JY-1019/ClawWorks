@@ -9,7 +9,7 @@ title: "Admin HTTP RPC plugin"
 
 The bundled `admin-http-rpc` plugin exposes selected Gateway control-plane methods over HTTP for trusted host automation that cannot use the normal Gateway WebSocket RPC client.
 
-The plugin is included with OpenClaw, but it is off by default. When disabled, the route is not registered. When enabled, it adds:
+The plugin is included with ClawWorks, but it is off by default. When disabled, the route is not registered. When enabled, it adds:
 
 - `POST /api/v1/admin/rpc`
 - same listener as the Gateway: `http://<gateway-host>:<port>/api/v1/admin/rpc`
@@ -27,7 +27,7 @@ Use it when all of these are true:
 - The route is reachable only on loopback, a tailnet, or a private authenticated ingress.
 - You have reviewed the allowed methods and they match the automation you plan to run.
 
-Use the WebSocket RPC path for OpenClaw clients and interactive tools that can keep a Gateway WebSocket connection open.
+Use the WebSocket RPC path for ClawWorks clients and interactive tools that can keep a Gateway WebSocket connection open.
 
 ## Enable
 
@@ -185,7 +185,7 @@ Other Gateway methods are blocked until they are intentionally added.
 
 ## WebSocket comparison
 
-The normal Gateway WebSocket RPC path remains the preferred control-plane API for OpenClaw clients. Use admin HTTP RPC only for host tooling that needs a request/response HTTP surface.
+The normal Gateway WebSocket RPC path remains the preferred control-plane API for ClawWorks clients. Use admin HTTP RPC only for host tooling that needs a request/response HTTP surface.
 
 Shared-token WebSocket clients without a trusted device identity cannot self-declare admin scopes during connect. Admin HTTP RPC deliberately follows the existing trusted HTTP operator model: when the plugin is enabled, shared-secret bearer auth is treated as full operator access for this admin surface.
 

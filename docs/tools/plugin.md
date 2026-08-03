@@ -1,5 +1,5 @@
 ---
-summary: "Install, configure, and manage OpenClaw plugins"
+summary: "Install, configure, and manage ClawWorks plugins"
 read_when:
   - Installing or configuring plugins
   - Understanding plugin discovery and load rules
@@ -9,7 +9,7 @@ sidebarTitle: "Getting Started"
 doc-schema-version: 1
 ---
 
-Plugins extend OpenClaw with channels, model providers, agent harnesses, tools,
+Plugins extend ClawWorks with channels, model providers, agent harnesses, tools,
 skills, speech, realtime transcription, voice, media understanding, generation,
 web fetch, web search, and other runtime capabilities.
 
@@ -23,7 +23,7 @@ inventory of bundled, official external, and source-only plugins, see
 
 Before installing a plugin, make sure you have:
 
-- an OpenClaw checkout or installation with the `openclaw` CLI available
+- a ClawWorks checkout or installation with the `openclaw` CLI available
 - network access to the selected source, such as ClawHub, npm, or a git host
 - any plugin-specific credentials, config keys, or operating-system tools named
   by that plugin's setup docs
@@ -42,7 +42,7 @@ Before installing a plugin, make sure you have:
     ClawHub is the primary discovery surface for community plugins. During the
     launch cutover, ordinary bare package specs still install from npm unless
     they match an official plugin id. Raw `@openclaw/*` package specs that match
-    bundled plugins use the bundled copy from the current OpenClaw build. Use an
+    bundled plugins use the bundled copy from the current ClawWorks build. Use an
     explicit prefix when you need one source.
 
   </Step>
@@ -87,7 +87,7 @@ Before installing a plugin, make sure you have:
   <Step title="Let the Gateway reload">
     Installing, updating, or uninstalling plugin code requires a Gateway
     restart. When a managed Gateway is already running with config reload
-    enabled, OpenClaw detects the changed plugin install record and restarts the
+    enabled, ClawWorks detects the changed plugin install record and restarts the
     Gateway automatically. If the Gateway is not managed or reload is disabled,
     restart it yourself:
 
@@ -117,17 +117,17 @@ Before installing a plugin, make sure you have:
 
 ### Choose an install source
 
-| Source      | Use when                                                                       | Example                                                        |
-| ----------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| ClawHub     | You want OpenClaw-native discovery, scans, version metadata, and install hints | `openclaw plugins install clawhub:<package>`                   |
-| npm         | You need direct npm registry or dist-tag workflows                             | `openclaw plugins install npm:<package>`                       |
-| git         | You need a branch, tag, or commit from a repository                            | `openclaw plugins install git:github.com/<owner>/<repo>@<ref>` |
-| local path  | You are developing or testing a plugin on the same machine                     | `openclaw plugins install --link ./my-plugin`                  |
-| marketplace | You are installing a Claude-compatible marketplace plugin                      | `openclaw plugins install <plugin> --marketplace <source>`     |
+| Source      | Use when                                                                        | Example                                                        |
+| ----------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| ClawHub     | You want ClawWorks-native discovery, scans, version metadata, and install hints | `openclaw plugins install clawhub:<package>`                   |
+| npm         | You need direct npm registry or dist-tag workflows                              | `openclaw plugins install npm:<package>`                       |
+| git         | You need a branch, tag, or commit from a repository                             | `openclaw plugins install git:github.com/<owner>/<repo>@<ref>` |
+| local path  | You are developing or testing a plugin on the same machine                      | `openclaw plugins install --link ./my-plugin`                  |
+| marketplace | You are installing a Claude-compatible marketplace plugin                       | `openclaw plugins install <plugin> --marketplace <source>`     |
 
 Bare package specs have special compatibility behavior. If the bare name matches
-a bundled plugin id, OpenClaw uses that bundled source. If it matches an
-official external plugin id, OpenClaw uses the official package catalog. Other
+a bundled plugin id, ClawWorks uses that bundled source. If it matches an
+official external plugin id, ClawWorks uses the official package catalog. Other
 ordinary bare package specs install through npm during the launch cutover. Raw
 `@openclaw/*` package specs that match bundled plugins also resolve to the
 bundled copy before npm fallback. Use `npm:@openclaw/<plugin>@<version>` when
@@ -137,9 +137,9 @@ deterministic source selection. See [`openclaw plugins`](/cli/plugins#install)
 for the full command contract.
 
 For npm installs, unpinned package specs and `@latest` choose the newest stable
-package that advertises compatibility with this OpenClaw build. If npm's
+package that advertises compatibility with this ClawWorks build. If npm's
 current latest release declares a newer `openclaw.compat.pluginApi` or
-`openclaw.install.minHostVersion`, OpenClaw scans older stable package versions
+`openclaw.install.minHostVersion`, ClawWorks scans older stable package versions
 and installs the newest one that fits. Exact versions and explicit channel tags
 such as `@beta` stay pinned to the selected package and fail when incompatible.
 
@@ -149,10 +149,10 @@ Configure `security.installPolicy` to run a trusted local policy command before
 plugin install or update proceeds. The policy receives metadata plus the staged
 source path and can allow or block the install. It covers CLI and Gateway-backed
 plugin install/update paths. Plugin `before_install` hooks run later only in
-OpenClaw processes where plugin hooks are loaded, so use `security.installPolicy`
+ClawWorks processes where plugin hooks are loaded, so use `security.installPolicy`
 for operator-owned install decisions. The deprecated
 `--dangerously-force-unsafe-install` flag is accepted for compatibility but does
-not bypass install policy or OpenClaw's built-in plugin dependency denylist.
+not bypass install policy or ClawWorks's built-in plugin dependency denylist.
 
 See [Skills config](/tools/skills-config#operator-install-policy-securityinstallpolicy)
 for the shared `security.installPolicy` exec schema used by both skills and
@@ -217,7 +217,7 @@ The warning includes discovered plugin ids and, for short lists, a minimal
 id before copying trusted plugins into `openclaw.json`. The same trust-pinning
 guidance applies when diagnostics say a plugin loaded
 `without install/load-path provenance`: inspect that plugin id, then pin the
-trusted id in `plugins.allow` or reinstall from a trusted source so OpenClaw
+trusted id in `plugins.allow` or reinstall from a trusted source so ClawWorks
 records install provenance.
 
 Run `openclaw doctor` or `openclaw doctor --fix` when config validation reports
@@ -225,12 +225,12 @@ stale plugin ids, allowlist/tool mismatches, or legacy bundled plugin paths.
 
 ## Understand plugin formats
 
-OpenClaw recognizes two plugin formats:
+ClawWorks recognizes two plugin formats:
 
-| Format                 | How it loads                                                                 | Use when                                                               |
-| ---------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Native OpenClaw plugin | `openclaw.plugin.json` plus a runtime module loaded in process               | You are installing or building OpenClaw-specific runtime capabilities  |
-| Compatible bundle      | Codex, Claude, or Cursor plugin layout mapped into OpenClaw plugin inventory | You are reusing compatible skills, commands, hooks, or bundle metadata |
+| Format                  | How it loads                                                                  | Use when                                                               |
+| ----------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Native ClawWorks plugin | `openclaw.plugin.json` plus a runtime module loaded in process                | You are installing or building ClawWorks-specific runtime capabilities |
+| Compatible bundle       | Codex, Claude, or Cursor plugin layout mapped into ClawWorks plugin inventory | You are reusing compatible skills, commands, hooks, or bundle metadata |
 
 Both formats appear in `openclaw plugins list`, `openclaw plugins inspect`,
 `openclaw plugins enable`, and `openclaw plugins disable`. See
@@ -300,33 +300,33 @@ validation so typos stay visible.
 
 For intentional channel replacement, the preferred plugin should declare
 `channelConfigs.<channel-id>.preferOver` with the legacy or lower-priority
-plugin id. If both plugins are explicitly enabled, OpenClaw keeps that request
+plugin id. If both plugins are explicitly enabled, ClawWorks keeps that request
 and reports duplicate channel or tool diagnostics instead of silently choosing
 one owner.
 
 If an installed package reports that it `requires compiled runtime output for
 TypeScript entry ...`, the package was published without the JavaScript files
-OpenClaw needs at runtime. Update or reinstall after the publisher ships
+ClawWorks needs at runtime. Update or reinstall after the publisher ships
 compiled JavaScript, or disable/uninstall the plugin until then.
 
 ### Blocked plugin path ownership
 
 If plugin diagnostics say
 `blocked plugin candidate: suspicious ownership (... uid=1000, expected uid=0 or root)`
-and config validation follows with `plugin present but blocked`, OpenClaw found
+and config validation follows with `plugin present but blocked`, ClawWorks found
 plugin files owned by a different Unix user than the process that is loading
 them. Keep the plugin config in place; fix the filesystem ownership or run
-OpenClaw as the same user that owns the state directory.
+ClawWorks as the same user that owns the state directory.
 
 For Docker installs, the official image runs as `node` (uid `1000`), so the
-host bind-mounted OpenClaw config and workspace directories should normally be
+host bind-mounted ClawWorks config and workspace directories should normally be
 owned by uid `1000`:
 
 ```bash
 sudo chown -R 1000:1000 /path/to/openclaw-config /path/to/openclaw-workspace
 ```
 
-If you intentionally run OpenClaw as root, repair the managed plugin root to
+If you intentionally run ClawWorks as root, repair the managed plugin root to
 root ownership instead:
 
 ```bash
@@ -358,7 +358,7 @@ including plugin id, declared tool names, result shape, and whether the tool is
 optional. Slow lines are promoted to warnings when a single factory takes at
 least 1s or total plugin tool factory prep takes at least 5s.
 
-OpenClaw caches successful plugin tool factory results for repeated resolutions
+ClawWorks caches successful plugin tool factory results for repeated resolutions
 with the same effective request context. The cache key includes the effective
 runtime config, workspace, agent/session ids, sandbox policy, browser settings,
 delivery context, requester identity, and ownership state, so factories that

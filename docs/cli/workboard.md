@@ -184,7 +184,7 @@ The CLI dispatch path calls Gateway RPC with `operator.read` and
 `operator.write` scopes. A read-only Gateway token can inspect Workboard data
 through read methods, but it cannot create cards or dispatch workers.
 
-Local `list`, `create`, and `show` commands operate on the local OpenClaw state
+Local `list`, `create`, and `show` commands operate on the local ClawWorks state
 directory used by the current profile. Use `--dev` or `--profile <name>` on the
 top-level `openclaw` command when you need a different state root.
 

@@ -1,9 +1,9 @@
 ---
-summary: "Use Kilo Gateway's unified API to access many models in OpenClaw"
+summary: "Use Kilo Gateway's unified API to access many models in ClawWorks"
 title: "Kilo Gateway"
 read_when:
   - You want a single API key for many LLMs
-  - You want to run models via Kilo Gateway in OpenClaw
+  - You want to run models via Kilo Gateway in ClawWorks
 ---
 
 Kilo Gateway provides a **unified API** that routes requests to many models behind a single
@@ -56,15 +56,15 @@ The default model is `kilocode/kilo/auto`, a provider-owned smart-routing
 model managed by Kilo Gateway.
 
 <Note>
-OpenClaw treats `kilocode/kilo/auto` as the stable default ref, but does not
+ClawWorks treats `kilocode/kilo/auto` as the stable default ref, but does not
 publish a source-backed task-to-upstream-model mapping for that route. Exact
 upstream routing behind `kilocode/kilo/auto` is owned by Kilo Gateway, not
-hard-coded in OpenClaw.
+hard-coded in ClawWorks.
 </Note>
 
 ## Built-in catalog
 
-OpenClaw dynamically discovers available models from the Kilo Gateway at startup. Use
+ClawWorks dynamically discovers available models from the Kilo Gateway at startup. Use
 `/models kilocode` to see the full list of models available with your account.
 
 Any model available on the gateway can be used with the `kilocode/` prefix:
@@ -78,7 +78,7 @@ Any model available on the gateway can be used with the `kilocode/` prefix:
 | ...and many more                         | Use `/models kilocode` to list all |
 
 <Tip>
-At startup, OpenClaw queries `GET https://api.kilo.ai/api/gateway/models` and merges
+At startup, ClawWorks queries `GET https://api.kilo.ai/api/gateway/models` and merges
 discovered models ahead of the static fallback catalog. The static fallback always
 includes `kilocode/kilo/auto` (`Kilo Auto`) with `input: ["text", "image"]`,
 `reasoning: true`, `contextWindow: 1000000`, and `maxTokens: 128000`.
@@ -102,7 +102,7 @@ includes `kilocode/kilo/auto` (`Kilo Auto`) with `input: ["text", "image"]`,
     Kilo Gateway is documented in source as OpenRouter-compatible, so it stays on
     the proxy-style OpenAI-compatible path rather than native OpenAI request shaping.
 
-    - Gemini-backed Kilo refs stay on the proxy-Gemini path, so OpenClaw keeps
+    - Gemini-backed Kilo refs stay on the proxy-Gemini path, so ClawWorks keeps
       Gemini thought-signature sanitation there without enabling native Gemini
       replay validation or bootstrap rewrites.
     - Kilo Gateway uses a Bearer token with your API key under the hood.
@@ -122,7 +122,7 @@ includes `kilocode/kilo/auto` (`Kilo Auto`) with `input: ["text", "image"]`,
   </Accordion>
 
   <Accordion title="Troubleshooting">
-    - If model discovery fails at startup, OpenClaw falls back to the static catalog containing `kilocode/kilo/auto`.
+    - If model discovery fails at startup, ClawWorks falls back to the static catalog containing `kilocode/kilo/auto`.
     - Confirm your API key is valid and that your Kilo account has the desired models enabled.
     - When the Gateway runs as a daemon, ensure `KILOCODE_API_KEY` is available to that process (for example in `~/.openclaw/.env` or via `env.shellEnv`).
 
@@ -136,7 +136,7 @@ includes `kilocode/kilo/auto` (`Kilo Auto`) with `input: ["text", "image"]`,
     Choosing providers, model refs, and failover behavior.
   </Card>
   <Card title="Configuration reference" href="/gateway/configuration-reference" icon="gear">
-    Full OpenClaw configuration reference.
+    Full ClawWorks configuration reference.
   </Card>
   <Card title="Kilo Gateway" href="https://app.kilo.ai" icon="arrow-up-right-from-square">
     Kilo Gateway dashboard, API keys, and account management.

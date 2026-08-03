@@ -37,9 +37,9 @@ $0.95/MTok input, and $4.00/MTok output; Kimi K2.5 is $0.10/MTok cache hit,
 $0.60/MTok input, and $3.00/MTok output. Other legacy catalog entries keep
 zero-cost placeholders unless you override them in config.
 
-Kimi K2.7 Code always uses native thinking. OpenClaw exposes only the `on`
+Kimi K2.7 Code always uses native thinking. ClawWorks exposes only the `on`
 thinking state for this model and omits outbound `thinking` and
-`reasoning_effort` controls, as required by Moonshot. OpenClaw also omits
+`reasoning_effort` controls, as required by Moonshot. ClawWorks also omits
 sampling overrides that K2.7 fixes to provider defaults. Kimi K2.6 remains the
 onboarding default.
 
@@ -317,9 +317,9 @@ Config lives under `plugins.entries.moonshot.config.webSearch`:
 <AccordionGroup>
   <Accordion title="Native thinking mode">
     Kimi K2.7 Code always uses native thinking. Moonshot requires clients to
-    omit the `thinking` field for this model, so OpenClaw exposes only `on` and
+    omit the `thinking` field for this model, so ClawWorks exposes only `on` and
     ignores stale `off` settings. K2.7 also fixes `temperature`, `top_p`, `n`,
-    `presence_penalty`, and `frequency_penalty`; OpenClaw omits configured
+    `presence_penalty`, and `frequency_penalty`; ClawWorks omits configured
     overrides for those fields.
 
     Other Moonshot Kimi models support binary native thinking:
@@ -345,7 +345,7 @@ Config lives under `plugins.entries.moonshot.config.webSearch`:
     }
     ```
 
-    OpenClaw maps runtime `/think` levels for those models:
+    ClawWorks maps runtime `/think` levels for those models:
 
     | `/think` level       | Moonshot behavior          |
     | -------------------- | -------------------------- |
@@ -353,15 +353,15 @@ Config lives under `plugins.entries.moonshot.config.webSearch`:
     | Any non-off level    | `thinking.type=enabled`    |
 
     <Warning>
-    When Moonshot thinking is enabled, `tool_choice` must be `auto` or `none`. OpenClaw normalizes incompatible values to `auto`. This includes Kimi K2.7 Code, whose thinking mode cannot be disabled to preserve a pinned tool choice.
+    When Moonshot thinking is enabled, `tool_choice` must be `auto` or `none`. ClawWorks normalizes incompatible values to `auto`. This includes Kimi K2.7 Code, whose thinking mode cannot be disabled to preserve a pinned tool choice.
     </Warning>
 
     Kimi K2.6 also accepts an optional `thinking.keep` field that controls
     multi-turn retention of `reasoning_content`. Set it to `"all"` to keep full
     reasoning across turns; omit it (or leave it `null`) to use the server
-    default strategy. OpenClaw only forwards `thinking.keep` for
+    default strategy. ClawWorks only forwards `thinking.keep` for
     `moonshot/kimi-k2.6` and strips it from other models. Kimi K2.7 Code
-    preserves full reasoning history by default while OpenClaw omits the entire
+    preserves full reasoning history by default while ClawWorks omits the entire
     `thinking` field.
 
     ```json5
@@ -383,7 +383,7 @@ Config lives under `plugins.entries.moonshot.config.webSearch`:
   </Accordion>
 
   <Accordion title="Tool call id sanitization">
-    Moonshot Kimi serves native tool_call ids shaped like `functions.<name>:<index>`. For the OpenAI-completions transport, OpenClaw preserves the first occurrence of each native Kimi id and rewrites later duplicates to deterministic OpenAI-style `call_*` ids. Matching tool results are remapped with the same id so replay remains unique without stripping Kimi's first native id.
+    Moonshot Kimi serves native tool_call ids shaped like `functions.<name>:<index>`. For the OpenAI-completions transport, ClawWorks preserves the first occurrence of each native Kimi id and rewrites later duplicates to deterministic OpenAI-style `call_*` ids. Matching tool results are remapped with the same id so replay remains unique without stripping Kimi's first native id.
 
     To force strict sanitization on a custom OpenAI-compatible provider, set `sanitizeToolCallIds: true`:
 
@@ -405,7 +405,7 @@ Config lives under `plugins.entries.moonshot.config.webSearch`:
   <Accordion title="Streaming usage compatibility">
     Native Moonshot endpoints (`https://api.moonshot.ai/v1` and
     `https://api.moonshot.cn/v1`) advertise streaming usage compatibility on the
-    shared `openai-completions` transport. OpenClaw keys that off endpoint
+    shared `openai-completions` transport. ClawWorks keys that off endpoint
     capabilities, so compatible custom provider ids targeting the same native
     Moonshot hosts inherit the same streaming-usage behavior.
 

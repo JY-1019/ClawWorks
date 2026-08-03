@@ -2,7 +2,7 @@
 summary: "Together AI setup (auth + model selection)"
 title: "Together AI"
 read_when:
-  - You want to use Together AI with OpenClaw
+  - You want to use Together AI with ClawWorks
   - You need the API key env var or CLI auth choice
 ---
 
@@ -59,7 +59,7 @@ The onboarding preset sets
 
 ## Built-in catalog
 
-OpenClaw ships this bundled Together catalog:
+ClawWorks ships this bundled Together catalog:
 
 | Model ref                                          | Name                         | Input       | Context | Notes                |
 | -------------------------------------------------- | ---------------------------- | ----------- | ------- | -------------------- |

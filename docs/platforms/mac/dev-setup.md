@@ -1,5 +1,5 @@
 ---
-summary: "Setup guide for developers working on the OpenClaw macOS app"
+summary: "Setup guide for developers working on the ClawWorks macOS app"
 read_when:
   - Setting up the macOS development environment
 title: "macOS dev setup"
@@ -7,7 +7,7 @@ title: "macOS dev setup"
 
 # macOS developer setup
 
-Build and run the OpenClaw macOS application from source.
+Build and run the ClawWorks macOS application from source.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ The macOS app expects a global `openclaw` CLI install to manage background tasks
 
 **To install it (recommended):**
 
-1. Open the OpenClaw app.
+1. Open the ClawWorks app.
 2. Go to the **General** settings tab.
 3. Click **"Install CLI"**.
 

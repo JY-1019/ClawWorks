@@ -1,25 +1,25 @@
 ---
-summary: "OAuth in OpenClaw: token exchange, storage, and multi-account patterns"
+summary: "OAuth in ClawWorks: token exchange, storage, and multi-account patterns"
 read_when:
-  - You want to understand OpenClaw OAuth end-to-end
+  - You want to understand ClawWorks OAuth end-to-end
   - You hit token invalidation / logout issues
   - You want Claude CLI or OAuth auth flows
   - You want multiple accounts or profile routing
 title: "OAuth"
 ---
 
-OpenClaw supports "subscription auth" via OAuth for providers that offer it
+ClawWorks supports "subscription auth" via OAuth for providers that offer it
 (notably **OpenAI Codex (ChatGPT OAuth)**). For Anthropic, the practical split
 is now:
 
 - **Anthropic API key**: normal Anthropic API billing
-- **Anthropic Claude CLI / subscription auth inside OpenClaw**: Anthropic staff
+- **Anthropic Claude CLI / subscription auth inside ClawWorks**: Anthropic staff
   told us this usage is allowed again
 
 OpenAI Codex OAuth is explicitly supported for use in external tools like
-OpenClaw.
+ClawWorks.
 
-OpenClaw stores both OpenAI API-key auth and ChatGPT/Codex OAuth under the
+ClawWorks stores both OpenAI API-key auth and ChatGPT/Codex OAuth under the
 canonical provider id `openai`. Older `openai-codex:*` profile ids and
 `auth.order.openai-codex` entries are legacy state repaired by
 `openclaw doctor --fix`; use `openai:*` profile ids and `auth.order.openai` for
@@ -33,7 +33,7 @@ This page explains:
 - where tokens are **stored** (and why)
 - how to handle **multiple accounts** (profiles + per-session overrides)
 
-OpenClaw also supports **provider plugins** that ship their own OAuth or API-key
+ClawWorks also supports **provider plugins** that ship their own OAuth or API-key
 flows. Run them via:
 
 ```bash
@@ -46,16 +46,16 @@ OAuth providers commonly mint a **new refresh token** during login/refresh flows
 
 Practical symptom:
 
-- you log in via OpenClaw _and_ via Claude Code / Codex CLI → one of them randomly gets "logged out" later
+- you log in via ClawWorks _and_ via Claude Code / Codex CLI → one of them randomly gets "logged out" later
 
-To reduce that, OpenClaw treats `auth-profiles.json` as a **token sink**:
+To reduce that, ClawWorks treats `auth-profiles.json` as a **token sink**:
 
 - the runtime reads credentials from **one place**
 - we can keep multiple profiles and route them deterministically
 - external CLI reuse is provider-specific: Codex CLI can bootstrap an empty
-  `openai:default` profile, but once OpenClaw has a local OAuth profile,
+  `openai:default` profile, but once ClawWorks has a local OAuth profile,
   the local refresh token is canonical. If that local refresh token is rejected,
-  OpenClaw can use a usable same-account Codex CLI token as a runtime-only
+  ClawWorks can use a usable same-account Codex CLI token as a runtime-only
   fallback; other integrations can remain externally managed and re-read their
   CLI auth store
 - status and startup paths that already know the configured provider set scope
@@ -78,7 +78,7 @@ All of the above also respect `$OPENCLAW_STATE_DIR` (state dir override). Full r
 
 For static secret refs and runtime snapshot activation behavior, see [Secrets Management](/gateway/secrets).
 
-When a secondary agent has no local auth profile, OpenClaw uses read-through
+When a secondary agent has no local auth profile, ClawWorks uses read-through
 inheritance from the default/main agent store. It does not clone the main
 agent's `auth-profiles.json` on read. OAuth refresh tokens are especially
 sensitive: normal copy flows skip them by default because some providers rotate
@@ -89,8 +89,8 @@ agent when it needs an independent account.
 
 <Warning>
 Anthropic's public Claude Code docs say direct Claude Code use stays within
-Claude subscription limits, and Anthropic staff told us OpenClaw-style Claude
-CLI usage is allowed again. OpenClaw therefore treats Claude CLI reuse and
+Claude subscription limits, and Anthropic staff told us ClawWorks-style Claude
+CLI usage is allowed again. ClawWorks therefore treats Claude CLI reuse and
 `claude -p` usage as sanctioned for this integration unless Anthropic
 publishes a new policy.
 
@@ -100,35 +100,35 @@ plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-you
 and [Using Claude Code with your Team or Enterprise
 plan](https://support.anthropic.com/en/articles/11845131-using-claude-code-with-your-team-or-enterprise-plan/).
 
-If you want other subscription-style options in OpenClaw, see [OpenAI
+If you want other subscription-style options in ClawWorks, see [OpenAI
 Codex](/providers/openai), [Qwen Cloud Coding
 Plan](/providers/qwen), [MiniMax Coding Plan](/providers/minimax),
 and [Z.AI / GLM Coding Plan](/providers/zai).
 </Warning>
 
-OpenClaw also exposes Anthropic setup-token as a supported token-auth path, but it now prefers Claude CLI reuse and `claude -p` when available.
+ClawWorks also exposes Anthropic setup-token as a supported token-auth path, but it now prefers Claude CLI reuse and `claude -p` when available.
 
 ## Anthropic Claude CLI migration
 
-OpenClaw supports Anthropic Claude CLI reuse again. If you already have a local
+ClawWorks supports Anthropic Claude CLI reuse again. If you already have a local
 Claude login on the host, onboarding/configure can reuse it directly.
 
 ## OAuth exchange (how login works)
 
-OpenClaw's interactive login flows are implemented in `openclaw/plugin-sdk/llm` and wired into the wizards/commands.
+ClawWorks's interactive login flows are implemented in `openclaw/plugin-sdk/llm` and wired into the wizards/commands.
 
 ### Anthropic setup-token
 
 Flow shape:
 
-1. start Anthropic setup-token or paste-token from OpenClaw
-2. OpenClaw stores the resulting Anthropic credential in an auth profile
+1. start Anthropic setup-token or paste-token from ClawWorks
+2. ClawWorks stores the resulting Anthropic credential in an auth profile
 3. model selection stays on `anthropic/...`
 4. existing Anthropic auth profiles remain available for rollback/order control
 
 ### OpenAI Codex (ChatGPT OAuth)
 
-OpenAI Codex OAuth is explicitly supported for use outside the Codex CLI, including OpenClaw workflows.
+OpenAI Codex OAuth is explicitly supported for use outside the Codex CLI, including ClawWorks workflows.
 
 The login command still uses the canonical OpenAI provider id:
 
@@ -164,12 +164,12 @@ At runtime:
 - if a secondary agent reads an inherited main-agent OAuth profile, refresh
   writes back to the main agent store instead of copying the refresh token into
   the secondary agent store
-- exception: some external CLI credentials stay externally managed; OpenClaw
+- exception: some external CLI credentials stay externally managed; ClawWorks
   re-reads those CLI auth stores instead of spending copied refresh tokens.
   Codex CLI bootstrap is intentionally narrower: it seeds an empty
-  `openai:default` profile, then OpenClaw-owned refreshes keep the local
+  `openai:default` profile, then ClawWorks-owned refreshes keep the local
   profile canonical. If the local Codex refresh fails and Codex CLI has a
-  usable token for the same account, OpenClaw may use that token for the current
+  usable token for the same account, ClawWorks may use that token for the current
   runtime request without writing it back to `auth-profiles.json`.
 
 The refresh flow is automatic; you generally don't need to manage tokens manually.

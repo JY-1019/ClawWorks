@@ -1,18 +1,18 @@
 ---
-summary: "Use Ollama Cloud directly with OpenClaw"
+summary: "Use Ollama Cloud directly with ClawWorks"
 read_when:
   - You want to use hosted Ollama models without a local Ollama server
   - You need the ollama-cloud provider id, key, or endpoint
 title: "Ollama Cloud"
 ---
 
-Ollama Cloud is Ollama's hosted model API. It lets OpenClaw call Ollama-hosted
+Ollama Cloud is Ollama's hosted model API. It lets ClawWorks call Ollama-hosted
 models directly, without installing a local Ollama server or signing a local
 Ollama app into cloud mode. Use provider id `ollama-cloud` and model refs like
 `ollama-cloud/kimi-k2.6`.
 
 This page is for direct cloud-only routing. The provider uses Ollama's native
-`/api/chat` style, not the OpenAI-compatible `/v1` route. OpenClaw registers it
+`/api/chat` style, not the OpenAI-compatible `/v1` route. ClawWorks registers it
 as a separate provider id so cloud-only credentials, live catalog discovery, and
 model selection do not get mixed with a local `ollama` host.
 
@@ -45,7 +45,7 @@ export OLLAMA_API_KEY="<your-ollama-cloud-api-key>" # pragma: allowlist secret
 ## When to choose Ollama Cloud
 
 - You want hosted Ollama models without running `ollama serve` locally.
-- You want the same native Ollama chat API shape OpenClaw uses for local
+- You want the same native Ollama chat API shape ClawWorks uses for local
   Ollama, but pointed at `https://ollama.com`.
 - You want a simple cloud path for models that are already in Ollama's hosted
   catalog.
@@ -58,7 +58,7 @@ semantics or provider-specific OpenAI-style features.
 
 ## Models
 
-OpenClaw discovers Ollama Cloud models from the live hosted catalog. Commonly
+ClawWorks discovers Ollama Cloud models from the live hosted catalog. Commonly
 available hosted ids include:
 
 - `ollama-cloud/gpt-oss:20b`

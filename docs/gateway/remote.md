@@ -34,7 +34,7 @@ Ideal when your laptop sleeps often but you want the agent always-on.
 
 The laptop does **not** run the agent. It connects remotely:
 
-- Use the macOS app's remote mode (Settings → General → OpenClaw runs).
+- Use the macOS app's remote mode (Settings → General → ClawWorks runs).
 - The app connects directly when the gateway is reachable on LAN/Tailnet, or opens and manages an SSH tunnel when you choose SSH.
 
 Runbook: [macOS remote access](/platforms/mac/remote).

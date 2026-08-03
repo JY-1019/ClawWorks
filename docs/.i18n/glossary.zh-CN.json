@@ -1,7 +1,7 @@
 [
   {
-    "source": "OpenClaw",
-    "target": "OpenClaw"
+    "source": "ClawWorks",
+    "target": "ClawWorks"
   },
   {
     "source": "macOS platform notes",
@@ -1152,12 +1152,12 @@
     "target": "Agent runtime architecture"
   },
   {
-    "source": "OpenClaw agent runtime workflow",
-    "target": "OpenClaw agent runtime workflow"
+    "source": "ClawWorks agent runtime workflow",
+    "target": "ClawWorks agent runtime workflow"
   },
   {
-    "source": "OpenClaw agent runtime architecture",
-    "target": "OpenClaw agent runtime architecture"
+    "source": "ClawWorks agent runtime architecture",
+    "target": "ClawWorks agent runtime architecture"
   },
   {
     "source": "Install and Configure Plugins",
@@ -1222,5 +1222,29 @@
   {
     "source": "LightRAG knowledge plugin",
     "target": "LightRAG 知识插件"
+  },
+  {
+    "source": "Browser (ClawWorks-managed)",
+    "target": "Browser (ClawWorks-managed)"
+  },
+  {
+    "source": "ClawWorks lore",
+    "target": "ClawWorks lore"
+  },
+  {
+    "source": "Updating ClawWorks",
+    "target": "Updating ClawWorks"
+  },
+  {
+    "source": "ClawWorks Threat Model",
+    "target": "ClawWorks Threat Model"
+  },
+  {
+    "source": "ClawWorks assistant setup",
+    "target": "ClawWorks assistant setup"
+  },
+  {
+    "source": "ClawWorks assistant",
+    "target": "ClawWorks assistant"
   }
 ]

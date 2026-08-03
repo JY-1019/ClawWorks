@@ -1,7 +1,7 @@
 ---
 summary: "Plugin internals: capability model, ownership, contracts, load pipeline, and runtime helpers"
 read_when:
-  - Building or debugging native OpenClaw plugins
+  - Building or debugging native ClawWorks plugins
   - Understanding the plugin capability model or ownership boundaries
   - Working on the plugin load pipeline or registry
   - Implementing provider runtime hooks or channel plugins
@@ -9,7 +9,7 @@ title: "Plugin internals"
 sidebarTitle: "Internals"
 ---
 
-This is the **deep architecture reference** for the OpenClaw plugin system. For practical guides, start with one of the focused pages below.
+This is the **deep architecture reference** for the ClawWorks plugin system. For practical guides, start with one of the focused pages below.
 
 <CardGroup cols={2}>
   <Card title="Install and use plugins" icon="plug" href="/tools/plugin">
@@ -31,7 +31,7 @@ This is the **deep architecture reference** for the OpenClaw plugin system. For 
 
 ## Public capability model
 
-Capabilities are the public **native plugin** model inside OpenClaw. Every native OpenClaw plugin registers against one or more capability types:
+Capabilities are the public **native plugin** model inside ClawWorks. Every native ClawWorks plugin registers against one or more capability types:
 
 | Capability             | Registration method                              | Example plugins                      |
 | ---------------------- | ------------------------------------------------ | ------------------------------------ |
@@ -69,7 +69,7 @@ Capability registration is the intended direction. Legacy hooks remain the safes
 
 ### Plugin shapes
 
-OpenClaw classifies every loaded plugin into a shape based on its actual registration behavior (not just static metadata):
+ClawWorks classifies every loaded plugin into a shape based on its actual registration behavior (not just static metadata):
 
 <AccordionGroup>
   <Accordion title="plain-capability">
@@ -115,20 +115,20 @@ Neither `hook-only` nor `before_agent_start` will break your plugin today: `hook
 
 ## Architecture overview
 
-OpenClaw's plugin system has four layers:
+ClawWorks's plugin system has four layers:
 
 <Steps>
   <Step title="Manifest + discovery">
-    OpenClaw finds candidate plugins from configured paths, workspace roots, global plugin roots, and bundled plugins. Discovery reads native `openclaw.plugin.json` manifests plus supported bundle manifests first.
+    ClawWorks finds candidate plugins from configured paths, workspace roots, global plugin roots, and bundled plugins. Discovery reads native `openclaw.plugin.json` manifests plus supported bundle manifests first.
   </Step>
   <Step title="Enablement + validation">
     Core decides whether a discovered plugin is enabled, disabled, blocked, or selected for an exclusive slot such as memory.
   </Step>
   <Step title="Runtime loading">
-    Native OpenClaw plugins are loaded in-process and register capabilities into a central registry. Packaged JavaScript loads through native `require`; third-party local source TypeScript is the emergency Jiti fallback. Compatible bundles are normalized into registry records without importing runtime code.
+    Native ClawWorks plugins are loaded in-process and register capabilities into a central registry. Packaged JavaScript loads through native `require`; third-party local source TypeScript is the emergency Jiti fallback. Compatible bundles are normalized into registry records without importing runtime code.
   </Step>
   <Step title="Surface consumption">
-    The rest of OpenClaw reads the registry to expose tools, channels, provider setup, hooks, HTTP routes, CLI commands, and services.
+    The rest of ClawWorks reads the registry to expose tools, channels, provider setup, hooks, HTTP routes, CLI commands, and services.
   </Step>
 </Steps>
 
@@ -137,7 +137,7 @@ For plugin CLI specifically, root command discovery is split in two phases:
 - parse-time metadata comes from `registerCli(..., { descriptors: [...] })`
 - the real plugin CLI module can stay lazy and register on first invocation
 
-That keeps plugin-owned CLI code inside the plugin while still letting OpenClaw reserve root command names before parsing.
+That keeps plugin-owned CLI code inside the plugin while still letting ClawWorks reserve root command names before parsing.
 
 The important design boundary:
 
@@ -145,7 +145,7 @@ The important design boundary:
 - native capability discovery may load trusted plugin entry code to build a non-activating registry snapshot
 - native runtime behavior comes from the plugin module's `register(api)` path with `api.registrationMode === "full"`
 
-That split lets OpenClaw validate config, explain missing/disabled plugins, and build UI/schema hints before the full runtime is active.
+That split lets ClawWorks validate config, explain missing/disabled plugins, and build UI/schema hints before the full runtime is active.
 
 ### Plugin metadata snapshot and lookup table
 
@@ -188,7 +188,7 @@ Do not treat `activation` as a lifecycle hook or a replacement for `register(...
 
 ### Channel plugins and the shared message tool
 
-Channel plugins do not need to register a separate send/edit/react tool for normal chat actions. OpenClaw keeps one shared `message` tool in core, and channel plugins own the channel-specific discovery and execution behind it.
+Channel plugins do not need to register a separate send/edit/react tool for normal chat actions. ClawWorks keeps one shared `message` tool in core, and channel plugins own the channel-specific discovery and execution behind it.
 
 The current boundary is:
 
@@ -233,11 +233,11 @@ See [Plugin architecture internals](/plugins/architecture-internals) for the ful
 
 ## Capability ownership model
 
-OpenClaw treats a native plugin as the ownership boundary for a **company** or a **feature**, not as a grab bag of unrelated integrations.
+ClawWorks treats a native plugin as the ownership boundary for a **company** or a **feature**, not as a grab bag of unrelated integrations.
 
 That means:
 
-- a company plugin should usually own all of that company's OpenClaw-facing surfaces
+- a company plugin should usually own all of that company's ClawWorks-facing surfaces
 - a feature plugin should usually own the full feature surface it introduces
 - channels should consume shared core capabilities instead of re-implementing provider behavior ad hoc
 
@@ -264,7 +264,7 @@ This is the key distinction:
 - **plugin** = ownership boundary
 - **capability** = core contract that multiple plugins can implement or consume
 
-So if OpenClaw adds a new domain such as video, the first question is not "which provider should hardcode video handling?" The first question is "what is the core video capability contract?" Once that contract exists, vendor plugins can register against it and channel/feature plugins can consume it.
+So if ClawWorks adds a new domain such as video, the first question is not "which provider should hardcode video handling?" The first question is "what is the core video capability contract?" Once that contract exists, vendor plugins can register against it and channel/feature plugins can consume it.
 
 If the capability does not exist yet, the right move is usually:
 
@@ -311,7 +311,7 @@ That same pattern should be preferred for future capabilities.
 
 ### Multi-capability company plugin example
 
-A company plugin should feel cohesive from the outside. If OpenClaw has shared contracts for models, speech, realtime transcription, realtime voice, media understanding, image generation, video generation, web fetch, and web search, a vendor can own all of its surfaces in one place:
+A company plugin should feel cohesive from the outside. If ClawWorks has shared contracts for models, speech, realtime transcription, realtime voice, media understanding, image generation, video generation, web fetch, and web search, a vendor can own all of its surfaces in one place:
 
 ```ts
 import type { OpenClawPluginDefinition } from "openclaw/plugin-sdk/plugin-entry";
@@ -374,7 +374,7 @@ What matters is not the exact helper names. The shape matters:
 
 ### Capability example: video understanding
 
-OpenClaw already treats image/audio/video understanding as one shared capability. The same ownership model applies there:
+ClawWorks already treats image/audio/video understanding as one shared capability. The same ownership model applies there:
 
 <Steps>
   <Step title="Core defines the contract">
@@ -412,11 +412,11 @@ There are two layers of enforcement:
     The plugin registry validates registrations as plugins load. Examples: duplicate provider ids, duplicate speech provider ids, and malformed registrations produce plugin diagnostics instead of undefined behavior.
   </Accordion>
   <Accordion title="Contract tests">
-    Bundled plugins are captured in contract registries during test runs so OpenClaw can assert ownership explicitly. Today this is used for model providers, speech providers, web search providers, and bundled registration ownership.
+    Bundled plugins are captured in contract registries during test runs so ClawWorks can assert ownership explicitly. Today this is used for model providers, speech providers, web search providers, and bundled registration ownership.
   </Accordion>
 </AccordionGroup>
 
-The practical effect is that OpenClaw knows, up front, which plugin owns which surface. That lets core and channels compose seamlessly because ownership is declared, typed, and testable rather than implicit.
+The practical effect is that ClawWorks knows, up front, which plugin owns which surface. That lets core and channels compose seamlessly because ownership is declared, typed, and testable rather than implicit.
 
 ### What belongs in a contract
 
@@ -443,13 +443,13 @@ When in doubt, raise the abstraction level: define the capability first, then le
 
 ## Execution model
 
-Native OpenClaw plugins run **in-process** with the Gateway. They are not sandboxed. A loaded native plugin has the same process-level trust boundary as core code.
+Native ClawWorks plugins run **in-process** with the Gateway. They are not sandboxed. A loaded native plugin has the same process-level trust boundary as core code.
 
 <Warning>
-Native plugin implications: a plugin can register tools, network handlers, hooks, and services; a plugin bug can crash or destabilize the gateway; and a malicious native plugin is equivalent to arbitrary code execution inside the OpenClaw process.
+Native plugin implications: a plugin can register tools, network handlers, hooks, and services; a plugin bug can crash or destabilize the gateway; and a malicious native plugin is equivalent to arbitrary code execution inside the ClawWorks process.
 </Warning>
 
-Compatible bundles are safer by default because OpenClaw currently treats them as metadata/content packs. In current releases, that mostly means bundled skills.
+Compatible bundles are safer by default because ClawWorks currently treats them as metadata/content packs. In current releases, that mostly means bundled skills.
 
 Use allowlists and explicit install/load paths for non-bundled plugins. Treat workspace plugins as development-time code, not production defaults.
 
@@ -461,7 +461,7 @@ For bundled workspace package names, keep the plugin id anchored in the npm name
 
 ## Export boundary
 
-OpenClaw exports capabilities, not implementation convenience.
+ClawWorks exports capabilities, not implementation convenience.
 
 Keep capability registration public. Trim non-contract helper exports:
 

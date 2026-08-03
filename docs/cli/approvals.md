@@ -123,7 +123,7 @@ openclaw approvals set --node <id|name|ip> --stdin <<'EOF'
 EOF
 ```
 
-This changes the **host approvals file** only. To keep the requested OpenClaw policy aligned, also set:
+This changes the **host approvals file** only. To keep the requested ClawWorks policy aligned, also set:
 
 ```bash
 openclaw config set tools.exec.host gateway
@@ -183,7 +183,7 @@ Targeting notes:
 - `--node` uses the same resolver as `openclaw nodes` (id, name, ip, or id prefix).
 - `--agent` defaults to `"*"`, which applies to all agents.
 - The node host must advertise `system.execApprovals.get/set` (macOS app or headless node host).
-- Approvals files are stored per host in the OpenClaw state dir
+- Approvals files are stored per host in the ClawWorks state dir
   (`$OPENCLAW_STATE_DIR/exec-approvals.json`, or
   `~/.openclaw/exec-approvals.json` when the variable is unset).
 

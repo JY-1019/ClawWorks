@@ -1,7 +1,7 @@
 ---
-summary: "Symptom first troubleshooting hub for OpenClaw"
+summary: "Symptom first troubleshooting hub for ClawWorks"
 read_when:
-  - OpenClaw is not working and you need the fastest path to a fix
+  - ClawWorks is not working and you need the fastest path to a fix
   - You want a triage flow before diving into deep runbooks
 title: "General troubleshooting"
 ---
@@ -65,7 +65,7 @@ If you see:
 `HTTP 429: rate_limit_error: Extra usage is required for long context requests`,
 go to [/gateway/troubleshooting#anthropic-429-extra-usage-required-for-long-context](/gateway/troubleshooting#anthropic-429-extra-usage-required-for-long-context).
 
-## Local OpenAI-compatible backend works directly but fails in OpenClaw
+## Local OpenAI-compatible backend works directly but fails in ClawWorks
 
 If your local or self-hosted `/v1` backend answers small direct
 `/v1/chat/completions` probes but fails on `openclaw infer model run` or normal
@@ -73,9 +73,9 @@ agent turns:
 
 1. If the error mentions `messages[].content` expecting a string, set
    `models.providers.<provider>.models[].compat.requiresStringContent: true`.
-2. If the backend still fails only on OpenClaw agent turns, set
+2. If the backend still fails only on ClawWorks agent turns, set
    `models.providers.<provider>.models[].compat.supportsTools: false` and retry.
-3. If tiny direct calls still work but larger OpenClaw prompts crash the
+3. If tiny direct calls still work but larger ClawWorks prompts crash the
    backend, treat the remaining issue as an upstream model/server limitation and
    continue in the deep runbook:
    [/gateway/troubleshooting#local-openai-compatible-backend-passes-direct-probes-but-agent-runs-fail](/gateway/troubleshooting#local-openai-compatible-backend-passes-direct-probes-but-agent-runs-fail)
@@ -83,7 +83,7 @@ agent turns:
 ## Plugin install fails with missing openclaw extensions
 
 If install fails with `package.json missing openclaw.extensions`, the plugin package
-is using an old shape that OpenClaw no longer accepts.
+is using an old shape that ClawWorks no longer accepts.
 
 Fix in the plugin package:
 
@@ -112,14 +112,14 @@ If an update finishes but plugins are stale, disabled, or show messages such as
 `Disabled "<plugin>" after plugin update failure`, check
 `security.installPolicy`.
 
-Install policy runs on plugin installs and updates. OpenClaw-owned plugin
-versions normally move with the OpenClaw release, so an OpenClaw update can
+Install policy runs on plugin installs and updates. ClawWorks-owned plugin
+versions normally move with the ClawWorks release, so a ClawWorks update can
 also need matching `@openclaw/*` plugin updates during post-update sync.
 
 Avoid these broad policy shapes unless you also maintain the matching upgrade
 rule:
 
-- Freezing OpenClaw-owned plugins to one exact old version, such as allowing
+- Freezing ClawWorks-owned plugins to one exact old version, such as allowing
   only `@openclaw/*@2026.5.3`.
 - Blocking by source kind alone, such as every npm, network, or
   `request.mode: "update"` plugin request.
@@ -129,8 +129,8 @@ rule:
 - Approving plugin versions without considering the policy request's
   `openclawVersion` and the plugin candidate metadata.
 
-Safer policy rules allow trusted OpenClaw-owned plugin updates when the
-candidate is compatible with the current OpenClaw host, instead of pinning a
+Safer policy rules allow trusted ClawWorks-owned plugin updates when the
+candidate is compatible with the current ClawWorks host, instead of pinning a
 single release forever. If you block npm by default, make a narrow exception
 for the trusted `@openclaw/*` plugin packages or plugin ids you use. If you
 differentiate install and update requests, apply the same trust rule to
@@ -144,7 +144,7 @@ openclaw plugins update --all
 openclaw status --all
 ```
 
-If the policy is intentionally strict, relax it for the trusted OpenClaw upgrade
+If the policy is intentionally strict, relax it for the trusted ClawWorks upgrade
 window, rerun `openclaw plugins update --all`, then restore the stricter rule.
 If a plugin was disabled after update failure, inspect it and re-enable it only
 after the update succeeds:
@@ -166,7 +166,7 @@ plugin present but blocked
 ```
 
 the plugin files are owned by a different Unix user than the process loading
-them. Do not remove the plugin config. Fix the file ownership or run OpenClaw as
+them. Do not remove the plugin config. Fix the file ownership or run ClawWorks as
 the same user that owns the state directory.
 
 Docker installs normally run as `node` (uid `1000`). For the default Docker
@@ -177,7 +177,7 @@ sudo chown -R 1000:1000 /path/to/openclaw-config /path/to/openclaw-workspace
 openclaw doctor --fix
 ```
 
-If you intentionally run OpenClaw as root, repair the managed plugin root to
+If you intentionally run ClawWorks as root, repair the managed plugin root to
 root ownership instead:
 
 ```bash
@@ -194,7 +194,7 @@ Deeper docs:
 
 ```mermaid
 flowchart TD
-  A[OpenClaw is not working] --> B{What breaks first}
+  A[ClawWorks is not working] --> B{What breaks first}
   B --> C[No replies]
   B --> D[Dashboard or Control UI will not connect]
   B --> E[Gateway will not start or service not running]

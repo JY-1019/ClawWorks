@@ -2,7 +2,7 @@
 summary: "Volcano Engine setup (Doubao models, coding endpoints, and Seed Speech TTS)"
 title: "Volcengine (Doubao)"
 read_when:
-  - You want to use Volcano Engine or Doubao models with OpenClaw
+  - You want to use Volcano Engine or Doubao models with ClawWorks
   - You need the Volcengine API key setup
   - You want to use Volcengine Speech text-to-speech
 ---
@@ -129,7 +129,7 @@ Then enable it in `openclaw.json`:
 }
 ```
 
-For voice-note targets, OpenClaw asks Volcengine for provider-native
+For voice-note targets, ClawWorks asks Volcengine for provider-native
 `ogg_opus`. For normal audio attachments, it asks for `mp3`. Provider aliases
 `bytedance` and `doubao` also resolve to the same speech provider.
 
@@ -163,7 +163,7 @@ export VOLCENGINE_TTS_CLUSTER="volcano_tts"
   <Accordion title="Model picker fallback behavior">
     During onboarding/configure model selection, the Volcengine auth choice prefers
     both `volcengine/*` and `volcengine-plan/*` rows. If those models are not
-    loaded yet, OpenClaw falls back to the unfiltered catalog instead of showing an
+    loaded yet, ClawWorks falls back to the unfiltered catalog instead of showing an
     empty provider-scoped picker.
   </Accordion>
 
@@ -177,7 +177,7 @@ export VOLCENGINE_TTS_CLUSTER="volcano_tts"
 </AccordionGroup>
 
 <Warning>
-When running OpenClaw as a background service, environment variables set in your
+When running ClawWorks as a background service, environment variables set in your
 interactive shell are not automatically inherited. See the daemon note above.
 </Warning>
 
@@ -194,6 +194,6 @@ interactive shell are not automatically inherited. See the daemon note above.
     Common issues and debugging steps.
   </Card>
   <Card title="FAQ" href="/help/faq" icon="circle-question">
-    Frequently asked questions about OpenClaw setup.
+    Frequently asked questions about ClawWorks setup.
   </Card>
 </CardGroup>

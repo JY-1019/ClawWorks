@@ -25,10 +25,10 @@ title: "Retry policy"
 
 ### Model providers
 
-- OpenClaw lets provider SDKs handle normal short retries.
+- ClawWorks lets provider SDKs handle normal short retries.
 - For Stainless-based SDKs such as Anthropic and OpenAI, retryable responses
   (`408`, `409`, `429`, and `5xx`) can include `retry-after-ms` or
-  `retry-after`. When that wait is longer than 60 seconds, OpenClaw injects
+  `retry-after`. When that wait is longer than 60 seconds, ClawWorks injects
   `x-should-retry: false` so the SDK surfaces the error immediately and model
   failover can rotate to another auth profile or fallback model.
 - Override the cap with `OPENCLAW_SDK_RETRY_MAX_WAIT_SECONDS=<seconds>`.

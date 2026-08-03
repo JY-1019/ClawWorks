@@ -51,16 +51,16 @@ openclaw devices clear --yes --pending --json
 ### `openclaw devices approve [requestId] [--latest]`
 
 Approve a pending device pairing request by exact `requestId`. If `requestId`
-is omitted or `--latest` is passed, OpenClaw only prints the selected pending
+is omitted or `--latest` is passed, ClawWorks only prints the selected pending
 request and exits; rerun approval with the exact request ID after verifying
 the details.
 
 <Note>
-If a device retries pairing with changed auth details (role, scopes, or public key), OpenClaw supersedes the previous pending entry and issues a new `requestId`. Run `openclaw devices list` right before approval to use the current ID.
+If a device retries pairing with changed auth details (role, scopes, or public key), ClawWorks supersedes the previous pending entry and issues a new `requestId`. Run `openclaw devices list` right before approval to use the current ID.
 </Note>
 
 If the device is already paired and asks for broader scopes or a broader role,
-OpenClaw keeps the existing approval in place and creates a new pending upgrade
+ClawWorks keeps the existing approval in place and creates a new pending upgrade
 request. Review the `Requested` vs `Approved` columns in `openclaw devices list`
 or use `openclaw devices approve --latest` to preview the exact upgrade before
 approving it.

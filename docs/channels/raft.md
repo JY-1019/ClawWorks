@@ -1,14 +1,14 @@
 ---
 summary: "Raft External Agent support through the Raft CLI wake bridge"
 read_when:
-  - You want to connect OpenClaw to a Raft workspace
+  - You want to connect ClawWorks to a Raft workspace
   - You are configuring a Raft External Agent
   - You are debugging Raft wake delivery
 title: "Raft"
 sidebarTitle: "Raft"
 ---
 
-Raft support connects an OpenClaw agent to a Raft External Agent through the local
+Raft support connects a ClawWorks agent to a Raft External Agent through the local
 Raft CLI. Raft sends authenticated wake hints to the Gateway. The agent then uses
 the Raft CLI to check and send messages.
 
@@ -26,7 +26,7 @@ Details: [Plugins](/tools/plugin)
 ## Prerequisites
 
 - A Raft workspace with an External Agent.
-- The Raft CLI installed on the same host as the OpenClaw Gateway.
+- The Raft CLI installed on the same host as the ClawWorks Gateway.
 - A Raft CLI profile that is already signed in and associated with that External Agent.
 
 The plugin does not store Raft credentials. The Raft CLI keeps that authentication
@@ -90,9 +90,9 @@ When the Gateway starts, the plugin:
 4. Requires one of `eventId`, `attemptId`, `messageId`, `delivery_id`, `wake_id`, or `id`.
 5. Deduplicates recent retried wake deliveries by bridge event id, including across Gateway restarts.
 6. Returns a stable runtime session for the current bridge and an empty activity-drain batch for the Raft CLI protocol.
-7. Starts one serialized OpenClaw agent turn for each accepted wake.
+7. Starts one serialized ClawWorks agent turn for each accepted wake.
 
-The bridge owns Raft delivery retries and reconnects. The OpenClaw turn receives
+The bridge owns Raft delivery retries and reconnects. The ClawWorks turn receives
 only a wake notice, not a copied Raft message body. It uses the CLI to read
 pending messages and to send its response:
 
@@ -102,14 +102,14 @@ raft --profile openclaw message send
 ```
 
 <Note>
-Raft is not a normal push-message transport. OpenClaw does not automatically
+Raft is not a normal push-message transport. ClawWorks does not automatically
 send the model's final text back through the bridge, so the agent must use the
 Raft CLI after processing a wake.
 </Note>
 
 ## Verify
 
-Check that OpenClaw can find the CLI and has a configured profile:
+Check that ClawWorks can find the CLI and has a configured profile:
 
 ```bash
 openclaw channels status --probe

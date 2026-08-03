@@ -6,8 +6,8 @@ read_when:
 title: Yuanbao
 ---
 
-Tencent Yuanbao is Tencent's AI assistant platform. The OpenClaw channel plugin
-connects Yuanbao bots to OpenClaw over WebSocket so they can interact with users
+Tencent Yuanbao is Tencent's AI assistant platform. The ClawWorks channel plugin
+connects Yuanbao bots to ClawWorks over WebSocket so they can interact with users
 through direct messages and group chats.
 
 **Status:** production-ready for bot DMs + group chats. WebSocket is the only supported connection mode.
@@ -16,7 +16,7 @@ through direct messages and group chats.
 
 ## Quick start
 
-> **Requires OpenClaw 2026.4.10 or above.** Run `openclaw --version` to check. Upgrade with `openclaw update`.
+> **Requires ClawWorks 2026.4.10 or above.** Run `openclaw --version` to check. Upgrade with `openclaw update`.
 
 <Steps>
   <Step title="Add the Yuanbao channel with your credentials">
@@ -159,7 +159,7 @@ Replying to the bot's message in a group chat is treated as an implicit mention.
 | `/status`  | Show bot status             |
 | `/new`     | Start a new session         |
 | `/stop`    | Stop the current run        |
-| `/restart` | Restart OpenClaw            |
+| `/restart` | Restart ClawWorks           |
 | `/compact` | Compact the session context |
 
 > Yuanbao supports native slash-command menus. Commands are synced to the platform automatically when the gateway starts.

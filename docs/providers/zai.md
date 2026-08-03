@@ -1,14 +1,14 @@
 ---
-summary: "Use Z.AI (GLM models) with OpenClaw"
+summary: "Use Z.AI (GLM models) with ClawWorks"
 read_when:
-  - You want Z.AI / GLM models in OpenClaw
+  - You want Z.AI / GLM models in ClawWorks
   - You need a simple ZAI_API_KEY setup
 title: "Z.AI"
 ---
 
 Z.AI is the API platform for **GLM** models. It provides REST APIs for GLM and
 uses API keys for authentication. Create your API key in the Z.AI console.
-OpenClaw uses the `zai` provider with a Z.AI API key.
+ClawWorks uses the `zai` provider with a Z.AI API key.
 
 | Property | Value                                        |
 | -------- | -------------------------------------------- |
@@ -19,7 +19,7 @@ OpenClaw uses the `zai` provider with a Z.AI API key.
 
 ## GLM models
 
-GLM is a model family, not a separate provider. In OpenClaw, GLM models use
+GLM is a model family, not a separate provider. In ClawWorks, GLM models use
 refs such as `zai/glm-5.2`: provider `zai`, model id `glm-5.2`.
 
 ## Getting started
@@ -32,7 +32,7 @@ openclaw plugins install @openclaw/zai-provider
 
 <Tabs>
   <Tab title="Auto-detect endpoint">
-    **Best for:** most users. OpenClaw probes supported Z.AI endpoints with your API key and applies the correct base URL automatically.
+    **Best for:** most users. ClawWorks probes supported Z.AI endpoints with your API key and applies the correct base URL automatically.
 
     <Steps>
       <Step title="Run onboarding">
@@ -81,7 +81,7 @@ openclaw plugins install @openclaw/zai-provider
 ## Config example
 
 <Tip>
-`zai-api-key` lets OpenClaw detect the matching Z.AI endpoint from the key and
+`zai-api-key` lets ClawWorks detect the matching Z.AI endpoint from the key and
 apply the correct base URL automatically. Use the explicit regional choices when
 you want to force a specific Coding Plan or general API surface.
 </Tip>
@@ -134,7 +134,7 @@ GLM models are available as `zai/<model>` (example: `zai/glm-5`).
 </Tip>
 
 <Tip>
-GLM-5.2 supports `off`, `low`, `high`, and `max` thinking levels. OpenClaw maps
+GLM-5.2 supports `off`, `low`, `high`, and `max` thinking levels. ClawWorks maps
 `low` and `high` to Z.AI high reasoning effort, and `max` to max effort.
 </Tip>
 
@@ -175,8 +175,8 @@ known to your installed version.
   </Accordion>
 
   <Accordion title="Thinking and preserved thinking">
-    Z.AI thinking follows OpenClaw's `/think` controls. With thinking off,
-    OpenClaw sends `thinking: { type: "disabled" }` to avoid responses that
+    Z.AI thinking follows ClawWorks's `/think` controls. With thinking off,
+    ClawWorks sends `thinking: { type: "disabled" }` to avoid responses that
     spend the output budget on `reasoning_content` before visible text.
 
     Preserved thinking is opt-in because Z.AI requires the full historical
@@ -197,7 +197,7 @@ known to your installed version.
     }
     ```
 
-    When enabled and thinking is on, OpenClaw sends
+    When enabled and thinking is on, ClawWorks sends
     `thinking: { type: "enabled", clear_thinking: false }` and replays prior
     `reasoning_content` for the same OpenAI-compatible transcript.
 
@@ -222,7 +222,7 @@ known to your installed version.
     - Z.AI uses Bearer auth with your API key.
     - The `zai-api-key` onboarding choice auto-detects the matching Z.AI endpoint by probing supported endpoints with your key.
     - Use the explicit regional choices (`zai-coding-global`, `zai-coding-cn`, `zai-global`, `zai-cn`) when you want to force a specific API surface.
-    - The legacy env var `Z_AI_API_KEY` is still accepted; OpenClaw copies it to `ZAI_API_KEY` at startup if `ZAI_API_KEY` is unset.
+    - The legacy env var `Z_AI_API_KEY` is still accepted; ClawWorks copies it to `ZAI_API_KEY` at startup if `ZAI_API_KEY` is unset.
 
   </Accordion>
 </AccordionGroup>
@@ -234,6 +234,6 @@ known to your installed version.
     Choosing providers, model refs, and failover behavior.
   </Card>
   <Card title="Configuration reference" href="/gateway/configuration-reference" icon="gear">
-    Full OpenClaw config schema, including provider and model settings.
+    Full ClawWorks config schema, including provider and model settings.
   </Card>
 </CardGroup>

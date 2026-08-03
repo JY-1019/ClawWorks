@@ -34,7 +34,7 @@ The current channel stack grew from several valid local needs:
 - Preview streaming lives in channel-specific dispatchers.
 - Final delivery durability is being added around existing reply payload paths.
 
-That shape fixes local bugs, but it leaves OpenClaw with too many public
+That shape fixes local bugs, but it leaves ClawWorks with too many public
 concepts and too many places where delivery semantics can drift.
 
 The reliability issue that exposed this is:
@@ -49,7 +49,7 @@ Telegram polling update acked
 The target invariant is broader than Telegram: once core decides a visible
 outbound message should exist, the intent must be durable before the platform
 send is attempted, and the platform receipt must be committed after success.
-That gives OpenClaw at-least-once recovery. Exactly-once behavior exists only
+That gives ClawWorks at-least-once recovery. Exactly-once behavior exists only
 for adapters that can prove native idempotency or reconcile an
 unknown-after-send attempt against platform state before replay.
 
@@ -72,7 +72,7 @@ non-durable policy.
 - No platform-specific branches in core.
 - No token-delta channel messages. Channel streaming remains message preview,
   edit, append, or completed block delivery.
-- Structured OpenClaw-origin metadata for operational/system output so visible
+- Structured ClawWorks-origin metadata for operational/system output so visible
   gateway failures do not re-enter shared bot-enabled rooms as fresh prompts.
 
 ## Non goals
@@ -96,9 +96,9 @@ Vercel Chat has a good public mental model:
   `stream`, `startTyping`, and history fetches
 - a state adapter for dedupe, locks, queues, and persistence
 
-OpenClaw should borrow the vocabulary, not copy the surface.
+ClawWorks should borrow the vocabulary, not copy the surface.
 
-What OpenClaw needs beyond that model:
+What ClawWorks needs beyond that model:
 
 - Durable outbound send intents before direct transport calls.
 - Explicit send contexts with begin, commit, and fail.
@@ -111,7 +111,7 @@ What OpenClaw needs beyond that model:
   progress, approvals, media directives, silent replies, and group mention
   history.
 
-`thread.post()` style promises are not enough for OpenClaw. They hide the
+`thread.post()` style promises are not enough for ClawWorks. They hide the
 transaction boundary that decides whether a send is recoverable.
 
 ## Core model
@@ -220,9 +220,9 @@ results, and automation sends.
 
 ### Origin
 
-Origin describes who produced a message and how OpenClaw should treat echoes of
+Origin describes who produced a message and how ClawWorks should treat echoes of
 that message. It is separate from relation: a message can be a reply to a user
-and still be OpenClaw-originated operational output.
+and still be ClawWorks-originated operational output.
 
 ```typescript
 type MessageOrigin =
@@ -238,12 +238,12 @@ type MessageOrigin =
     };
 ```
 
-Core owns the meaning of OpenClaw-originated output. Channels own how that
+Core owns the meaning of ClawWorks-originated output. Channels own how that
 origin is encoded into their transport.
 
 The first required use is gateway failure output. Humans should still see
 messages such as "Agent failed before reply" or "Missing API key", but tagged
-OpenClaw operational output must not be accepted as bot-authored input in shared
+ClawWorks operational output must not be accepted as bot-authored input in shared
 rooms when `allowBots` is enabled.
 
 ### Receipt
@@ -327,11 +327,11 @@ platform event
 
 Ack is not one thing. The receive contract must keep these signals separate:
 
-- **Transport ack:** tells the platform webhook or socket that OpenClaw accepted
+- **Transport ack:** tells the platform webhook or socket that ClawWorks accepted
   the event envelope. Some platforms require this before dispatch.
 - **Polling offset ack:** advances a cursor so the same event is not fetched
   again. This must not advance past work that cannot be recovered.
-- **Inbound record ack:** confirms OpenClaw persisted enough inbound metadata to
+- **Inbound record ack:** confirms ClawWorks persisted enough inbound metadata to
   dedupe and route a redelivery.
 - **User-visible receipt:** optional read/status/typing behavior; never a
   durability boundary.
@@ -339,7 +339,7 @@ Ack is not one thing. The receive contract must keep these signals separate:
 `ReceiveAckPolicy` controls transport or polling acknowledgement only. It must
 not be reused for read receipts or status reactions.
 
-Before bot authorization, receive must apply the shared OpenClaw echo policy
+Before bot authorization, receive must apply the shared ClawWorks echo policy
 when the channel can decode message origin metadata:
 
 ```typescript
@@ -359,7 +359,7 @@ function shouldDropOpenClawEcho(params: {
 ```
 
 This drop is tag-based, not text-based. A bot-authored room message with the
-same visible gateway-failure text but without OpenClaw origin metadata still
+same visible gateway-failure text but without ClawWorks origin metadata still
 goes through normal `allowBots` authorization.
 
 Ack policy is explicit:
@@ -374,11 +374,11 @@ type ReceiveAckPolicy =
 
 Telegram polling now uses the receive-context ack policy for its persisted
 restart watermark. The tracker still observes grammY updates as they enter the
-middleware chain, but OpenClaw persists only the safe completed update id after
+middleware chain, but ClawWorks persists only the safe completed update id after
 successful dispatch, leaving failed or lower pending updates replayable after a
 restart. Telegram's upstream `getUpdates` fetch offset is still controlled by
 the polling library, so the remaining deeper cut is a fully durable polling
-source if we need platform-level redelivery beyond OpenClaw's restart
+source if we need platform-level redelivery beyond ClawWorks's restart
 watermark. Webhook platforms may need immediate HTTP ack, but they still need
 inbound dedupe and durable outbound send intents because webhooks can redeliver.
 
@@ -441,7 +441,7 @@ The intent must exist before transport I/O. A restart after begin but before
 commit is recoverable.
 
 The dangerous boundary is after platform success and before receipt commit. If a
-process dies there, OpenClaw cannot know whether the platform message exists
+process dies there, ClawWorks cannot know whether the platform message exists
 unless the adapter provides native idempotency or a receipt reconciliation path.
 Those attempts must resume in `unknown_after_send`, not blindly replay. Channels
 without reconciliation may choose at-least-once replay only if duplicate visible
@@ -602,8 +602,8 @@ type MessageReceiveAdapter<TRaw = unknown> = {
 };
 ```
 
-Before preflight authorization, core must run the shared OpenClaw echo predicate
-whenever `origin.decode` returns OpenClaw-origin metadata. The receive adapter
+Before preflight authorization, core must run the shared ClawWorks echo predicate
+whenever `origin.decode` returns ClawWorks-origin metadata. The receive adapter
 supplies platform facts such as bot author and room shape; core owns the drop
 decision and ordering so channels do not reimplement text filters.
 
@@ -750,7 +750,7 @@ Concrete migration hazards to preserve:
 
 - iMessage monitor delivery records sent messages in an echo cache after a
   successful send. Durable final sends must still populate that cache, otherwise
-  OpenClaw can re-ingest its own final replies as inbound user messages.
+  ClawWorks can re-ingest its own final replies as inbound user messages.
 - Tlon appends an optional model signature and records participated threads
   after group replies. Generic durable delivery must not bypass those effects;
   either move them into Tlon render/send/finalize adapters or keep Tlon on the
@@ -768,7 +768,7 @@ Concrete migration hazards to preserve:
 - Direct-DM helpers can have a reply callback that is the only correct transport
   target. Generic outbound must not guess from `OriginatingTo` or `To` and skip
   that callback.
-- OpenClaw gateway failure output must stay visible to humans, but tagged
+- ClawWorks gateway failure output must stay visible to humans, but tagged
   bot-authored room echoes must be dropped before `allowBots` authorization.
   Channels must not implement this with visible-text prefix filters except as a
   short emergency stopgap; the durable contract is structured origin metadata.
@@ -856,16 +856,16 @@ Core policy:
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Telegram        | Receive ack policy plus durable final sends. Live adapter owns send plus edit preview, stale preview final send, topics, quote-reply preview skip, media fallback, and retry-after handling.                                                                                                                                                                   |
 | Discord         | Send adapter wraps existing durable payload delivery. Live adapter owns draft edit, progress draft, media/error preview cancel, reply target preservation, and message id receipts. Audit bot-authored gateway-failure echoes in shared rooms; use an outbound registry or other native equivalent if Discord cannot carry origin metadata on normal messages. |
-| Slack           | Send adapter handles normal chat posts. Live adapter chooses native stream when thread shape supports it, otherwise draft preview. Receipts preserve thread timestamps. Origin adapter maps OpenClaw gateway failures to Slack `chat.postMessage.metadata` and drops tagged bot-room echoes before `allowBots` authorization.                                  |
+| Slack           | Send adapter handles normal chat posts. Live adapter chooses native stream when thread shape supports it, otherwise draft preview. Receipts preserve thread timestamps. Origin adapter maps ClawWorks gateway failures to Slack `chat.postMessage.metadata` and drops tagged bot-room echoes before `allowBots` authorization.                                 |
 | WhatsApp        | Send adapter owns text/media send with durable final intents. Receive adapter handles group mention and sender identity. Live can stay absent until WhatsApp has an editable transport.                                                                                                                                                                        |
-| Matrix          | Live adapter owns draft event edits, finalization, redaction, encrypted media constraints, and reply-target mismatch fallback. Receive adapter owns encrypted event hydration and dedupe. Origin adapter should encode OpenClaw gateway-failure origin into Matrix event content and drop configured-bot room echoes before `allowBots` handling.              |
+| Matrix          | Live adapter owns draft event edits, finalization, redaction, encrypted media constraints, and reply-target mismatch fallback. Receive adapter owns encrypted event hydration and dedupe. Origin adapter should encode ClawWorks gateway-failure origin into Matrix event content and drop configured-bot room echoes before `allowBots` handling.             |
 | Mattermost      | Live adapter owns one draft post, progress/tool folding, finalization in place, and fresh-send fallback.                                                                                                                                                                                                                                                       |
 | Microsoft Teams | Live adapter owns native progress and block stream behavior. Send adapter owns activities and attachment/card receipts.                                                                                                                                                                                                                                        |
 | Feishu          | Render adapter owns text/card/raw rendering. Live adapter owns streaming cards and duplicate final suppression. Send adapter owns comments, topic sessions, media, and voice suppression.                                                                                                                                                                      |
 | QQ Bot          | Live adapter owns C2C streaming, accumulator timeout, and fallback final send. Render adapter owns media tags and text-as-voice.                                                                                                                                                                                                                               |
 | Signal          | Simple receive plus send adapter. No live adapter unless signal-cli adds reliable edit support.                                                                                                                                                                                                                                                                |
 | iMessage        | Simple receive plus send adapter. iMessage send must preserve monitor echo-cache population before durable finals can bypass monitor delivery.                                                                                                                                                                                                                 |
-| Google Chat     | Simple receive plus send adapter with thread relation mapped to spaces and thread ids. Audit `allowBots=true` room behavior for tagged OpenClaw gateway-failure echoes.                                                                                                                                                                                        |
+| Google Chat     | Simple receive plus send adapter with thread relation mapped to spaces and thread ids. Audit `allowBots=true` room behavior for tagged ClawWorks gateway-failure echoes.                                                                                                                                                                                       |
 | LINE            | Simple receive plus send adapter with reply-token constraints modeled as target/relation capability.                                                                                                                                                                                                                                                           |
 | Nextcloud Talk  | SDK receive bridge plus send adapter.                                                                                                                                                                                                                                                                                                                          |
 | IRC             | Simple receive plus send adapter, no durable edit receipts.                                                                                                                                                                                                                                                                                                    |
@@ -906,7 +906,7 @@ Core policy:
 - Return receipts and delivery results to the original dispatcher caller instead
   of treating durable send as a terminal side effect.
 - Persist message origin through durable send intents so recovery, replay, and
-  chunked sends preserve OpenClaw operational provenance.
+  chunked sends preserve ClawWorks operational provenance.
 
 ### Phase 3: Channel Inbound Bridge
 
@@ -971,7 +971,7 @@ Move all non-reply outbound producers onto `messages.send`:
 - explicit CLI or Control UI sends
 - automation/broadcast paths
 
-This is where the model stops being "agent replies" and becomes "OpenClaw sends
+This is where the model stops being "agent replies" and becomes "ClawWorks sends
 messages".
 
 ### Phase 8: Remove Turn-Named Compatibility
@@ -1037,12 +1037,12 @@ Channel tests:
   generic durable send until their adapter parity tests exist.
 - Direct-DM/Nostr callback delivery remains authoritative unless explicitly
   migrated to a complete message target and replay-safe send adapter.
-- Slack tagged OpenClaw gateway failure messages stay visible outbound, tagged
+- Slack tagged ClawWorks gateway failure messages stay visible outbound, tagged
   bot-room echoes drop before `allowBots`, and untagged bot messages with the
   same visible text still follow normal bot authorization.
 - Slack native stream fallback to draft preview in top-level DMs.
 - Matrix preview finalization and redaction fallback.
-- Matrix tagged OpenClaw gateway-failure room echoes from configured bot
+- Matrix tagged ClawWorks gateway-failure room echoes from configured bot
   accounts drop before `allowBots` handling.
 - Discord and Google Chat shared-room gateway-failure cascade audits cover
   `allowBots` modes before claiming generic protection there.
@@ -1069,7 +1069,7 @@ Validation:
 
 - Whether Telegram should eventually replace the grammY runner source with a
   fully durable polling source that can control platform-level redelivery, not
-  only OpenClaw's persisted restart watermark.
+  only ClawWorks's persisted restart watermark.
 - Whether durable live preview state should be stored in the same queue record
   as the final send intent or in a sibling live-state store.
 - How long compatibility wrappers stay documented after
@@ -1111,7 +1111,7 @@ Validation:
 - Fallback delivery handles every projected payload.
 - Durable fallback delivery records every projected payload in one replayable
   intent or batch plan.
-- OpenClaw-originated gateway failure output is visible to humans but tagged
+- ClawWorks-originated gateway failure output is visible to humans but tagged
   bot-authored room echoes are dropped before bot authorization on channels that
   declare support for the origin contract.
 - The docs explain send, receive, live, state, receipts, relations, failure

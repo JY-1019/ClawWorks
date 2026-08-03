@@ -1,12 +1,12 @@
 ---
-summary: "Updating OpenClaw safely (global install or source), plus rollback strategy"
+summary: "Updating ClawWorks safely (global install or source), plus rollback strategy"
 read_when:
-  - Updating OpenClaw
+  - Updating ClawWorks
   - Something breaks after an update
 title: "Updating"
 ---
 
-Keep OpenClaw up to date.
+Keep ClawWorks up to date.
 
 ## Recommended: `openclaw update`
 
@@ -49,7 +49,7 @@ See [Development channels](/install/development-channels) for channel semantics.
 
 Use channels when you want to change the install type. The updater keeps your
 state, config, credentials, and workspace in `~/.openclaw`; it only changes
-which OpenClaw code install the CLI and gateway use.
+which ClawWorks code install the CLI and gateway use.
 
 ```bash
 # npm package install -> editable git checkout
@@ -143,15 +143,15 @@ When `openclaw update` manages a global npm install, it installs the target into
 a temporary npm prefix first, verifies the packaged `dist` inventory, then swaps
 the clean package tree into the real global prefix. That avoids npm overlaying a
 new package onto stale files from the old package. If the install command fails,
-OpenClaw retries once with `--omit=optional`. That retry helps hosts where native
+ClawWorks retries once with `--omit=optional`. That retry helps hosts where native
 optional dependencies cannot compile, while keeping the original failure visible
 if the fallback also fails.
 
-OpenClaw-managed npm update and plugin-update commands also clear npm
+ClawWorks-managed npm update and plugin-update commands also clear npm
 `min-release-age` quarantine for the child npm process. npm may report that
 policy as a derived `before` cutoff; both are useful for general supply-chain
-quarantine policies, but an explicit OpenClaw update means "install the selected
-OpenClaw release now."
+quarantine policies, but an explicit ClawWorks update means "install the selected
+ClawWorks release now."
 
 ```bash
 pnpm add -g openclaw@latest
@@ -165,13 +165,13 @@ bun add -g openclaw@latest
 
 <AccordionGroup>
   <Accordion title="Read-only package tree">
-    OpenClaw treats packaged global installs as read-only at runtime, even when the global package directory is writable by the current user. Plugin package installs live in OpenClaw-owned npm/git roots under the user config directory, and Gateway startup does not mutate the OpenClaw package tree.
+    ClawWorks treats packaged global installs as read-only at runtime, even when the global package directory is writable by the current user. Plugin package installs live in ClawWorks-owned npm/git roots under the user config directory, and Gateway startup does not mutate the ClawWorks package tree.
 
-    Some Linux npm setups install global packages under root-owned directories such as `/usr/lib/node_modules/openclaw`. OpenClaw supports that layout because plugin install/update commands write outside that global package directory.
+    Some Linux npm setups install global packages under root-owned directories such as `/usr/lib/node_modules/openclaw`. ClawWorks supports that layout because plugin install/update commands write outside that global package directory.
 
   </Accordion>
   <Accordion title="Hardened systemd units">
-    Give OpenClaw write access to its config/state roots so explicit plugin installs, plugin updates, and doctor cleanup can persist their changes:
+    Give ClawWorks write access to its config/state roots so explicit plugin installs, plugin updates, and doctor cleanup can persist their changes:
 
     ```ini
     ReadWritePaths=/var/lib/openclaw /home/openclaw/.openclaw /tmp
@@ -179,7 +179,7 @@ bun add -g openclaw@latest
 
   </Accordion>
   <Accordion title="Disk-space preflight">
-    Before package updates and explicit plugin installs, OpenClaw tries a best-effort disk-space check for the target volume. Low space produces a warning with the checked path, but does not block the update because filesystem quotas, snapshots, and network volumes can change after the check. The actual package-manager install and post-install verification remain authoritative.
+    Before package updates and explicit plugin installs, ClawWorks tries a best-effort disk-space check for the target volume. Low space produces a warning with the checked path, but does not block the update because filesystem quotas, snapshots, and network volumes can change after the check. The actual package-manager install and post-install verification remain authoritative.
   </Accordion>
 </AccordionGroup>
 

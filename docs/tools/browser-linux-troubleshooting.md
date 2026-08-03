@@ -1,12 +1,12 @@
 ---
-summary: "Fix Chrome/Brave/Edge/Chromium CDP startup issues for OpenClaw browser control on Linux"
+summary: "Fix Chrome/Brave/Edge/Chromium CDP startup issues for ClawWorks browser control on Linux"
 read_when: "Browser control fails on Linux, especially with snap Chromium"
 title: "Browser troubleshooting"
 ---
 
 ## Problem: "Failed to start Chrome CDP on port 18800"
 
-OpenClaw's browser control server fails to launch Chrome/Brave/Edge/Chromium with the error:
+ClawWorks's browser control server fails to launch Chrome/Brave/Edge/Chromium with the error:
 
 ```
 {"error":"Error: Failed to start Chrome CDP on port 18800 for profile \"openclaw\"."}
@@ -14,7 +14,7 @@ OpenClaw's browser control server fails to launch Chrome/Brave/Edge/Chromium wit
 
 ### Root cause
 
-On Ubuntu (and many Linux distros), the default Chromium installation is a **snap package**. Snap's AppArmor confinement interferes with how OpenClaw spawns and monitors the browser process.
+On Ubuntu (and many Linux distros), the default Chromium installation is a **snap package**. Snap's AppArmor confinement interferes with how ClawWorks spawns and monitors the browser process.
 
 The `apt install chromium` command installs a stub package that redirects to snap:
 
@@ -28,7 +28,7 @@ This is NOT a real browser - it's just a wrapper.
 Other common Linux launch failures:
 
 - `The profile appears to be in use by another Chromium process` means Chrome
-  found stale `Singleton*` lock files in the managed profile directory. OpenClaw
+  found stale `Singleton*` lock files in the managed profile directory. ClawWorks
   removes those locks and retries once when the lock points at a dead or
   different-host process.
 - `Missing X server or $DISPLAY` means a visible browser was explicitly
@@ -38,7 +38,7 @@ Other common Linux launch failures:
   `browser.headless: false`, or `browser.profiles.<name>.headless: false`,
   remove that headed override, set `OPENCLAW_BROWSER_HEADLESS=1`, start `Xvfb`,
   run `openclaw browser start --headless` for a one-shot managed launch, or run
-  OpenClaw in a real desktop session.
+  ClawWorks in a real desktop session.
 
 ### Solution 1: Install Google Chrome (Recommended)
 
@@ -50,7 +50,7 @@ sudo dpkg -i google-chrome-stable_current_amd64.deb
 sudo apt --fix-broken install -y  # if there are dependency errors
 ```
 
-Then update your OpenClaw config (`~/.openclaw/openclaw.json`):
+Then update your ClawWorks config (`~/.openclaw/openclaw.json`):
 
 ```json
 {
@@ -65,7 +65,7 @@ Then update your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 ### Solution 2: Use Snap Chromium with Attach-Only Mode
 
-If you must use snap Chromium, configure OpenClaw to attach to a manually-started browser:
+If you must use snap Chromium, configure ClawWorks to attach to a manually-started browser:
 
 1. Update config:
 
@@ -145,7 +145,7 @@ be positive integers up to `120000` ms; invalid config values are rejected.
 
 ### Problem: "No Chrome tabs found for profile=\"user\""
 
-You're using an `existing-session` / Chrome MCP profile. OpenClaw can see local Chrome,
+You're using an `existing-session` / Chrome MCP profile. ClawWorks can see local Chrome,
 but there are no open tabs available to attach to.
 
 Fix options:

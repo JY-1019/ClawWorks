@@ -1,13 +1,13 @@
 ---
-summary: "Host OpenClaw on a Raspberry Pi for always-on self-hosting"
+summary: "Host ClawWorks on a Raspberry Pi for always-on self-hosting"
 read_when:
-  - Setting up OpenClaw on a Raspberry Pi
-  - Running OpenClaw on ARM devices
+  - Setting up ClawWorks on a Raspberry Pi
+  - Running ClawWorks on ARM devices
   - Building a cheap always-on personal AI
 title: "Raspberry Pi"
 ---
 
-Run a persistent, always-on OpenClaw Gateway on a Raspberry Pi. Since the Pi is just the gateway (models run in the cloud via API), even a modest Pi handles the workload well — typical hardware cost is **$35–80 one-time**, no monthly fees.
+Run a persistent, always-on ClawWorks Gateway on a Raspberry Pi. Since the Pi is just the gateway (models run in the cloud via API), even a modest Pi handles the workload well — typical hardware cost is **$35–80 one-time**, no monthly fees.
 
 ## Hardware compatibility
 
@@ -89,7 +89,7 @@ Run a persistent, always-on OpenClaw Gateway on a Raspberry Pi. Since the Pi is 
 
   </Step>
 
-  <Step title="Install OpenClaw">
+  <Step title="Install ClawWorks">
     ```bash
     curl -fsSL https://openclaw.ai/install.sh | bash
     ```
@@ -154,7 +154,7 @@ echo 'gpu_mem=16' | sudo tee -a /boot/config.txt
 sudo systemctl disable bluetooth
 ```
 
-**systemd drop-in for stable restarts** -- If this Pi is mostly running OpenClaw, add a service drop-in:
+**systemd drop-in for stable restarts** -- If this Pi is mostly running ClawWorks, add a service drop-in:
 
 ```bash
 systemctl --user edit openclaw-gateway.service
@@ -192,11 +192,11 @@ Do not run local LLMs on a Pi — even small models are too slow to be useful. L
 
 ## ARM binary notes
 
-Most OpenClaw features work on ARM64 without changes (Node.js, Telegram, WhatsApp/Baileys, Chromium). The binaries that occasionally lack ARM builds are typically optional Go/Rust CLI tools shipped by skills. Verify a missing binary's release page for `linux-arm64` / `aarch64` artifacts before falling back to building from source.
+Most ClawWorks features work on ARM64 without changes (Node.js, Telegram, WhatsApp/Baileys, Chromium). The binaries that occasionally lack ARM builds are typically optional Go/Rust CLI tools shipped by skills. Verify a missing binary's release page for `linux-arm64` / `aarch64` artifacts before falling back to building from source.
 
 ## Persistence and backups
 
-OpenClaw state lives under:
+ClawWorks state lives under:
 
 - `~/.openclaw/` — `openclaw.json`, per-agent `auth-profiles.json`, channel/provider state, sessions.
 - `~/.openclaw/workspace/` — agent workspace (SOUL.md, memory, artifacts).
@@ -225,7 +225,7 @@ If you keep these on an SSD, both performance and longevity improve over the SD 
 
 - [Channels](/channels) -- connect Telegram, WhatsApp, Discord, and more
 - [Gateway configuration](/gateway/configuration) -- all config options
-- [Updating](/install/updating) -- keep OpenClaw up to date
+- [Updating](/install/updating) -- keep ClawWorks up to date
 
 ## Related
 

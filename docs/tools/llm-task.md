@@ -10,7 +10,7 @@ title: "LLM task"
 returns structured output (optionally validated against JSON Schema).
 
 This is ideal for workflow engines like Lobster: you can add a single LLM step
-without writing custom OpenClaw code for each workflow.
+without writing custom ClawWorks code for each workflow.
 
 ## Enable the plugin
 
@@ -76,7 +76,7 @@ outside the list is rejected.
 - `maxTokens` (number, optional)
 - `timeoutMs` (number, optional)
 
-`thinking` accepts the standard OpenClaw reasoning presets, such as `low` or `medium`.
+`thinking` accepts the standard ClawWorks reasoning presets, such as `low` or `medium`.
 
 ## Output
 
@@ -89,7 +89,7 @@ Returns `details.json` containing the parsed JSON (and validates against
 
 The example below assumes the **standalone Lobster CLI** is running in an environment where `openclaw.invoke` already has the correct gateway URL/auth context.
 
-For the bundled **embedded** Lobster runner inside OpenClaw, this nested CLI pattern is **not currently reliable**:
+For the bundled **embedded** Lobster runner inside ClawWorks, this nested CLI pattern is **not currently reliable**:
 
 ```lobster
 openclaw.invoke --tool llm-task --action json --args-json '{ ... }'

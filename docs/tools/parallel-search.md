@@ -66,7 +66,7 @@ managed provider. The paid `parallel` provider needs an API key:
         config: {
           webSearch: {
             apiKey: "par-...", // optional if PARALLEL_API_KEY is set
-            baseUrl: "https://api.parallel.ai", // optional; OpenClaw appends /v1/search
+            baseUrl: "https://api.parallel.ai", // optional; ClawWorks appends /v1/search
           },
         },
       },
@@ -94,14 +94,14 @@ The base URL override applies to the paid `parallel` provider only. The free
 
 Set `plugins.entries.parallel.config.webSearch.baseUrl` when Parallel requests
 should go through a compatible proxy or alternate Parallel endpoint (for
-example, the Cloudflare AI Gateway). OpenClaw normalizes bare hosts by
+example, the Cloudflare AI Gateway). ClawWorks normalizes bare hosts by
 prepending `https://` and appends `/v1/search` unless the path already ends
 there. The resolved endpoint is included in the search cache key, so results
 from different Parallel endpoints are not shared.
 
 ## Tool parameters
 
-OpenClaw exposes Parallel's native search shape so the model can fill in both
+ClawWorks exposes Parallel's native search shape so the model can fill in both
 the natural-language goal and a few short keyword queries — the pairing
 Parallel [recommends](https://docs.parallel.ai/search/best-practices) for
 best results.
@@ -143,13 +143,13 @@ alias.
 - Result excerpts come back as the `excerpts` array and are also joined into
   the `description` field for compatibility with the generic `web_search`
   contract
-- Parallel returns a `session_id` on every response; OpenClaw surfaces it as
+- Parallel returns a `session_id` on every response; ClawWorks surfaces it as
   `sessionId` in the tool payload so callers can group follow-up searches
 - `searchId`, `warnings`, and `usage` from Parallel are passed through when
   present
-- OpenClaw always forwards a resolved result count to Parallel as
+- ClawWorks always forwards a resolved result count to Parallel as
   `advanced_settings.max_results`. The caller's `count` arg wins, then the
-  top-level `tools.web.search.maxResults` setting, otherwise OpenClaw's
+  top-level `tools.web.search.maxResults` setting, otherwise ClawWorks's
   generic `web_search` default (5). This keeps result volume consistent
   when switching between providers; Parallel on its own defaults to 10
 - Results are cached for 15 minutes by default (configurable via

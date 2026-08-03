@@ -1,5 +1,5 @@
 ---
-summary: "Install and use the OpenClaw macOS menu bar app"
+summary: "Install and use the ClawWorks macOS menu bar app"
 read_when:
   - Installing the macOS app
   - Deciding between local and remote Gateway mode on macOS
@@ -7,7 +7,7 @@ read_when:
 title: "macOS app"
 ---
 
-The macOS app is the OpenClaw **menu bar companion**. Use it when you want a
+The macOS app is the ClawWorks **menu bar companion**. Use it when you want a
 native tray UI, macOS permission prompts, notifications, WebChat, voice input,
 Canvas, or Mac-hosted node tools such as `system.run`.
 
@@ -16,7 +16,7 @@ If you only need the CLI and Gateway, start with [Getting started](/start/gettin
 ## Download
 
 Download macOS app builds from the
-[OpenClaw GitHub releases](https://github.com/openclaw/openclaw/releases).
+[ClawWorks GitHub releases](https://github.com/openclaw/openclaw/releases).
 When a release includes macOS app assets, look for:
 
 - `OpenClaw-<version>.dmg` (preferred)
@@ -55,7 +55,7 @@ can follow [Gateway on macOS](/platforms/mac/bundled-gateway).
 - Exec approval prompts for Mac-hosted commands.
 - Remote-mode SSH tunnels or direct Gateway connections.
 
-The app does **not** replace the OpenClaw Gateway or general CLI docs. Core
+The app does **not** replace the ClawWorks Gateway or general CLI docs. Core
 Gateway configuration, providers, plugins, channels, tools, and security live in
 their own docs.
 

@@ -1,5 +1,5 @@
 ---
-summary: "Mattermost bot setup and OpenClaw config"
+summary: "Mattermost bot setup and ClawWorks config"
 read_when:
   - Setting up Mattermost
   - Debugging Mattermost routing
@@ -40,7 +40,7 @@ Details: [Plugins](/tools/plugin)
   <Step title="Copy the base URL">
     Copy the Mattermost **base URL** (e.g., `https://chat.example.com`).
   </Step>
-  <Step title="Configure OpenClaw and start the gateway">
+  <Step title="Configure ClawWorks and start the gateway">
     Minimal config:
 
     ```json5
@@ -61,7 +61,7 @@ Details: [Plugins](/tools/plugin)
 
 ## Native slash commands
 
-Native slash commands are opt-in. When enabled, OpenClaw registers `oc_*` slash commands via the Mattermost API and receives callback POSTs on the gateway HTTP server.
+Native slash commands are opt-in. When enabled, ClawWorks registers `oc_*` slash commands via the Mattermost API and receives callback POSTs on the gateway HTTP server.
 
 ```json5
 {
@@ -82,10 +82,10 @@ Native slash commands are opt-in. When enabled, OpenClaw registers `oc_*` slash 
 <AccordionGroup>
   <Accordion title="Behavior notes">
     - `native: "auto"` defaults to disabled for Mattermost. Set `native: true` to enable.
-    - If `callbackUrl` is omitted, OpenClaw derives one from gateway host/port + `callbackPath`.
+    - If `callbackUrl` is omitted, ClawWorks derives one from gateway host/port + `callbackPath`.
     - For multi-account setups, `commands` can be set at the top level or under `channels.mattermost.accounts.<id>.commands` (account values override top-level fields).
-    - Command callbacks are validated with the per-command tokens returned by Mattermost when OpenClaw registers `oc_*` commands.
-    - OpenClaw refreshes current Mattermost command registration before accepting each callback so stale tokens from deleted or regenerated slash commands stop being accepted without a gateway restart.
+    - Command callbacks are validated with the per-command tokens returned by Mattermost when ClawWorks registers `oc_*` commands.
+    - ClawWorks refreshes current Mattermost command registration before accepting each callback so stale tokens from deleted or regenerated slash commands stop being accepted without a gateway restart.
     - Callback validation fails closed if the Mattermost API cannot confirm the command is still current; failed validations are cached briefly, concurrent lookups are coalesced, and fresh lookup starts are rate-limited per command to bound replay pressure.
     - Slash callbacks fail closed when registration failed, startup was partial, or the callback token does not match the resolved command's registered token (a token valid for one command cannot reach upstream validation for a different command).
 
@@ -93,9 +93,9 @@ Native slash commands are opt-in. When enabled, OpenClaw registers `oc_*` slash 
   <Accordion title="Reachability requirement">
     The callback endpoint must be reachable from the Mattermost server.
 
-    - Do not set `callbackUrl` to `localhost` unless Mattermost runs on the same host/network namespace as OpenClaw.
-    - Do not set `callbackUrl` to your Mattermost base URL unless that URL reverse-proxies `/api/channels/mattermost/command` to OpenClaw.
-    - A quick check is `curl https://<gateway-host>/api/channels/mattermost/command`; a GET should return `405 Method Not Allowed` from OpenClaw, not `404`.
+    - Do not set `callbackUrl` to `localhost` unless Mattermost runs on the same host/network namespace as ClawWorks.
+    - Do not set `callbackUrl` to your Mattermost base URL unless that URL reverse-proxies `/api/channels/mattermost/command` to ClawWorks.
+    - A quick check is `curl https://<gateway-host>/api/channels/mattermost/command`; a GET should return `405 Method Not Allowed` from ClawWorks, not `404`.
 
   </Accordion>
   <Accordion title="Mattermost egress allowlist">
@@ -229,9 +229,9 @@ Use these target formats with `openclaw message send` or cron/webhooks:
 <Warning>
 Bare opaque IDs (like `64ifufp...`) are **ambiguous** in Mattermost (user ID vs channel ID).
 
-OpenClaw resolves them **user-first**:
+ClawWorks resolves them **user-first**:
 
-- If the ID exists as a user (`GET /api/v4/users/<id>` succeeds), OpenClaw sends a **DM** by resolving the direct channel via `/api/v4/channels/direct`.
+- If the ID exists as a user (`GET /api/v4/users/<id>` succeeds), ClawWorks sends a **DM** by resolving the direct channel via `/api/v4/channels/direct`.
 - Otherwise the ID is treated as a **channel ID**.
 
 If you need deterministic behavior, always use the explicit prefixes (`user:<id>` / `channel:<id>`).
@@ -239,7 +239,7 @@ If you need deterministic behavior, always use the explicit prefixes (`user:<id>
 
 ## DM channel retry
 
-When OpenClaw sends to a Mattermost DM target and needs to resolve the direct channel first, it retries transient direct-channel creation failures by default.
+When ClawWorks sends to a Mattermost DM target and needs to resolve the direct channel first, it retries transient direct-channel creation failures by default.
 
 Use `channels.mattermost.dmChannelRetry` to tune that behavior globally for the Mattermost plugin, or `channels.mattermost.accounts.<id>.dmChannelRetry` for one account.
 
@@ -289,7 +289,7 @@ Enable via `channels.mattermost.streaming`:
 
   </Accordion>
   <Accordion title="Streaming behavior notes">
-    - If the stream cannot be finalized in place (for example the post was deleted mid-stream), OpenClaw falls back to sending a fresh final post so the reply is never lost.
+    - If the stream cannot be finalized in place (for example the post was deleted mid-stream), ClawWorks falls back to sending a fresh final post so the reply is never lost.
     - Thinking-only payloads are suppressed from channel posts, including text that arrives as a `> Thinking` blockquote. Set `/reasoning on` to see thinking in other surfaces; the Mattermost final post keeps the answer only.
     - See [Streaming](/concepts/streaming#preview-streaming-modes) for the channel-mapping matrix.
 
@@ -320,7 +320,7 @@ Config:
 
 Send messages with clickable buttons. When a user clicks a button, the agent receives the selection and can respond.
 
-Normal agent replies can also include semantic `presentation` payloads. OpenClaw renders value buttons as Mattermost interactive buttons, keeps URL buttons visible in the message text, and downgrades select menus to readable text.
+Normal agent replies can also include semantic `presentation` payloads. ClawWorks renders value buttons as Mattermost interactive buttons, keeps URL buttons visible in the message text, and downgrades select menus to readable text.
 
 Enable buttons by adding `inlineButtons` to the channel capabilities:
 
@@ -374,8 +374,8 @@ When a user clicks a button:
     - `channels.mattermost.capabilities`: array of capability strings. Add `"inlineButtons"` to enable the buttons tool description in the agent system prompt.
     - `channels.mattermost.interactions.callbackBaseUrl`: optional external base URL for button callbacks (for example `https://gateway.example.com`). Use this when Mattermost cannot reach the gateway at its bind host directly.
     - In multi-account setups, you can also set the same field under `channels.mattermost.accounts.<id>.interactions.callbackBaseUrl`.
-    - If `interactions.callbackBaseUrl` is omitted, OpenClaw derives the callback URL from `gateway.customBindHost` + `gateway.port`, then falls back to `http://localhost:<port>`.
-    - Reachability rule: the button callback URL must be reachable from the Mattermost server. `localhost` only works when Mattermost and OpenClaw run on the same host/network namespace.
+    - If `interactions.callbackBaseUrl` is omitted, ClawWorks derives the callback URL from `gateway.customBindHost` + `gateway.port`, then falls back to `http://localhost:<port>`.
+    - Reachability rule: the button callback URL must be reachable from the Mattermost server. `localhost` only works when Mattermost and ClawWorks run on the same host/network namespace.
     - If your callback target is private/tailnet/internal, add its host/domain to Mattermost `ServiceSettings.AllowedUntrustedInternalConnections`.
 
   </Accordion>
@@ -513,13 +513,13 @@ Mattermost supports multiple accounts under `channels.mattermost.accounts`:
 
   </Accordion>
   <Accordion title="Native slash commands fail">
-    - `Unauthorized: invalid command token.`: OpenClaw did not accept the callback token. Typical causes:
+    - `Unauthorized: invalid command token.`: ClawWorks did not accept the callback token. Typical causes:
       - slash command registration failed or only partially completed at startup
       - the callback is hitting the wrong gateway/account
       - Mattermost still has old commands pointing at a previous callback target
       - the gateway restarted without reactivating slash commands
     - If native slash commands stop working, check logs for `mattermost: failed to register slash commands` or `mattermost: native slash commands enabled but no commands could be registered`.
-    - If `callbackUrl` is omitted and logs warn that the callback resolved to `http://127.0.0.1:18789/...`, that URL is probably only reachable when Mattermost runs on the same host/network namespace as OpenClaw. Set an explicit externally reachable `commands.callbackUrl` instead.
+    - If `callbackUrl` is omitted and logs warn that the callback resolved to `http://127.0.0.1:18789/...`, that URL is probably only reachable when Mattermost runs on the same host/network namespace as ClawWorks. Set an explicit externally reachable `commands.callbackUrl` instead.
 
   </Accordion>
   <Accordion title="Buttons issues">

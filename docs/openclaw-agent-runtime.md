@@ -1,12 +1,12 @@
 ---
-summary: "Developer workflow for OpenClaw agent runtime: build, test, and live validation"
-title: "OpenClaw agent runtime workflow"
+summary: "Developer workflow for ClawWorks agent runtime: build, test, and live validation"
+title: "ClawWorks agent runtime workflow"
 read_when:
-  - Working on OpenClaw agent runtime code or tests
+  - Working on ClawWorks agent runtime code or tests
   - Running agent-runtime lint, typecheck, and live test flows
 ---
 
-A sane workflow for working on the OpenClaw agent runtime in OpenClaw.
+A sane workflow for working on the ClawWorks agent runtime in ClawWorks.
 
 ## Type checking and linting
 
@@ -58,7 +58,7 @@ For tool call behavior, prompt for a `read` or `exec` action so you can see tool
 
 ## Clean slate reset
 
-State lives under the OpenClaw state directory. Default is `~/.openclaw`. If `OPENCLAW_STATE_DIR` is set, use that directory instead.
+State lives under the ClawWorks state directory. Default is `~/.openclaw`. If `OPENCLAW_STATE_DIR` is set, use that directory instead.
 
 To reset everything:
 
@@ -79,4 +79,4 @@ If you only want to reset sessions, delete `agents/<agentId>/sessions/` for that
 
 ## Related
 
-- [OpenClaw agent runtime architecture](/agent-runtime-architecture)
+- [ClawWorks agent runtime architecture](/agent-runtime-architecture)

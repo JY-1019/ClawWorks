@@ -12,14 +12,14 @@ The `music_generate` tool lets the agent create music or audio through the
 shared music-generation capability with configured providers — ComfyUI,
 fal, Google, MiniMax, and OpenRouter today.
 
-For session-backed agent runs, OpenClaw starts music generation as a
+For session-backed agent runs, ClawWorks starts music generation as a
 background task, tracks it in the task ledger, then wakes the agent again
 when the track is ready so the agent can tell the user and attach the
 finished audio. The completion agent follows the session's normal visible-reply
 mode: automatic final reply delivery when configured, or `message(action="send")`
 when the session requires the message tool. If the requester session is
 inactive or its active wake fails, and some generated audio is still missing
-from the completion reply, OpenClaw sends an idempotent direct fallback with
+from the completion reply, ClawWorks sends an idempotent direct fallback with
 only the missing audio.
 
 <Note>
@@ -168,16 +168,16 @@ Direct generation example:
 <ParamField path="filename" type="string">Output filename hint.</ParamField>
 
 <Note>
-Not all providers support all parameters. OpenClaw still validates hard
+Not all providers support all parameters. ClawWorks still validates hard
 limits such as input counts before submission. When a provider supports
-duration but uses a shorter maximum than the requested value, OpenClaw
+duration but uses a shorter maximum than the requested value, ClawWorks
 clamps to the closest supported duration. Truly unsupported optional hints
 are ignored with a warning when the selected provider or model cannot honor
 them. Tool results report applied settings; `details.normalization`
 captures any requested-to-applied mapping.
 </Note>
 
-Provider request timeouts are operator configuration only. OpenClaw uses
+Provider request timeouts are operator configuration only. ClawWorks uses
 `agents.defaults.musicGenerationModel.timeoutMs` when configured, raises values
 below 120000ms to 120000ms, and otherwise defaults provider requests to
 300000ms.
@@ -194,7 +194,7 @@ Session-backed music generation runs as a background task:
   starting another generation. Use `action: "status"` to check explicitly.
 - **Status lookup:** `openclaw tasks list` or `openclaw tasks show <taskId>`
   inspects queued, running, and terminal status.
-- **Completion wake:** OpenClaw injects an internal completion event back
+- **Completion wake:** ClawWorks injects an internal completion event back
   into the same session so the model can write the user-facing follow-up
   itself.
 - **Prompt hint:** later user/manual turns in the same session get a small
@@ -239,7 +239,7 @@ openclaw tasks cancel <taskId>
 
 ### Provider selection order
 
-OpenClaw tries providers in this order:
+ClawWorks tries providers in this order:
 
 1. `model` parameter from the tool call (if the agent specifies one).
 2. `musicGenerationModel.primary` from config.

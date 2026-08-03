@@ -6,7 +6,7 @@ read_when:
 title: "Bonjour discovery"
 ---
 
-OpenClaw can use Bonjour (mDNS / DNS-SD) to discover an active Gateway (WebSocket endpoint).
+ClawWorks can use Bonjour (mDNS / DNS-SD) to discover an active Gateway (WebSocket endpoint).
 Multicast `local.` browsing is a **LAN-only convenience**. The bundled `bonjour`
 plugin owns LAN advertising. It auto-starts on macOS hosts and is opt-in on
 Linux, Windows, and containerized Gateway deployments. For cross-network discovery, the same
@@ -27,7 +27,7 @@ High-level steps:
 3. Configure Tailscale **split DNS** so your chosen domain resolves via that
    DNS server for clients (including iOS).
 
-OpenClaw supports any discovery domain; `openclaw.internal.` is just an example.
+ClawWorks supports any discovery domain; `openclaw.internal.` is just an example.
 iOS/Android nodes browse both `local.` and your configured wide-area domain.
 
 ### Gateway config (recommended)
@@ -142,13 +142,13 @@ The Gateway writes a rolling log file (printed on startup as
 - `bonjour: disabling advertiser after ... failed restarts ...`
 
 The watchdog treats active `probing`, `announcing`, and fresh conflict-renames as
-in-progress states. If the service never reaches `announced`, OpenClaw eventually
+in-progress states. If the service never reaches `announced`, ClawWorks eventually
 recreates the advertiser and, after repeated failures, disables Bonjour for that
 Gateway process instead of re-advertising forever.
 
 Bonjour uses the system hostname for the advertised `.local` host when it is a
 valid DNS label. If the system hostname contains spaces, underscores, or another
-invalid DNS-label character, OpenClaw falls back to `openclaw.local`. Set
+invalid DNS-label character, ClawWorks falls back to `openclaw.local`. Set
 `OPENCLAW_MDNS_HOSTNAME=<name>` before starting the Gateway when you need an
 explicit host label.
 
@@ -201,7 +201,7 @@ It is safe for Docker images, service files, launch scripts, and one-off
 debugging because the setting disappears when the environment does.
 
 Use plugin configuration when you intentionally want to turn off the bundled LAN
-discovery plugin for that OpenClaw config:
+discovery plugin for that ClawWorks config:
 
 ```bash
 openclaw plugins disable bonjour
@@ -266,7 +266,7 @@ If a node no longer auto-discovers the Gateway after Docker setup:
 - **Multicast blocked**: some Wi-Fi networks disable mDNS.
 - **Advertiser stuck in probing/announcing**: hosts with blocked multicast,
   container bridges, WSL, or interface churn can leave the ciao advertiser in a
-  non-announced state. OpenClaw retries a few times and then disables Bonjour
+  non-announced state. ClawWorks retries a few times and then disables Bonjour
   for the current Gateway process instead of restarting the advertiser forever.
 - **Docker bridge networking**: Bonjour auto-disables in detected containers.
   Set `OPENCLAW_DISABLE_BONJOUR=0` only for host, macvlan, or another

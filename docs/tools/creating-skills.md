@@ -1,7 +1,7 @@
 ---
 title: "Creating skills"
 sidebarTitle: "Creating skills"
-summary: "Build, test, and publish custom SKILL.md workspace skills for your OpenClaw agents."
+summary: "Build, test, and publish custom SKILL.md workspace skills for your ClawWorks agents."
 read_when:
   - You are creating a new custom skill
   - You need a quick starter workflow for SKILL.md-based skills
@@ -10,7 +10,7 @@ read_when:
 
 Skills teach the agent how and when to use tools. Each skill is a directory
 containing a `SKILL.md` file with YAML frontmatter and markdown instructions.
-OpenClaw loads skills from several roots in a defined [precedence order](/tools/skills#loading-order).
+ClawWorks loads skills from several roots in a defined [precedence order](/tools/skills#loading-order).
 
 ## Create your first skill
 
@@ -65,7 +65,7 @@ OpenClaw loads skills from several roots in a defined [precedence order](/tools/
     openclaw skills list
     ```
 
-    OpenClaw watches `SKILL.md` files under skills roots by default. If the
+    ClawWorks watches `SKILL.md` files under skills roots by default. If the
     watcher is disabled or you are continuing an existing session, start a new
     one so the agent receives the refreshed list:
 

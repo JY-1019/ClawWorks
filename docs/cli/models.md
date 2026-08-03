@@ -30,7 +30,7 @@ When provider usage snapshots are available, the OAuth/API-key status section in
 provider usage windows and quota snapshots.
 Current usage-window providers: Anthropic, GitHub Copilot, Gemini CLI, OpenAI,
 MiniMax, Xiaomi, and z.ai. Usage auth comes from provider-specific hooks
-when available; otherwise OpenClaw falls back to matching OAuth/API-key
+when available; otherwise ClawWorks falls back to matching OAuth/API-key
 credentials from auth profiles, env, or config.
 In `--json` output, `auth.providers` is the env/config/store-aware provider
 overview, while `auth.oauth` is auth-store profile health only.
@@ -79,10 +79,10 @@ Notes:
   `openai`. It does not accept display labels from interactive provider
   pickers, such as `Moonshot AI`.
 - Model refs are parsed by splitting on the **first** `/`. If the model ID includes `/` (OpenRouter-style), include the provider prefix (example: `openrouter/moonshotai/kimi-k2`).
-- If you omit the provider, OpenClaw resolves the input as an alias first, then
+- If you omit the provider, ClawWorks resolves the input as an alias first, then
   as a unique configured-provider match for that exact model id, and only then
   falls back to the configured default provider with a deprecation warning.
-  If that provider no longer exposes the configured default model, OpenClaw
+  If that provider no longer exposes the configured default model, ClawWorks
   falls back to the first configured provider/model instead of surfacing a
   stale removed-provider default.
 - `models status` may show `marker(<value>)` in auth output for non-secret placeholders (for example `OPENAI_API_KEY`, `secretref-managed`, `minimax-oauth`, `oauth:chutes`, `ollama-local`) instead of masking them as secrets.
@@ -93,7 +93,7 @@ Notes:
 fallback use. The catalog itself is public, so metadata-only scans do not need
 an OpenRouter key.
 
-By default OpenClaw tries to probe tool and image support with live model calls.
+By default ClawWorks tries to probe tool and image support with live model calls.
 If no OpenRouter key is configured, the command falls back to metadata-only
 output and explains that `:free` models still require `OPENROUTER_API_KEY` for
 probes and inference.
@@ -153,7 +153,7 @@ Probe detail/reason-code cases to expect:
   trying it.
 - `missing_credential`, `invalid_expires`, `expired`, `unresolved_ref`:
   profile is present but not eligible/resolvable.
-- `no_model`: provider auth exists, but OpenClaw could not resolve a probeable
+- `no_model`: provider auth exists, but ClawWorks could not resolve a probeable
   model candidate for that provider.
 
 ## Aliases + fallbacks
@@ -229,8 +229,8 @@ Notes:
 - For `openai`, OpenAI API keys and ChatGPT/OAuth token material are
   different auth shapes. Use `paste-api-key` for `sk-...` OpenAI API keys and
   `paste-token` only for token auth material.
-- Anthropic note: Anthropic staff told us OpenClaw-style Claude CLI usage is allowed again, so OpenClaw treats Claude CLI reuse and `claude -p` usage as sanctioned for this integration unless Anthropic publishes a new policy.
-- Anthropic `setup-token` / `paste-token` remain available as a supported OpenClaw token path, but OpenClaw now prefers Claude CLI reuse and `claude -p` when available.
+- Anthropic note: Anthropic staff told us ClawWorks-style Claude CLI usage is allowed again, so ClawWorks treats Claude CLI reuse and `claude -p` usage as sanctioned for this integration unless Anthropic publishes a new policy.
+- Anthropic `setup-token` / `paste-token` remain available as a supported ClawWorks token path, but ClawWorks now prefers Claude CLI reuse and `claude -p` when available.
 
 ## Related
 

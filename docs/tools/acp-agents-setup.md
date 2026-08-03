@@ -2,7 +2,7 @@
 summary: "Setting up ACP agents: acpx harness config, plugin setup, permissions"
 read_when:
   - Installing or configuring the acpx harness for Claude Code / Codex / Gemini CLI
-  - Enabling the plugin-tools or OpenClaw-tools MCP bridge
+  - Enabling the plugin-tools or ClawWorks-tools MCP bridge
   - Configuring ACP permission modes
 title: "ACP agents — setup"
 ---
@@ -16,7 +16,7 @@ app-server runtime config, use [Codex harness](/plugins/codex-harness). For
 OpenAI API keys or Codex OAuth model-provider config, use
 [OpenAI](/providers/openai).
 
-Codex has two OpenClaw routes:
+Codex has two ClawWorks routes:
 
 | Route                      | Config/command                                         | Setup page                              |
 | -------------------------- | ------------------------------------------------------ | --------------------------------------- |
@@ -43,15 +43,15 @@ Current acpx built-in harness aliases:
 - `opencode`
 - `qwen`
 
-When OpenClaw uses the acpx backend, prefer these values for `agentId` unless your acpx config defines custom agent aliases.
+When ClawWorks uses the acpx backend, prefer these values for `agentId` unless your acpx config defines custom agent aliases.
 If your local Cursor install still exposes ACP as `agent acp`, override the `cursor` agent command in your acpx config instead of changing the built-in default.
 
-Direct acpx CLI usage can also target arbitrary adapters via `--agent <command>`, but that raw escape hatch is an acpx CLI feature (not the normal OpenClaw `agentId` path).
+Direct acpx CLI usage can also target arbitrary adapters via `--agent <command>`, but that raw escape hatch is an acpx CLI feature (not the normal ClawWorks `agentId` path).
 
 Model control is adapter-capability dependent. Codex ACP model refs are
-normalized by OpenClaw before startup. Other harnesses need ACP `models` plus
+normalized by ClawWorks before startup. Other harnesses need ACP `models` plus
 `session/set_model` support; if a harness exposes neither that ACP capability
-nor its own startup model flag, OpenClaw/acpx cannot force a model selection.
+nor its own startup model flag, ClawWorks/acpx cannot force a model selection.
 
 ## Required config
 
@@ -188,7 +188,7 @@ Override the command or version in plugin config:
 }
 ```
 
-- `command` accepts an absolute path, relative path (resolved from the OpenClaw workspace), or command name.
+- `command` accepts an absolute path, relative path (resolved from the ClawWorks workspace), or command name.
 - `expectedVersion: "any"` disables strict version matching.
 - Custom `command` paths disable plugin-local auto-install.
 
@@ -216,24 +216,24 @@ or flag value should remain one argv token:
 ```
 
 - `agents.<id>.command` is the executable or existing command string for that ACP agent.
-- `agents.<id>.args` is optional. Each array item is shell-quoted before OpenClaw passes it through the current acpx command-string registry.
+- `agents.<id>.args` is optional. Each array item is shell-quoted before ClawWorks passes it through the current acpx command-string registry.
 
 See [Plugins](/tools/plugin).
 
 ### Automatic dependency install
 
-When you install OpenClaw globally with `npm install -g openclaw`, the acpx
+When you install ClawWorks globally with `npm install -g openclaw`, the acpx
 runtime dependencies (platform-specific binaries) are installed automatically
 via a postinstall hook. If the automatic install fails, the gateway still starts
 normally and reports the missing dependency through `openclaw acp doctor`.
 
 ### Plugin tools MCP bridge
 
-By default, ACPX sessions do **not** expose OpenClaw plugin-registered tools to
+By default, ACPX sessions do **not** expose ClawWorks plugin-registered tools to
 the ACP harness.
 
 If you want ACP agents such as Codex or Claude Code to call installed
-OpenClaw plugin tools such as memory recall/store, enable the dedicated bridge:
+ClawWorks plugin tools such as memory recall/store, enable the dedicated bridge:
 
 ```bash
 openclaw config set plugins.entries.acpx.config.pluginToolsMcpBridge true
@@ -243,7 +243,7 @@ What this does:
 
 - Injects a built-in MCP server named `openclaw-plugin-tools` into ACPX session
   bootstrap.
-- Exposes plugin tools already registered by installed and enabled OpenClaw
+- Exposes plugin tools already registered by installed and enabled ClawWorks
   plugins.
 - Keeps the feature explicit and default-off.
 
@@ -252,15 +252,15 @@ Security and trust notes:
 - This expands the ACP harness tool surface.
 - ACP agents get access only to plugin tools already active in the gateway.
 - Treat this as the same trust boundary as letting those plugins execute in
-  OpenClaw itself.
+  ClawWorks itself.
 - Review installed plugins before enabling it.
 
 Custom `mcpServers` still work as before. The built-in plugin-tools bridge is an
 additional opt-in convenience, not a replacement for generic MCP server config.
 
-### OpenClaw tools MCP bridge
+### ClawWorks tools MCP bridge
 
-By default, ACPX sessions also do **not** expose built-in OpenClaw tools through
+By default, ACPX sessions also do **not** expose built-in ClawWorks tools through
 MCP. Enable the separate core-tools bridge when an ACP agent needs selected
 built-in tools such as `cron`:
 
@@ -272,7 +272,7 @@ What this does:
 
 - Injects a built-in MCP server named `openclaw-tools` into ACPX session
   bootstrap.
-- Exposes selected built-in OpenClaw tools. The initial server exposes `cron`.
+- Exposes selected built-in ClawWorks tools. The initial server exposes `cron`.
 - Keeps core-tool exposure explicit and default-off.
 
 ### Runtime operation timeout configuration
@@ -286,7 +286,7 @@ different operation limit:
 openclaw config set plugins.entries.acpx.config.timeoutSeconds 180
 ```
 
-Runtime turns use OpenClaw agent/run timeouts, including `/acp timeout`.
+Runtime turns use ClawWorks agent/run timeouts, including `/acp timeout`.
 `sessions_spawn` does not accept per-call timeout overrides. Restart the
 gateway after changing this value.
 
@@ -307,9 +307,9 @@ Restart the gateway after changing this value.
 
 ACP sessions run non-interactively — there is no TTY to approve or deny file-write and shell-exec permission prompts. The acpx plugin provides two config keys that control how permissions are handled:
 
-These ACPX harness permissions are separate from OpenClaw exec approvals and separate from CLI-backend vendor bypass flags such as Claude CLI `--permission-mode bypassPermissions`. ACPX `approve-all` is the harness-level break-glass switch for ACP sessions.
+These ACPX harness permissions are separate from ClawWorks exec approvals and separate from CLI-backend vendor bypass flags such as Claude CLI `--permission-mode bypassPermissions`. ACPX `approve-all` is the harness-level break-glass switch for ACP sessions.
 
-For the broader comparison between OpenClaw `tools.exec.mode`, Codex Guardian
+For the broader comparison between ClawWorks `tools.exec.mode`, Codex Guardian
 approvals, and ACPX harness permissions, see
 [Permission modes](/tools/permission-modes).
 
@@ -344,7 +344,7 @@ openclaw config set plugins.entries.acpx.config.nonInteractivePermissions fail
 Restart the gateway after changing these values.
 
 <Warning>
-OpenClaw defaults to `permissionMode=approve-reads` and `nonInteractivePermissions=fail`. In non-interactive ACP sessions, any write or exec that triggers a permission prompt can fail with `AcpRuntimeError: Permission prompt unavailable in non-interactive mode`.
+ClawWorks defaults to `permissionMode=approve-reads` and `nonInteractivePermissions=fail`. In non-interactive ACP sessions, any write or exec that triggers a permission prompt can fail with `AcpRuntimeError: Permission prompt unavailable in non-interactive mode`.
 
 If you need to restrict permissions, set `nonInteractivePermissions` to `deny` so sessions degrade gracefully instead of crashing.
 </Warning>

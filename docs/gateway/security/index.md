@@ -8,7 +8,7 @@ title: "Security"
 <Warning>
   **Personal assistant trust model.** This guidance assumes one trusted
   operator boundary per gateway (single-user, personal-assistant model).
-  OpenClaw is **not** a hostile multi-tenant security boundary for multiple
+  ClawWorks is **not** a hostile multi-tenant security boundary for multiple
   adversarial users sharing one agent or gateway. If you need mixed-trust or
   adversarial-user operation, split trust boundaries (separate gateway +
   credentials, ideally separate OS users or hosts).
@@ -16,7 +16,7 @@ title: "Security"
 
 ## Scope first: personal assistant security model
 
-OpenClaw security guidance assumes a **personal assistant** deployment: one trusted operator boundary, potentially many agents.
+ClawWorks security guidance assumes a **personal assistant** deployment: one trusted operator boundary, potentially many agents.
 
 - Supported security posture: one user/trust boundary per gateway (prefer one OS user/host/VPS per boundary).
 - Not a supported security boundary: one shared gateway/agent used by mutually untrusted or adversarial users.
@@ -49,7 +49,7 @@ POSIX `chmod` when running on Windows.
 
 It flags common footguns (Gateway auth exposure, browser control exposure, elevated allowlists, filesystem permissions, permissive exec approvals, and open-channel tool exposure).
 
-OpenClaw is both a product and an experiment: you're wiring frontier-model behavior into real messaging surfaces and real tools. **There is no "perfectly secure" setup.** The goal is to be deliberate about:
+ClawWorks is both a product and an experiment: you're wiring frontier-model behavior into real messaging surfaces and real tools. **There is no "perfectly secure" setup.** The goal is to be deliberate about:
 
 - who can talk to your bot
 - where the bot is allowed to act
@@ -59,8 +59,8 @@ Start with the smallest access that still works, then widen it as you gain confi
 
 ### Published package dependency lock
 
-OpenClaw source checkouts use `pnpm-lock.yaml`. The published `openclaw` npm
-package and OpenClaw-owned npm plugin packages include `npm-shrinkwrap.json`,
+ClawWorks source checkouts use `pnpm-lock.yaml`. The published `openclaw` npm
+package and ClawWorks-owned npm plugin packages include `npm-shrinkwrap.json`,
 npm's publishable dependency lockfile, so package installs use the reviewed
 transitive dependency graph from the release instead of resolving a fresh graph
 at install time.
@@ -71,7 +71,7 @@ inspection checks, see [npm shrinkwrap](/gateway/security/shrinkwrap).
 
 ### Deployment and host trust
 
-OpenClaw assumes the host and config boundary are trusted:
+ClawWorks assumes the host and config boundary are trusted:
 
 - If someone can modify Gateway host state/config (`~/.openclaw`, including `openclaw.json`), treat them as a trusted operator.
 - Running one Gateway for multiple mutually untrusted/adversarial operators is **not a recommended setup**.
@@ -83,7 +83,7 @@ OpenClaw assumes the host and config boundary are trusted:
 
 ### Secure file operations
 
-OpenClaw uses `@openclaw/fs-safe` for root-bounded file access, atomic writes, archive extraction, temp workspaces, and secret-file helpers. OpenClaw defaults fs-safe's optional POSIX Python helper to **off**; set `OPENCLAW_FS_SAFE_PYTHON_MODE=auto` or `require` only when you want the extra fd-relative mutation hardening and can support a Python runtime.
+ClawWorks uses `@openclaw/fs-safe` for root-bounded file access, atomic writes, archive extraction, temp workspaces, and secret-file helpers. ClawWorks defaults fs-safe's optional POSIX Python helper to **off**; set `OPENCLAW_FS_SAFE_PYTHON_MODE=auto` or `require` only when you want the extra fd-relative mutation hardening and can support a Python runtime.
 
 Details: [Secure file operations](/gateway/security/secure-file-operations).
 
@@ -123,7 +123,7 @@ Treat Gateway and node as one operator trust domain, with different roles:
   still go through pairing and scope-upgrade enforcement.
 - `sessionKey` is routing/context selection, not per-user auth.
 - Exec approvals (allowlist + ask) are guardrails for operator intent, not hostile multi-tenant isolation.
-- OpenClaw's product default for trusted single-operator setups is that host exec on `gateway`/`node` is allowed without approval prompts (`security="full"`, `ask="off"` unless you tighten it). That default is intentional UX, not a vulnerability by itself.
+- ClawWorks's product default for trusted single-operator setups is that host exec on `gateway`/`node` is allowed without approval prompts (`security="full"`, `ask="off"` unless you tighten it). That default is intentional UX, not a vulnerability by itself.
 - Exec approvals bind exact request context and best-effort direct local file operands; they do not semantically model every runtime/interpreter loader path. Use sandboxing and host isolation for strong boundaries.
 
 If you need hostile-user isolation, split trust boundaries by OS user/host and run separate gateways.
@@ -214,7 +214,7 @@ If more than one person can DM your bot:
 
 ## Context visibility model
 
-OpenClaw separates two concepts:
+ClawWorks separates two concepts:
 
 - **Trigger authorization**: who can trigger the agent (`dmPolicy`, `groupPolicy`, allowlists, mention gates).
 - **Context visibility**: what supplemental context is injected into model input (reply body, quoted text, thread history, forwarded metadata).
@@ -247,7 +247,7 @@ Advisory triage guidance:
 - **Runtime expectation drift** (for example assuming implicit exec still means `sandbox` when `tools.exec.host` now defaults to `auto`, or explicitly setting `tools.exec.host="sandbox"` while sandbox mode is off).
 - **Model hygiene** (warn when configured models look legacy; not a hard block).
 
-If you run `--deep`, OpenClaw also attempts a best-effort live Gateway probe.
+If you run `--deep`, ClawWorks also attempts a best-effort live Gateway probe.
 
 ## Credential storage map
 
@@ -416,8 +416,8 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 ## HSTS and origin notes
 
-- OpenClaw gateway is local/loopback first. If you terminate TLS at a reverse proxy, set HSTS on the proxy-facing HTTPS domain there.
-- If the gateway itself terminates HTTPS, you can set `gateway.http.securityHeaders.strictTransportSecurity` to emit the HSTS header from OpenClaw responses.
+- ClawWorks gateway is local/loopback first. If you terminate TLS at a reverse proxy, set HSTS on the proxy-facing HTTPS domain there.
+- If the gateway itself terminates HTTPS, you can set `gateway.http.securityHeaders.strictTransportSecurity` to emit the HSTS header from ClawWorks responses.
 - Detailed deployment guidance is in [Trusted Proxy Auth](/gateway/trusted-proxy-auth#tls-termination-and-hsts).
 - For non-loopback Control UI deployments, `gateway.controlUi.allowedOrigins` is required by default.
 - `gateway.controlUi.allowedOrigins: ["*"]` is an explicit allow-all browser-origin policy, not a hardened default. Avoid it outside tightly controlled local testing.
@@ -429,7 +429,7 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 ## Local session logs live on disk
 
-OpenClaw stores session transcripts on disk under `~/.openclaw/agents/<agentId>/sessions/*.jsonl`.
+ClawWorks stores session transcripts on disk under `~/.openclaw/agents/<agentId>/sessions/*.jsonl`.
 This is required for session continuity and (optionally) session memory indexing, but it also means
 **any process/user with filesystem access can read those logs**. Treat disk access as the trust
 boundary and lock down permissions on `~/.openclaw` (see the audit section below). If you need
@@ -445,7 +445,7 @@ If a macOS node is paired, the Gateway can invoke `system.run` on that node. Thi
 - Controlled on the Mac via **Settings → Exec approvals** (security + ask + allowlist).
 - The per-node `system.run` policy is the node's own exec approvals file (`exec.approvals.node.*`), which can be stricter or looser than the gateway's global command-ID policy.
 - A node running with `security="full"` and `ask="off"` is following the default trusted-operator model. Treat that as expected behavior unless your deployment explicitly requires a tighter approval or allowlist stance.
-- Approval mode binds exact request context and, when possible, one concrete local script/file operand. If OpenClaw cannot identify exactly one direct local file for an interpreter/runtime command, approval-backed execution is denied rather than promising full semantic coverage.
+- Approval mode binds exact request context and, when possible, one concrete local script/file operand. If ClawWorks cannot identify exactly one direct local file for an interpreter/runtime command, approval-backed execution is denied rather than promising full semantic coverage.
 - For `host=node`, approval-backed runs also store a canonical prepared
   `systemRunPlan`; later approved forwards reuse that stored plan, and gateway
   validation rejects caller edits to command/cwd/session context after the
@@ -459,7 +459,7 @@ This distinction matters for triage:
 
 ## Dynamic skills (watcher / remote nodes)
 
-OpenClaw can refresh the skills list mid-session:
+ClawWorks can refresh the skills list mid-session:
 
 - **Skills watcher**: changes to `SKILL.md` can update the skills snapshot on the next agent turn.
 - **Remote nodes**: connecting a macOS node can make macOS-only skills eligible (based on bin probing).
@@ -485,7 +485,7 @@ People who message you can:
 
 Most failures here are not fancy exploits - they're "someone messaged the bot and the bot did what they asked."
 
-OpenClaw's stance:
+ClawWorks's stance:
 
 - **Identity first:** decide who can talk to the bot (DM pairing / allowlists / explicit "open").
 - **Scope next:** decide where the bot is allowed to act (group allowlists + mention gating, tools, sandboxing, device permissions).
@@ -539,8 +539,8 @@ Plugins run **in-process** with the Gateway. Treat them as trusted code:
 - Restart the Gateway after plugin changes.
 - If you install or update plugins (`openclaw plugins install <package>`, `openclaw plugins update <id>`), treat it like running untrusted code:
   - The install path is the per-plugin directory under the active plugin install root.
-  - OpenClaw does not run built-in local dangerous-code blocking during install/update. Use `security.installPolicy` for operator-owned local allow/block decisions and `openclaw security audit --deep` for diagnostic scanning.
-  - npm and git plugin installs run package-manager dependency convergence only during the explicit install/update flow. Local paths and archives are treated as self-contained plugin packages; OpenClaw copies/references them without running `npm install`.
+  - ClawWorks does not run built-in local dangerous-code blocking during install/update. Use `security.installPolicy` for operator-owned local allow/block decisions and `openclaw security audit --deep` for diagnostic scanning.
+  - npm and git plugin installs run package-manager dependency convergence only during the explicit install/update flow. Local paths and archives are treated as self-contained plugin packages; ClawWorks copies/references them without running `npm install`.
   - Prefer pinned, exact versions (`@scope/pkg@1.2.3`), and inspect the unpacked code on disk before enabling.
   - `--dangerously-force-unsafe-install` is deprecated and no longer changes plugin install/update behavior.
   - Configure `security.installPolicy` when operators need a trusted local command to make host-specific allow/block decisions for skill and plugin installs. This policy runs after source material is staged but before installation continues, applies to ClawHub skills too, and is not bypassed by deprecated unsafe flags.
@@ -567,7 +567,7 @@ Details + files on disk: [Pairing](/channels/pairing)
 
 ## DM session isolation (multi-user mode)
 
-By default, OpenClaw routes **all DMs into the main session** so your assistant has continuity across devices and channels. If **multiple people** can DM the bot (open DMs or a multi-person allowlist), consider isolating DM sessions:
+By default, ClawWorks routes **all DMs into the main session** so your assistant has continuity across devices and channels. If **multiple people** can DM the bot (open DMs or a multi-person allowlist), consider isolating DM sessions:
 
 ```json5
 {
@@ -592,7 +592,7 @@ If you run multiple accounts on the same channel, use `per-account-channel-peer`
 
 ## Allowlists for DMs and groups
 
-OpenClaw has two separate "who can trigger me?" layers:
+ClawWorks has two separate "who can trigger me?" layers:
 
 - **DM allowlist** (`allowFrom` / `channels.discord.allowFrom` / `channels.slack.allowFrom`; legacy: `channels.discord.dm.allowFrom`, `channels.slack.dm.allowFrom`): who is allowed to talk to the bot in direct messages.
   - When `dmPolicy="pairing"`, approvals are written to the account-scoped pairing allowlist store under `~/.openclaw/credentials/` (`<channel>-allowFrom.json` for default account, `<channel>-<accountId>-allowFrom.json` for non-default accounts), merged with config allowlists.
@@ -632,7 +632,7 @@ Red flags to treat as untrusted:
 
 ## External content special-token sanitization
 
-OpenClaw strips common self-hosted LLM chat-template special-token literals from wrapped external content and metadata before they reach the model. Covered marker families include Qwen/ChatML, Llama, Gemma, Mistral, Phi, and GPT-OSS role/turn tokens.
+ClawWorks strips common self-hosted LLM chat-template special-token literals from wrapped external content and metadata before they reach the model. Covered marker families include Qwen/ChatML, Llama, Gemma, Mistral, Phi, and GPT-OSS role/turn tokens.
 
 Why:
 
@@ -644,7 +644,7 @@ This does not replace the other hardening on this page - `dmPolicy`, allowlists,
 
 ## Unsafe external content bypass flags
 
-OpenClaw includes explicit bypass flags that disable external-content safety wrapping:
+ClawWorks includes explicit bypass flags that disable external-content safety wrapping:
 
 - `hooks.mappings[].allowUnsafeExternalContent`
 - `hooks.gmail.allowUnsafeExternalContent`
@@ -698,7 +698,7 @@ such as `<|im_start|>`, `<|start_header_id|>`, or `<start_of_turn>` as
 structural chat-template tokens inside user content, untrusted text can try to
 forge role boundaries at the tokenizer layer.
 
-OpenClaw strips common model-family special-token literals from wrapped
+ClawWorks strips common model-family special-token literals from wrapped
 external content before dispatching it to the model. Keep external-content
 wrapping enabled, and prefer backend settings that split or escape special
 tokens in user-provided content when available. Hosted providers such as OpenAI
@@ -774,7 +774,7 @@ Rules of thumb:
 
 ### Docker port publishing with UFW
 
-If you run OpenClaw with Docker on a VPS, remember that published container ports
+If you run ClawWorks with Docker on a VPS, remember that published container ports
 (`-p HOST:CONTAINER` or Compose `ports:`) are routed through Docker's forwarding
 chains, not only host `INPUT` rules.
 
@@ -907,7 +907,7 @@ Local device pairing:
 
 - Device pairing is auto-approved for direct local loopback connects to keep
   same-host clients smooth.
-- OpenClaw also has a narrow backend/container-local self-connect path for
+- ClawWorks also has a narrow backend/container-local self-connect path for
   trusted shared-secret helper flows.
 - Tailnet and LAN connects, including same-host tailnet binds, are treated as
   remote for pairing and still need approval.
@@ -930,9 +930,9 @@ Rotation checklist (token/password):
 
 ### Tailscale Serve identity headers
 
-When `gateway.auth.allowTailscale` is `true` (default for Serve), OpenClaw
+When `gateway.auth.allowTailscale` is `true` (default for Serve), ClawWorks
 accepts Tailscale Serve identity headers (`tailscale-user-login`) for Control
-UI/WebSocket authentication. OpenClaw verifies the identity by resolving the
+UI/WebSocket authentication. ClawWorks verifies the identity by resolving the
 `x-forwarded-for` address through the local Tailscale daemon (`tailscale whois`)
 and matching it to the header. This only triggers for requests that hit loopback
 and include `x-forwarded-for`, `x-forwarded-proto`, and `x-forwarded-host` as
@@ -970,7 +970,7 @@ instead.
 Trusted proxies:
 
 - If you terminate TLS in front of the Gateway, set `gateway.trustedProxies` to your proxy IPs.
-- OpenClaw will trust `x-forwarded-for` (or `x-real-ip`) from those IPs to determine the client IP for local pairing checks and HTTP auth/local checks.
+- ClawWorks will trust `x-forwarded-for` (or `x-real-ip`) from those IPs to determine the client IP for local pairing checks and HTTP auth/local checks.
 - Ensure your proxy **overwrites** `x-forwarded-for` and blocks direct access to the Gateway port.
 
 See [Tailscale](/gateway/tailscale) and [Web overview](/web).
@@ -1013,7 +1013,7 @@ Hardening tips:
 
 ### Workspace `.env` files
 
-OpenClaw loads workspace-local `.env` files for agents and tools, but never lets those files silently override gateway runtime controls.
+ClawWorks loads workspace-local `.env` files for agents and tools, but never lets those files silently override gateway runtime controls.
 
 - Provider credential environment variables are blocked from untrusted workspace `.env` files. Examples include `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `PERPLEXITY_API_KEY`, `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, and provider auth keys declared by installed trusted plugins. Put provider credentials in the Gateway process environment, `~/.openclaw/.env` (`$OPENCLAW_STATE_DIR/.env`), the config `env` block, or optional login-shell import.
 - Any key that starts with `OPENCLAW_*` is blocked from untrusted workspace `.env` files.
@@ -1170,7 +1170,7 @@ access those accounts and data. Treat browser profiles as **sensitive state**:
 
 ### Browser SSRF policy (strict by default)
 
-OpenClaw's browser navigation policy is strict by default: private/internal destinations stay blocked unless you explicitly opt in.
+ClawWorks's browser navigation policy is strict by default: private/internal destinations stay blocked unless you explicitly opt in.
 
 - Default: `browser.ssrfPolicy.dangerouslyAllowPrivateNetwork` is unset, so browser navigation keeps private/internal/special-use destinations blocked.
 - Legacy alias: `browser.ssrfPolicy.allowPrivateNetwork` is still accepted for compatibility.
@@ -1259,7 +1259,7 @@ Common use cases:
           scope: "agent",
           workspaceAccess: "none",
         },
-        // Session tools can reveal sensitive data from transcripts. By default OpenClaw limits these tools
+        // Session tools can reveal sensitive data from transcripts. By default ClawWorks limits these tools
         // to the current session + spawned subagent sessions, but you can clamp further if needed.
         // See `tools.sessions.visibility` in the configuration reference.
         tools: {
@@ -1321,7 +1321,7 @@ If your AI does something bad:
 
 ### Collect for a report
 
-- Timestamp, gateway host OS + OpenClaw version
+- Timestamp, gateway host OS + ClawWorks version
 - The session transcript(s) + a short log tail (after redacting)
 - What the attacker sent + what the agent did
 - Whether the Gateway was exposed beyond loopback (LAN/Tailscale Funnel/Serve)
@@ -1337,7 +1337,7 @@ pre-commit run --all-files detect-private-key
 
 ## Reporting security issues
 
-Found a vulnerability in OpenClaw? Please report responsibly:
+Found a vulnerability in ClawWorks? Please report responsibly:
 
 1. Email: [security@openclaw.ai](mailto:security@openclaw.ai)
 2. Don't post publicly until fixed

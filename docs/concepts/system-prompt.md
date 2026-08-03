@@ -1,14 +1,14 @@
 ---
-summary: "What the OpenClaw system prompt contains and how it is assembled"
+summary: "What the ClawWorks system prompt contains and how it is assembled"
 read_when:
   - Editing system prompt text, tools list, or time/heartbeat sections
   - Changing workspace bootstrap or skills injection behavior
 title: "System prompt"
 ---
 
-OpenClaw builds a custom system prompt for every agent run. The prompt is **OpenClaw-owned** and does not use a runtime default prompt.
+ClawWorks builds a custom system prompt for every agent run. The prompt is **ClawWorks-owned** and does not use a runtime default prompt.
 
-The prompt is assembled by OpenClaw and injected into each agent run.
+The prompt is assembled by ClawWorks and injected into each agent run.
 
 Prompt assembly has three layers:
 
@@ -25,7 +25,7 @@ This keeps exported/debug prompt surfaces aligned with live runs without
 turning every runtime-specific detail into one monolithic builder.
 
 Provider plugins can contribute cache-aware prompt guidance without replacing
-the full OpenClaw-owned prompt. The provider runtime can:
+the full ClawWorks-owned prompt. The provider runtime can:
 
 - replace a small set of named core sections (`interaction_style`,
   `tool_call_style`, `execution_bias`)
@@ -51,16 +51,16 @@ The prompt is intentionally compact and uses fixed sections:
   results, check mutable state live, and verify before finalizing.
 - **Safety**: short guardrail reminder to avoid power-seeking behavior or bypassing oversight.
 - **Skills** (when available): tells the model how to load skill instructions on demand.
-- **OpenClaw Control**: tells the model to prefer the `gateway` tool for
+- **ClawWorks Control**: tells the model to prefer the `gateway` tool for
   config/restart work and to avoid inventing CLI commands.
-- **OpenClaw Self-Update**: how to inspect config safely with
+- **ClawWorks Self-Update**: how to inspect config safely with
   `config.schema.lookup`, patch config with `config.patch`, replace the full
   config with `config.apply`, and run `update.run` only on explicit user
   request. The agent-facing `gateway` tool also refuses to rewrite
   `tools.exec.ask` / `tools.exec.security`, including legacy `tools.bash.*`
   aliases that normalize to those protected exec paths.
 - **Workspace**: working directory (`agents.defaults.workspace`).
-- **Documentation**: local path to OpenClaw docs/source and when to read them.
+- **Documentation**: local path to ClawWorks docs/source and when to read them.
 - **Workspace Files (injected)**: indicates bootstrap files are included below.
 - **Sandbox** (when enabled): indicates sandboxed runtime, sandbox paths, and whether elevated exec is available.
 - **Current Date & Time**: time zone only (cache-stable; the live clock comes from `session_status`).
@@ -69,7 +69,7 @@ The prompt is intentionally compact and uses fixed sections:
 - **Runtime**: host, OS, node, model, repo root (when detected), thinking level (one line).
 - **Reasoning**: current visibility level + /reasoning toggle hint.
 
-OpenClaw keeps large stable content, including **Project Context**, above the
+ClawWorks keeps large stable content, including **Project Context**, above the
 internal prompt cache boundary. Volatile channel/session sections such as
 Control UI embed guidance, **Messaging**, **Voice**, **Group Chat Context**,
 **Reactions**, **Heartbeats**, and **Runtime** are appended below that boundary
@@ -113,11 +113,11 @@ manual approval is the only path.
 
 ## Prompt modes
 
-OpenClaw can render smaller system prompts for sub-agents. The runtime sets a
+ClawWorks can render smaller system prompts for sub-agents. The runtime sets a
 `promptMode` for each run (not a user-facing config):
 
 - `full` (default): includes all sections above.
-- `minimal`: used for sub-agents; omits **Memory Recall**, **OpenClaw
+- `minimal`: used for sub-agents; omits **Memory Recall**, **ClawWorks
   Self-Update**, **Model Aliases**, **User Identity**, **Assistant Output Directives**,
   **Messaging**, **Silent Replies**, and **Heartbeats**. Tooling, **Safety**,
   **Skills** when supplied, Workspace, Sandbox, Current Date & Time (when
@@ -127,21 +127,21 @@ OpenClaw can render smaller system prompts for sub-agents. The runtime sets a
 When `promptMode=minimal`, extra injected prompts are labeled **Subagent
 Context** instead of **Group Chat Context**.
 
-For channel auto-reply runs, OpenClaw omits the generic **Silent Replies**
+For channel auto-reply runs, ClawWorks omits the generic **Silent Replies**
 section when direct, group, or message-tool-only context owns the visible-reply
 contract. Only old automatic group/channel mode should show `NO_REPLY`; direct
 chats and message-tool-only replies do not receive silent-token guidance.
 
 ## Prompt snapshots
 
-OpenClaw keeps committed prompt snapshots for the Codex runtime happy path under
+ClawWorks keeps committed prompt snapshots for the Codex runtime happy path under
 `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/`. They render
 selected app-server thread/turn params plus a reconstructed model-bound prompt
 layer stack for Telegram direct, Discord group, and heartbeat turns. That stack
 includes a pinned Codex `gpt-5.5` model prompt fixture generated from Codex's
 model catalog/cache shape, the Codex happy-path permission developer text,
-OpenClaw developer instructions, turn-scoped collaboration-mode instructions
-when OpenClaw provides them, user turn input, and references to the dynamic tool
+ClawWorks developer instructions, turn-scoped collaboration-mode instructions
+when ClawWorks provides them, user turn input, and references to the dynamic tool
 specs.
 
 Refresh the pinned Codex model prompt fixture with
@@ -156,7 +156,7 @@ or `models.json` file.
 These snapshots are still not a byte-for-byte raw OpenAI request capture. Codex
 can add runtime-owned workspace context such as `AGENTS.md`, environment
 context, memories, app/plugin instructions, and built-in Default
-collaboration-mode instructions inside the Codex runtime after OpenClaw sends
+collaboration-mode instructions inside the Codex runtime after ClawWorks sends
 thread and turn params.
 
 Regenerate them with `pnpm prompt:snapshots:gen` and verify drift with
@@ -178,10 +178,10 @@ prompt surface that matches their lifetime:
 - `BOOTSTRAP.md` (only on brand-new workspaces)
 - `MEMORY.md` when present
 
-On the native Codex harness, OpenClaw avoids repeating stable workspace files
+On the native Codex harness, ClawWorks avoids repeating stable workspace files
 in every user turn. Codex loads `AGENTS.md` through its own project-doc
 discovery. `SOUL.md`, `IDENTITY.md`, `TOOLS.md`, and `USER.md` are forwarded as
-Codex developer instructions. The compact OpenClaw skills list is also forwarded
+Codex developer instructions. The compact ClawWorks skills list is also forwarded
 as turn-scoped collaboration developer instructions. `HEARTBEAT.md` content is
 not injected; heartbeat turns get a collaboration-mode note pointing to the file
 when it exists and is non-empty. `MEMORY.md` content from the configured agent
@@ -194,7 +194,7 @@ workspace, `MEMORY.md` falls back to the normal bounded turn-context path. Activ
 `BOOTSTRAP.md` content keeps the normal turn-context role for now.
 
 On non-Codex harnesses, bootstrap files continue to be composed into the
-OpenClaw prompt according to their existing gates. `HEARTBEAT.md` is omitted on
+ClawWorks prompt according to their existing gates. `HEARTBEAT.md` is omitted on
 normal runs when heartbeats are disabled for the default agent or
 `agents.defaults.heartbeat.includeSystemPromptSection` is false. Keep injected
 files concise, especially non-Codex `MEMORY.md`. `MEMORY.md` is intended to stay
@@ -211,7 +211,7 @@ Large files are truncated with a marker. The max per-file size is controlled by
 `agents.defaults.bootstrapMaxChars` (default: 20000). Total injected bootstrap
 content across files is capped by `agents.defaults.bootstrapTotalMaxChars`
 (default: 60000). Missing files inject a short missing-file marker. When truncation
-occurs, OpenClaw can inject a concise system-prompt warning notice; control this with
+occurs, ClawWorks can inject a concise system-prompt warning notice; control this with
 `agents.defaults.bootstrapPromptTruncationWarning` (`off`, `once`, `always`;
 default: `always`). Detailed raw/injected counts stay in diagnostics such as
 `/context`, `/status`, doctor, and logs.
@@ -254,7 +254,7 @@ See [Date & Time](/date-time) for full behavior details.
 
 ## Skills
 
-When eligible skills exist, OpenClaw injects a compact **available skills list**
+When eligible skills exist, ClawWorks injects a compact **available skills list**
 (`formatSkillsForPrompt`) that includes the **file path** and content-derived
 `<version>` marker for each skill. The prompt instructs the model to use `read`
 to load the SKILL.md at the listed location (workspace, managed, or bundled),
@@ -314,20 +314,20 @@ as `memory_get`, live tool results, and post-compaction AGENTS.md refreshes.
 ## Documentation
 
 The system prompt includes a **Documentation** section. When local docs are available, it
-points to the local OpenClaw docs directory (`docs/` in a Git checkout or the bundled npm
+points to the local ClawWorks docs directory (`docs/` in a Git checkout or the bundled npm
 package docs). If local docs are unavailable, it falls back to
 [https://docs.openclaw.ai](https://docs.openclaw.ai).
 
-The same section also includes the OpenClaw source location. Git checkouts expose the local
+The same section also includes the ClawWorks source location. Git checkouts expose the local
 source root so the agent can inspect code directly. Package installs include the GitHub
 source URL and tell the agent to review source there whenever the docs are incomplete or
 stale. The prompt also notes the public docs mirror, community Discord, and ClawHub
 ([https://clawhub.ai](https://clawhub.ai)) for skills discovery. It frames docs as the
-authority for OpenClaw self-knowledge before the model understands how OpenClaw works,
+authority for ClawWorks self-knowledge before the model understands how ClawWorks works,
 including memory/daily notes, sessions, tools, Gateway, config, commands, or project
 context. The prompt tells the model to use local docs (or the docs mirror when local docs
 are unavailable) first, and to treat AGENTS.md, project context, workspace/profile/memory
-notes, and `memory_search` as instruction context or user memory rather than OpenClaw
+notes, and `memory_search` as instruction context or user memory rather than ClawWorks
 design or implementation knowledge. If docs are silent or stale, the model should say so
 and inspect source. The prompt also tells the model to run `openclaw status` itself when
 possible, asking the user only when it lacks access.

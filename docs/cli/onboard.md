@@ -7,7 +7,7 @@ title: "Onboard"
 
 # `openclaw onboard`
 
-Full guided onboarding for local or remote Gateway setup. Use this when you want OpenClaw to walk through model auth, workspace, gateway, channels, skills, and health in one flow.
+Full guided onboarding for local or remote Gateway setup. Use this when you want ClawWorks to walk through model auth, workspace, gateway, channels, skills, and health in one flow.
 
 ## Related guides
 
@@ -16,7 +16,7 @@ Full guided onboarding for local or remote Gateway setup. Use this when you want
     Walkthrough of the interactive CLI flow.
   </Card>
   <Card title="Onboarding overview" href="/start/onboarding-overview" icon="map">
-    How OpenClaw onboarding fits together.
+    How ClawWorks onboarding fits together.
   </Card>
   <Card title="CLI setup reference" href="/start/wizard-cli-reference" icon="book">
     Outputs, internals, and per-step behavior.
@@ -42,7 +42,7 @@ openclaw onboard --skip-bootstrap
 openclaw onboard --mode remote --remote-url wss://gateway-host:18789
 ```
 
-`--flow import` uses plugin-owned migration providers such as Hermes. It only runs against a fresh OpenClaw setup; if existing config, credentials, sessions, or workspace memory/identity files are present, reset or choose a fresh setup before importing.
+`--flow import` uses plugin-owned migration providers such as Hermes. It only runs against a fresh ClawWorks setup; if existing config, credentials, sessions, or workspace memory/identity files are present, reset or choose a fresh setup before importing.
 
 `--modern` starts the Crestodian conversational onboarding preview. Without
 `--modern`, `openclaw onboard` keeps the classic onboarding flow.
@@ -92,7 +92,7 @@ openclaw onboard --non-interactive \
 ```
 
 `--custom-api-key` is optional in non-interactive mode. If omitted, onboarding checks `CUSTOM_API_KEY`.
-OpenClaw marks common vision model IDs as image-capable automatically. Pass `--custom-image-input` for unknown custom vision IDs, or `--custom-text-input` to force text-only metadata.
+ClawWorks marks common vision model IDs as image-capable automatically. Pass `--custom-image-input` for unknown custom vision IDs, or `--custom-text-input` to force text-only metadata.
 Use `--custom-compatibility openai-responses` for OpenAI-compatible endpoints that support `/v1/responses` but not `/v1/chat/completions`.
 
 LM Studio also supports a provider-specific key flag in non-interactive mode:

@@ -5,12 +5,12 @@ sidebarTitle: "Migrate to SDK"
 read_when:
   - You see the OPENCLAW_PLUGIN_SDK_COMPAT_DEPRECATED warning
   - You see the OPENCLAW_EXTENSION_API_DEPRECATED warning
-  - You used api.registerEmbeddedExtensionFactory before OpenClaw 2026.4.25
+  - You used api.registerEmbeddedExtensionFactory before ClawWorks 2026.4.25
   - You are updating a plugin to the modern plugin architecture
-  - You maintain an external OpenClaw plugin
+  - You maintain an external ClawWorks plugin
 ---
 
-OpenClaw has moved from a broad backwards-compatibility layer to a modern plugin
+ClawWorks has moved from a broad backwards-compatibility layer to a modern plugin
 architecture with focused, documented imports. If your plugin was built before
 the new architecture, this guide helps you migrate.
 
@@ -39,7 +39,7 @@ but new plugins must not use them, and existing plugins should migrate before
 the next major release removes them. The embedded-runner-only extension factory
 registration API has been removed; use tool-result middleware instead.
 
-OpenClaw does not remove or reinterpret documented plugin behavior in the same
+ClawWorks does not remove or reinterpret documented plugin behavior in the same
 change that introduces a replacement. Breaking contract changes must first go
 through a compatibility adapter, diagnostics, docs, and a deprecation window.
 That applies to SDK imports, manifest fields, setup APIs, hooks, and runtime
@@ -300,7 +300,7 @@ releases.
     runtime-neutral middleware.
 
     ```typescript
-    // OpenClaw and Codex runtime dynamic tools
+    // ClawWorks and Codex runtime dynamic tools
     api.registerAgentToolResultMiddleware(async (event) => {
       return compactToolResult(event);
     }, {
@@ -522,7 +522,7 @@ releases.
   | `plugin-sdk/channel-reply-pipeline` | Reply prefix, typing, and source-delivery wiring | `createChannelReplyPipeline`, `resolveChannelSourceReplyDeliveryMode` |
   | `plugin-sdk/channel-config-helpers` | Config adapter factories and DM access helpers | `createHybridChannelConfigAdapter`, `resolveChannelDmAccess`, `resolveChannelDmAllowFrom`, `resolveChannelDmPolicy`, `normalizeChannelDmPolicy`, `normalizeLegacyDmAliases` |
   | `plugin-sdk/channel-config-schema` | Config schema builders | Shared channel config schema primitives and the generic builder only |
-  | `plugin-sdk/bundled-channel-config-schema` | Bundled config schemas | OpenClaw-maintained bundled plugins only; new plugins must define plugin-local schemas |
+  | `plugin-sdk/bundled-channel-config-schema` | Bundled config schemas | ClawWorks-maintained bundled plugins only; new plugins must define plugin-local schemas |
   | `plugin-sdk/channel-config-schema-legacy` | Deprecated bundled config schemas | Compatibility alias only; use `plugin-sdk/bundled-channel-config-schema` for maintained bundled plugins |
   | `plugin-sdk/telegram-command-config` | Telegram command config helpers | Command-name normalization, description trimming, duplicate/conflict validation |
   | `plugin-sdk/channel-policy` | Group/DM policy resolution | `resolveChannelGroupRequireMention` |
@@ -751,7 +751,7 @@ canonical replacement.
     **Old**: `tool()` factory from `openclaw/plugin-sdk/provider-web-search`.
 
     **New**: implement `createTool(...)` directly on the provider plugin.
-    OpenClaw no longer needs the SDK helper to register the tool wrapper.
+    ClawWorks no longer needs the SDK helper to register the tool wrapper.
 
   </Accordion>
 
@@ -848,7 +848,7 @@ canonical replacement.
 
     **New**: a single `resolveThinkingProfile(ctx)` that returns a
     `ProviderThinkingProfile` with the canonical `id`, optional `label`, and
-    ranked level list. OpenClaw downgrades stale stored values by profile
+    ranked level list. ClawWorks downgrades stale stored values by profile
     rank automatically.
 
     The context includes `provider`, `modelId`, optional merged `reasoning`,

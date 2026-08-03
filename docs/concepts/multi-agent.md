@@ -31,7 +31,7 @@ Auth profiles are **per-agent**. Each agent reads from its own:
 <Warning>
 Never reuse `agentDir` across agents (it causes auth/session collisions). Agents
 can read through to the default/main agent's auth profiles when they do not have
-a local profile, but OpenClaw does not clone OAuth refresh tokens into the
+a local profile, but ClawWorks does not clone OAuth refresh tokens into the
 secondary agent store. If you want an independent OAuth account, sign in from
 that agent; if you copy credentials manually, copy only portable static
 `api_key` or `token` profiles.
@@ -55,7 +55,7 @@ The Gateway can host **one agent** (default) or **many agents** side-by-side.
 
 ### Single-agent mode (default)
 
-If you do nothing, OpenClaw runs a single agent:
+If you do nothing, ClawWorks runs a single agent:
 
 - `agentId` defaults to **`main`**.
 - Sessions are keyed as `agent:main:<mainKey>`.
@@ -248,7 +248,7 @@ Bindings are **deterministic** and **most-specific wins**:
     - A binding that omits `accountId` matches the default account only. It does not match all accounts.
     - Use `accountId: "*"` for a channel-wide fallback across all accounts.
     - Use `accountId: "<name>"` to match one account.
-    - If you later add the same binding for the same agent with an explicit account id, OpenClaw upgrades the existing channel-only binding to account-scoped instead of duplicating it.
+    - If you later add the same binding for the same agent with an explicit account id, ClawWorks upgrades the existing channel-only binding to account-scoped instead of duplicating it.
 
   </Accordion>
 </AccordionGroup>
@@ -257,7 +257,7 @@ Bindings are **deterministic** and **most-specific wins**:
 
 Channels that support **multiple accounts** (e.g. WhatsApp) use `accountId` to identify each login. Each `accountId` can be routed to a different agent, so one server can host multiple phone numbers without mixing sessions.
 
-If you want a channel-wide default account when `accountId` is omitted, set `channels.<channel>.defaultAccount` (optional). When unset, OpenClaw falls back to `default` if present, otherwise the first configured account id (sorted).
+If you want a channel-wide default account when `accountId` is omitted, set `channels.<channel>.defaultAccount` (optional). When unset, ClawWorks falls back to `default` if present, otherwise the first configured account id (sorted).
 
 Common channels supporting this pattern include:
 

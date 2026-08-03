@@ -6,25 +6,25 @@ read_when:
 title: "Zalo ClawBot"
 ---
 
-OpenClaw connects to Zalo ClawBot through the catalog-listed external
+ClawWorks connects to Zalo ClawBot through the catalog-listed external
 `@zalo-platforms/openclaw-zaloclawbot` plugin. Login uses a Zalo Mini App QR
 code.
 
 ## Compatibility
 
-| Plugin Version | OpenClaw Version | npm dist-tag | Status        |
-| -------------- | ---------------- | ------------ | ------------- |
-| 0.1.x          | >=2026.4.10      | `latest`     | Active / Beta |
+| Plugin Version | ClawWorks Version | npm dist-tag | Status        |
+| -------------- | ----------------- | ------------ | ------------- |
+| 0.1.x          | >=2026.4.10       | `latest`     | Active / Beta |
 
 ## Prerequisites
 
 - Node.js **>= 22**
-- [OpenClaw](https://docs.openclaw.ai/install) must be installed (`openclaw` CLI available).
+- [ClawWorks](https://docs.openclaw.ai/install) must be installed (`openclaw` CLI available).
 - A Zalo account on a mobile device to scan the login QR code.
 
 ## Install with onboard (recommended)
 
-Run the OpenClaw onboarding wizard and pick **Zalo ClawBot** from the channel menu:
+Run the ClawWorks onboarding wizard and pick **Zalo ClawBot** from the channel menu:
 
 ```bash
 openclaw onboard
@@ -42,7 +42,7 @@ To add the channel to an already-onboarded gateway, follow these steps:
 openclaw plugins install "@zalo-platforms/openclaw-zaloclawbot@0.1.4"
 ```
 
-Use the exact pinned version shown above (it matches the official catalog entry), so OpenClaw verifies the package against the catalog integrity hash during install.
+Use the exact pinned version shown above (it matches the official catalog entry), so ClawWorks verifies the package against the catalog integrity hash during install.
 
 ### 2. Enable the plugin in config
 
@@ -83,13 +83,13 @@ The Zalo ClawBot plugin communicates with Zalo APIs via a persistent long-pollin
 - Webhooks are disabled by default for local desktop/terminal gateway runs.
 - Messages are processed client-side and mapped directly to your local agent runtime.
 
-The external plugin manages bot credentials under the OpenClaw state directory.
+The external plugin manages bot credentials under the ClawWorks state directory.
 Treat that directory as sensitive and include it in the same access-control and
-backup policy as the rest of your OpenClaw state.
+backup policy as the rest of your ClawWorks state.
 
 ---
 
 ## Troubleshooting
 
 - **QR Login Timeout:** The login token (`zbsk`) expires after 5 minutes for security reasons. If the QR code expires before you scan it, simply rerun the login command to generate a new one.
-- **Gateway Fails to Load:** Ensure your OpenClaw host version is `2026.4.10` or higher. Older versions do not support the external npm-plugin installation ledger.
+- **Gateway Fails to Load:** Ensure your ClawWorks host version is `2026.4.10` or higher. Older versions do not support the external npm-plugin installation ledger.

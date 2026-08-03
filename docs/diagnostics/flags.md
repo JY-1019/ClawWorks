@@ -117,7 +117,7 @@ You can also enable it in config:
 
 The timeline file path still comes from
 `OPENCLAW_DIAGNOSTICS_TIMELINE_PATH`. When `timeline` is enabled only from
-config, the earliest config-loading spans are not emitted because OpenClaw has
+config, the earliest config-loading spans are not emitted because ClawWorks has
 not read config yet; subsequent startup spans use the config flag.
 
 `OPENCLAW_DIAGNOSTICS=1`, `OPENCLAW_DIAGNOSTICS=all`, and

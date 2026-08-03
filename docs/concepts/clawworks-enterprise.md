@@ -20,7 +20,7 @@ Control UI. Default-allow tool calls are not traced unless a node opts in with
 
 Enterprise mode is on by default and stays backward compatible: the default
 built-in trees (`clawworks.assist`, `clawworks.system`) are guidance-free, so a
-stock install behaves like ordinary OpenClaw until you import trees or declare
+stock install behaves like ordinary ClawWorks until you import trees or declare
 policies. One shipped built-in, `clawworks.support` ("Customer support
 (example)"), is a guidance-bearing demo you can inspect in the Control UI; it
 carries per-node ontology and tool scope, but only imported work-maps ever
@@ -48,7 +48,7 @@ Set the mode in the `enterprise` config section:
   retrieval, and unreadable trees fail closed.
 - **observe**: decisions are recorded but never block; unreadable trees fall
   back to built-ins with a warning.
-- **off**: no mediation. Runs behave like ordinary OpenClaw.
+- **off**: no mediation. Runs behave like ordinary ClawWorks.
 
 `openclaw doctor` migrates older config shapes; the runtime only reads the
 current shape.
@@ -168,7 +168,7 @@ That example, like the other tree files, is a declaration rather than something
 that runs as shipped: a tree cannot carry its own knowledge, so `knowledge_search`
 retrieves nothing until you register `acme.runbooks` yourself, and its
 placeholder skills (`incident-triage`, `runbook-execution`) are ids no install
-provides — only `summarize` resolves, because that one ships with OpenClaw.
+provides — only `summarize` resolves, because that one ships with ClawWorks.
 
 For an example where all three governed axes are live, import the bundle
 instead. It inlines its knowledge foundation and declares only a bundled skill,
@@ -295,7 +295,7 @@ isolation in the skills runtime. Keep skills whose credentials must not cross
 runs on their own agent until then.
 
 **ACP turns are outside this boundary.** A turn dispatched to an ACP agent runs
-in a process OpenClaw does not supply tools to, and its calls never reach the
+in a process ClawWorks does not supply tools to, and its calls never reach the
 per-call gate, so an explicit work-map does not constrain what that agent does —
 its own tool and MCP surface applies. The run is still traced and its run-start
 policies still evaluate. Do not rely on capability grants to bound an ACP-backed
@@ -306,7 +306,7 @@ each step's grants, so it does not spend turns discovering denials — but the
 enforcement is the per-call gate, not the prompt. A CLI backend with no pre-tool
 hook judges no call at all: there, skills and MCP servers are withheld physically
 (nothing is linked, nothing is launched), while `allowedTools` bounds only what
-OpenClaw hands over. And the runtimes that never advance past the root (the Claude
+ClawWorks hands over. And the runtimes that never advance past the root (the Claude
 CLI, Codex, ACP) are judged by the ROOT's grants for the whole run, so a work-map
 that grants only on its leaves gives them nothing — put the tools those runs need
 on the root, exactly as an MCP-attaching work-map does.
@@ -396,7 +396,7 @@ contract. Writes are recorded to the run trace as `action.invoked` events.
 
 ## MCP servers
 
-MCP servers are registered the ordinary OpenClaw way — one entry under
+MCP servers are registered the ordinary ClawWorks way — one entry under
 `mcp.servers` — from **Enterprise -> MCP** in the Control UI, from the MCP
 settings screen, or with `openclaw mcp add`. Registration alone does not make a
 server reachable from a governed run.
@@ -417,7 +417,7 @@ deny-by-default:
 ```
 
 Everything else about MCP is unchanged: the servers, their transports, their auth,
-and their tools are the same ones the rest of OpenClaw uses. What the workflow
+and their tools are the same ones the rest of ClawWorks uses. What the workflow
 tree adds is reach. A step that attaches nothing calls nothing, so a server
 registered for one workflow cannot be used by a step that was never given it.
 
@@ -469,15 +469,15 @@ ontology:
   mcpServers: [acme-tracker]
 ```
 
-Every spelling, not just one: the harness decides which name it exposes (OpenClaw
+Every spelling, not just one: the harness decides which name it exposes (ClawWorks
 maps punctuation to `-`, Codex to `_`, and either may carry the `mcp__` prefix), so
 a list that covers only some of them leaves the rest outside the ceiling — and a
 native run withholds the server rather than hand over tools it cannot bound.
 
 ### What the boundary does not cover
 
-Attachment governs the servers **OpenClaw hands over**. A harness that reads its
-own configuration is a second source, and OpenClaw's projection is an overlay on
+Attachment governs the servers **ClawWorks hands over**. A harness that reads its
+own configuration is a second source, and ClawWorks's projection is an overlay on
 top of it: Codex merges its configuration layers table by table
 (`merge_toml_values_at_path`, `codex-rs/config/src/merge.rs`), so an overlay can
 add or change keys but never remove a server a lower layer declared. A server
@@ -535,7 +535,7 @@ different runtimes, so the form asks which one it is.
 
 CLI-backed runtimes (including the Codex app-server) launch their MCP servers
 themselves, from config the subprocess owns, so nothing can be withdrawn once that
-process is up. For those, OpenClaw withholds the servers **no step in the bound
+process is up. For those, ClawWorks withholds the servers **no step in the bound
 work-map attaches** — they are never written into the subprocess config or the
 Codex thread patch. Two consequences follow, and both are deliberate:
 
@@ -545,8 +545,8 @@ Codex thread patch. Two consequences follow, and both are deliberate:
   handing over its server would let the selected branch call it with no per-step
   gate to stop it. Per-step enforcement is exact on the embedded
   runtime, where every tool call passes the gate.
-- Withholding removes what OpenClaw would have injected. A server the operator
-  declared in the harness's own configuration is a layer OpenClaw does not own —
+- Withholding removes what ClawWorks would have injected. A server the operator
+  declared in the harness's own configuration is a layer ClawWorks does not own —
   Codex, for instance, composes `mcp_servers` by key across its config layers and
   a thread patch is the session layer.
 
@@ -566,7 +566,7 @@ that this screen reports as unregistered quietly launch it.
 
 Servers a plugin provides are not attached this way. They arrive with that
 plugin's tool surface and stay scoped by `allowedTools` like the rest of it, and
-so does OpenClaw's own loopback MCP server.
+so does ClawWorks's own loopback MCP server.
 
 ## Governance policies
 

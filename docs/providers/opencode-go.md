@@ -18,7 +18,7 @@ provider id `opencode-go` so upstream per-model routing stays correct.
 
 ## Built-in catalog
 
-OpenClaw sources most Go catalog rows from the bundled OpenClaw model registry and
+ClawWorks sources most Go catalog rows from the bundled ClawWorks model registry and
 supplements current upstream rows while the registry catches up. Run
 `openclaw models list --provider opencode-go` for the current model list.
 
@@ -95,7 +95,7 @@ GLM-5.2 uses a 1M-token context window and supports up to 131K output tokens.
 
 <AccordionGroup>
   <Accordion title="Routing behavior">
-    OpenClaw handles per-model routing automatically when the model ref uses
+    ClawWorks handles per-model routing automatically when the model ref uses
     `opencode-go/...`. No additional provider config is required.
   </Accordion>
 

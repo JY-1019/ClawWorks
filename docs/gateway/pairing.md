@@ -160,7 +160,7 @@ Security boundary:
 ## Metadata-upgrade auto-approval
 
 When an already paired device reconnects with only non-sensitive metadata
-changes (for example, display name or client platform hints), OpenClaw treats
+changes (for example, display name or client platform hints), ClawWorks treats
 that as a `metadata-upgrade`. Silent auto-approval is narrow: it applies only
 to trusted non-browser local reconnects that already proved possession of local
 or shared credentials, including same-host native app reconnects after OS

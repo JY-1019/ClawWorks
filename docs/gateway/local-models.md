@@ -1,5 +1,5 @@
 ---
-summary: "Run OpenClaw on local LLMs (LM Studio, vLLM, LiteLLM, custom OpenAI endpoints)"
+summary: "Run ClawWorks on local LLMs (LM Studio, vLLM, LiteLLM, custom OpenAI endpoints)"
 read_when:
   - You want to serve models from your own GPU box
   - You are wiring LM Studio or an OpenAI-compatible proxy
@@ -22,7 +22,7 @@ Aim high: **≥2 maxed-out Mac Studios or an equivalent GPU rig (~$30k+)** for a
 | ---------------------------------------------------- | --------------------------------------------------------------------------- |
 | [ds4](/providers/ds4)                                | Local DeepSeek V4 Flash on macOS Metal with OpenAI-compatible tool calls    |
 | [LM Studio](/providers/lmstudio)                     | First-time local setup, GUI loader, native Responses API                    |
-| LiteLLM / OAI-proxy / custom OpenAI-compatible proxy | You front another model API and need OpenClaw to treat it as OpenAI         |
+| LiteLLM / OAI-proxy / custom OpenAI-compatible proxy | You front another model API and need ClawWorks to treat it as OpenAI        |
 | MLX / vLLM / SGLang                                  | High-throughput self-hosted serving with an OpenAI-compatible HTTP endpoint |
 | [Ollama](/providers/ollama)                          | CLI workflow, model library, hands-off systemd service                      |
 
@@ -172,7 +172,7 @@ endpoint and model ID:
 }
 ```
 
-If `api` is omitted on a custom provider with a `baseUrl`, OpenClaw defaults to
+If `api` is omitted on a custom provider with a `baseUrl`, ClawWorks defaults to
 `openai-completions`. Custom/local provider entries trust their exact configured
 `baseUrl` origin for guarded model requests, including loopback, LAN, tailnet,
 and private DNS hosts. Requests to other private origins still need
@@ -202,17 +202,17 @@ and the total guarded-fetch abort. If the agent or run timeout is lower, raise
 that ceiling too because provider timeouts cannot extend the whole agent run.
 
 <Note>
-For custom OpenAI-compatible providers, persisting a non-secret local marker such as `apiKey: "ollama-local"` is accepted when `baseUrl` resolves to loopback, a private LAN, `.local`, or a bare hostname. OpenClaw treats it as a valid local credential instead of reporting a missing key. Use a real value for any provider that accepts a public hostname.
+For custom OpenAI-compatible providers, persisting a non-secret local marker such as `apiKey: "ollama-local"` is accepted when `baseUrl` resolves to loopback, a private LAN, `.local`, or a bare hostname. ClawWorks treats it as a valid local credential instead of reporting a missing key. Use a real value for any provider that accepts a public hostname.
 </Note>
 
 Behavior note for local/proxied `/v1` backends:
 
-- OpenClaw treats these as proxy-style OpenAI-compatible routes, not native
+- ClawWorks treats these as proxy-style OpenAI-compatible routes, not native
   OpenAI endpoints
 - native OpenAI-only request shaping does not apply here: no
   `service_tier`, no Responses `store`, no OpenAI reasoning-compat payload
   shaping, and no prompt-cache hints
-- hidden OpenClaw attribution headers (`originator`, `version`, `User-Agent`)
+- hidden ClawWorks attribution headers (`originator`, `version`, `User-Agent`)
   are not injected on these custom proxy URLs
 
 Compatibility notes for stricter OpenAI-compatible backends:
@@ -222,12 +222,12 @@ Compatibility notes for stricter OpenAI-compatible backends:
   `models.providers.<provider>.models[].compat.requiresStringContent: true` for
   those endpoints.
 - Some local models emit standalone bracketed tool requests as text, such as
-  `[tool_name]` followed by JSON and `[END_TOOL_REQUEST]`. OpenClaw promotes
+  `[tool_name]` followed by JSON and `[END_TOOL_REQUEST]`. ClawWorks promotes
   those into real tool calls only when the name exactly matches a registered
   tool for the turn; otherwise the block is treated as unsupported text and is
   hidden from user-visible replies.
 - If a model emits JSON, XML, or ReAct-style text that looks like a tool call
-  but the provider did not emit a structured invocation, OpenClaw leaves it as
+  but the provider did not emit a structured invocation, ClawWorks leaves it as
   text and logs a warning with the run id, provider/model, detected pattern, and
   tool name when available. Treat that as provider/model tool-call
   incompatibility, not a completed tool run.
@@ -257,7 +257,7 @@ Compatibility notes for stricter OpenAI-compatible backends:
   ```
 
   Use this only for models/sessions where every normal turn should call a tool.
-  It overrides OpenClaw's default proxy value of `tool_choice: "auto"`.
+  It overrides ClawWorks's default proxy value of `tool_choice: "auto"`.
   Replace `local/my-local-model` with the exact provider/model ref shown by
   `openclaw models list`.
 
@@ -319,18 +319,18 @@ If the model loads cleanly but full agent turns misbehave, work top-down — con
 
 4. **Disable tools entirely as a last resort.** If lean mode is not enough, set `models.providers.<provider>.models[].compat.supportsTools: false` for that model entry. The agent will then operate without tool calls on that model.
 
-5. **Past that, the bottleneck is upstream.** If the backend still fails only on larger OpenClaw runs after lean mode and `supportsTools: false`, the remaining issue is usually upstream model or server capacity — context window, GPU memory, kv-cache eviction, or a backend bug. It is not OpenClaw's transport layer at that point.
+5. **Past that, the bottleneck is upstream.** If the backend still fails only on larger ClawWorks runs after lean mode and `supportsTools: false`, the remaining issue is usually upstream model or server capacity — context window, GPU memory, kv-cache eviction, or a backend bug. It is not ClawWorks's transport layer at that point.
 
 ## Troubleshooting
 
 - Gateway can reach the proxy? `curl http://127.0.0.1:1234/v1/models`.
 - LM Studio model unloaded? Reload; cold start is a common "hanging" cause.
 - Local server says `terminated`, `ECONNRESET`, or closes the stream mid-turn?
-  OpenClaw records a low-cardinality `model.call.error.failureKind` plus the
-  OpenClaw process RSS/heap snapshot in diagnostics. For LM Studio/Ollama
+  ClawWorks records a low-cardinality `model.call.error.failureKind` plus the
+  ClawWorks process RSS/heap snapshot in diagnostics. For LM Studio/Ollama
   memory pressure, match that timestamp against the server log or macOS crash /
   jetsam log to confirm whether the model server was killed.
-- OpenClaw derives context-window preflight thresholds from the detected model window, or from the uncapped model window when `agents.defaults.contextTokens` lowers the effective window. It warns below 20% with an **8k** floor. Hard blocks use the 10% threshold with a **4k** floor, capped to the effective context window so oversized model metadata cannot reject an otherwise valid user cap. If you hit that preflight, raise the server/model context limit or choose a larger model.
+- ClawWorks derives context-window preflight thresholds from the detected model window, or from the uncapped model window when `agents.defaults.contextTokens` lowers the effective window. It warns below 20% with an **8k** floor. Hard blocks use the 10% threshold with a **4k** floor, capped to the effective context window so oversized model metadata cannot reject an otherwise valid user cap. If you hit that preflight, raise the server/model context limit or choose a larger model.
 - Context errors? Lower `contextWindow` or raise your server limit.
 - OpenAI-compatible server returns `messages[].content ... expected a string`?
   Add `compat.requiresStringContent: true` on that model entry.

@@ -1,5 +1,5 @@
 ---
-summary: "Testing utilities and patterns for OpenClaw plugins"
+summary: "Testing utilities and patterns for ClawWorks plugins"
 title: "Plugin testing"
 sidebarTitle: "Testing"
 read_when:
@@ -8,7 +8,7 @@ read_when:
   - You want to understand contract tests for bundled plugins
 ---
 
-Reference for test utilities, patterns, and lint enforcement for OpenClaw
+Reference for test utilities, patterns, and lint enforcement for ClawWorks
 plugins.
 
 <Tip>
@@ -19,7 +19,7 @@ plugins.
 
 ## Test utilities
 
-These test-helper subpaths are repo-local source entrypoints for OpenClaw's own
+These test-helper subpaths are repo-local source entrypoints for ClawWorks's own
 bundled plugin tests. They are not package exports for third-party plugins, and
 they may import Vitest or other repo-only test dependencies.
 
@@ -47,7 +47,7 @@ they may import Vitest or other repo-only test dependencies.
 
 **Node builtin mock import:** `openclaw/plugin-sdk/test-node-mocks`
 
-Inside the OpenClaw repo, prefer the focused subpaths below for new bundled
+Inside the ClawWorks repo, prefer the focused subpaths below for new bundled
 plugin tests. The broad
 `openclaw/plugin-sdk/testing` barrel is legacy compatibility only.
 Repo guardrails reject new real imports from `plugin-sdk/testing` and
@@ -149,7 +149,7 @@ import { mockNodeBuiltinModule } from "openclaw/plugin-sdk/test-node-mocks";
 
 Bundled-plugin contract suites also use SDK testing subpaths for test-only
 registry, manifest, public-artifact, and runtime fixture helpers. Core-only
-suites that depend on bundled OpenClaw inventory stay under `src/plugins/contracts`.
+suites that depend on bundled ClawWorks inventory stay under `src/plugins/contracts`.
 Keep new extension tests on a documented focused SDK subpath such as
 `plugin-sdk/plugin-test-api`, `plugin-sdk/channel-contract-testing`,
 `plugin-sdk/agent-runtime-test-contracts`, `plugin-sdk/channel-test-helpers`,
@@ -202,7 +202,7 @@ describe("my-channel target resolution", () => {
 ### Testing registration contracts
 
 Unit tests that pass a hand-written `api` mock to `register(api)` do not exercise
-OpenClaw's loader acceptance gates. Add at least one loader-backed smoke test
+ClawWorks's loader acceptance gates. Add at least one loader-backed smoke test
 for each registration surface your plugin depends on, especially hooks and
 exclusive capabilities such as memory.
 
@@ -373,7 +373,7 @@ patterns is recommended.
 
 ## Test configuration
 
-OpenClaw uses Vitest with V8 coverage thresholds. For plugin tests:
+ClawWorks uses Vitest with V8 coverage thresholds. For plugin tests:
 
 ```bash
 # Run all tests

@@ -160,7 +160,7 @@ session toggles that match the output you want:
 /trace on
 ```
 
-With those enabled, OpenClaw can show:
+With those enabled, ClawWorks can show:
 
 - an active memory status line such as `Active Memory: status=ok elapsed=842ms query=recent summary=34 chars` when `/verbose on`
 - a readable debug summary such as `Active Memory Debug: Lemon pepper wings with blue cheese.` when `/trace on`
@@ -272,7 +272,7 @@ even when its session type is otherwise allowed.
 
 The ids come from the persistent channel session key: for example Feishu
 `chat_id` / `open_id`, Telegram chat id, or Slack channel id. Matching is
-case-insensitive. If `allowedChatIds` is non-empty and OpenClaw cannot resolve a
+case-insensitive. If `allowedChatIds` is non-empty and ClawWorks cannot resolve a
 conversation id for the session, Active Memory skips the turn instead of
 guessing.
 
@@ -602,7 +602,7 @@ promptAppend: "Prefer stable long-term preferences over one-off events."
 Use `promptAppend` with custom `toolsAllow` when a non-core memory plugin needs
 provider-specific tool order or query-shaping instructions.
 
-`config.promptOverride` replaces the default Active Memory prompt. OpenClaw
+`config.promptOverride` replaces the default Active Memory prompt. ClawWorks
 still appends the conversation context afterward:
 
 ```json5
@@ -819,7 +819,7 @@ confirm `config.toolsAllow` names the tools that plugin actually registers.
 
 <AccordionGroup>
   <Accordion title="Embedding provider switched or stopped working">
-    If `memorySearch.provider` is unset, OpenClaw uses OpenAI embeddings. Set
+    If `memorySearch.provider` is unset, ClawWorks uses OpenAI embeddings. Set
     `memorySearch.provider` explicitly for local, Ollama, Gemini, Voyage,
     Mistral, DeepInfra, Bedrock, GitHub Copilot, or OpenAI-compatible
     embeddings. If the configured provider cannot run, `memory_search` may

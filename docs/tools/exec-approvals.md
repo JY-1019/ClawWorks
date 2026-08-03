@@ -63,7 +63,7 @@ Exec approvals are enforced locally on the execution host:
 - Exec approvals reduce accidental execution risk, but are **not** a per-user auth boundary or filesystem read-only policy.
 - Once approved, a command can mutate files according to the selected host or sandbox filesystem permissions.
 - Approved node-host runs bind canonical execution context: canonical cwd, exact argv, env binding when present, and pinned executable path when applicable.
-- For shell scripts and direct interpreter/runtime file invocations, OpenClaw also tries to bind one concrete local file operand. If that bound file changes after approval but before execution, the run is denied instead of executing drifted content.
+- For shell scripts and direct interpreter/runtime file invocations, ClawWorks also tries to bind one concrete local file operand. If that bound file changes after approval but before execution, the run is denied instead of executing drifted content.
 - File binding is intentionally best-effort, **not** a complete semantic model of every interpreter/runtime loader path. If approval mode cannot identify exactly one concrete local file to bind, it refuses to mint an approval-backed run instead of pretending full coverage.
 
 ### macOS split
@@ -75,7 +75,7 @@ Exec approvals are enforced locally on the execution host:
 
 Approvals live in a local JSON file on the execution host. When
 `OPENCLAW_STATE_DIR` is set, the file follows that state directory;
-otherwise it uses the default OpenClaw state directory:
+otherwise it uses the default ClawWorks state directory:
 
 ```text
 $OPENCLAW_STATE_DIR/exec-approvals.json
@@ -134,7 +134,7 @@ Values are:
 - `deny` - block host exec.
 - `allowlist` - run only allowlisted commands without asking.
 - `ask` - use allowlist policy and ask on misses.
-- `auto` - use allowlist policy, run deterministic matches directly, and send approval misses through OpenClaw's native auto reviewer before falling back to a human approval route.
+- `auto` - use allowlist policy, run deterministic matches directly, and send approval misses through ClawWorks's native auto reviewer before falling back to a human approval route.
 - `full` - run host exec without approval prompts.
 
 Legacy `tools.exec.security` / `tools.exec.ask` remain supported and still win
@@ -168,7 +168,7 @@ when set at the narrower session or agent scope.
 
 <ParamField path="askFallback" type='"deny" | "allowlist" | "full"'>
   Resolution when a prompt is required but no UI is reachable. If this
-  field is omitted, OpenClaw defaults to `deny`.
+  field is omitted, ClawWorks defaults to `deny`.
 
 - `deny` - block.
 - `allowlist` - allow only if allowlist matches.
@@ -179,7 +179,7 @@ when set at the narrower session or agent scope.
 ### `tools.exec.strictInlineEval`
 
 <ParamField path="strictInlineEval" type="boolean">
-  When `true`, OpenClaw treats inline code-eval forms as approval-only
+  When `true`, ClawWorks treats inline code-eval forms as approval-only
   even if the interpreter binary itself is allowlisted. Defense-in-depth
   for interpreter loaders that do not map cleanly to one stable file
   operand.
@@ -203,7 +203,7 @@ automatically.
 
 <ParamField path="commandHighlighting" type="boolean" default="false">
   Controls only presentation in exec approval prompts. When enabled,
-  OpenClaw may attach parser-derived command spans so Web approval
+  ClawWorks may attach parser-derived command spans so Web approval
   prompts can highlight command tokens. Set it to `true` to enable
   command text highlighting.
 </ParamField>
@@ -216,11 +216,11 @@ agent under `agents.list[].tools.exec.commandHighlighting`.
 ## YOLO mode (no-approval)
 
 If you want host exec to run without approval prompts, you must open
-**both** policy layers - requested exec policy in OpenClaw config
+**both** policy layers - requested exec policy in ClawWorks config
 (`tools.exec.*`) **and** host-local approvals policy in
 the execution host approvals file.
 
-OpenClaw defaults omitted `askFallback` to `deny`. Set host
+ClawWorks defaults omitted `askFallback` to `deny`. Set host
 `askFallback` to `full` explicitly when a no-UI approval prompt should
 fall back to allow.
 
@@ -235,22 +235,22 @@ fall back to allow.
 
 - `tools.exec.host=auto` chooses **where** exec runs: sandbox when available, otherwise gateway.
 - YOLO chooses **how** host exec is approved: `security=full` plus `ask=off`.
-- In YOLO mode, OpenClaw does **not** add a separate heuristic command-obfuscation approval gate or script-preflight rejection layer on top of the configured host exec policy.
+- In YOLO mode, ClawWorks does **not** add a separate heuristic command-obfuscation approval gate or script-preflight rejection layer on top of the configured host exec policy.
 - `auto` does not make gateway routing a free override from a sandboxed session. A per-call `host=node` request is allowed from `auto`; `host=gateway` is only allowed from `auto` when no sandbox runtime is active. For a stable non-auto default, set `tools.exec.host` or use `/exec host=...` explicitly.
 
 </Warning>
 
 CLI-backed providers that expose their own noninteractive permission mode
 can follow this policy. Claude CLI adds
-`--permission-mode bypassPermissions` when OpenClaw's effective exec
-policy is YOLO. For OpenClaw-managed Claude live sessions, OpenClaw's
+`--permission-mode bypassPermissions` when ClawWorks's effective exec
+policy is YOLO. For ClawWorks-managed Claude live sessions, ClawWorks's
 effective exec policy is authoritative over Claude's native permission mode:
 YOLO normalizes live launches to `--permission-mode bypassPermissions`, and
 restrictive effective exec policy normalizes live launches to
 `--permission-mode default`, even if raw Claude backend args specify another
 mode.
 
-If you want a more conservative setup, tighten OpenClaw exec policy back to
+If you want a more conservative setup, tighten ClawWorks exec policy back to
 `allowlist` / `on-miss` or `deny`.
 
 ### Persistent gateway-host "never prompt" setup
@@ -357,7 +357,7 @@ Examples:
 ### Restricting arguments with argPattern
 
 Add `argPattern` when an allowlist entry should match a binary and a
-specific argument shape. OpenClaw evaluates the regular expression
+specific argument shape. ClawWorks evaluates the regular expression
 against the parsed command arguments, excluding the executable token
 (`argv[0]`). For hand-authored entries, arguments are joined with a
 single space, so anchor the pattern when you need an exact match.
@@ -385,7 +385,7 @@ entry when the goal is to restrict the binary to the declared arguments.
 
 Entries saved by approval flows can use an internal separator format for
 exact argv matching. Prefer the UI or approval flow to regenerate those
-entries instead of hand-editing the encoded value. If OpenClaw cannot
+entries instead of hand-editing the encoded value. If ClawWorks cannot
 parse argv for a command segment, entries with `argPattern` do not match.
 
 Each allowlist entry supports:
@@ -466,9 +466,9 @@ Exec lifecycle is surfaced as system messages:
 These are posted to the agent's session after the node reports the event.
 Denied exec approvals are terminal for the host command itself: the command
 does not run. For main-agent async approvals with an originating session,
-OpenClaw posts the denial back into that session as an internal followup so the
+ClawWorks posts the denial back into that session as an internal followup so the
 agent can stop waiting on the async command and avoid a missing-result repair.
-If there is no session or the session cannot be resumed, OpenClaw can still
+If there is no session or the session cannot be resumed, ClawWorks can still
 report a concise denial to the operator or direct chat route. Denials for
 subagent sessions are not posted back into the subagent.
 Gateway-host exec approvals emit the same lifecycle events when the
@@ -478,11 +478,11 @@ messages for easy correlation.
 
 ## Denied approval behavior
 
-When an async exec approval is denied, OpenClaw treats the host command as
+When an async exec approval is denied, ClawWorks treats the host command as
 terminal and fail-closed. For main-agent sessions, the denial is delivered as an
 internal session followup that tells the agent the async command did not run.
 That preserves transcript continuity without exposing stale command output. If
-session delivery is unavailable, OpenClaw falls back to a concise operator or
+session delivery is unavailable, ClawWorks falls back to a concise operator or
 direct-chat denial when a safe route exists.
 
 ## Implications

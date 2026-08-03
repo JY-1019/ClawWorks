@@ -1,15 +1,15 @@
 ---
-summary: "Move Claude Code and Claude Desktop local state into OpenClaw with a previewed import"
+summary: "Move Claude Code and Claude Desktop local state into ClawWorks with a previewed import"
 read_when:
   - You are coming from Claude Code or Claude Desktop and want to keep instructions, MCP servers, and skills
-  - You need to understand what OpenClaw imports automatically and what stays archive-only
+  - You need to understand what ClawWorks imports automatically and what stays archive-only
 title: "Migrating from Claude"
 ---
 
-OpenClaw imports local Claude state through the bundled Claude migration provider. The provider previews every item before changing state, redacts secrets in plans and reports, and creates a verified backup before apply.
+ClawWorks imports local Claude state through the bundled Claude migration provider. The provider previews every item before changing state, redacts secrets in plans and reports, and creates a verified backup before apply.
 
 <Note>
-Onboarding imports require a fresh OpenClaw setup. If you already have local OpenClaw state, reset config, credentials, sessions, and the workspace first, or use `openclaw migrate` directly with `--overwrite` after reviewing the plan.
+Onboarding imports require a fresh ClawWorks setup. If you already have local ClawWorks state, reset config, credentials, sessions, and the workspace first, or use `openclaw migrate` directly with `--overwrite` after reviewing the plan.
 </Note>
 
 ## Two ways to import
@@ -46,7 +46,7 @@ Onboarding imports require a fresh OpenClaw setup. If you already have local Ope
 
 <AccordionGroup>
   <Accordion title="Instructions and memory">
-    - Project `CLAUDE.md` and `.claude/CLAUDE.md` content is copied or appended into the OpenClaw agent workspace `AGENTS.md`.
+    - Project `CLAUDE.md` and `.claude/CLAUDE.md` content is copied or appended into the ClawWorks agent workspace `AGENTS.md`.
     - User `~/.claude/CLAUDE.md` content is appended into workspace `USER.md`.
 
   </Accordion>
@@ -54,15 +54,15 @@ Onboarding imports require a fresh OpenClaw setup. If you already have local Ope
     MCP server definitions are imported from project `.mcp.json`, Claude Code `~/.claude.json`, and Claude Desktop `claude_desktop_config.json` when present.
   </Accordion>
   <Accordion title="Skills and commands">
-    - Claude skills with a `SKILL.md` file are copied into the OpenClaw workspace skills directory.
-    - Claude command Markdown files under `.claude/commands/` or `~/.claude/commands/` are converted into OpenClaw skills with `disable-model-invocation: true`.
+    - Claude skills with a `SKILL.md` file are copied into the ClawWorks workspace skills directory.
+    - Claude command Markdown files under `.claude/commands/` or `~/.claude/commands/` are converted into ClawWorks skills with `disable-model-invocation: true`.
 
   </Accordion>
 </AccordionGroup>
 
 ## What stays archive-only
 
-The provider copies these into the migration report for manual review, but does **not** load them into live OpenClaw config:
+The provider copies these into the migration report for manual review, but does **not** load them into live ClawWorks config:
 
 - Claude hooks
 - Claude permissions and broad tool allowlists
@@ -73,13 +73,13 @@ The provider copies these into the migration report for manual review, but does 
 - Claude Code caches, plans, and project history directories
 - Claude Desktop extensions and OS-stored credentials
 
-OpenClaw refuses to execute hooks, trust permission allowlists, or decode opaque OAuth and Desktop credential state automatically. Move what you need by hand after reviewing the archive.
+ClawWorks refuses to execute hooks, trust permission allowlists, or decode opaque OAuth and Desktop credential state automatically. Move what you need by hand after reviewing the archive.
 
 ## Source selection
 
-Without `--from`, OpenClaw inspects the default Claude Code home at `~/.claude`, the sampled Claude Code `~/.claude.json` state file, and the Claude Desktop MCP config on macOS.
+Without `--from`, ClawWorks inspects the default Claude Code home at `~/.claude`, the sampled Claude Code `~/.claude.json` state file, and the Claude Desktop MCP config on macOS.
 
-When `--from` points at a project root, OpenClaw imports only that project's Claude files such as `CLAUDE.md`, `.claude/settings.json`, `.claude/commands/`, `.claude/skills/`, and `.mcp.json`. It does not read your global Claude home during a project-root import.
+When `--from` points at a project root, ClawWorks imports only that project's Claude files such as `CLAUDE.md`, `.claude/settings.json`, `.claude/commands/`, `.claude/skills/`, and `.mcp.json`. It does not read your global Claude home during a project-root import.
 
 ## Recommended flow
 
@@ -97,7 +97,7 @@ When `--from` points at a project root, OpenClaw imports only that project's Cla
     openclaw migrate apply claude --yes
     ```
 
-    OpenClaw creates and verifies a backup before applying.
+    ClawWorks creates and verifies a backup before applying.
 
   </Step>
   <Step title="Run doctor">
@@ -127,7 +127,7 @@ Apply refuses to continue when the plan reports conflicts (a file or config valu
 Rerun with `--overwrite` only when replacing the existing target is intentional. Providers may still write item-level backups for overwritten files in the migration report directory.
 </Warning>
 
-For a fresh OpenClaw install, conflicts are unusual. They typically appear when you re-run the import on a setup that already has user edits.
+For a fresh ClawWorks install, conflicts are unusual. They typically appear when you re-run the import on a setup that already has user edits.
 
 ## JSON output for automation
 
@@ -148,10 +148,10 @@ With `--json` and no `--yes`, apply prints the plan and does not mutate state. T
     Onboarding imports require a fresh setup. Either reset state and re-onboard, or use `openclaw migrate apply claude` directly, which supports `--overwrite` and explicit backup control.
   </Accordion>
   <Accordion title="MCP servers from Claude Desktop did not import">
-    Claude Desktop reads `claude_desktop_config.json` from a platform-specific path. Point `--from` at that file's directory if OpenClaw did not detect it automatically.
+    Claude Desktop reads `claude_desktop_config.json` from a platform-specific path. Point `--from` at that file's directory if ClawWorks did not detect it automatically.
   </Accordion>
   <Accordion title="Claude commands became skills with model invocation disabled">
-    By design. Claude commands are user-triggered, so OpenClaw imports them as skills with `disable-model-invocation: true`. Edit each skill's frontmatter if you want the agent to invoke them automatically.
+    By design. Claude commands are user-triggered, so ClawWorks imports them as skills with `disable-model-invocation: true`. Edit each skill's frontmatter if you want the agent to invoke them automatically.
   </Accordion>
 </AccordionGroup>
 

@@ -1,5 +1,5 @@
 ---
-summary: "How OpenClaw manages conversation sessions"
+summary: "How ClawWorks manages conversation sessions"
 read_when:
   - You want to understand session routing and isolation
   - You want to configure DM scope for multi-user setups
@@ -7,7 +7,7 @@ read_when:
 title: "Session management"
 ---
 
-OpenClaw organizes conversations into **sessions**. Each message is routed to a
+ClawWorks organizes conversations into **sessions**. Each message is routed to a
 session based on where it came from -- DMs, group chats, cron jobs, etc.
 
 ## How messages are routed
@@ -109,7 +109,7 @@ writes.
 
 ## Session maintenance
 
-OpenClaw automatically bounds session storage over time. By default, it runs
+ClawWorks automatically bounds session storage over time. By default, it runs
 in `enforce` mode and applies cleanup during maintenance. Set
 `session.maintenance.mode` to `"warn"` to report what would be cleaned without mutating the store/files:
 

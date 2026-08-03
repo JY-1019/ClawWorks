@@ -10,7 +10,7 @@ An agentic loop is the full "real" run of an agent: intake → context assembly 
 tool execution → streaming replies → persistence. It's the authoritative path that turns a message
 into actions and a final reply, while keeping session state consistent.
 
-In OpenClaw, a loop is a single, serialized run per session that emits lifecycle and stream events
+In ClawWorks, a loop is a single, serialized run per session that emits lifecycle and stream events
 as the model thinks, calls tools, and streams output. This doc explains how that authentic loop is
 wired end-to-end.
 
@@ -25,16 +25,16 @@ wired end-to-end.
 2. `agentCommand` runs the agent:
    - resolves model + thinking/verbose/trace defaults
    - loads skills snapshot
-   - calls `runEmbeddedAgent` (OpenClaw agent runtime)
+   - calls `runEmbeddedAgent` (ClawWorks agent runtime)
    - emits **lifecycle end/error** if the embedded loop does not emit one
 3. `runEmbeddedAgent`:
    - serializes runs via per-session + global queues
-   - resolves model + auth profile and builds the OpenClaw session
+   - resolves model + auth profile and builds the ClawWorks session
    - subscribes to runtime events and streams assistant/tool deltas
    - enforces timeout -> aborts run if exceeded
    - for Codex app-server turns, aborts an accepted turn that stops producing app-server progress before a terminal event
    - returns payloads + usage metadata
-4. `subscribeEmbeddedAgentSession` bridges agent runtime events to OpenClaw `agent` stream:
+4. `subscribeEmbeddedAgentSession` bridges agent runtime events to ClawWorks `agent` stream:
    - tool events => `stream: "tool"`
    - assistant deltas => `stream: "assistant"`
    - lifecycle events => `stream: "lifecycle"` (`phase: "start" | "end" | "error"`)
@@ -67,13 +67,13 @@ wired end-to-end.
 
 ## Prompt assembly + system prompt
 
-- System prompt is built from OpenClaw's base prompt, skills prompt, bootstrap context, and per-run overrides.
+- System prompt is built from ClawWorks's base prompt, skills prompt, bootstrap context, and per-run overrides.
 - Model-specific limits and compaction reserve tokens are enforced.
 - See [System prompt](/concepts/system-prompt) for what the model sees.
 
 ## Hook points (where you can intercept)
 
-OpenClaw has two hook systems:
+ClawWorks has two hook systems:
 
 - **Internal hooks** (Gateway hooks): event-driven scripts for commands and lifecycle events.
 - **Plugin hooks**: extension points inside the agent/tool lifecycle and gateway pipeline.
@@ -97,8 +97,8 @@ These run inside the agent loop or gateway pipeline:
 - **`agent_end`**: inspect the final message list and run metadata after completion.
 - **`before_compaction` / `after_compaction`**: observe or annotate compaction cycles.
 - **`before_tool_call` / `after_tool_call`**: intercept tool params/results.
-- **`before_install`**: inspect staged skill or plugin install material after operator install policy runs, when plugin hooks are loaded in the current OpenClaw process.
-- **`tool_result_persist`**: synchronously transform tool results before they are written to an OpenClaw-owned session transcript.
+- **`before_install`**: inspect staged skill or plugin install material after operator install policy runs, when plugin hooks are loaded in the current ClawWorks process.
+- **`tool_result_persist`**: synchronously transform tool results before they are written to a ClawWorks-owned session transcript.
 - **`message_received` / `message_sending` / `message_sent`**: inbound + outbound message hooks.
 - **`session_start` / `session_end`**: session lifecycle boundaries.
 - **`gateway_start` / `gateway_stop`**: gateway lifecycle events.
@@ -116,7 +116,7 @@ Hook decision rules for outbound/tool guards:
 See [Plugin hooks](/plugins/hooks) for the hook API and registration details.
 
 Harnesses may adapt these hooks differently. The Codex app-server harness keeps
-OpenClaw plugin hooks as the compatibility contract for documented mirrored
+ClawWorks plugin hooks as the compatibility contract for documented mirrored
 surfaces, while Codex native hooks remain a separate lower-level Codex mechanism.
 
 ## Streaming + partial replies
@@ -167,7 +167,7 @@ surfaces, while Codex native hooks remain a separate lower-level Codex mechanism
 - Agent runtime: `agents.defaults.timeoutSeconds` default 172800s (48 hours); enforced in `runEmbeddedAgent` abort timer.
 - Cron runtime: isolated agent-turn `timeoutSeconds` is owned by cron. The scheduler starts that timer when execution begins, aborts the underlying run at the configured deadline, then runs bounded cleanup before recording the timeout so a stale child session cannot keep the lane stuck.
 - Session liveness diagnostics: with diagnostics enabled, `diagnostics.stuckSessionWarnMs` classifies long `processing` sessions that have no observed reply, tool, status, block, or ACP progress. Active embedded runs, model calls, and tool calls report as `session.long_running`; owned silent model calls also stay `session.long_running` until `diagnostics.stuckSessionAbortMs` so slow or non-streaming providers are not reported as stalled too early. Active work with no recent progress reports as `session.stalled`; owned model calls switch to `session.stalled` at or after the abort threshold, and ownerless stale model/tool activity is not hidden as long-running. `session.stuck` is reserved for recoverable stale session bookkeeping, including idle queued sessions with stale ownerless model/tool activity. Stale session bookkeeping releases the affected session lane immediately after recovery gates pass; stalled embedded runs are abort-drained only after `diagnostics.stuckSessionAbortMs` (default: at least 5 minutes and 3x the warning threshold) so queued work can resume without cutting off merely slow runs. Recovery emits structured requested/completed outcomes, and diagnostic state is marked idle only if the same processing generation is still current. Repeated `session.stuck` diagnostics back off while the session remains unchanged.
-- Model idle timeout: OpenClaw aborts a model request when no response chunks arrive before the idle window. `models.providers.<id>.timeoutSeconds` extends this idle watchdog for slow local/self-hosted providers, but it is still bounded by any lower `agents.defaults.timeoutSeconds` or run-specific timeout because those control the whole agent run. Otherwise OpenClaw uses `agents.defaults.timeoutSeconds` when configured, capped at 120s by default. Cron-triggered cloud model runs with no explicit model or agent timeout use the same default idle watchdog; with an explicit cron run timeout, cloud model stream stalls are capped at 60s so configured model fallbacks can run before the outer cron deadline. Cron-triggered local or self-hosted model runs disable the implicit watchdog unless an explicit timeout is configured, and explicit cron run timeouts remain the idle window for local/self-hosted providers, so slow local providers should set `models.providers.<id>.timeoutSeconds`.
+- Model idle timeout: ClawWorks aborts a model request when no response chunks arrive before the idle window. `models.providers.<id>.timeoutSeconds` extends this idle watchdog for slow local/self-hosted providers, but it is still bounded by any lower `agents.defaults.timeoutSeconds` or run-specific timeout because those control the whole agent run. Otherwise ClawWorks uses `agents.defaults.timeoutSeconds` when configured, capped at 120s by default. Cron-triggered cloud model runs with no explicit model or agent timeout use the same default idle watchdog; with an explicit cron run timeout, cloud model stream stalls are capped at 60s so configured model fallbacks can run before the outer cron deadline. Cron-triggered local or self-hosted model runs disable the implicit watchdog unless an explicit timeout is configured, and explicit cron run timeouts remain the idle window for local/self-hosted providers, so slow local providers should set `models.providers.<id>.timeoutSeconds`.
 - Provider HTTP request timeout: `models.providers.<id>.timeoutSeconds` applies to that provider's model HTTP fetches, including connect, headers, body, SDK request timeout, total guarded-fetch abort handling, and model stream idle watchdog. Use this for slow local/self-hosted providers such as Ollama before raising the whole agent runtime timeout, and keep the agent/runtime timeout at least as high when the model request needs to run longer.
 
 ## Where things can end early

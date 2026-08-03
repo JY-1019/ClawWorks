@@ -1,18 +1,18 @@
 ---
 summary: "Nostr DM channel via NIP-04 encrypted messages"
 read_when:
-  - You want OpenClaw to receive DMs via Nostr
+  - You want ClawWorks to receive DMs via Nostr
   - You're setting up decentralized messaging
 title: "Nostr"
 ---
 
 **Status:** Optional bundled plugin (disabled by default until configured).
 
-Nostr is a decentralized protocol for social networking. This channel enables OpenClaw to receive and respond to encrypted direct messages (DMs) via NIP-04.
+Nostr is a decentralized protocol for social networking. This channel enables ClawWorks to receive and respond to encrypted direct messages (DMs) via NIP-04.
 
 ## Bundled plugin
 
-Current OpenClaw releases ship Nostr as a bundled plugin, so normal packaged
+Current ClawWorks releases ship Nostr as a bundled plugin, so normal packaged
 builds do not need a separate install.
 
 ### Older/custom installs
@@ -99,7 +99,7 @@ Example:
       privateKey: "${NOSTR_PRIVATE_KEY}",
       profile: {
         name: "openclaw",
-        displayName: "OpenClaw",
+        displayName: "ClawWorks",
         about: "Personal assistant DM bot",
         picture: "https://example.com/avatar.png",
         banner: "https://example.com/banner.png",

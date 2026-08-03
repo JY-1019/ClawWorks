@@ -1,12 +1,12 @@
 ---
 summary: "Plugin manifest + JSON schema requirements (strict config validation)"
 read_when:
-  - You are building an OpenClaw plugin
+  - You are building a ClawWorks plugin
   - You need to ship a plugin config schema or debug plugin validation errors
 title: "Plugin manifest"
 ---
 
-This page is for the **native OpenClaw plugin manifest** only.
+This page is for the **native ClawWorks plugin manifest** only.
 
 For compatible bundle layouts, see [Plugin bundles](/plugins/bundles).
 
@@ -17,16 +17,16 @@ Compatible bundle formats use different manifest files:
   layout without a manifest
 - Cursor bundle: `.cursor-plugin/plugin.json`
 
-OpenClaw auto-detects those bundle layouts too, but they are not validated
+ClawWorks auto-detects those bundle layouts too, but they are not validated
 against the `openclaw.plugin.json` schema described here.
 
-For compatible bundles, OpenClaw currently reads bundle metadata plus declared
+For compatible bundles, ClawWorks currently reads bundle metadata plus declared
 skill roots, Claude command roots, Claude bundle `settings.json` defaults,
 Claude bundle LSP defaults, and supported hook packs when the layout matches
-OpenClaw runtime expectations.
+ClawWorks runtime expectations.
 
-Every native OpenClaw plugin **must** ship a `openclaw.plugin.json` file in the
-**plugin root**. OpenClaw uses this manifest to validate configuration
+Every native ClawWorks plugin **must** ship a `openclaw.plugin.json` file in the
+**plugin root**. ClawWorks uses this manifest to validate configuration
 **without executing plugin code**. Missing or invalid manifests are treated as
 plugin errors and block config validation.
 
@@ -36,7 +36,7 @@ For the native capability model and current external-compatibility guidance:
 
 ## What this file does
 
-`openclaw.plugin.json` is the metadata OpenClaw reads **before it loads your
+`openclaw.plugin.json` is the metadata ClawWorks reads **before it loads your
 plugin code**. Everything below must be cheap enough to inspect without booting
 plugin runtime.
 
@@ -174,9 +174,9 @@ or npm install metadata. Those belong in your plugin code and `package.json`.
 | `syntheticAuthRefs`                  | No       | `string[]`                       | Provider or CLI backend refs whose plugin-owned synthetic auth hook should be probed during cold model discovery before runtime loads.                                                                                                          |
 | `nonSecretAuthMarkers`               | No       | `string[]`                       | Bundled-plugin-owned placeholder API key values that represent non-secret local, OAuth, or ambient credential state.                                                                                                                            |
 | `commandAliases`                     | No       | `object[]`                       | Command names owned by this plugin that should produce plugin-aware config and CLI diagnostics before runtime loads.                                                                                                                            |
-| `providerAuthEnvVars`                | No       | `Record<string, string[]>`       | Deprecated compatibility env metadata for provider auth/status lookup. Prefer `setup.providers[].envVars` for new plugins; OpenClaw still reads this during the deprecation window.                                                             |
+| `providerAuthEnvVars`                | No       | `Record<string, string[]>`       | Deprecated compatibility env metadata for provider auth/status lookup. Prefer `setup.providers[].envVars` for new plugins; ClawWorks still reads this during the deprecation window.                                                            |
 | `providerAuthAliases`                | No       | `Record<string, string>`         | Provider ids that should reuse another provider id for auth lookup, for example a coding provider that shares the base provider API key and auth profiles.                                                                                      |
-| `channelEnvVars`                     | No       | `Record<string, string[]>`       | Cheap channel env metadata that OpenClaw can inspect without loading plugin code. Use this for env-driven channel setup or auth surfaces that generic startup/config helpers should see.                                                        |
+| `channelEnvVars`                     | No       | `Record<string, string[]>`       | Cheap channel env metadata that ClawWorks can inspect without loading plugin code. Use this for env-driven channel setup or auth surfaces that generic startup/config helpers should see.                                                       |
 | `providerAuthChoices`                | No       | `object[]`                       | Cheap auth-choice metadata for onboarding pickers, preferred-provider resolution, and simple CLI flag wiring.                                                                                                                                   |
 | `activation`                         | No       | `object`                         | Cheap activation planner metadata for startup, provider, command, channel, route, and capability-triggered loading. Metadata only; plugin runtime still owns actual behavior.                                                                   |
 | `setup`                              | No       | `object`                         | Cheap setup/onboarding descriptors that discovery and setup surfaces can inspect without loading plugin runtime.                                                                                                                                |
@@ -199,7 +199,7 @@ or npm install metadata. Those belong in your plugin code and `package.json`.
 
 The generation provider metadata fields describe static auth signals for
 providers declared in the matching `contracts.*GenerationProviders` list.
-OpenClaw reads these fields before provider runtime loads so core tools can
+ClawWorks reads these fields before provider runtime loads so core tools can
 decide whether a generation provider is available without importing every
 provider plugin.
 
@@ -296,7 +296,7 @@ Each `providerBaseUrl` guard supports:
 
 `toolMetadata` uses the same `configSignals` and `authSignals` shapes as
 generation provider metadata, keyed by tool name. `contracts.tools` declares
-ownership. `toolMetadata` declares cheap availability evidence so OpenClaw can
+ownership. `toolMetadata` declares cheap availability evidence so ClawWorks can
 avoid importing a plugin runtime just to have its tool factory return `null`.
 
 ```json
@@ -331,7 +331,7 @@ avoid importing a plugin runtime just to have its tool factory return `null`.
 }
 ```
 
-If a tool has no `toolMetadata`, OpenClaw preserves the existing behavior and
+If a tool has no `toolMetadata`, ClawWorks preserves the existing behavior and
 loads the owning plugin when the tool contract matches policy. For hot-path
 tools whose factory depends on auth/config, plugin authors should declare
 `toolMetadata` instead of making core import runtime to ask.
@@ -339,7 +339,7 @@ tools whose factory depends on auth/config, plugin authors should declare
 ## providerAuthChoices reference
 
 Each `providerAuthChoices` entry describes one onboarding or auth choice.
-OpenClaw reads this before provider runtime loads.
+ClawWorks reads this before provider runtime loads.
 Provider setup lists use these manifest choices, descriptor-derived setup
 choices, and install-catalog metadata without loading provider runtime.
 
@@ -348,7 +348,7 @@ choices, and install-catalog metadata without loading provider runtime.
 | `provider`            | Yes      | `string`                                                              | Provider id this choice belongs to.                                                                      |
 | `method`              | Yes      | `string`                                                              | Auth method id to dispatch to.                                                                           |
 | `choiceId`            | Yes      | `string`                                                              | Stable auth-choice id used by onboarding and CLI flows.                                                  |
-| `choiceLabel`         | No       | `string`                                                              | User-facing label. If omitted, OpenClaw falls back to `choiceId`.                                        |
+| `choiceLabel`         | No       | `string`                                                              | User-facing label. If omitted, ClawWorks falls back to `choiceId`.                                       |
 | `choiceHint`          | No       | `string`                                                              | Short helper text for the picker.                                                                        |
 | `assistantPriority`   | No       | `number`                                                              | Lower values sort earlier in assistant-driven interactive pickers.                                       |
 | `assistantVisibility` | No       | `"visible"` \| `"manual-only"`                                        | Hide the choice from assistant pickers while still allowing manual CLI selection.                        |
@@ -365,7 +365,7 @@ choices, and install-catalog metadata without loading provider runtime.
 ## commandAliases reference
 
 Use `commandAliases` when a plugin owns a runtime command name that users may
-mistakenly put in `plugins.allow` or try to run as a root CLI command. OpenClaw
+mistakenly put in `plugins.allow` or try to run as a root CLI command. ClawWorks
 uses this metadata for diagnostics without importing plugin runtime code.
 
 ```json
@@ -531,22 +531,22 @@ narrows the candidate plugin and setup still needs richer setup-time runtime
 hooks, set `requiresRuntime: true` and keep `setup-api` in place as the
 fallback execution path.
 
-OpenClaw also includes `setup.providers[].envVars` in generic provider auth and
+ClawWorks also includes `setup.providers[].envVars` in generic provider auth and
 env-var lookups. `providerAuthEnvVars` remains supported through a compatibility
 adapter during the deprecation window, but non-bundled plugins that still use it
 receive a manifest diagnostic. New plugins should put setup/status env metadata
 on `setup.providers[].envVars`.
 
-OpenClaw can also derive simple setup choices from `setup.providers[].authMethods`
+ClawWorks can also derive simple setup choices from `setup.providers[].authMethods`
 when no setup entry is available, or when `setup.requiresRuntime: false`
 declares setup runtime unnecessary. Explicit `providerAuthChoices` entries stay
 preferred for custom labels, CLI flags, onboarding scope, and assistant metadata.
 
 Set `requiresRuntime: false` only when those descriptors are sufficient for the
-setup surface. OpenClaw treats explicit `false` as a descriptor-only contract
+setup surface. ClawWorks treats explicit `false` as a descriptor-only contract
 and will not execute `setup-api` or `openclaw.setupEntry` for setup lookup. If
 a descriptor-only plugin still ships one of those setup runtime entries,
-OpenClaw reports an additive diagnostic and continues ignoring it. Omitted
+ClawWorks reports an additive diagnostic and continues ignoring it. Omitted
 `requiresRuntime` keeps legacy fallback behavior so existing plugins that added
 descriptors without the flag do not break.
 
@@ -625,7 +625,7 @@ Each field hint can include:
 
 ## contracts reference
 
-Use `contracts` only for static capability ownership metadata that OpenClaw can
+Use `contracts` only for static capability ownership metadata that ClawWorks can
 read without importing the plugin runtime.
 
 ```json
@@ -755,7 +755,7 @@ when `setup.requiresRuntime: false` declares setup runtime unnecessary.
 
 `channelConfigs` is plugin manifest metadata, not a new top-level user config
 section. Users still configure channel instances under `channels.<channel-id>`.
-OpenClaw reads manifest metadata to decide which plugin owns that configured
+ClawWorks reads manifest metadata to decide which plugin owns that configured
 channel before plugin runtime code executes.
 
 For a channel plugin, `configSchema` and `channelConfigs` describe different
@@ -765,7 +765,7 @@ paths:
 - `channelConfigs.<channel-id>.schema` validates `channels.<channel-id>`
 
 Non-bundled plugins that declare `channels[]` should also declare matching
-`channelConfigs` entries. Without them, OpenClaw can still load the plugin, but
+`channelConfigs` entries. Without them, ClawWorks can still load the plugin, but
 cold-path config schema, setup, and Control UI surfaces cannot know the
 channel-owned option shape until plugin runtime executes.
 
@@ -841,11 +841,11 @@ keeps the same channel id for config compatibility.
 }
 ```
 
-When `channels.chat` is configured, OpenClaw considers both the channel id and
+When `channels.chat` is configured, ClawWorks considers both the channel id and
 the preferred plugin id. If the lower-priority plugin was only selected because
-it is bundled or enabled by default, OpenClaw disables it in the effective
+it is bundled or enabled by default, ClawWorks disables it in the effective
 runtime config so one plugin owns the channel and its tools. Explicit user
-selection still wins: if the user explicitly enables both plugins, OpenClaw
+selection still wins: if the user explicitly enables both plugins, ClawWorks
 preserves that choice and reports duplicate channel/tool diagnostics instead of
 silently changing the requested plugin set.
 
@@ -854,7 +854,7 @@ It is not a general priority field and it does not rename user config keys.
 
 ## modelSupport reference
 
-Use `modelSupport` when OpenClaw should infer your provider plugin from
+Use `modelSupport` when ClawWorks should infer your provider plugin from
 shorthand model ids like `gpt-5.5` or `claude-sonnet-4.6` before plugin runtime
 loads.
 
@@ -867,7 +867,7 @@ loads.
 }
 ```
 
-OpenClaw applies this precedence:
+ClawWorks applies this precedence:
 
 - explicit `provider/model` refs use the owning `providers` manifest metadata
 - `modelPatterns` beat `modelPrefixes`
@@ -889,7 +889,7 @@ Keep patterns simple and avoid nested quantifiers.
 
 ## modelCatalog reference
 
-Use `modelCatalog` when OpenClaw should know provider model metadata before
+Use `modelCatalog` when ClawWorks should know provider model metadata before
 loading plugin runtime. This is the manifest-owned source for fixed catalog
 rows, provider aliases, suppression rules, and discovery mode. Runtime refresh
 still belongs in provider runtime code, but the manifest tells core when runtime
@@ -954,7 +954,7 @@ Top-level fields:
 
 `aliases` participates in provider ownership lookup for model-catalog planning.
 Alias targets must be top-level providers owned by the same plugin. When a
-provider-filtered list uses an alias, OpenClaw can read the owning manifest and
+provider-filtered list uses an alias, ClawWorks can read the owning manifest and
 apply alias API/base URL overrides without loading provider runtime.
 Aliases do not expand unfiltered catalog listings; broad lists emit the owning
 canonical provider rows only.
@@ -988,7 +988,7 @@ Model fields:
 | `contextTokens` | `number`                                                       | Optional effective runtime context cap when different from `contextWindow`. |
 | `maxTokens`     | `number`                                                       | Maximum output tokens when known.                                           |
 | `cost`          | `object`                                                       | Optional USD per million token pricing, including optional `tieredPricing`. |
-| `compat`        | `object`                                                       | Optional compatibility flags matching OpenClaw model config compatibility.  |
+| `compat`        | `object`                                                       | Optional compatibility flags matching ClawWorks model config compatibility. |
 | `status`        | `"available"` \| `"preview"` \| `"deprecated"` \| `"disabled"` | Listing status. Suppress only when the row must not appear at all.          |
 | `statusReason`  | `string`                                                       | Optional reason shown with non-available status.                            |
 | `replaces`      | `string[]`                                                     | Older provider-local model ids this model supersedes.                       |
@@ -1009,7 +1009,7 @@ Do not put runtime-only data in `modelCatalog`. Use `static` only when manifest
 rows are complete enough for provider-filtered list and picker surfaces to skip
 registry/runtime discovery. Use `refreshable` when manifest rows are useful
 listable seeds or supplements but a refresh/cache can add more rows later;
-refreshable rows are not authoritative by themselves. Use `runtime` when OpenClaw
+refreshable rows are not authoritative by themselves. Use `runtime` when ClawWorks
 must load provider runtime to know the list.
 
 ## modelIdNormalization reference
@@ -1096,7 +1096,7 @@ Provider fields:
 ## secretProviderIntegrations reference
 
 Use `secretProviderIntegrations` when a plugin can publish a reusable SecretRef
-exec provider preset. OpenClaw reads this metadata before plugin runtime loads,
+exec provider preset. ClawWorks reads this metadata before plugin runtime loads,
 stores plugin ownership in `secrets.providers.<alias>.pluginIntegration`, and
 leaves actual secret resolution to the SecretRef runtime.
 Presets are exposed only for bundled plugins and installed plugins discovered
@@ -1116,12 +1116,12 @@ from the managed plugin install roots, such as git and ClawHub installs.
 }
 ```
 
-The map key is the integration id. If `providerAlias` is omitted, OpenClaw uses
+The map key is the integration id. If `providerAlias` is omitted, ClawWorks uses
 the integration id as the SecretRef provider alias. Provider aliases must match
 the normal SecretRef provider alias pattern, for example `team-secrets` or
 `onepassword-work`.
 
-When an operator selects the preset, OpenClaw writes a provider reference like:
+When an operator selects the preset, ClawWorks writes a provider reference like:
 
 ```json
 {
@@ -1139,7 +1139,7 @@ When an operator selects the preset, OpenClaw writes a provider reference like:
 }
 ```
 
-At startup/reload, OpenClaw resolves that provider by loading current plugin
+At startup/reload, ClawWorks resolves that provider by loading current plugin
 manifest metadata, checking that the owning plugin is installed and active, and
 materializing the exec command from the manifest. Disabling or removing the
 plugin revokes the provider for active SecretRefs. Operators who want standalone
@@ -1147,13 +1147,13 @@ exec configuration can still write manual `command`/`args` providers directly.
 
 Only `source: "exec"` presets are currently supported. `command` must be
 `${node}`, and `args[0]` must be a `./` plugin-root-relative resolver script.
-OpenClaw materializes it at startup/reload to the current Node executable and
+ClawWorks materializes it at startup/reload to the current Node executable and
 the absolute in-plugin script path. Node options such as `--require`, `--import`,
 `--loader`, `--env-file`, `--eval`, and `--print` are not part of the manifest
 preset contract. Operators who need non-Node commands can configure standalone
 manual exec providers directly.
 
-OpenClaw derives `trustedDirs` for manifest presets from the plugin root and,
+ClawWorks derives `trustedDirs` for manifest presets from the plugin root and,
 for `${node}` presets, the current Node executable directory. Manifest-authored
 `trustedDirs` are ignored. Other exec provider options such as `timeoutMs`,
 `maxOutputBytes`, `jsonOnly`, `env`, `passEnv`, and `allowInsecurePath` pass
@@ -1194,15 +1194,15 @@ Provider fields:
 
 Source fields:
 
-| Field                      | Type               | What it means                                                                                                        |
-| -------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `provider`                 | `string`           | External catalog provider id when it differs from the OpenClaw provider id, for example `z-ai` for a `zai` provider. |
-| `passthroughProviderModel` | `boolean`          | Treat slash-containing model ids as nested provider/model refs, useful for proxy providers such as OpenRouter.       |
-| `modelIdTransforms`        | `"version-dots"[]` | Extra external catalog model-id variants. `version-dots` tries dotted version ids like `claude-opus-4.6`.            |
+| Field                      | Type               | What it means                                                                                                         |
+| -------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `provider`                 | `string`           | External catalog provider id when it differs from the ClawWorks provider id, for example `z-ai` for a `zai` provider. |
+| `passthroughProviderModel` | `boolean`          | Treat slash-containing model ids as nested provider/model refs, useful for proxy providers such as OpenRouter.        |
+| `modelIdTransforms`        | `"version-dots"[]` | Extra external catalog model-id variants. `version-dots` tries dotted version ids like `claude-opus-4.6`.             |
 
-### OpenClaw Provider Index
+### ClawWorks Provider Index
 
-The OpenClaw Provider Index is OpenClaw-owned preview metadata for providers
+The ClawWorks Provider Index is ClawWorks-owned preview metadata for providers
 whose plugins may not be installed yet. It is not part of a plugin manifest.
 Plugin manifests remain the installed-plugin authority. The Provider Index is
 the internal fallback contract that future installable-provider and pre-install
@@ -1213,7 +1213,7 @@ Catalog authority order:
 1. User config.
 2. Installed plugin manifest `modelCatalog`.
 3. Model catalog cache from explicit refresh.
-4. OpenClaw Provider Index preview rows.
+4. ClawWorks Provider Index preview rows.
 
 The Provider Index must not contain secrets, enabled state, runtime hooks, or
 live account-specific model data. Its preview catalogs use the same
@@ -1250,14 +1250,14 @@ The two files serve different jobs:
 
 If you are unsure where a piece of metadata belongs, use this rule:
 
-- if OpenClaw must know it before loading plugin code, put it in `openclaw.plugin.json`
+- if ClawWorks must know it before loading plugin code, put it in `openclaw.plugin.json`
 - if it is about packaging, entry files, or npm install behavior, put it in `package.json`
 
 ### package.json fields that affect discovery
 
 Some pre-runtime plugin metadata intentionally lives in `package.json` under the
 `openclaw` block instead of `openclaw.plugin.json`.
-`openclaw.bundle` and `openclaw.bundle.json` are not OpenClaw plugin contracts;
+`openclaw.bundle` and `openclaw.bundle.json` are not ClawWorks plugin contracts;
 native plugins must use `openclaw.plugin.json` plus the supported
 `package.json#openclaw` fields below.
 
@@ -1275,8 +1275,8 @@ Important examples:
 | `openclaw.channel.persistedAuthState`                                                      | Lightweight persisted-auth checker metadata that can answer "is anything already signed in?" without loading the full channel runtime.                                               |
 | `openclaw.install.clawhubSpec` / `openclaw.install.npmSpec` / `openclaw.install.localPath` | Install/update hints for bundled and externally published plugins.                                                                                                                   |
 | `openclaw.install.defaultChoice`                                                           | Preferred install path when multiple install sources are available.                                                                                                                  |
-| `openclaw.install.minHostVersion`                                                          | Minimum supported OpenClaw host version, using a semver floor like `>=2026.3.22` or `>=2026.5.1-beta.1`.                                                                             |
-| `openclaw.compat.pluginApi`                                                                | Minimum OpenClaw plugin API range required by this package, using a semver floor like `>=2026.5.27`.                                                                                 |
+| `openclaw.install.minHostVersion`                                                          | Minimum supported ClawWorks host version, using a semver floor like `>=2026.3.22` or `>=2026.5.1-beta.1`.                                                                            |
+| `openclaw.compat.pluginApi`                                                                | Minimum ClawWorks plugin API range required by this package, using a semver floor like `>=2026.5.27`.                                                                                |
 | `openclaw.install.expectedIntegrity`                                                       | Expected npm dist integrity string such as `sha512-...`; install and update flows verify the fetched artifact against it.                                                            |
 | `openclaw.install.allowInvalidConfigRecovery`                                              | Allows a narrow bundled-plugin reinstall recovery path when config is invalid.                                                                                                       |
 | `openclaw.install.requiredPlatformPackages`                                                | npm package aliases that must materialize when their lockfile platform constraints match the current host.                                                                           |
@@ -1295,19 +1295,19 @@ plugins are assumed to be co-versioned with the host checkout.
 `openclaw.install.requiredPlatformPackages` is for npm packages that expose
 required native binaries through optional, platform-specific aliases. List the
 bare npm package name for every supported platform alias. During npm install,
-OpenClaw verifies only the declared alias whose lockfile constraints match the
-current host. If npm reports success but omits that alias, OpenClaw retries once
+ClawWorks verifies only the declared alias whose lockfile constraints match the
+current host. If npm reports success but omits that alias, ClawWorks retries once
 with a fresh cache and rolls back the install if the alias is still missing.
 
 `openclaw.compat.pluginApi` is enforced during package install for non-bundled
-plugin sources. Use it for the OpenClaw plugin SDK/runtime API floor that the
+plugin sources. Use it for the ClawWorks plugin SDK/runtime API floor that the
 package was built against. It can be stricter than `minHostVersion` when a
 plugin package needs a newer API but still keeps a lower install hint for other
-flows. Official OpenClaw release sync bumps existing official plugin API floors
-to the OpenClaw release version by default, but plugin-only releases can keep a
+flows. Official ClawWorks release sync bumps existing official plugin API floors
+to the ClawWorks release version by default, but plugin-only releases can keep a
 lower floor when the package intentionally supports older hosts. Do not use the
 package version alone as the compatibility contract. `peerDependencies.openclaw`
-remains npm package metadata; OpenClaw uses the `openclaw.compat.pluginApi`
+remains npm package metadata; ClawWorks uses the `openclaw.compat.pluginApi`
 contract for install compatibility decisions.
 
 Official install-on-demand metadata should use `clawhubSpec` when the plugin is
@@ -1393,7 +1393,7 @@ hook instead.
 
 ## Discovery precedence (duplicate plugin ids)
 
-OpenClaw discovers plugins from several roots. For the raw filesystem scan
+ClawWorks discovers plugins from several roots. For the raw filesystem scan
 order, see [Plugin scan
 order](/gateway/configuration-reference#plugin-scan-order). If two discoveries
 share the same `id`, only the **highest-precedence** manifest is kept;
@@ -1402,8 +1402,8 @@ lower-precedence duplicates are dropped instead of loading beside it.
 Precedence, highest to lowest:
 
 1. **Config-selected** — a path explicitly pinned in `plugins.entries.<id>`
-2. **Bundled** — plugins shipped with OpenClaw
-3. **Global install** — plugins installed into the global OpenClaw plugin root
+2. **Bundled** — plugins shipped with ClawWorks
+3. **Global install** — plugins installed into the global ClawWorks plugin root
 4. **Workspace** — plugins discovered relative to the current workspace
 
 Implications:
@@ -1451,7 +1451,7 @@ See [Configuration reference](/gateway/configuration) for the full `plugins.*` s
 
 ## Notes
 
-- The manifest is **required for native OpenClaw plugins**, including local filesystem loads. Runtime still loads the plugin module separately; the manifest is only for discovery + validation.
+- The manifest is **required for native ClawWorks plugins**, including local filesystem loads. Runtime still loads the plugin module separately; the manifest is only for discovery + validation.
 - Native manifests are parsed with JSON5, so comments, trailing commas, and unquoted keys are accepted as long as the final value is still an object.
 - Only documented manifest fields are read by the manifest loader. Avoid custom top-level keys.
 - `channels`, `providers`, `cliBackends`, and `skills` can all be omitted when a plugin does not need them.

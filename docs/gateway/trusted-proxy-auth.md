@@ -3,8 +3,8 @@ summary: "Delegate gateway authentication to a trusted reverse proxy (Pomerium, 
 title: "Trusted proxy auth"
 sidebarTitle: "Trusted proxy auth"
 read_when:
-  - Running OpenClaw behind an identity-aware proxy
-  - Setting up Pomerium, Caddy, or nginx with OAuth in front of OpenClaw
+  - Running ClawWorks behind an identity-aware proxy
+  - Setting up Pomerium, Caddy, or nginx with OAuth in front of ClawWorks
   - Fixing WebSocket 1008 unauthorized errors with reverse proxy setups
   - Deciding where to set HSTS and other HTTP hardening headers
 ---
@@ -17,7 +17,7 @@ read_when:
 
 Use `trusted-proxy` auth mode when:
 
-- You run OpenClaw behind an **identity-aware proxy** (Pomerium, Caddy + OAuth, nginx + oauth2-proxy, Traefik + forward auth).
+- You run ClawWorks behind an **identity-aware proxy** (Pomerium, Caddy + OAuth, nginx + oauth2-proxy, Traefik + forward auth).
 - Your proxy handles all authentication and passes user identity via headers.
 - You're in a Kubernetes or container environment where the proxy is the only path to the Gateway.
 - You're hitting WebSocket `1008 unauthorized` errors because browsers can't pass tokens in WS payloads.
@@ -39,10 +39,10 @@ Use `trusted-proxy` auth mode when:
     Proxy adds a header with the authenticated user identity (e.g., `x-forwarded-user: nick@example.com`).
   </Step>
   <Step title="Gateway verifies trusted source">
-    OpenClaw checks that the request came from a **trusted proxy IP** (configured in `gateway.trustedProxies`).
+    ClawWorks checks that the request came from a **trusted proxy IP** (configured in `gateway.trustedProxies`).
   </Step>
   <Step title="Gateway extracts identity">
-    OpenClaw extracts the user identity from the configured header.
+    ClawWorks extracts the user identity from the configured header.
   </Step>
   <Step title="Authorize">
     If everything checks out, the request is authorized.
@@ -55,13 +55,13 @@ When `gateway.auth.mode = "trusted-proxy"` is active and the request passes trus
 
 Scope implications:
 
-- Device-less Control UI WebSocket sessions connect but receive no operator scopes by default. OpenClaw clears the requested scope list to `[]` so a session that is not bound to an approved paired device/token cannot self-declare permissions.
+- Device-less Control UI WebSocket sessions connect but receive no operator scopes by default. ClawWorks clears the requested scope list to `[]` so a session that is not bound to an approved paired device/token cannot self-declare permissions.
 - If methods fail with `missing scope` after a successful WebSocket connect, use HTTPS so the browser can generate device identity and complete pairing. See [Control UI insecure HTTP](/web/control-ui#insecure-http).
 - Break-glass only: `gateway.controlUi.dangerouslyDisableDeviceAuth=true` preserves requested scopes even without device identity. This is a severe security downgrade; revert quickly. See [Control UI insecure HTTP](/web/control-ui#insecure-http).
 
 Reverse-proxy scope capping:
 
-- If your proxy sends `x-openclaw-scopes` on the Control UI WebSocket upgrade request, OpenClaw caps the session scopes to the intersection of the requested scopes and the declared scopes. This header does not grant scopes; it only narrows what the session can hold.
+- If your proxy sends `x-openclaw-scopes` on the Control UI WebSocket upgrade request, ClawWorks caps the session scopes to the intersection of the requested scopes and the declared scopes. This header does not grant scopes; it only narrows what the session can hold.
 
 Implications:
 
@@ -149,7 +149,7 @@ Use one TLS termination point and apply HSTS there.
 
     - Good fit for internet-facing deployments.
     - Keeps certificate + HTTP hardening policy in one place.
-    - OpenClaw can stay on loopback HTTP behind the proxy.
+    - ClawWorks can stay on loopback HTTP behind the proxy.
 
     Example header value:
 
@@ -159,7 +159,7 @@ Use one TLS termination point and apply HSTS there.
 
   </Tab>
   <Tab title="Gateway TLS termination">
-    If OpenClaw itself serves HTTPS directly (no TLS-terminating proxy), set:
+    If ClawWorks itself serves HTTPS directly (no TLS-terminating proxy), set:
 
     ```json5
     {
@@ -310,14 +310,14 @@ Use one TLS termination point and apply HSTS there.
 
 ## Mixed token configuration
 
-OpenClaw rejects ambiguous configurations where both a `gateway.auth.token` (or `OPENCLAW_GATEWAY_TOKEN`) and `trusted-proxy` mode are active at the same time. Mixed token configs can cause loopback requests to silently authenticate on the wrong auth path.
+ClawWorks rejects ambiguous configurations where both a `gateway.auth.token` (or `OPENCLAW_GATEWAY_TOKEN`) and `trusted-proxy` mode are active at the same time. Mixed token configs can cause loopback requests to silently authenticate on the wrong auth path.
 
 If you see a `mixed_trusted_proxy_token` error on startup:
 
 - Remove the shared token when using trusted-proxy mode, or
 - Switch `gateway.auth.mode` to `"token"` if you intend token-based auth.
 
-Loopback trusted-proxy identity headers still fail closed: same-host callers are not silently authenticated as proxy users. Internal OpenClaw callers that bypass the proxy may authenticate with `gateway.auth.password` / `OPENCLAW_GATEWAY_PASSWORD` instead. Token fallback remains intentionally unsupported in trusted-proxy mode.
+Loopback trusted-proxy identity headers still fail closed: same-host callers are not silently authenticated as proxy users. Internal ClawWorks callers that bypass the proxy may authenticate with `gateway.auth.password` / `OPENCLAW_GATEWAY_PASSWORD` instead. Token fallback remains intentionally unsupported in trusted-proxy mode.
 
 ## Operator scopes header
 
@@ -333,7 +333,7 @@ Examples:
 
 Behavior:
 
-- When the header is present, OpenClaw honors the declared scope set.
+- When the header is present, ClawWorks honors the declared scope set.
 - When the header is present but empty, the request declares **no** operator scopes.
 - When the header is absent, normal identity-bearing HTTP APIs fall back to the standard operator default scope set.
 - Gateway-auth **plugin HTTP routes** are narrower by default: when `x-openclaw-scopes` is absent, their runtime scope falls back to `operator.write`.
@@ -381,7 +381,7 @@ The audit checks for:
 
   </Accordion>
   <Accordion title="trusted_proxy_loopback_source">
-    OpenClaw rejected a loopback-source trusted-proxy request.
+    ClawWorks rejected a loopback-source trusted-proxy request.
 
     Check:
 
@@ -429,7 +429,7 @@ The audit checks for:
 
     Common causes:
 
-    - Device-less Control UI session: trusted-proxy auth can admit the WebSocket connection without device identity, but OpenClaw clears scopes on device-less sessions by design.
+    - Device-less Control UI session: trusted-proxy auth can admit the WebSocket connection without device identity, but ClawWorks clears scopes on device-less sessions by design.
     - Custom backend client: `gateway.controlUi.dangerouslyDisableDeviceAuth` is Control UI scoped and does not grant scopes to arbitrary backend or CLI-shaped WebSocket clients.
     - Overly narrow `x-openclaw-scopes`: if your proxy injects this header on the Control UI WebSocket upgrade request, the session scopes are capped to that set. An empty header value yields no scopes.
 
@@ -461,8 +461,8 @@ If you're moving from token auth to trusted-proxy:
   <Step title="Test the proxy independently">
     Test the proxy setup independently (curl with headers).
   </Step>
-  <Step title="Update OpenClaw config">
-    Update OpenClaw config with trusted-proxy auth.
+  <Step title="Update ClawWorks config">
+    Update ClawWorks config with trusted-proxy auth.
   </Step>
   <Step title="Restart the Gateway">
     Restart the Gateway.

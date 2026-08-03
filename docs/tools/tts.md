@@ -8,7 +8,7 @@ title: "Text-to-speech"
 sidebarTitle: "Text to speech (TTS)"
 ---
 
-OpenClaw can convert outbound replies into audio across **14 speech providers**
+ClawWorks can convert outbound replies into audio across **14 speech providers**
 and deliver native voice messages on Feishu, Matrix, Telegram, and WhatsApp,
 audio attachments everywhere else, and PCM/Ulaw streams for telephony and Talk.
 
@@ -45,14 +45,14 @@ assistant voice response.
 
   </Step>
   <Step title="Try it in chat">
-    `/tts status` shows the current state. `/tts audio Hello from OpenClaw`
+    `/tts status` shows the current state. `/tts audio Hello from ClawWorks`
     sends a one-off audio reply.
   </Step>
 </Steps>
 
 <Note>
 Auto-TTS is **off** by default. When `messages.tts.provider` is unset,
-OpenClaw picks the first configured provider in registry auto-select order.
+ClawWorks picks the first configured provider in registry auto-select order.
 The built-in `tts` agent tool is explicit-intent only: ordinary chat stays
 text unless the user asks for audio, uses `/tts`, or enables Auto-TTS/directive
 speech.
@@ -373,7 +373,7 @@ preset and adapt the provider block:
 </Tabs>
 
 For Xiaomi `mimo-v2.5-tts-voicedesign`, omit `speakerVoice` and set `style` to
-the voice-design prompt. OpenClaw sends that prompt as the TTS `user` message
+the voice-design prompt. ClawWorks sends that prompt as the TTS `user` message
 and does not send `audio.voice` for the voicedesign model.
 
 ### Per-agent voice overrides
@@ -550,7 +550,7 @@ Provider selection runs explicit-first:
 4. `messages.tts.provider`.
 5. Registry auto-select.
 
-For each provider attempt, OpenClaw merges configs in this order:
+For each provider attempt, ClawWorks merges configs in this order:
 
 1. `messages.tts.providers.<id>`
 2. `messages.tts.personas.<persona>.providers.<id>`
@@ -570,7 +570,7 @@ to use them:
     or `personaPrompt`. The older `audioProfile` and `speakerName` fields are
     still prepended as Google-specific prompt text. Inline audio tags such as
     `[whispers]` or `[laughs]` inside a `[[tts:text]]` block are preserved
-    inside the Gemini transcript; OpenClaw does not generate these tags.
+    inside the Gemini transcript; ClawWorks does not generate these tags.
   </Accordion>
   <Accordion title="OpenAI">
     Maps persona prompt fields to the request `instructions` field **only when**
@@ -653,7 +653,7 @@ directive warnings.
 
 ## Slash commands
 
-Single command `/tts`. On Discord, OpenClaw also registers `/voice` because
+Single command `/tts`. On Discord, ClawWorks also registers `/voice` because
 `/tts` is a built-in Discord command — text `/tts ...` still works.
 
 ```text
@@ -718,27 +718,27 @@ delivery.
   PTT payload.
 - **Other channels**: MP3 (`mp3_44100_128` from ElevenLabs, `mp3` from OpenAI).
   - 44.1kHz / 128kbps is the default balance for speech clarity.
-- **MiniMax**: MP3 (`speech-2.8-hd` model, 32kHz sample rate) for normal audio attachments. For channel-advertised voice-note targets, OpenClaw transcodes the MiniMax MP3 to 48kHz Opus with `ffmpeg` before delivery when the channel advertises transcoding.
-- **Xiaomi MiMo**: MP3 by default, or WAV when configured. For channel-advertised voice-note targets, OpenClaw transcodes Xiaomi output to 48kHz Opus with `ffmpeg` before delivery when the channel advertises transcoding.
+- **MiniMax**: MP3 (`speech-2.8-hd` model, 32kHz sample rate) for normal audio attachments. For channel-advertised voice-note targets, ClawWorks transcodes the MiniMax MP3 to 48kHz Opus with `ffmpeg` before delivery when the channel advertises transcoding.
+- **Xiaomi MiMo**: MP3 by default, or WAV when configured. For channel-advertised voice-note targets, ClawWorks transcodes Xiaomi output to 48kHz Opus with `ffmpeg` before delivery when the channel advertises transcoding.
 - **Local CLI**: uses the configured `outputFormat`. Voice-note targets are
   converted to Ogg/Opus and telephony output is converted to raw 16 kHz mono PCM
   with `ffmpeg`.
-- **Google Gemini**: Gemini API TTS returns raw 24kHz PCM. OpenClaw wraps it as WAV for audio attachments, transcodes it to 48kHz Opus for voice-note targets, and returns PCM directly for Talk/telephony.
+- **Google Gemini**: Gemini API TTS returns raw 24kHz PCM. ClawWorks wraps it as WAV for audio attachments, transcodes it to 48kHz Opus for voice-note targets, and returns PCM directly for Talk/telephony.
 - **Gradium**: WAV for audio attachments, Opus for voice-note targets, and `ulaw_8000` at 8 kHz for telephony.
 - **Inworld**: MP3 for normal audio attachments, native `OGG_OPUS` for voice-note targets, and raw `PCM` at 22050 Hz for Talk/telephony.
-- **xAI**: MP3 by default; `responseFormat` may be `mp3`, `wav`, `pcm`, `mulaw`, or `alaw`. OpenClaw uses xAI's batch REST TTS endpoint and returns a complete audio attachment; xAI's streaming TTS WebSocket is not used by this provider path. Native Opus voice-note format is not supported by this path.
+- **xAI**: MP3 by default; `responseFormat` may be `mp3`, `wav`, `pcm`, `mulaw`, or `alaw`. ClawWorks uses xAI's batch REST TTS endpoint and returns a complete audio attachment; xAI's streaming TTS WebSocket is not used by this provider path. Native Opus voice-note format is not supported by this path.
 - **Microsoft**: uses `microsoft.outputFormat` (default `audio-24khz-48kbitrate-mono-mp3`).
   - The bundled transport accepts an `outputFormat`, but not all formats are available from the service.
   - Output format values follow Microsoft Speech output formats (including Ogg/WebM Opus).
   - Telegram `sendVoice` accepts OGG/MP3/M4A; use OpenAI/ElevenLabs if you need
     guaranteed Opus voice messages.
-  - If the configured Microsoft output format fails, OpenClaw retries with MP3.
+  - If the configured Microsoft output format fails, ClawWorks retries with MP3.
 
 OpenAI/ElevenLabs output formats are fixed per channel (see above).
 
 ## Auto-TTS behavior
 
-When `messages.tts.auto` is enabled, OpenClaw:
+When `messages.tts.auto` is enabled, ClawWorks:
 
 - Skips TTS if the reply already contains structured media.
 - Skips very short replies (under 10 chars).
@@ -777,10 +777,10 @@ Per-provider notes:
 - **Feishu / WhatsApp transcoding:** When a voice-note reply lands as MP3/WebM/WAV/M4A, the channel plugin transcodes to 48 kHz Ogg/Opus with `ffmpeg`. WhatsApp sends through Baileys with `ptt: true` and `audio/ogg; codecs=opus`. If conversion fails: Feishu falls back to attaching the original file; WhatsApp send fails rather than posting an incompatible PTT payload.
 - **MiniMax / Xiaomi MiMo:** Default MP3 (32 kHz for MiniMax `speech-2.8-hd`); transcoded to 48 kHz Opus for voice-note targets via `ffmpeg`.
 - **Local CLI:** Uses configured `outputFormat`. Voice-note targets are converted to Ogg/Opus and telephony output to raw 16 kHz mono PCM.
-- **Google Gemini:** Returns raw 24 kHz PCM. OpenClaw wraps as WAV for attachments, transcodes to 48 kHz Opus for voice-note targets, returns PCM directly for Talk/telephony.
+- **Google Gemini:** Returns raw 24 kHz PCM. ClawWorks wraps as WAV for attachments, transcodes to 48 kHz Opus for voice-note targets, returns PCM directly for Talk/telephony.
 - **Inworld:** MP3 attachments, native `OGG_OPUS` voice-note, raw `PCM` 22050 Hz for Talk/telephony.
 - **xAI:** MP3 by default; `responseFormat` may be `mp3|wav|pcm|mulaw|alaw`. Uses xAI's batch REST endpoint — streaming WebSocket TTS is **not** used. Native Opus voice-note format is **not** supported.
-- **Microsoft:** Uses `microsoft.outputFormat` (default `audio-24khz-48kbitrate-mono-mp3`). Telegram `sendVoice` accepts OGG/MP3/M4A; use OpenAI/ElevenLabs if you need guaranteed Opus voice messages. If the configured Microsoft format fails, OpenClaw retries with MP3.
+- **Microsoft:** Uses `microsoft.outputFormat` (default `audio-24khz-48kbitrate-mono-mp3`). Telegram `sendVoice` accepts OGG/MP3/M4A; use OpenAI/ElevenLabs if you need guaranteed Opus voice messages. If the configured Microsoft format fails, ClawWorks retries with MP3.
 
 OpenAI and ElevenLabs output formats are fixed per channel as listed above.
 
@@ -798,7 +798,7 @@ OpenAI and ElevenLabs output formats are fixed per channel as listed above.
       `"all"` includes tool/block replies in addition to final replies.
     </ParamField>
     <ParamField path="provider" type="string">
-      Speech provider id. When unset, OpenClaw uses the first configured provider in registry auto-select order. Legacy `provider: "edge"` is rewritten to `"microsoft"` by `openclaw doctor --fix`.
+      Speech provider id. When unset, ClawWorks uses the first configured provider in registry auto-select order. Legacy `provider: "edge"` is rewritten to `"microsoft"` by `openclaw doctor --fix`.
     </ParamField>
     <ParamField path="persona" type="string">
       Active persona id from `personas`. Normalized to lowercase.
@@ -954,7 +954,7 @@ OpenAI and ElevenLabs output formats are fixed per channel as listed above.
     <ParamField path="model" type="string">Default `mimo-v2.5-tts`. Env: `XIAOMI_TTS_MODEL`. Also supports `mimo-v2-tts` and `mimo-v2.5-tts-voicedesign`.</ParamField>
     <ParamField path="speakerVoice" type="string">Default `mimo_default` for preset-voice models. Env: `XIAOMI_TTS_VOICE`. Legacy alias: `voice`. Not sent for `mimo-v2.5-tts-voicedesign`.</ParamField>
     <ParamField path="format" type='"mp3" | "wav"'>Default `mp3`. Env: `XIAOMI_TTS_FORMAT`.</ParamField>
-    <ParamField path="style" type="string">Optional natural-language style instruction sent as the user message; not spoken. For `mimo-v2.5-tts-voicedesign`, this is the voice-design prompt; OpenClaw supplies a default when omitted.</ParamField>
+    <ParamField path="style" type="string">Optional natural-language style instruction sent as the user message; not spoken. For `mimo-v2.5-tts-voicedesign`, this is the voice-design prompt; ClawWorks supplies a default when omitted.</ParamField>
   </Accordion>
 </AccordionGroup>
 

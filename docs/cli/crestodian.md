@@ -2,14 +2,14 @@
 summary: "CLI reference and security model for Crestodian, the configless-safe setup and repair helper"
 read_when:
   - You run openclaw with no command after setup and want to understand Crestodian
-  - You need a configless-safe way to inspect or repair OpenClaw
+  - You need a configless-safe way to inspect or repair ClawWorks
   - You are designing or enabling message-channel rescue mode
 title: "Crestodian"
 ---
 
 # `openclaw crestodian`
 
-Crestodian is OpenClaw's local setup, repair, and configuration helper. It is
+Crestodian is ClawWorks's local setup, repair, and configuration helper. It is
 designed to stay reachable when the normal agent path is broken.
 
 Running `openclaw` with no command starts classic onboarding first when the
@@ -37,7 +37,7 @@ and editor controls.
 Use `status` for the detailed inventory with config path, docs/source paths,
 local CLI probes, API-key presence, agents, model, and Gateway details.
 
-Crestodian uses the same OpenClaw reference discovery as regular agents. In a Git checkout,
+Crestodian uses the same ClawWorks reference discovery as regular agents. In a Git checkout,
 it points itself at local `docs/` and the local source tree. In an npm package install, it
 uses the bundled package docs and links to
 [https://github.com/openclaw/openclaw](https://github.com/openclaw/openclaw), with explicit
@@ -169,8 +169,8 @@ model unset. Install or log into Codex/Claude Code, or expose
 
 Crestodian always starts in deterministic mode. For fuzzy commands that the
 deterministic parser does not understand, local Crestodian can make one bounded
-planner turn through OpenClaw's normal runtime paths. It first uses the
-configured OpenClaw model. If no configured model is usable yet, it can fall
+planner turn through ClawWorks's normal runtime paths. It first uses the
+configured ClawWorks model. If no configured model is usable yet, it can fall
 back to local runtimes already present on the machine:
 
 - Claude Code CLI: `claude-cli/claude-opus-4-8`
@@ -224,11 +224,11 @@ Operator flow:
 
 ```text
 You, in a trusted owner DM: /crestodian status
-OpenClaw: Crestodian rescue mode. Gateway reachable: no. Config valid: no.
+ClawWorks: Crestodian rescue mode. Gateway reachable: no. Config valid: no.
 You: /crestodian restart gateway
-OpenClaw: Plan: restart the Gateway. Reply /crestodian yes to apply.
+ClawWorks: Plan: restart the Gateway. Reply /crestodian yes to apply.
 You: /crestodian yes
-OpenClaw: Applied. Audit entry written.
+ClawWorks: Applied. Audit entry written.
 ```
 
 Agent creation can also be queued from the local prompt or rescue mode:

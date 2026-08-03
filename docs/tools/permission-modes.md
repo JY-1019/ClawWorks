@@ -3,11 +3,11 @@ summary: "Permission modes for host exec, Codex Guardian approvals, and ACPX har
 read_when:
   - Choosing auto, ask, allowlist, full, or deny for command permissions
   - Configuring Codex Guardian-reviewed approvals through tools.exec.mode
-  - Comparing OpenClaw exec approvals with ACPX harness permissions
+  - Comparing ClawWorks exec approvals with ACPX harness permissions
 title: "Permission modes"
 ---
 
-Permission modes decide how much authority an agent has before it can run host commands, write files, or ask a backend harness for extra access. Start with `tools.exec.mode: "auto"` when you want OpenClaw to use allowlists first, then Codex native auto-review or a human approval route for misses.
+Permission modes decide how much authority an agent has before it can run host commands, write files, or ask a backend harness for extra access. Start with `tools.exec.mode: "auto"` when you want ClawWorks to use allowlists first, then Codex native auto-review or a human approval route for misses.
 
 <Note>
   Permission mode is separate from `tools.exec.host=auto`. `tools.exec.host`
@@ -31,9 +31,9 @@ Then verify the effective policy:
 openclaw exec-policy show
 ```
 
-In `auto` mode, OpenClaw runs deterministic allowlist matches directly. Approval misses go through OpenClaw's native auto reviewer first, then fall back to the configured human approval route when needed.
+In `auto` mode, ClawWorks runs deterministic allowlist matches directly. Approval misses go through ClawWorks's native auto reviewer first, then fall back to the configured human approval route when needed.
 
-## OpenClaw host exec modes
+## ClawWorks host exec modes
 
 `tools.exec.mode` is the normalized policy surface for host `exec`.
 
@@ -49,7 +49,7 @@ For the full host exec policy, local approvals file, allowlist schema, safe bins
 
 ## Codex Guardian mapping
 
-For native Codex app-server sessions, `tools.exec.mode: "auto"` maps to Codex Guardian-reviewed approvals when the local Codex requirements allow it. OpenClaw usually sends:
+For native Codex app-server sessions, `tools.exec.mode: "auto"` maps to Codex Guardian-reviewed approvals when the local Codex requirements allow it. ClawWorks usually sends:
 
 | Codex field         | Typical value     |
 | ------------------- | ----------------- |
@@ -57,7 +57,7 @@ For native Codex app-server sessions, `tools.exec.mode: "auto"` maps to Codex Gu
 | `approvalsReviewer` | `auto_review`     |
 | `sandbox`           | `workspace-write` |
 
-In `auto` mode, OpenClaw does not preserve legacy unsafe Codex overrides such as `approvalPolicy: "never"` or `sandbox: "danger-full-access"`. Use `tools.exec.mode: "full"` only when you intentionally want the no-approval posture.
+In `auto` mode, ClawWorks does not preserve legacy unsafe Codex overrides such as `approvalPolicy: "never"` or `sandbox: "danger-full-access"`. Use `tools.exec.mode: "full"` only when you intentionally want the no-approval posture.
 
 For app-server setup, auth order, and native Codex runtime details, see [Codex harness](/plugins/codex-harness).
 
@@ -73,7 +73,7 @@ ACPX sessions are non-interactive, so they cannot click a TTY permission prompt.
 | `nonInteractivePermissions` | `fail`          | Abort when a prompt would be required.      |
 | `nonInteractivePermissions` | `deny`          | Deny the prompt and continue when possible. |
 
-Set ACPX permissions separately from OpenClaw exec approvals:
+Set ACPX permissions separately from ClawWorks exec approvals:
 
 ```bash
 openclaw config set plugins.entries.acpx.config.permissionMode approve-all
@@ -90,7 +90,7 @@ Use `approve-all` as the ACPX break-glass equivalent of a no-prompt harness sess
 | Block host commands completely                | `tools.exec.mode: "deny"`                                   |
 | Let known-safe commands run only              | `tools.exec.mode: "allowlist"`                              |
 | Ask a human for every new command shape       | `tools.exec.mode: "ask"`                                    |
-| Use Codex/OpenClaw auto-review before humans  | `tools.exec.mode: "auto"`                                   |
+| Use Codex/ClawWorks auto-review before humans | `tools.exec.mode: "auto"`                                   |
 | Skip host exec approvals entirely             | `tools.exec.mode: "full"` plus matching host approvals file |
 | Make non-interactive ACPX sessions write/exec | `plugins.entries.acpx.config.permissionMode: "approve-all"` |
 
@@ -101,7 +101,7 @@ openclaw approvals get
 openclaw exec-policy show
 ```
 
-Host exec uses the stricter result of OpenClaw config and the host-local approvals file. ACPX harness permissions do not loosen host exec approvals, and host exec approvals do not loosen ACPX harness prompts.
+Host exec uses the stricter result of ClawWorks config and the host-local approvals file. ACPX harness permissions do not loosen host exec approvals, and host exec approvals do not loosen ACPX harness prompts.
 
 ## Related
 

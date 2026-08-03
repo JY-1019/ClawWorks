@@ -2,7 +2,7 @@
 summary: "Migration plan for making SQLite the primary durable state and cache layer while keeping config file-backed"
 title: "Database-first state refactor"
 read_when:
-  - Moving OpenClaw runtime data, cache, transcripts, task state, or scratch files into SQLite
+  - Moving ClawWorks runtime data, cache, transcripts, task state, or scratch files into SQLite
   - Designing doctor migrations from legacy JSON or JSONL files
   - Changing backup, restore, VFS, or worker storage behavior
   - Removing session locks, pruning, truncation, or JSON compatibility paths
@@ -19,7 +19,7 @@ Use a two-level SQLite layout:
   transcript, VFS, artifact, and large per-agent runtime state
 - Configuration stays file-backed: `openclaw.json` remains outside the
   database. Runtime auth profiles move to SQLite; external provider or CLI
-  credential files remain owner-managed outside OpenClaw's database.
+  credential files remain owner-managed outside ClawWorks's database.
 
 The global database is the control-plane database. It owns agent discovery,
 shared gateway state, pairing, device/node state, task and flow ledgers, plugin
@@ -80,7 +80,7 @@ This migration has one canonical runtime shape:
   artifacts from database rows without feeding file names back into runtime.
 - Raw stream logging uses `OPENCLAW_RAW_STREAM=1` plus SQLite diagnostics rows.
   The old pi-mono `PI_RAW_STREAM`, `PI_RAW_STREAM_PATH`, and
-  `raw-openai-completions.jsonl` file logger contract is not part of OpenClaw
+  `raw-openai-completions.jsonl` file logger contract is not part of ClawWorks
   runtime or tests.
 - QMD memory indexing must not export SQLite transcripts to markdown files.
   QMD indexes configured memory files only; session transcript search stays
@@ -207,7 +207,7 @@ proceed with these assumptions:
   migration inputs only. The branch-local SQLite sidecars never shipped and are
   deleted instead of imported.
 - `openclaw doctor --fix` owns the legacy file-to-database migration step.
-  Runtime startup and `openclaw migrate` should not carry legacy OpenClaw
+  Runtime startup and `openclaw migrate` should not carry legacy ClawWorks
   database-upgrade paths.
 - Credential compatibility follows the same rule: runtime credentials live in
   SQLite. Old `auth-profiles.json`, per-agent `auth.json`, and shared
@@ -233,7 +233,7 @@ proceed with these assumptions:
 - The old runtime-owned JSONL transcript streaming helper was deleted. Doctor
   import code owns explicit legacy file reads; runtime session history reads
   SQLite rows.
-- Codex app-server bindings use the OpenClaw `sessionId` as the canonical
+- Codex app-server bindings use the ClawWorks `sessionId` as the canonical
   key in the Codex plugin-state namespace. `sessionKey` is metadata for
   routing/display and must not replace the durable session id or resurrect
   transcript-file identity.
@@ -347,13 +347,13 @@ The branch already has a real shared SQLite base:
   schema-level representation of a session.
 - Per-agent external conversation identity is relational too:
   `conversations` stores normalized provider/account/conversation identity, and
-  `session_conversations` links one OpenClaw session to one or more external
+  `session_conversations` links one ClawWorks session to one or more external
   conversations. This covers shared-main DM sessions where multiple peers can
   intentionally map to one session without lying in `session_key`. SQLite also
   enforces uniqueness for the natural provider identity so the same
   channel/account/kind/peer/thread tuple cannot fork across conversation ids.
   Shared-main direct peers are linked with a `participant` role, so one
-  OpenClaw session can represent multiple external DM peers without demoting
+  ClawWorks session can represent multiple external DM peers without demoting
   older peers into vague related rows. `sessions.primary_conversation_id` still
   points at the current typed delivery target. Closed routing/status columns
   are enforced with SQLite `CHECK` constraints instead of relying only on
@@ -460,7 +460,7 @@ The branch already has a real shared SQLite base:
   so it intentionally does not add a host schema table.
 - GitHub Copilot compaction no longer writes `openclaw-compaction-*.json`
   workspace sidecars. The harness calls the SDK history compaction RPC for the
-  tracked SDK session, and OpenClaw keeps durable session/transcript state in
+  tracked SDK session, and ClawWorks keeps durable session/transcript state in
   SQLite instead of compatibility marker files.
 - The shared Swift runtime (`OpenClawKit`) uses the same
   `state/openclaw.sqlite` rows for device identity and device auth. macOS app
@@ -1046,7 +1046,7 @@ sessionId})`; create, branch, continue, list, and fork flows live in their
   SQLite reads. Its helper no longer accepts or derives transcript locators,
   legacy file reads, or file-rewrite options.
 - Codex app-server conversation bindings now key SQLite plugin state by
-  OpenClaw session key or explicit `{agentId, sessionId}` scope. They must not
+  ClawWorks session key or explicit `{agentId, sessionId}` scope. They must not
   preserve transcript-path fallback bindings.
 - Codex app-server mirrored-history reads use the SQLite transcript scope only;
   they must not recover identity from transcript file paths.
@@ -1157,7 +1157,7 @@ sessionId})`; create, branch, continue, list, and fork flows live in their
   state. Doctor imports the legacy `gateway-instance-id` file into plugin state
   and removes the source.
 - ACPX generated wrapper scripts and the isolated Codex home are temporary
-  materialization under the OpenClaw temp root, not durable OpenClaw state. The
+  materialization under the ClawWorks temp root, not durable ClawWorks state. The
   durable ACPX runtime records are the SQLite lease and gateway-instance rows;
   the old ACPX `stateDir` config surface is removed because no runtime state is
   written there anymore.
@@ -1330,7 +1330,7 @@ sessionId})`; create, branch, continue, list, and fork flows live in their
   Each lease is stored as its own row, preserving startup stale-process reaping
   without a runtime JSON rewrite path.
 - ACPX wrapper scripts and the isolated Codex home are generated in the
-  OpenClaw temp root. They are recreated as needed and are not backup or
+  ClawWorks temp root. They are recreated as needed and are not backup or
   migration inputs.
 - Subagent run registry persistence uses typed shared `subagent_runs` rows. The
   old `subagents/runs.json` path is now only a doctor migration input, and
@@ -1401,7 +1401,7 @@ create` validates the written archive by default; `--no-verify` is the
   main SQLite `plugin_blob_entries` table. Runtime no longer creates a durable
   `~/.openclaw/agents/<agentId>/qmd` sidecar.
 - The optional `memory-lancedb` plugin no longer creates
-  `~/.openclaw/memory/lancedb` as an implicit OpenClaw-managed store. It is an
+  `~/.openclaw/memory/lancedb` as an implicit ClawWorks-managed store. It is an
   external LanceDB backend and stays disabled until the operator configures an
   explicit `dbPath`.
 - `check:database-first-legacy-stores` fails new runtime source that pairs
@@ -1526,7 +1526,7 @@ openclaw doctor --fix
 
 `openclaw doctor --fix` invokes the state migration implementation after
 ordinary config preflight and creates a verified backup before import. Runtime
-startup and `openclaw migrate` must not import legacy OpenClaw state files.
+startup and `openclaw migrate` must not import legacy ClawWorks state files.
 
 Migration properties:
 
@@ -2049,7 +2049,7 @@ restore` validates before extraction, uses the verifier's normalized
   fixtures or parsers; legacy SSO token parsing lives only in the plugin
   migration module. Telegram tests no longer seed fake `/tmp/*.json` store
   paths; they reset the SQLite-backed message cache directly. The generic
-  OpenClaw test-state helper no longer exposes a legacy `auth-profiles.json`
+  ClawWorks test-state helper no longer exposes a legacy `auth-profiles.json`
   writer; doctor auth migration tests own that fixture locally.
   Runtime tests for TUI last-session pointers, exec approvals, active-memory
   toggles, Matrix dedupe/startup verification, Memory Wiki source sync,

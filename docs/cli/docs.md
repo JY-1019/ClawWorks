@@ -1,14 +1,14 @@
 ---
 summary: "CLI reference for `openclaw docs` (search the live docs index)"
 read_when:
-  - You want to search the live OpenClaw docs from the terminal
+  - You want to search the live ClawWorks docs from the terminal
   - You need to know which hosted search API the docs CLI calls
 title: "Docs"
 ---
 
 # `openclaw docs`
 
-Search the live OpenClaw docs index from the terminal. The command calls OpenClaw's Cloudflare-hosted docs search API and renders the results in your terminal.
+Search the live ClawWorks docs index from the terminal. The command calls ClawWorks's Cloudflare-hosted docs search API and renders the results in your terminal.
 
 ## Usage
 

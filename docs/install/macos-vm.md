@@ -1,7 +1,7 @@
 ---
-summary: "Run OpenClaw in a sandboxed macOS VM (local or hosted) when you need isolation or iMessage"
+summary: "Run ClawWorks in a sandboxed macOS VM (local or hosted) when you need isolation or iMessage"
 read_when:
-  - You want OpenClaw isolated from your main macOS environment
+  - You want ClawWorks isolated from your main macOS environment
   - You want iMessage integration in a sandbox
   - You want a resettable macOS environment you can clone
   - You want to compare local vs hosted macOS VM options
@@ -20,7 +20,7 @@ Use a macOS VM when you specifically need macOS-only capabilities such as iMessa
 
 ### Local VM on your Apple Silicon Mac (Lume)
 
-Run OpenClaw in a sandboxed macOS VM on your existing Apple Silicon Mac using [Lume](https://cua.ai/docs/lume).
+Run ClawWorks in a sandboxed macOS VM on your existing Apple Silicon Mac using [Lume](https://cua.ai/docs/lume).
 
 This gives you:
 
@@ -46,7 +46,7 @@ Once you have SSH access to a macOS VM, continue at step 6 below.
 2. `lume create openclaw --os macos --ipsw latest`
 3. Complete Setup Assistant, enable Remote Login (SSH)
 4. `lume run openclaw --no-display`
-5. SSH in, install OpenClaw, configure channels
+5. SSH in, install ClawWorks, configure channels
 6. Done
 
 ---
@@ -132,7 +132,7 @@ Replace `youruser` with the account you created, and the IP with your VM's IP.
 
 ---
 
-## 6) Install OpenClaw
+## 6) Install ClawWorks
 
 Inside the VM:
 
@@ -186,7 +186,7 @@ lume stop openclaw
 lume run openclaw --no-display
 ```
 
-The VM runs in the background. OpenClaw's daemon keeps the gateway running.
+The VM runs in the background. ClawWorks's daemon keeps the gateway running.
 
 To check status:
 
@@ -198,16 +198,16 @@ ssh youruser@192.168.64.X "openclaw status"
 
 ## Bonus: iMessage integration
 
-This is the killer feature of running on macOS. Use [iMessage](/channels/imessage) with `imsg` to add Messages to OpenClaw.
+This is the killer feature of running on macOS. Use [iMessage](/channels/imessage) with `imsg` to add Messages to ClawWorks.
 
 Inside the VM:
 
 1. Sign in to Messages.
 2. Install `imsg`.
-3. Grant Full Disk Access and Automation permission for the process running OpenClaw/`imsg`.
+3. Grant Full Disk Access and Automation permission for the process running ClawWorks/`imsg`.
 4. Verify RPC support with `imsg rpc --help`.
 
-Add to your OpenClaw config:
+Add to your ClawWorks config:
 
 ```json5
 {

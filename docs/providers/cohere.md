@@ -2,11 +2,11 @@
 summary: "Cohere setup (auth + model selection)"
 title: "Cohere"
 read_when:
-  - You want to use Cohere with OpenClaw
+  - You want to use Cohere with ClawWorks
   - You need the Cohere API key env var or CLI auth choice
 ---
 
-[Cohere](https://cohere.com) provides OpenAI-compatible inference through its Compatibility API. OpenClaw ships the Cohere provider during its externalization transition and also publishes it as an official external plugin with the Command A model catalog.
+[Cohere](https://cohere.com) provides OpenAI-compatible inference through its Compatibility API. ClawWorks ships the Cohere provider during its externalization transition and also publishes it as an official external plugin with the Command A model catalog.
 
 | Property        | Value                                                |
 | --------------- | ---------------------------------------------------- |
@@ -21,7 +21,7 @@ read_when:
 
 ## Get started
 
-1. Cohere is included in current OpenClaw packages. If it is unavailable, install the external package and restart the Gateway:
+1. Cohere is included in current ClawWorks packages. If it is unavailable, install the external package and restart the Gateway:
 
 ```bash
 openclaw plugins install @openclaw/cohere-provider

@@ -1,12 +1,12 @@
 ---
-summary: "Host OpenClaw on Upstash Box with keep-alive and SSH tunnel access"
+summary: "Host ClawWorks on Upstash Box with keep-alive and SSH tunnel access"
 read_when:
-  - Deploying OpenClaw to Upstash Box
-  - You want a managed Linux environment for OpenClaw with SSH-tunneled dashboard access
+  - Deploying ClawWorks to Upstash Box
+  - You want a managed Linux environment for ClawWorks with SSH-tunneled dashboard access
 title: "Upstash Box"
 ---
 
-Run a persistent OpenClaw Gateway on Upstash Box, a managed Linux environment
+Run a persistent ClawWorks Gateway on Upstash Box, a managed Linux environment
 with keep-alive lifecycle support.
 
 Use an SSH tunnel for dashboard access. Do not expose the Gateway port directly
@@ -23,12 +23,12 @@ to the public internet.
 Create a keep-alive Box in the Upstash Console. Note the Box ID, such as
 `right-flamingo-14486`, and your Box API key.
 
-Upstash maintains its current OpenClaw Box walkthrough at
-[OpenClaw Setup](https://upstash.com/docs/box/guides/openclaw-setup).
+Upstash maintains its current ClawWorks Box walkthrough at
+[ClawWorks Setup](https://upstash.com/docs/box/guides/openclaw-setup).
 
 ## Connect with an SSH tunnel
 
-Forward the OpenClaw dashboard port to your local machine. Use your Box API key
+Forward the ClawWorks dashboard port to your local machine. Use your Box API key
 as the SSH password when prompted:
 
 ```bash
@@ -37,7 +37,7 @@ ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 18789:127.0.0.1:18789 
 
 The keepalive options reduce idle tunnel drops during onboarding.
 
-## Install OpenClaw
+## Install ClawWorks
 
 Inside the Box:
 
@@ -93,4 +93,4 @@ through idle network periods.
 
 - [Remote access](/gateway/remote)
 - [Gateway security](/gateway/security)
-- [Updating OpenClaw](/install/updating)
+- [Updating ClawWorks](/install/updating)

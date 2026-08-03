@@ -57,12 +57,12 @@ The plugin auto-selects the transport based on API key prefix:
 
 <Tabs>
   <Tab title="Native Perplexity API (pplx-)">
-    When your key starts with `pplx-`, OpenClaw uses the native Perplexity Search
+    When your key starts with `pplx-`, ClawWorks uses the native Perplexity Search
     API. This transport returns structured results and supports domain, language,
     and date filters (see filtering options below).
   </Tab>
   <Tab title="OpenRouter / Sonar (sk-or-)">
-    When your key starts with `sk-or-`, OpenClaw routes through OpenRouter using
+    When your key starts with `sk-or-`, ClawWorks routes through OpenRouter using
     the Perplexity Sonar model. This transport returns AI-synthesized answers with
     citations.
   </Tab>
@@ -94,7 +94,7 @@ When using the native Perplexity API, searches support the following filters:
 
 <AccordionGroup>
   <Accordion title="Environment variable for daemon processes">
-    If the OpenClaw Gateway runs as a daemon (launchd/systemd), make sure
+    If the ClawWorks Gateway runs as a daemon (launchd/systemd), make sure
     `PERPLEXITY_API_KEY` is available to that process.
 
     <Warning>
@@ -109,7 +109,7 @@ When using the native Perplexity API, searches support the following filters:
   <Accordion title="OpenRouter proxy setup">
     If you prefer to route Perplexity searches through OpenRouter, set an
     `OPENROUTER_API_KEY` (prefix `sk-or-`) instead of a native Perplexity key.
-    OpenClaw will detect the prefix and switch to the Sonar transport
+    ClawWorks will detect the prefix and switch to the Sonar transport
     automatically.
 
     <Tip>

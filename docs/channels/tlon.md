@@ -5,7 +5,7 @@ read_when:
 title: "Tlon"
 ---
 
-Tlon is a decentralized messenger built on Urbit. OpenClaw connects to your Urbit ship and can
+Tlon is a decentralized messenger built on Urbit. ClawWorks connects to your Urbit ship and can
 respond to DMs and group chat messages. Group replies require an @ mention by default and can
 be further restricted via allowlists.
 
@@ -14,7 +14,7 @@ image uploads are supported. Reactions and polls are not yet supported.
 
 ## Bundled plugin
 
-Tlon ships as a bundled plugin in current OpenClaw releases, so normal packaged
+Tlon ships as a bundled plugin in current ClawWorks releases, so normal packaged
 builds do not need a separate install.
 
 If you are on an older build or a custom install that excludes Tlon, install a
@@ -40,7 +40,7 @@ Details: [Plugins](/tools/plugin)
 ## Setup
 
 1. Ensure the Tlon plugin is available.
-   - Current packaged OpenClaw releases already bundle it.
+   - Current packaged ClawWorks releases already bundle it.
    - Older/custom installs can add it manually with the commands above.
 2. Gather your ship URL and login code.
 3. Configure `channels.tlon`.
@@ -65,7 +65,7 @@ Minimal config (single account):
 
 ## Private/LAN ships
 
-By default, OpenClaw blocks private/internal hostnames and IP ranges for SSRF protection.
+By default, ClawWorks blocks private/internal hostnames and IP ranges for SSRF protection.
 If your ship is running on a private network (localhost, LAN IP, or internal hostname),
 you must explicitly opt in:
 
@@ -283,7 +283,7 @@ Provider options:
 ## Notes
 
 - Group replies require a mention (e.g. `~your-bot-ship`) to respond.
-- Thread replies: if the inbound message is in a thread, OpenClaw replies in-thread.
+- Thread replies: if the inbound message is in a thread, ClawWorks replies in-thread.
 - Rich text: Markdown formatting (bold, italic, code, headers, lists) is converted to Tlon's native format.
 - Images: URLs are uploaded to Tlon storage and embedded as image blocks.
 

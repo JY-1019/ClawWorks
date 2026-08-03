@@ -150,7 +150,7 @@ Legacy `tools.web.fetch.firecrawl.*` config is auto-migrated by `openclaw doctor
 Current runtime behavior:
 
 - `tools.web.fetch.provider` selects the fetch fallback provider explicitly.
-- If `provider` is omitted, OpenClaw auto-detects the first ready web-fetch
+- If `provider` is omitted, ClawWorks auto-detects the first ready web-fetch
   provider from configured credentials. Non-sandboxed `web_fetch` can use
   installed plugins that declare `contracts.webFetchProviders` and register a
   matching provider at runtime. The official Firecrawl plugin provides this
@@ -166,7 +166,7 @@ Current runtime behavior:
 If your deployment requires `web_fetch` to go through a trusted outbound
 HTTP(S) proxy, set `tools.web.fetch.useTrustedEnvProxy: true`.
 
-In this mode, OpenClaw still applies hostname-based SSRF checks before sending
+In this mode, ClawWorks still applies hostname-based SSRF checks before sending
 the request, but it lets the proxy resolve DNS instead of doing local DNS
 pinning. Enable this only when the proxy is operator-controlled and enforces
 outbound policy after DNS resolution.

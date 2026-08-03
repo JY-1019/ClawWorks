@@ -7,7 +7,7 @@ read_when:
 title: "Gemini search"
 ---
 
-OpenClaw supports Gemini models with built-in
+ClawWorks supports Gemini models with built-in
 [Google Search grounding](https://ai.google.dev/gemini-api/docs/grounding),
 which returns AI-synthesized answers backed by live Google Search results with
 citations.

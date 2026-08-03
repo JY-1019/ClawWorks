@@ -1,8 +1,8 @@
 ---
-summary: "Use DeepInfra's unified API to access the most popular open source and frontier models in OpenClaw"
+summary: "Use DeepInfra's unified API to access the most popular open source and frontier models in ClawWorks"
 read_when:
   - You want a single API key for the top open source LLMs
-  - You want to run models via DeepInfra's API in OpenClaw
+  - You want to run models via DeepInfra's API in ClawWorks
 title: "DeepInfra"
 ---
 
@@ -49,15 +49,15 @@ export DEEPINFRA_API_KEY="<your-deepinfra-api-key>" # pragma: allowlist secret
 }
 ```
 
-## Supported OpenClaw surfaces
+## Supported ClawWorks surfaces
 
 The plugin registers all DeepInfra surfaces that match current
-OpenClaw provider contracts. Chat, image generation, and video generation
+ClawWorks provider contracts. Chat, image generation, and video generation
 refresh their model catalogues live from `/v1/openai/models?sort_by=openclaw&filter=with_meta`
 when `DEEPINFRA_API_KEY` is configured; the other surfaces use the curated
 static defaults below.
 
-| Surface                  | Default model                                                                                         | OpenClaw config/tool                                     |
+| Surface                  | Default model                                                                                         | ClawWorks config/tool                                    |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Chat / model provider    | first chat-tagged entry from live catalog (manifest fallback `deepseek-ai/DeepSeek-V4-Flash`)         | `agents.defaults.model`                                  |
 | Image generation/editing | first `image-gen`-tagged entry from live catalog (static fallback `black-forest-labs/FLUX-1-schnell`) | `image_generate`, `agents.defaults.imageGenerationModel` |
@@ -68,12 +68,12 @@ static defaults below.
 | Memory embeddings        | `BAAI/bge-m3`                                                                                         | `agents.defaults.memorySearch.provider: "deepinfra"`     |
 
 DeepInfra also exposes reranking, classification, object-detection, and other
-native model types. OpenClaw does not currently have first-class provider
+native model types. ClawWorks does not currently have first-class provider
 contracts for those categories, so this plugin does not register them yet.
 
 ## Available models
 
-OpenClaw dynamically discovers available DeepInfra models at startup. Use
+ClawWorks dynamically discovers available DeepInfra models at startup. Use
 `/models deepinfra` to see the full list of models available.
 
 Any model available on [DeepInfra.com](https://deepinfra.com/) can be used with the `deepinfra/` prefix:

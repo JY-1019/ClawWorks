@@ -1,13 +1,13 @@
 ---
-summary: "PixVerse video generation setup in OpenClaw"
+summary: "PixVerse video generation setup in ClawWorks"
 title: "PixVerse"
 read_when:
-  - You want to use PixVerse video generation in OpenClaw
+  - You want to use PixVerse video generation in ClawWorks
   - You need the PixVerse API key/env setup
   - You want to make PixVerse the default video provider
 ---
 
-OpenClaw provides `pixverse` as an official external plugin for hosted PixVerse video generation. The plugin registers the `pixverse` provider against the `videoGenerationProviders` contract.
+ClawWorks provides `pixverse` as an official external plugin for hosted PixVerse video generation. The plugin registers the `pixverse` provider against the `videoGenerationProviders` contract.
 
 | Property           | Value                                                                |
 | ------------------ | -------------------------------------------------------------------- |
@@ -52,7 +52,7 @@ OpenClaw provides `pixverse` as an official external plugin for hosted PixVerse 
 
 ## Supported modes and models
 
-The provider exposes PixVerse generation models through OpenClaw's shared video tool.
+The provider exposes PixVerse generation models through ClawWorks's shared video tool.
 
 | Mode           | Models               | Reference input         |
 | -------------- | -------------------- | ----------------------- |
@@ -69,7 +69,7 @@ Local image references are uploaded to PixVerse before the image-to-video reques
 | Generated audio | `audio: true`                                                               |
 
 <Note>
-PixVerse image template generation is not exposed through `image_generate` yet. That API is template-id driven, while OpenClaw's shared image-generation contract does not currently have a PixVerse-specific typed option bag.
+PixVerse image template generation is not exposed through `image_generate` yet. That API is template-id driven, while ClawWorks's shared image-generation contract does not currently have a PixVerse-specific typed option bag.
 </Note>
 
 ## Provider options
@@ -103,7 +103,7 @@ The video provider accepts these optional provider-specific keys:
 
 <AccordionGroup>
   <Accordion title="API region">
-    OpenClaw defaults to the international PixVerse API. Set `models.providers.pixverse.region`
+    ClawWorks defaults to the international PixVerse API. Set `models.providers.pixverse.region`
     manually when your key belongs to a specific PixVerse platform region, or use
     `openclaw onboard --auth-choice pixverse-api-key` to choose one in the setup wizard:
 
@@ -147,7 +147,7 @@ The video provider accepts these optional provider-specific keys:
   </Accordion>
 
   <Accordion title="Task polling">
-    PixVerse returns a `video_id` from the generation request. OpenClaw polls
+    PixVerse returns a `video_id` from the generation request. ClawWorks polls
     `/openapi/v2/video/result/{video_id}` until the task succeeds, fails,
     or times out.
   </Accordion>

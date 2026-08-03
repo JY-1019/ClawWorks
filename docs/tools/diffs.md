@@ -204,7 +204,7 @@ All fields are optional unless noted.
 
 ## Syntax highlighting
 
-OpenClaw includes syntax highlighting for common source, config, and documentation languages:
+ClawWorks includes syntax highlighting for common source, config, and documentation languages:
 
 `javascript`, `typescript`, `tsx`, `jsx`, `json`, `markdown`, `yaml`, `css`, `html`, `sh`, `python`, `go`, `rust`, `java`, `c`, `cpp`, `csharp`, `php`, `sql`, `docker`, `ruby`, `swift`, `kotlin`, `r`, `dart`, `lua`, `powershell`, `xml`, and `toml`.
 
@@ -216,7 +216,7 @@ Install the Diff Viewer Language Pack plugin to highlight other languages:
 openclaw plugins install clawhub:@openclaw/diffs-language-pack
 ```
 
-With the language pack available, OpenClaw can highlight many more languages. If the pack is not installed, files outside the default list still render as readable plain text. Examples include Astro, Vue, Svelte, MDX, GraphQL, Terraform/HCL, Nix, Clojure, Elixir, Haskell, OCaml, Scala, Zig, Solidity, Verilog/VHDL, Fortran, MATLAB, LaTeX, Mermaid, Sass/Less/SCSS, Nginx, Apache, CSV, dotenv, INI, and diff files.
+With the language pack available, ClawWorks can highlight many more languages. If the pack is not installed, files outside the default list still render as readable plain text. Examples include Astro, Vue, Svelte, MDX, GraphQL, Terraform/HCL, Nix, Clojure, Elixir, Haskell, OCaml, Scala, Zig, Solidity, Verilog/VHDL, Fortran, MATLAB, LaTeX, Mermaid, Sass/Less/SCSS, Nginx, Apache, CSV, dotenv, INI, and diff files.
 
 See [Diffs Language Pack plugin](/plugins/reference/diffs-language-pack) for details and [Shiki languages](https://shiki.style/languages) for Shiki's upstream language and alias catalog.
 
@@ -453,7 +453,7 @@ Resolution order:
 
 <Steps>
   <Step title="Config">
-    `browser.executablePath` in OpenClaw config.
+    `browser.executablePath` in ClawWorks config.
   </Step>
   <Step title="Environment variables">
     - `OPENCLAW_BROWSER_EXECUTABLE_PATH`

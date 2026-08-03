@@ -88,7 +88,7 @@ removes the marker from the credential store.
 
 - Probe targets can come from auth profiles, environment credentials, or
   `models.json`.
-- If a provider has credentials but OpenClaw cannot resolve a probeable model
+- If a provider has credentials but ClawWorks cannot resolve a probeable model
   candidate for it, `models status --probe` reports `status: no_model` with
   `reasonCode: no_model`.
 

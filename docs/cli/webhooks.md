@@ -1,7 +1,7 @@
 ---
 summary: "CLI reference for `openclaw webhooks` (Gmail Pub/Sub setup and runner)"
 read_when:
-  - You want to wire Gmail Pub/Sub events into OpenClaw
+  - You want to wire Gmail Pub/Sub events into ClawWorks
   - You need the full flag list and default values
 title: "Webhooks"
 ---
@@ -17,14 +17,14 @@ openclaw webhooks gmail setup --account <email> [...]
 openclaw webhooks gmail run   [--account <email>] [...]
 ```
 
-| Subcommand    | Description                                                                                  |
-| ------------- | -------------------------------------------------------------------------------------------- |
-| `gmail setup` | Configure Gmail watch, Pub/Sub topic/subscription, and the OpenClaw webhook delivery target. |
-| `gmail run`   | Run `gog watch serve` plus the watch auto-renew loop.                                        |
+| Subcommand    | Description                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `gmail setup` | Configure Gmail watch, Pub/Sub topic/subscription, and the ClawWorks webhook delivery target. |
+| `gmail run`   | Run `gog watch serve` plus the watch auto-renew loop.                                         |
 
 ## `webhooks gmail setup`
 
-Configure Gmail watch, Pub/Sub, and OpenClaw webhook delivery.
+Configure Gmail watch, Pub/Sub, and ClawWorks webhook delivery.
 
 ```bash
 openclaw webhooks gmail setup --account you@example.com
@@ -48,12 +48,12 @@ openclaw webhooks gmail setup --account you@example.com --hook-url https://gatew
 | `--label <label>`       | `INBOX`                | Gmail label to watch.                                |
 | `--push-endpoint <url>` | (none)                 | Explicit Pub/Sub push endpoint. Overrides Tailscale. |
 
-### OpenClaw delivery options
+### ClawWorks delivery options
 
 | Flag                   | Default | Description                                |
 | ---------------------- | ------- | ------------------------------------------ |
-| `--hook-url <url>`     | (none)  | OpenClaw webhook URL.                      |
-| `--hook-token <token>` | (none)  | OpenClaw webhook token.                    |
+| `--hook-url <url>`     | (none)  | ClawWorks webhook URL.                     |
+| `--hook-token <token>` | (none)  | ClawWorks webhook token.                   |
 | `--push-token <token>` | (none)  | Push token forwarded to `gog watch serve`. |
 
 ### `gog watch serve` options
@@ -89,18 +89,18 @@ Run `gog watch serve` plus the watch auto-renew loop in the foreground.
 openclaw webhooks gmail run --account you@example.com
 ```
 
-`run` accepts the same `gog watch serve`, OpenClaw delivery, Pub/Sub, and Tailscale flags as `setup`, except:
+`run` accepts the same `gog watch serve`, ClawWorks delivery, Pub/Sub, and Tailscale flags as `setup`, except:
 
 - `--account` is **optional** on `run` (it falls back to the configured account).
 - `run` does **not** accept `--project`, `--push-endpoint`, or `--json`.
 - `run` flags have no built-in defaults; missing values fall back to the values written by `setup`.
 
-| Category          | Flags                                                                            |
-| ----------------- | -------------------------------------------------------------------------------- |
-| Pub/Sub           | `--account`, `--topic`, `--subscription`, `--label`                              |
-| OpenClaw delivery | `--hook-url`, `--hook-token`, `--push-token`                                     |
-| `gog watch serve` | `--bind`, `--port`, `--path`, `--include-body`, `--max-bytes`, `--renew-minutes` |
-| Tailscale         | `--tailscale`, `--tailscale-path`, `--tailscale-target`                          |
+| Category           | Flags                                                                            |
+| ------------------ | -------------------------------------------------------------------------------- |
+| Pub/Sub            | `--account`, `--topic`, `--subscription`, `--label`                              |
+| ClawWorks delivery | `--hook-url`, `--hook-token`, `--push-token`                                     |
+| `gog watch serve`  | `--bind`, `--port`, `--path`, `--include-body`, `--max-bytes`, `--renew-minutes` |
+| Tailscale          | `--tailscale`, `--tailscale-path`, `--tailscale-target`                          |
 
 <Note>
 For `run`, the `--topic` value is the full Pub/Sub topic path (`projects/.../topics/...`), not just the short topic name.

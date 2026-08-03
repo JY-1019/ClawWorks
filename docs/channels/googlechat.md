@@ -55,7 +55,7 @@ openclaw plugins install ./path/to/local/googlechat-plugin
    - Look for the **App status** section (usually near the top or bottom after saving).
    - Change the status to **Live - available to users**.
    - Click **Save** again.
-7. Configure OpenClaw with the service account path + webhook audience:
+7. Configure ClawWorks with the service account path + webhook audience:
    - Env: `GOOGLE_CHAT_SERVICE_ACCOUNT_FILE=/path/to/service-account.json`
    - Or config: `channels.googlechat.serviceAccountFile: "/path/to/service-account.json"`.
 8. Set the webhook audience type + value (matches your Chat app config).
@@ -75,7 +75,7 @@ Once the gateway is running and your email is added to the visibility list:
 
 ## Public URL (Webhook-only)
 
-Google Chat webhooks require a public HTTPS endpoint. For security, **only expose the `/googlechat` path** to the internet. Keep the OpenClaw dashboard and other sensitive endpoints on your private network.
+Google Chat webhooks require a public HTTPS endpoint. For security, **only expose the `/googlechat` path** to the internet. Keep the ClawWorks dashboard and other sensitive endpoints on your private network.
 
 ### Option A: Tailscale Funnel (Recommended)
 
@@ -139,7 +139,7 @@ your-domain.com {
 }
 ```
 
-With this config, any request to `your-domain.com/` will be ignored or returned as 404, while `your-domain.com/googlechat` is safely routed to OpenClaw.
+With this config, any request to `your-domain.com/` will be ignored or returned as 404, while `your-domain.com/googlechat` is safely routed to ClawWorks.
 
 ### Option C: Cloudflare Tunnel
 
@@ -151,9 +151,9 @@ Configure your tunnel's ingress rules to only route the webhook path:
 ## How it works
 
 1. Google Chat sends webhook POSTs to the gateway. Each request includes an `Authorization: Bearer <token>` header.
-   - OpenClaw verifies bearer auth before reading/parsing full webhook bodies when the header is present.
+   - ClawWorks verifies bearer auth before reading/parsing full webhook bodies when the header is present.
    - Google Workspace Add-on requests that carry `authorizationEventObject.systemIdToken` in the body are supported via a stricter pre-auth body budget.
-2. OpenClaw verifies the token against the configured `audienceType` + `audience`:
+2. ClawWorks verifies the token against the configured `audienceType` + `audience`:
    - `audienceType: "app-url"` → audience is your HTTPS webhook URL.
    - `audienceType: "project-number"` → audience is the Cloud project number.
 3. Messages are routed by space:
@@ -162,7 +162,7 @@ Configure your tunnel's ingress rules to only route the webhook path:
 4. DM access is pairing by default. Unknown senders receive a pairing code; approve with:
    - `openclaw pairing approve googlechat <code>`
 5. Group spaces require @-mention by default. Use `botUser` if mention detection needs the app's user name.
-6. When an exec or plugin approval request starts from Google Chat and a stable `users/<id>` approver is configured, OpenClaw posts a native Google Chat approval card in the originating space or thread. The card buttons use opaque callback tokens, and the manual `/approve <id> <decision>` prompt is only shown when native approval delivery is unavailable.
+6. When an exec or plugin approval request starts from Google Chat and a stable `users/<id>` approver is configured, ClawWorks posts a native Google Chat approval card in the originating space or thread. The card buttons use opaque callback tokens, and the manual `/approve <id> <decision>` prompt is only shown when native approval delivery is unavailable.
 
 ## Targets
 

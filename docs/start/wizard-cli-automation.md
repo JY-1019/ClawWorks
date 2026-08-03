@@ -1,5 +1,5 @@
 ---
-summary: "Scripted onboarding and agent setup for the OpenClaw CLI"
+summary: "Scripted onboarding and agent setup for the ClawWorks CLI"
 read_when:
   - You are automating onboarding in scripts or CI
   - You need non-interactive examples for specific providers
@@ -172,7 +172,7 @@ openclaw onboard --non-interactive \
     ```
 
     `--custom-api-key` is optional. If omitted, onboarding checks `CUSTOM_API_KEY`.
-    OpenClaw marks common vision model IDs as image-capable automatically. Add `--custom-image-input` for unknown custom vision IDs, or `--custom-text-input` to force text-only metadata.
+    ClawWorks marks common vision model IDs as image-capable automatically. Add `--custom-image-input` for unknown custom vision IDs, or `--custom-text-input` to force text-only metadata.
 
     Ref-mode variant:
 
@@ -196,7 +196,7 @@ openclaw onboard --non-interactive \
   </Accordion>
 </AccordionGroup>
 
-Anthropic setup-token remains available as a supported onboarding token path, but OpenClaw now prefers Claude CLI reuse when available.
+Anthropic setup-token remains available as a supported onboarding token path, but ClawWorks now prefers Claude CLI reuse when available.
 For production, prefer an Anthropic API key.
 
 ## Add another agent

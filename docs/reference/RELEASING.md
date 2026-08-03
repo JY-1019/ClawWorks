@@ -7,7 +7,7 @@ read_when:
   - Looking for version naming and cadence
 ---
 
-OpenClaw has three public release lanes:
+ClawWorks has three public release lanes:
 
 - stable: tagged releases that publish to npm `beta` by default, or to npm `latest` when explicitly requested
 - beta: prerelease tags that publish to npm `beta`
@@ -44,7 +44,7 @@ OpenClaw has three public release lanes:
 - `latest` means the current promoted stable npm release
 - `beta` means the current beta install target
 - Stable and stable correction releases publish to npm `beta` by default; release operators can target `latest` explicitly, or promote a vetted beta build later
-- Every stable OpenClaw release ships the npm package, macOS app, and signed
+- Every stable ClawWorks release ships the npm package, macOS app, and signed
   Windows Hub installers together; beta releases normally validate and publish
   the npm/package path first, with native app build/sign/notarize/promote
   reserved for stable unless explicitly requested
@@ -111,9 +111,9 @@ the maintainer-only release runbook.
    `OpenClaw Release Publish` command only after the evidence bundle is green.
    `OpenClaw Release Publish` dispatches the selected or all-publishable plugin
    packages to npm and the same set to ClawHub in parallel, and then promotes the
-   prepared OpenClaw npm preflight artifact with the matching dist-tag as soon as
+   prepared ClawWorks npm preflight artifact with the matching dist-tag as soon as
    plugin npm publish succeeds.
-   After the OpenClaw npm publish child succeeds, it creates or updates the
+   After the ClawWorks npm publish child succeeds, it creates or updates the
    matching GitHub release/prerelease page from the complete matching
    `CHANGELOG.md` section. Stable releases published to npm `latest` become the
    GitHub latest release; stable maintenance releases kept on npm `beta` are
@@ -123,8 +123,8 @@ the maintainer-only release runbook.
    response. The publish workflow prints child run IDs immediately, auto-approves
    release environment gates the workflow token is allowed to approve, summarizes
    failed child jobs with log tails, closes out the GitHub release and dependency
-   evidence as soon as OpenClaw npm publish succeeds, waits for ClawHub whenever
-   OpenClaw npm is being published, then runs `pnpm release:verify-beta` and
+   evidence as soon as ClawWorks npm publish succeeds, waits for ClawHub whenever
+   ClawWorks npm is being published, then runs `pnpm release:verify-beta` and
    uploads postpublish evidence for the GitHub release, npm package, selected
    plugin npm packages, selected ClawHub packages, child workflow run IDs, and
    optional NPM Telegram run ID. The ClawHub path retries transient CLI
@@ -146,7 +146,7 @@ the maintainer-only release runbook.
     direct push, it opens or updates an appcast PR. Stable Windows Hub
     readiness requires the signed `OpenClawCompanion-Setup-x64.exe`,
     `OpenClawCompanion-Setup-arm64.exe`, and
-    `OpenClawCompanion-SHA256SUMS.txt` assets on the OpenClaw GitHub release.
+    `OpenClawCompanion-SHA256SUMS.txt` assets on the ClawWorks GitHub release.
     Pass the exact signed `openclaw/openclaw-windows-node` release tag as
     `windows_node_tag` and its candidate-approved installer digest map as
     `windows_node_installer_digests`; `OpenClaw Release Publish` keeps the
@@ -218,10 +218,10 @@ release state.
   guards in check mode and reports every generated drift failure it finds in one
   pass before running package release checks.
 - Plugin version sync updates official plugin package versions and existing
-  `openclaw.compat.pluginApi` floors to the OpenClaw release version by
+  `openclaw.compat.pluginApi` floors to the ClawWorks release version by
   default. Treat that field as the plugin SDK/runtime API floor, not just a copy
   of the package version: for plugin-only releases that intentionally remain
-  compatible with older OpenClaw hosts, keep the floor at the oldest supported
+  compatible with older ClawWorks hosts, keep the floor at the oldest supported
   host API and document that choice in the plugin release proof.
 - Run the manual `Full Release Validation` workflow before release approval to
   kick off all pre-release test boxes from one entrypoint. It accepts a branch,
@@ -304,11 +304,11 @@ release state.
   to the GitHub release as `openclaw-<version>-dependency-evidence.zip`.
 - Run `OpenClaw Release Publish` for the mutating publish sequence after the
   tag exists. Dispatch it from `release/YYYY.M.PATCH` (or `main` when publishing a
-  main-reachable tag), pass the release tag, successful OpenClaw npm
+  main-reachable tag), pass the release tag, successful ClawWorks npm
   `preflight_run_id`, and successful `full_release_validation_run_id`, and keep
   the default plugin publish scope `all-publishable` unless you are deliberately
   running a focused repair. The workflow serializes plugin npm publish, plugin
-  ClawHub publish, and OpenClaw npm publish so the core package is not published
+  ClawHub publish, and ClawWorks npm publish so the core package is not published
   before its externalized plugins.
 - Stable `OpenClaw Release Publish` requires an exact `windows_node_tag` after
   the matching non-prerelease `openclaw/openclaw-windows-node` release exists.
@@ -316,20 +316,20 @@ release state.
   Before dispatching any publish child, it verifies that source release is
   published, non-prerelease, contains the required x64/ARM64 installers, and
   still matches that approved map. It then dispatches `Windows Node Release`
-  while the OpenClaw release is still a draft, carrying the pinned installer
+  while the ClawWorks release is still a draft, carrying the pinned installer
   digest map unchanged. The child
   workflow downloads the signed Windows Hub installers from that exact tag,
   matches them against the pinned digests, verifies their Authenticode
-  signatures use the expected OpenClaw Foundation signer on a Windows runner,
+  signatures use the expected ClawWorks Foundation signer on a Windows runner,
   writes a SHA-256 manifest, and uploads the installers plus manifest onto the
-  canonical OpenClaw GitHub release, then re-downloads the promoted assets and
+  canonical ClawWorks GitHub release, then re-downloads the promoted assets and
   verifies the manifest membership and hashes. The parent verifies the current
   x64, ARM64, and checksum asset contract before publication. Direct recovery
   rejects unexpected `OpenClawCompanion-*` asset names before replacing the
   expected contract assets with the pinned source bytes. Manually dispatch
   `Windows Node Release` only for recovery, and always pass an exact tag, never
   `latest`, plus the explicit `expected_installer_digests` JSON map from the
-  approved source release. Website download links should target exact OpenClaw
+  approved source release. Website download links should target exact ClawWorks
   release asset URLs for the current stable release, or
   `releases/latest/download/...` only after verifying GitHub's latest redirect
   points at that same release; do not link only to the companion repo release
@@ -353,7 +353,7 @@ release state.
 Validation` or from the `main`/release workflow ref so workflow logic and
   secrets stay controlled
 - `OpenClaw Release Checks` accepts a branch, tag, or full commit SHA as long
-  as the resolved commit is reachable from an OpenClaw branch or release tag
+  as the resolved commit is reachable from a ClawWorks branch or release tag
 - `OpenClaw NPM Release` validation-only preflight also accepts the current
   full 40-character workflow-branch commit SHA without requiring a pushed tag
 - That SHA path is validation-only and cannot be promoted into a real publish
@@ -559,7 +559,7 @@ Focused `npm-telegram` reruns require `release_package_spec` or
 E2E inside Package Acceptance. Focused
 cross-OS reruns can add `cross_os_suite_filter=windows/packaged-upgrade` or
 another OS/suite filter. QA release-check failures block normal release
-validation, including required OpenClaw dynamic tool drift in the standard tier.
+validation, including required ClawWorks dynamic tool drift in the standard tier.
 Tideclaw alpha runs may still treat non-package-safety release-check lanes as
 advisory. When `live_suite_filter` explicitly requests a gated QA live lane such
 as Discord, WhatsApp, or Slack, the matching
@@ -665,7 +665,7 @@ workflow harness ref separate from the package source ref.
 
 Supported candidate sources:
 
-- `source=npm`: `openclaw@beta`, `openclaw@latest`, or an exact OpenClaw release
+- `source=npm`: `openclaw@beta`, `openclaw@latest`, or an exact ClawWorks release
   version
 - `source=ref`: pack a trusted `package_ref` branch, tag, or full commit SHA
   with the selected `workflow_ref` harness
@@ -831,11 +831,11 @@ package cannot ship without every publishable official plugin, including
 - `full_release_validation_run_id`: successful `Full Release Validation` run
   id; required when `publish_openclaw_npm=true`
 - `windows_node_tag`: exact non-prerelease `openclaw/openclaw-windows-node`
-  release tag; required for stable OpenClaw publish
+  release tag; required for stable ClawWorks publish
 - `windows_node_installer_digests`: candidate-approved compact JSON map of the
   current Windows installer names to their pinned `sha256:` digests; required
-  for stable OpenClaw publish
-- `npm_dist_tag`: npm target tag for the OpenClaw package
+  for stable ClawWorks publish
+- `npm_dist_tag`: npm target tag for the ClawWorks package
 - `plugin_publish_scope`: defaults to `all-publishable`; use `selected` only
   for focused plugin-only repair work with `publish_openclaw_npm=false`
 - `plugins`: comma-separated `@openclaw/*` package names when
@@ -849,7 +849,7 @@ package cannot ship without every publishable official plugin, including
 `OpenClaw Release Checks` accepts these operator-controlled inputs:
 
 - `ref`: branch, tag, or full commit SHA to validate. Secret-bearing checks
-  require the resolved commit to be reachable from an OpenClaw branch or
+  require the resolved commit to be reachable from a ClawWorks branch or
   release tag.
 - `run_release_soak`: opt into exhaustive live/E2E, Docker release-path, and
   all-since upgrade-survivor soak for beta release checks. It is forced on by
@@ -890,7 +890,7 @@ When cutting a stable npm release:
    the selected `windows_node_tag`, its saved `windows_node_installer_digests`,
    the saved `preflight_run_id`, and the saved `full_release_validation_run_id`;
    it publishes externalized plugins to npm and ClawHub before promoting the
-   OpenClaw npm package
+   ClawWorks npm package
 8. If the release landed on `beta`, use the
    `openclaw/releases/.github/workflows/openclaw-npm-dist-tags.yml`
    workflow to promote that stable version from `beta` to `latest`

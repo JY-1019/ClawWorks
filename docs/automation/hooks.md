@@ -8,16 +8,16 @@ title: "Hooks"
 
 Hooks are small scripts that run when something happens inside the Gateway. They can be discovered from directories and inspected with `openclaw hooks`. The Gateway loads internal hooks only after you enable hooks or configure at least one hook entry, hook pack, legacy handler, or extra hook directory.
 
-There are two kinds of hooks in OpenClaw:
+There are two kinds of hooks in ClawWorks:
 
 - **Internal hooks** (this page): run inside the Gateway when agent events fire, like `/new`, `/reset`, `/stop`, or lifecycle events.
-- **Webhooks**: external HTTP endpoints that let other systems trigger work in OpenClaw. See [Webhooks](/automation/cron-jobs#webhooks).
+- **Webhooks**: external HTTP endpoints that let other systems trigger work in ClawWorks. See [Webhooks](/automation/cron-jobs#webhooks).
 
 Hooks can also be bundled inside plugins. `openclaw hooks list` shows both standalone hooks and plugin-managed hooks.
 
 ## Choose the right surface
 
-OpenClaw has several extension surfaces that look similar but solve different problems:
+ClawWorks has several extension surfaces that look similar but solve different problems:
 
 | If you want to...                                                                                                     | Use...                                | Why                                                                                           |
 | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -183,7 +183,7 @@ Between the `gateway:shutdown` (or `gateway:pre-restart`) event and the rest of 
 
 Hooks are discovered from these directories, in order of increasing override precedence:
 
-1. **Bundled hooks**: shipped with OpenClaw
+1. **Bundled hooks**: shipped with ClawWorks
 2. **Plugin hooks**: hooks bundled inside installed plugins
 3. **Managed hooks**: `~/.openclaw/hooks/` (user-installed, shared across workspaces). Extra directories from `hooks.internal.load.extraDirs` share this precedence.
 4. **Workspace hooks**: `<workspace>/hooks/` (per-agent, disabled by default until explicitly enabled)
@@ -255,7 +255,7 @@ Logs every slash command to `~/.openclaw/logs/commands.log`.
 
 ### compaction-notifier details
 
-Sends short status messages into the current conversation when OpenClaw starts and finishes compacting the session transcript. This makes long turns less confusing on chat surfaces because the user can see that the assistant is summarizing context and will continue after compaction.
+Sends short status messages into the current conversation when ClawWorks starts and finishes compacting the session transcript. This makes long turns less confusing on chat surfaces because the user can see that the assistant is summarizing context and will continue after compaction.
 
 <a id="boot-md"></a>
 

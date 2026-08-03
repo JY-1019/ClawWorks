@@ -1,47 +1,47 @@
 ---
-summary: "Expose OpenClaw channel conversations over MCP and manage saved MCP server definitions"
+summary: "Expose ClawWorks channel conversations over MCP and manage saved MCP server definitions"
 read_when:
-  - Connecting Codex, Claude Code, or another MCP client to OpenClaw-backed channels
+  - Connecting Codex, Claude Code, or another MCP client to ClawWorks-backed channels
   - Running `openclaw mcp serve`
-  - Managing OpenClaw-saved MCP server definitions
+  - Managing ClawWorks-saved MCP server definitions
 title: "MCP"
 sidebarTitle: "MCP"
 ---
 
 `openclaw mcp` has two jobs:
 
-- run OpenClaw as an MCP server with `openclaw mcp serve`
-- manage OpenClaw-managed outbound MCP server definitions with `list`, `show`, `status`, `doctor`, `probe`, `add`, `set`, `configure`, `tools`, `login`, `logout`, `reload`, and `unset`
+- run ClawWorks as an MCP server with `openclaw mcp serve`
+- manage ClawWorks-managed outbound MCP server definitions with `list`, `show`, `status`, `doctor`, `probe`, `add`, `set`, `configure`, `tools`, `login`, `logout`, `reload`, and `unset`
 
 In other words:
 
-- `serve` is OpenClaw acting as an MCP server
-- the other subcommands are OpenClaw acting as an MCP client-side registry for MCP servers its runtimes may consume later
+- `serve` is ClawWorks acting as an MCP server
+- the other subcommands are ClawWorks acting as an MCP client-side registry for MCP servers its runtimes may consume later
 
 <Note>
-  `list`, `show`, `set`, and `unset` only read and write OpenClaw-managed `mcp.servers` entries in OpenClaw config. They do not include mcporter servers from `config/mcporter.json`; use `mcporter list` for that registry.
+  `list`, `show`, `set`, and `unset` only read and write ClawWorks-managed `mcp.servers` entries in ClawWorks config. They do not include mcporter servers from `config/mcporter.json`; use `mcporter list` for that registry.
 </Note>
 
-Use [`openclaw acp`](/cli/acp) when OpenClaw should host a coding harness session itself and route that runtime through ACP.
+Use [`openclaw acp`](/cli/acp) when ClawWorks should host a coding harness session itself and route that runtime through ACP.
 
 ## Choose the right MCP path
 
-OpenClaw has several MCP surfaces. Pick the one that matches who owns the agent runtime and who owns the tools.
+ClawWorks has several MCP surfaces. Pick the one that matches who owns the agent runtime and who owns the tools.
 
-| Goal                                                                | Use                                                                  | Why                                                                                                             |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Let an external MCP client read/send OpenClaw channel conversations | `openclaw mcp serve`                                                 | OpenClaw is the MCP server and exposes Gateway-backed conversations over stdio.                                 |
-| Save third-party MCP servers for OpenClaw-managed agent runs        | `openclaw mcp add`, `set`, `configure`, `tools`, `login`             | OpenClaw is the MCP client-side registry and later projects those servers into eligible runtimes.               |
-| Check a saved server without running an agent turn                  | `openclaw mcp status`, `doctor`, `probe`                             | `status` and `doctor` inspect config; `probe` opens a live MCP connection and lists capabilities.               |
-| Edit MCP config from a browser                                      | Control UI `/mcp`                                                    | The page shows inventory, enablement, OAuth/filter summaries, command hints, and a scoped `mcp` editor.         |
-| Give Codex app-server a scoped native MCP server                    | `mcp.servers.<name>.codex`                                           | The `codex` block only affects Codex app-server thread projection and is stripped before native config handoff. |
-| Run ACP-hosted harness sessions                                     | [`openclaw acp`](/cli/acp) and [ACP Agents](/tools/acp-agents-setup) | ACP bridge mode does not accept per-session MCP server injection; configure gateway/plugin bridges instead.     |
+| Goal                                                                 | Use                                                                  | Why                                                                                                             |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Let an external MCP client read/send ClawWorks channel conversations | `openclaw mcp serve`                                                 | ClawWorks is the MCP server and exposes Gateway-backed conversations over stdio.                                |
+| Save third-party MCP servers for ClawWorks-managed agent runs        | `openclaw mcp add`, `set`, `configure`, `tools`, `login`             | ClawWorks is the MCP client-side registry and later projects those servers into eligible runtimes.              |
+| Check a saved server without running an agent turn                   | `openclaw mcp status`, `doctor`, `probe`                             | `status` and `doctor` inspect config; `probe` opens a live MCP connection and lists capabilities.               |
+| Edit MCP config from a browser                                       | Control UI `/mcp`                                                    | The page shows inventory, enablement, OAuth/filter summaries, command hints, and a scoped `mcp` editor.         |
+| Give Codex app-server a scoped native MCP server                     | `mcp.servers.<name>.codex`                                           | The `codex` block only affects Codex app-server thread projection and is stripped before native config handoff. |
+| Run ACP-hosted harness sessions                                      | [`openclaw acp`](/cli/acp) and [ACP Agents](/tools/acp-agents-setup) | ACP bridge mode does not accept per-session MCP server injection; configure gateway/plugin bridges instead.     |
 
 <Tip>
-If you are not sure which path you need, start with `openclaw mcp status --verbose`. It shows what OpenClaw has saved without starting any MCP servers.
+If you are not sure which path you need, start with `openclaw mcp status --verbose`. It shows what ClawWorks has saved without starting any MCP servers.
 </Tip>
 
-## OpenClaw as an MCP server
+## ClawWorks as an MCP server
 
 This is the `openclaw mcp serve` path.
 
@@ -49,22 +49,22 @@ This is the `openclaw mcp serve` path.
 
 Use `openclaw mcp serve` when:
 
-- Codex, Claude Code, or another MCP client should talk directly to OpenClaw-backed channel conversations
-- you already have a local or remote OpenClaw Gateway with routed sessions
-- you want one MCP server that works across OpenClaw's channel backends instead of running separate per-channel bridges
+- Codex, Claude Code, or another MCP client should talk directly to ClawWorks-backed channel conversations
+- you already have a local or remote ClawWorks Gateway with routed sessions
+- you want one MCP server that works across ClawWorks's channel backends instead of running separate per-channel bridges
 
-Use [`openclaw acp`](/cli/acp) instead when OpenClaw should host the coding runtime itself and keep the agent session inside OpenClaw.
+Use [`openclaw acp`](/cli/acp) instead when ClawWorks should host the coding runtime itself and keep the agent session inside ClawWorks.
 
 ### How it works
 
-`openclaw mcp serve` starts a stdio MCP server. The MCP client owns that process. While the client keeps the stdio session open, the bridge connects to a local or remote OpenClaw Gateway over WebSocket and exposes routed channel conversations over MCP.
+`openclaw mcp serve` starts a stdio MCP server. The MCP client owns that process. While the client keeps the stdio session open, the bridge connects to a local or remote ClawWorks Gateway over WebSocket and exposes routed channel conversations over MCP.
 
 <Steps>
   <Step title="Client spawns the bridge">
     The MCP client spawns `openclaw mcp serve`.
   </Step>
   <Step title="Bridge connects to Gateway">
-    The bridge connects to the OpenClaw Gateway over WebSocket.
+    The bridge connects to the ClawWorks Gateway over WebSocket.
   </Step>
   <Step title="Sessions become MCP conversations">
     Routed sessions become MCP conversations and transcript/history tools.
@@ -84,7 +84,7 @@ Use [`openclaw acp`](/cli/acp) instead when OpenClaw should host the coding runt
     - Claude push notifications only exist while the MCP session is alive
     - when the client disconnects, the bridge exits and the live queue is gone
     - one-shot agent entry points such as `openclaw agent` and `openclaw infer model run` retire any bundled MCP runtimes they open when the reply completes, so repeated scripted runs do not accumulate stdio MCP child processes
-    - stdio MCP servers launched by OpenClaw (bundled or user-configured) are torn down as a process tree on shutdown, so child subprocesses started by the server do not survive after the parent stdio client exits
+    - stdio MCP servers launched by ClawWorks (bundled or user-configured) are torn down as a process tree on shutdown, so child subprocesses started by the server do not survive after the parent stdio client exits
     - deleting or resetting a session disposes that session's MCP clients through the shared runtime cleanup path, so there are no lingering stdio connections tied to a removed session
 
   </Accordion>
@@ -109,7 +109,7 @@ Today, `auto` behaves the same as `on`. There is no client capability detection 
 
 ### What `serve` exposes
 
-The bridge uses existing Gateway session route metadata to expose channel-backed conversations. A conversation appears when OpenClaw already has session state with a known route such as:
+The bridge uses existing Gateway session route metadata to expose channel-backed conversations. A conversation appears when ClawWorks already has session state with a known route such as:
 
 - `channel`
 - recipient or destination metadata
@@ -230,7 +230,7 @@ Current event types:
 
 ### Claude channel notifications
 
-The bridge can also expose Claude-specific channel notifications. This is the OpenClaw equivalent of a Claude Code channel adapter: standard MCP tools remain available, but live inbound messages can also arrive as Claude-specific MCP notifications.
+The bridge can also expose Claude-specific channel notifications. This is the ClawWorks equivalent of a Claude Code channel adapter: standard MCP tools remain available, but live inbound messages can also arrive as Claude-specific MCP notifications.
 
 <Tabs>
   <Tab title="off">
@@ -318,7 +318,7 @@ The bridge does not invent routing. It only exposes conversations that Gateway a
 
 That means:
 
-- sender allowlists, pairing, and channel-level trust still belong to the underlying OpenClaw channel configuration
+- sender allowlists, pairing, and channel-level trust still belong to the underlying ClawWorks channel configuration
 - `messages_send` can only reply through an existing stored route
 - approval state is live/in-memory only for the current bridge session
 - bridge auth should use the same Gateway token or password controls you would trust for any other remote Gateway client
@@ -327,7 +327,7 @@ If a conversation is missing from `conversations_list`, the usual cause is not M
 
 ### Testing
 
-OpenClaw ships a deterministic Docker smoke for this bridge:
+ClawWorks ships a deterministic Docker smoke for this bridge:
 
 ```bash
 pnpm test:docker:mcp-channels
@@ -367,18 +367,18 @@ For broader testing context, see [Testing](/help/testing).
   </Accordion>
 </AccordionGroup>
 
-## OpenClaw as an MCP client registry
+## ClawWorks as an MCP client registry
 
 This is the `openclaw mcp list`, `show`, `status`, `doctor`, `probe`, `add`, `set`,
 `configure`, `tools`, `login`, `logout`, `reload`, and `unset` path.
 
-These commands do not expose OpenClaw over MCP. They manage OpenClaw-managed MCP server definitions under `mcp.servers` in OpenClaw config. They do not read mcporter servers from `config/mcporter.json`.
+These commands do not expose ClawWorks over MCP. They manage ClawWorks-managed MCP server definitions under `mcp.servers` in ClawWorks config. They do not read mcporter servers from `config/mcporter.json`.
 
-Those saved definitions are for runtimes that OpenClaw launches or configures later, such as embedded OpenClaw and other runtime adapters. OpenClaw stores the definitions centrally so those runtimes do not need to keep their own duplicate MCP server lists.
+Those saved definitions are for runtimes that ClawWorks launches or configures later, such as embedded ClawWorks and other runtime adapters. ClawWorks stores the definitions centrally so those runtimes do not need to keep their own duplicate MCP server lists.
 
 <AccordionGroup>
   <Accordion title="Important behavior">
-    - these commands only read or write OpenClaw config
+    - these commands only read or write ClawWorks config
     - `status`, `list`, `show`, `doctor` without `--probe`, `set`, `configure`, `tools`, `logout`, `reload`, and `unset` do not connect to the target MCP server
     - `login` performs the MCP OAuth network flow for the configured HTTP server and saves the resulting local credentials
     - `status --verbose` prints resolved transport, auth, timeout, filter, and parallel-tool-call hints without connecting
@@ -391,8 +391,8 @@ Those saved definitions are for runtimes that OpenClaw launches or configures la
     - `timeout` and `connectTimeout` set per-server request and connection timeouts in seconds
     - `supportsParallelToolCalls: true` marks servers that adapters can call concurrently
     - HTTP servers can use static headers, OAuth login, TLS verification control, and mTLS certificate/key paths
-    - embedded OpenClaw exposes configured MCP tools in normal `coding` and `messaging` tool profiles; `minimal` still hides them, and `tools.deny: ["bundle-mcp"]` disables them explicitly
-    - per-server `toolFilter.include` and `toolFilter.exclude` filter discovered MCP tools before they become OpenClaw tools
+    - embedded ClawWorks exposes configured MCP tools in normal `coding` and `messaging` tool profiles; `minimal` still hides them, and `tools.deny: ["bundle-mcp"]` disables them explicitly
+    - per-server `toolFilter.include` and `toolFilter.exclude` filter discovered MCP tools before they become ClawWorks tools
     - servers that advertise resources or prompts also expose utility tools for listing/reading resources and listing/fetching prompts; those generated utility names (`resources_list`, `resources_read`, `prompts_list`, `prompts_get`) use the same include/exclude filter
     - dynamic MCP tool-list changes invalidate the cached catalog for that session; the next discovery/use refreshes from the server
     - repeated MCP tool request/protocol failures pause that server briefly so one broken server does not consume the whole turn
@@ -401,22 +401,22 @@ Those saved definitions are for runtimes that OpenClaw launches or configures la
   </Accordion>
 </AccordionGroup>
 
-Runtime adapters may normalize this shared registry into the shape their downstream client expects. For example, embedded OpenClaw consumes OpenClaw `transport` values directly, while Claude Code and Gemini receive CLI-native `type` values such as `http`, `sse`, or `stdio`.
+Runtime adapters may normalize this shared registry into the shape their downstream client expects. For example, embedded ClawWorks consumes ClawWorks `transport` values directly, while Claude Code and Gemini receive CLI-native `type` values such as `http`, `sse`, or `stdio`.
 
 Codex app-server also honors an optional `codex` block on each server. This is
-OpenClaw projection metadata for Codex app-server threads only; it does not
+ClawWorks projection metadata for Codex app-server threads only; it does not
 change ACP sessions, generic Codex harness config, or other runtime adapters.
-Use non-empty `codex.agents` to project a server only into specific OpenClaw
+Use non-empty `codex.agents` to project a server only into specific ClawWorks
 agent ids. Empty, blank, or invalid agent lists are rejected by config
 validation and omitted by the runtime projection path instead of becoming
 global. Use `codex.defaultToolsApprovalMode` (`auto`, `prompt`, or `approve`)
 to emit Codex's native `default_tools_approval_mode` for a trusted server.
-OpenClaw strips the `codex` metadata before handing the native `mcp_servers`
+ClawWorks strips the `codex` metadata before handing the native `mcp_servers`
 config to Codex.
 
 ### Saved MCP server definitions
 
-OpenClaw also stores a lightweight MCP server registry in config for surfaces that want OpenClaw-managed MCP definitions.
+ClawWorks also stores a lightweight MCP server registry in config for surfaces that want ClawWorks-managed MCP definitions.
 
 Commands:
 
@@ -677,7 +677,7 @@ Launches a local child process and communicates over stdin/stdout.
 <Warning>
 **Stdio env safety filter**
 
-OpenClaw rejects interpreter-startup env keys that can alter how a stdio MCP server starts up before the first RPC, even if they appear in a server's `env` block. Blocked keys include `BASHOPTS`, `FPATH`, `KSH_ENV`, `NODE_OPTIONS`, `NODE_REDIRECT_WARNINGS`, `NODE_REPL_EXTERNAL_MODULE`, `NODE_REPL_HISTORY`, `NODE_V8_COVERAGE`, `PYTHONSTARTUP`, `PYTHONPATH`, `PERL5OPT`, `RUBYOPT`, `SHELLOPTS`, `PS4`, `TCLLIBPATH`, and similar runtime-control variables. Startup rejects these with a configuration error so they cannot inject an implicit prelude, swap the interpreter, enable a debugger, or redirect runtime output against the stdio process. Ordinary credential, proxy, and server-specific env vars (`GITHUB_TOKEN`, `HTTP_PROXY`, custom `*_API_KEY`, etc.) are unaffected.
+ClawWorks rejects interpreter-startup env keys that can alter how a stdio MCP server starts up before the first RPC, even if they appear in a server's `env` block. Blocked keys include `BASHOPTS`, `FPATH`, `KSH_ENV`, `NODE_OPTIONS`, `NODE_REDIRECT_WARNINGS`, `NODE_REPL_EXTERNAL_MODULE`, `NODE_REPL_HISTORY`, `NODE_V8_COVERAGE`, `PYTHONSTARTUP`, `PYTHONPATH`, `PERL5OPT`, `RUBYOPT`, `SHELLOPTS`, `PS4`, `TCLLIBPATH`, and similar runtime-control variables. Startup rejects these with a configuration error so they cannot inject an implicit prelude, swap the interpreter, enable a debugger, or redirect runtime output against the stdio process. Ordinary credential, proxy, and server-specific env vars (`GITHUB_TOKEN`, `HTTP_PROXY`, custom `*_API_KEY`, etc.) are unaffected.
 
 If your MCP server genuinely needs one of the blocked variables, set it on the gateway host process instead of under the stdio server's `env`.
 </Warning>
@@ -739,11 +739,11 @@ OAuth is for HTTP MCP servers that advertise the MCP OAuth flow. Static `Authori
     openclaw mcp login docs
     ```
 
-    OpenClaw prints the authorization URL and stores temporary OAuth verifier state under the OpenClaw state directory.
+    ClawWorks prints the authorization URL and stores temporary OAuth verifier state under the ClawWorks state directory.
 
   </Step>
   <Step title="Finish with the code">
-    After approving in the browser, pass the returned code back to OpenClaw.
+    After approving in the browser, pass the returned code back to ClawWorks.
 
     ```bash
     openclaw mcp login docs --code abc123
@@ -775,20 +775,20 @@ If the provider rotates tokens or the authorization state gets stuck, run `openc
 
 `streamable-http` is an additional transport option alongside `sse` and `stdio`. It uses HTTP streaming for bidirectional communication with remote MCP servers.
 
-| Field                          | Description                                                                            |
-| ------------------------------ | -------------------------------------------------------------------------------------- |
-| `url`                          | HTTP or HTTPS URL of the remote server (required)                                      |
-| `transport`                    | Set to `"streamable-http"` to select this transport; when omitted, OpenClaw uses `sse` |
-| `headers`                      | Optional key-value map of HTTP headers (for example auth tokens)                       |
-| `connectionTimeoutMs`          | Per-server connection timeout in ms (optional)                                         |
-| `connectTimeout`               | Per-server connection timeout in seconds (optional)                                    |
-| `timeout` / `requestTimeoutMs` | Per-server MCP request timeout in seconds or ms                                        |
-| `auth: "oauth"`                | Use MCP OAuth token storage and `openclaw mcp login`                                   |
-| `sslVerify`                    | Set false only for explicitly trusted private HTTPS endpoints                          |
-| `clientCert` / `clientKey`     | mTLS client certificate and key paths                                                  |
-| `supportsParallelToolCalls`    | Hint that concurrent calls are safe for this server                                    |
+| Field                          | Description                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `url`                          | HTTP or HTTPS URL of the remote server (required)                                       |
+| `transport`                    | Set to `"streamable-http"` to select this transport; when omitted, ClawWorks uses `sse` |
+| `headers`                      | Optional key-value map of HTTP headers (for example auth tokens)                        |
+| `connectionTimeoutMs`          | Per-server connection timeout in ms (optional)                                          |
+| `connectTimeout`               | Per-server connection timeout in seconds (optional)                                     |
+| `timeout` / `requestTimeoutMs` | Per-server MCP request timeout in seconds or ms                                         |
+| `auth: "oauth"`                | Use MCP OAuth token storage and `openclaw mcp login`                                    |
+| `sslVerify`                    | Set false only for explicitly trusted private HTTPS endpoints                           |
+| `clientCert` / `clientKey`     | mTLS client certificate and key paths                                                   |
+| `supportsParallelToolCalls`    | Hint that concurrent calls are safe for this server                                     |
 
-OpenClaw config uses `transport: "streamable-http"` as the canonical spelling. CLI-native MCP `type: "http"` values are accepted when saved through `openclaw mcp set` and repaired by `openclaw doctor --fix` in existing config, but `transport` is what embedded OpenClaw consumes directly.
+ClawWorks config uses `transport: "streamable-http"` as the canonical spelling. CLI-native MCP `type: "http"` values are accepted when saved through `openclaw mcp set` and repaired by `openclaw doctor --fix` in existing config, but `transport` is what embedded ClawWorks consumes directly.
 
 Example:
 

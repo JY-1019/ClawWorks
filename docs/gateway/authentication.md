@@ -10,7 +10,7 @@ title: "Authentication"
 This page is the **model provider** authentication reference (API keys, OAuth, Claude CLI reuse, and Anthropic setup-token). For **gateway connection** authentication (token, password, trusted-proxy), see [Configuration](/gateway/configuration) and [Trusted Proxy Auth](/gateway/trusted-proxy-auth).
 </Note>
 
-OpenClaw supports OAuth and API keys for model providers. For always-on gateway
+ClawWorks supports OAuth and API keys for model providers. For always-on gateway
 hosts, API keys are usually the most predictable option. Subscription/OAuth
 flows are also supported when they match your provider account model.
 
@@ -25,7 +25,7 @@ For credential eligibility/reason-code rules used by `models status --probe`, se
 If you're running a long-lived gateway, start with an API key for your chosen
 provider.
 For Anthropic specifically, API key auth is still the most predictable server
-setup, but OpenClaw also supports reusing a local Claude CLI login.
+setup, but ClawWorks also supports reusing a local Claude CLI login.
 
 1. Create an API key in your provider console.
 2. Put it on the **gateway host** (the machine running `openclaw gateway`).
@@ -59,9 +59,9 @@ See [Help](/help) for details on env inheritance (`env.shellEnv`,
 
 ## Anthropic: Claude CLI and token compatibility
 
-Anthropic setup-token auth is still available in OpenClaw as a supported token
-path. Anthropic staff has since told us that OpenClaw-style Claude CLI usage is
-allowed again, so OpenClaw treats Claude CLI reuse and `claude -p` usage as
+Anthropic setup-token auth is still available in ClawWorks as a supported token
+path. Anthropic staff has since told us that ClawWorks-style Claude CLI usage is
+allowed again, so ClawWorks treats Claude CLI reuse and `claude -p` usage as
 sanctioned for this integration unless Anthropic publishes a new policy. When
 Claude CLI reuse is available on the host, that is now the preferred path.
 
@@ -81,8 +81,8 @@ openclaw models auth login --provider anthropic --method cli --set-default
 This is a two-step setup:
 
 1. Log Claude Code itself into Anthropic on the gateway host.
-2. Tell OpenClaw to switch Anthropic model selection to the local `claude-cli`
-   backend and store the matching OpenClaw auth profile.
+2. Tell ClawWorks to switch Anthropic model selection to the local `claude-cli`
+   backend and store the matching ClawWorks auth profile.
 
 If `claude` is not on `PATH`, either install Claude Code first or set
 `agents.defaults.cliBackends.claude-cli.command` to the real binary path.
@@ -108,7 +108,7 @@ The auth profile store keeps credentials only. Legacy `auth-profiles.json` files
 }
 ```
 
-OpenClaw now reads auth profiles from each agent's `openclaw-agent.sqlite`. If an older install still has `auth-profiles.json`, `auth-state.json`, or a flat auth profile file such as `{ "openrouter": { "apiKey": "..." } }`, run `openclaw doctor --fix` to import it into SQLite; doctor keeps timestamped backups beside the original JSON files. Endpoint details such as `baseUrl`, `api`, model ids, headers, and timeouts belong under `models.providers.<id>` in `openclaw.json` or `models.json`, not in auth profiles.
+ClawWorks now reads auth profiles from each agent's `openclaw-agent.sqlite`. If an older install still has `auth-profiles.json`, `auth-state.json`, or a flat auth profile file such as `{ "openrouter": { "apiKey": "..." } }`, run `openclaw doctor --fix` to import it into SQLite; doctor keeps timestamped backups beside the original JSON files. Endpoint details such as `baseUrl`, `api`, model ids, headers, and timeouts belong under `models.providers.<id>` in `openclaw.json` or `models.json`, not in auth profiles.
 
 External auth routes such as Bedrock `auth: "aws-sdk"` are also not credentials. If you want a named Bedrock route, put `auth.profiles.<id>.mode: "aws-sdk"` in `openclaw.json`; do not write `type: "aws-sdk"` into the auth profile store. `openclaw doctor --fix` moves legacy AWS SDK markers from the credential store into config metadata.
 
@@ -135,7 +135,7 @@ Notes:
 - Probe rows can come from auth profiles, env credentials, or `models.json`.
 - If explicit `auth.order.<provider>` omits a stored profile, probe reports
   `excluded_by_auth_order` for that profile instead of trying it.
-- If auth exists but OpenClaw cannot resolve a probeable model candidate for
+- If auth exists but ClawWorks cannot resolve a probeable model candidate for
   that provider, probe reports `status: no_model`.
 - Rate-limit cooldowns can be model-scoped. A profile cooling down for one
   model can still be usable for a sibling model on the same provider.
@@ -147,8 +147,8 @@ Optional ops scripts (systemd/Termux) are documented here:
 
 The Anthropic `claude-cli` backend is supported again.
 
-- Anthropic staff told us this OpenClaw integration path is allowed again.
-- OpenClaw therefore treats Claude CLI reuse and `claude -p` usage as sanctioned
+- Anthropic staff told us this ClawWorks integration path is allowed again.
+- ClawWorks therefore treats Claude CLI reuse and `claude -p` usage as sanctioned
   for Anthropic-backed runs unless Anthropic publishes a new policy.
 - Anthropic API keys remain the most predictable choice for long-lived gateway
   hosts and explicit server-side billing control.
@@ -172,7 +172,7 @@ hits a provider rate limit.
   - `<PROVIDER>_API_KEY_*`
 - Google providers also include `GOOGLE_API_KEY` as an additional fallback.
 - The same key list is deduplicated before use.
-- OpenClaw retries with the next key only for rate-limit errors (for example
+- ClawWorks retries with the next key only for rate-limit errors (for example
   `429`, `rate_limit`, `quota`, `resource exhausted`, `Too many concurrent
 requests`, `ThrottlingException`, `concurrency limit reached`, or
   `workers_ai ... quota limit exceeded`).
@@ -181,7 +181,7 @@ requests`, `ThrottlingException`, `concurrency limit reached`, or
 
 ## Removing provider auth while the gateway is running
 
-When provider auth is removed through the Gateway control plane, OpenClaw deletes
+When provider auth is removed through the Gateway control plane, ClawWorks deletes
 the saved auth profiles for that provider and aborts active chat or agent runs
 whose selected model provider matches the removed provider. The aborted runs emit
 the normal chat cancellation and lifecycle events with

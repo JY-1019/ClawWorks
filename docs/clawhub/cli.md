@@ -1,25 +1,25 @@
 ---
-summary: "ClawHub CLI entry points for discovering, installing, publishing, and verifying OpenClaw skills and plugins."
+summary: "ClawHub CLI entry points for discovering, installing, publishing, and verifying ClawWorks skills and plugins."
 read_when:
   - You want to use ClawHub from the command line
-  - You want to install ClawHub skills or plugins through OpenClaw
+  - You want to install ClawHub skills or plugins through ClawWorks
   - You want to publish ClawHub packages
 title: "ClawHub CLI"
 ---
 
 # ClawHub CLI
 
-OpenClaw has two command-line entry points for ClawHub:
+ClawWorks has two command-line entry points for ClawHub:
 
 - `openclaw skills` and `openclaw plugins` install and manage ClawHub packages
-  inside OpenClaw.
+  inside ClawWorks.
 - The standalone `clawhub` CLI handles publisher workflows such as login,
   publish, transfer, and sync.
 
 ## Discover and install
 
-Use OpenClaw commands when you want to install or update packages for a local
-OpenClaw agent or Gateway.
+Use ClawWorks commands when you want to install or update packages for a local
+ClawWorks agent or Gateway.
 
 ```bash
 openclaw skills search "calendar"
@@ -38,7 +38,7 @@ openclaw plugins update <id-or-npm-spec>
 Skill installs target the active workspace `skills/` directory by default. Add
 `--global` to install into the shared managed skills directory.
 
-OpenClaw checks the selected community ClawHub skill or plugin trust state
+ClawWorks checks the selected community ClawHub skill or plugin trust state
 before downloading it. Versioned community skill and plugin releases use
 exact-release trust metadata; resolver-backed GitHub skills rely on ClawHub's
 install resolver to enforce scan and force-install policy before it returns a
@@ -46,7 +46,7 @@ pinned commit. Malicious or blocked community releases are refused. Risky
 community releases require review and `--acknowledge-clawhub-risk` when a
 non-interactive command should continue after that review.
 
-Official ClawHub publishers/packages and bundled OpenClaw sources bypass this
+Official ClawHub publishers/packages and bundled ClawWorks sources bypass this
 release-trust prompt and security-verdict fetch during install and update.
 
 Plugin installs use the `clawhub:` prefix when you want ClawHub resolution

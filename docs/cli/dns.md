@@ -43,7 +43,7 @@ What it shows:
 Notes:
 
 - Without `--apply`, the command is a planning helper only and prints the recommended setup.
-- If `--domain` is omitted, OpenClaw uses `discovery.wideArea.domain` from config.
+- If `--domain` is omitted, ClawWorks uses `discovery.wideArea.domain` from config.
 - `--apply` currently supports macOS only and expects Homebrew CoreDNS.
 - `--apply` bootstraps the zone file if needed, ensures the CoreDNS import stanza exists, and restarts the `coredns` brew service.
 

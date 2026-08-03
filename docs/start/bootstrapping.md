@@ -14,7 +14,7 @@ for the first time.
 
 ## What bootstrapping does
 
-On the first agent run, OpenClaw bootstraps the workspace (default
+On the first agent run, ClawWorks bootstraps the workspace (default
 `~/.openclaw/workspace`):
 
 - Seeds `AGENTS.md`, `BOOTSTRAP.md`, `IDENTITY.md`, `USER.md`.
@@ -22,7 +22,7 @@ On the first agent run, OpenClaw bootstraps the workspace (default
 - Writes identity + preferences to `IDENTITY.md`, `USER.md`, `SOUL.md`.
 - Removes `BOOTSTRAP.md` when finished so it only runs once.
 
-For embedded/local model runs, OpenClaw keeps `BOOTSTRAP.md` out of the
+For embedded/local model runs, ClawWorks keeps `BOOTSTRAP.md` out of the
 privileged system context. On the primary interactive first run, it still passes
 the file contents in the user prompt so models that do not reliably call the
 `read` tool can complete the ritual. If the current run cannot safely access the

@@ -9,7 +9,7 @@ read_when:
 title: "Firecrawl"
 ---
 
-OpenClaw can use **Firecrawl** in three ways:
+ClawWorks can use **Firecrawl** in three ways:
 
 - as the `web_search` provider
 - as explicit plugin tools: `firecrawl_search` and `firecrawl_scrape`
@@ -100,7 +100,7 @@ Notes:
 
 Notes:
 
-- The explicitly selected Firecrawl `web_fetch` fallback works without an API key. When configured, OpenClaw sends `plugins.entries.firecrawl.config.webFetch.apiKey` or `FIRECRAWL_API_KEY` for higher limits.
+- The explicitly selected Firecrawl `web_fetch` fallback works without an API key. When configured, ClawWorks sends `plugins.entries.firecrawl.config.webFetch.apiKey` or `FIRECRAWL_API_KEY` for higher limits.
 - Choosing Firecrawl during onboarding or `openclaw configure --section web` enables the plugin and selects Firecrawl for `web_fetch` unless another fetch provider is already configured.
 - `firecrawl_scrape` requires an API key.
 - `maxAgeMs` controls how old cached results can be (ms). Default is 2 days.
@@ -114,7 +114,7 @@ Notes:
 
 Set `plugins.entries.firecrawl.config.webSearch.baseUrl`,
 `plugins.entries.firecrawl.config.webFetch.baseUrl`, or `FIRECRAWL_BASE_URL`
-when you run Firecrawl yourself. OpenClaw accepts `http://` only for loopback,
+when you run Firecrawl yourself. ClawWorks accepts `http://` only for loopback,
 private-network, `.local`, `.internal`, or `.localhost` targets. Public custom
 hosts are rejected so Firecrawl API keys are not sent to arbitrary endpoints by
 accident.
@@ -152,7 +152,7 @@ Core parameters:
 ## Stealth / bot circumvention
 
 Firecrawl exposes a **proxy mode** parameter for bot circumvention (`basic`, `stealth`, or `auto`).
-OpenClaw always uses `proxy: "auto"` plus `storeInCache: true` for Firecrawl requests.
+ClawWorks always uses `proxy: "auto"` plus `storeInCache: true` for Firecrawl requests.
 If proxy is omitted, Firecrawl defaults to `auto`. `auto` retries with stealth proxies if a basic attempt fails, which may use more credits
 than basic-only scraping.
 
@@ -164,7 +164,7 @@ than basic-only scraping.
 2. Firecrawl (when selected, or auto-detected from configured credentials)
 3. Basic HTML cleanup (last fallback)
 
-The selection knob is `tools.web.fetch.provider`. If you omit it, OpenClaw
+The selection knob is `tools.web.fetch.provider`. If you omit it, ClawWorks
 auto-detects the first ready web-fetch provider from available credentials.
 The official Firecrawl plugin provides that fallback.
 

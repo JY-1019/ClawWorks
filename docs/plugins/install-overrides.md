@@ -40,7 +40,7 @@ Relative `npm-pack:` paths resolve from the current working directory.
 ## Behavior
 
 When a setup-time flow asks to install a plugin whose id appears in the map,
-OpenClaw uses the override source instead of the catalog, bundled, or default
+ClawWorks uses the override source instead of the catalog, bundled, or default
 npm source. This applies to onboarding and other flows that use the shared
 setup-time plugin installer.
 
@@ -48,16 +48,16 @@ Overrides still enforce the expected plugin id. A tarball mapped to `codex`
 must install a plugin whose manifest id is `codex`.
 
 Overrides do not inherit official trusted-source status. Even when the catalog
-entry normally represents an OpenClaw-owned package, an override is treated as
+entry normally represents a ClawWorks-owned package, an override is treated as
 operator-supplied test input.
 
 Workspace `.env` files cannot enable install overrides. Set these variables in
-the trusted shell, CI job, or remote test command that launches OpenClaw.
+the trusted shell, CI job, or remote test command that launches ClawWorks.
 
 ## Package E2E
 
 Use an isolated state directory so package installs and install records do not
-touch your normal OpenClaw state:
+touch your normal ClawWorks state:
 
 ```bash
 npm pack extensions/codex --pack-destination /tmp

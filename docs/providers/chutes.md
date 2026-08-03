@@ -2,13 +2,13 @@
 summary: "Chutes setup (OAuth or API key, model discovery, aliases)"
 title: "Chutes"
 read_when:
-  - You want to use Chutes with OpenClaw
+  - You want to use Chutes with ClawWorks
   - You need the OAuth or API key setup path
   - You want the default model, aliases, or discovery behavior
 ---
 
 [Chutes](https://chutes.ai) exposes open-source model catalogs through an
-OpenAI-compatible API. OpenClaw supports both browser OAuth and direct API-key
+OpenAI-compatible API. ClawWorks supports both browser OAuth and direct API-key
 auth for the `chutes` provider.
 
 | Property | Value                        |
@@ -36,8 +36,8 @@ openclaw gateway restart
         ```bash
         openclaw onboard --auth-choice chutes
         ```
-        OpenClaw launches the browser flow locally, or shows a URL + redirect-paste
-        flow on remote/headless hosts. OAuth tokens auto-refresh through OpenClaw auth
+        ClawWorks launches the browser flow locally, or shows a URL + redirect-paste
+        flow on remote/headless hosts. OAuth tokens auto-refresh through ClawWorks auth
         profiles.
       </Step>
       <Step title="Verify the default model">
@@ -75,13 +75,13 @@ Both auth paths register the Chutes static catalog and set the default model to
 
 ## Discovery behavior
 
-When Chutes auth is available, OpenClaw queries the Chutes catalog with that
-credential and uses the discovered models. If discovery fails, OpenClaw falls
+When Chutes auth is available, ClawWorks queries the Chutes catalog with that
+credential and uses the discovered models. If discovery fails, ClawWorks falls
 back to a static catalog so onboarding and startup still work.
 
 ## Default aliases
 
-OpenClaw registers three convenience aliases for the Chutes static catalog:
+ClawWorks registers three convenience aliases for the Chutes static catalog:
 
 | Alias           | Target model                                          |
 | --------------- | ----------------------------------------------------- |

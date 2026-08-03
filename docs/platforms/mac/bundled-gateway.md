@@ -42,7 +42,7 @@ Manager:
 
 Behavior:
 
-- "OpenClaw Active" enables/disables the LaunchAgent.
+- "ClawWorks Active" enables/disables the LaunchAgent.
 - App quit does **not** stop the gateway (launchd keeps it alive).
 - If a Gateway is already running on the configured port, the app attaches to
   it instead of starting a new one.
@@ -59,7 +59,7 @@ incompatible, update the global CLI to match the app version.
 
 ## State directory on macOS
 
-Keep OpenClaw state on a local, non-synced disk. Avoid iCloud Drive and other
+Keep ClawWorks state on a local, non-synced disk. Avoid iCloud Drive and other
 cloud-synced folders because sync latency and file locks can affect sessions,
 credentials, and Gateway state.
 

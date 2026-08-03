@@ -52,7 +52,7 @@ accounts.
 
 The scenarios use only fake users, fake preferences, fake secrets, and the
 temporary QA gateway workspace created by the suite. They must not read or write
-real OpenClaw user memory, sessions, credentials, launch agents, global configs,
+real ClawWorks user memory, sessions, credentials, launch agents, global configs,
 or live gateway state.
 
 Artifacts stay under the existing QA suite artifact directory and should be

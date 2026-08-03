@@ -1,5 +1,5 @@
 ---
-summary: "Advanced setup and development workflows for OpenClaw"
+summary: "Advanced setup and development workflows for ClawWorks"
 read_when:
   - Setting up a new machine
   - You want "latest + greatest" without breaking your personal setup
@@ -22,7 +22,7 @@ Pick a setup workflow based on how often you want updates and whether you want t
 ## Prereqs (from source)
 
 - Node 24 recommended (Node 22 LTS, currently `22.19+`, still supported)
-- `pnpm` required for source checkouts. OpenClaw loads bundled plugins from the
+- `pnpm` required for source checkouts. ClawWorks loads bundled plugins from the
   `extensions/*` pnpm workspace packages in dev mode, so root `npm install` does
   not prepare the full source tree.
 - Docker (optional; only for containerized setup/e2e - see [Docker](/install/docker))
@@ -93,7 +93,7 @@ If you also want the macOS app on the bleeding edge:
 
 ```bash
 pnpm install
-# First run only (or after resetting local OpenClaw config/workspace)
+# First run only (or after resetting local ClawWorks config/workspace)
 pnpm openclaw setup
 pnpm gateway:watch
 ```
@@ -174,5 +174,5 @@ user service (no lingering needed). See [Gateway runbook](/gateway) for the syst
 - [Gateway runbook](/gateway) (flags, supervision, ports)
 - [Gateway configuration](/gateway/configuration) (config schema + examples)
 - [Discord](/channels/discord) and [Telegram](/channels/telegram) (reply tags + replyToMode settings)
-- [OpenClaw assistant setup](/start/openclaw)
+- [ClawWorks assistant setup](/start/openclaw)
 - [macOS app](/platforms/macos) (gateway lifecycle)

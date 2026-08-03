@@ -1,17 +1,17 @@
 ---
-summary: "How OpenClaw builds prompt context and reports token usage + costs"
+summary: "How ClawWorks builds prompt context and reports token usage + costs"
 read_when:
   - Explaining token usage, costs, or context windows
   - Debugging context growth or compaction behavior
 title: "Token use and costs"
 ---
 
-OpenClaw tracks **tokens**, not characters. Tokens are model-specific, but most
+ClawWorks tracks **tokens**, not characters. Tokens are model-specific, but most
 OpenAI-style models average ~4 characters per token for English text.
 
 ## How the system prompt is built
 
-OpenClaw assembles its own system prompt on every run. It includes:
+ClawWorks assembles its own system prompt on every run. It includes:
 
 - Tool list + short descriptions
 - Skills list (only metadata; instructions are loaded on demand with `read`).
@@ -60,12 +60,12 @@ for bounded runtime excerpts and injected runtime-owned blocks. They are
 separate from bootstrap limits, startup-context limits, and skills prompt
 limits.
 
-`toolResultMaxChars` is an advanced ceiling (up to `1000000` characters). When it is unset, OpenClaw chooses
+`toolResultMaxChars` is an advanced ceiling (up to `1000000` characters). When it is unset, ClawWorks chooses
 the live tool-result cap from the effective model context window: `16000` chars
 below 100K tokens, `32000` chars at 100K+ tokens, and `64000` chars at 200K+
 tokens, still bounded by the runtime context-share guard.
 
-For images, OpenClaw downscales transcript/tool image payloads before provider calls.
+For images, ClawWorks downscales transcript/tool image payloads before provider calls.
 Use `agents.defaults.imageMaxDimensionPx` (default: `1200`) to tune this:
 
 - Lower values usually reduce vision-token usage and payload size.
@@ -84,9 +84,9 @@ Use these in chat:
   - Persists per session (stored as `responseUsage`).
   - `/usage reset` (aliases: `inherit`, `clear`, `default`) — clears the session
     override so the session re-inherits the configured default.
-  - `/usage full` shows estimated cost only when OpenClaw has usage metadata and
+  - `/usage full` shows estimated cost only when ClawWorks has usage metadata and
     local pricing for the active model. Otherwise it shows tokens only.
-- `/usage cost` → shows a local cost summary from OpenClaw session logs.
+- `/usage cost` → shows a local cost summary from ClawWorks session logs.
 
 Other surfaces:
 
@@ -114,14 +114,14 @@ most recent transcript usage log. Existing nonzero live values still take
 precedence over transcript fallback values, and larger prompt-oriented
 transcript totals can win when stored totals are missing or smaller.
 Usage auth for provider quota windows comes from provider-specific hooks when
-available; otherwise OpenClaw falls back to matching OAuth/API-key credentials
+available; otherwise ClawWorks falls back to matching OAuth/API-key credentials
 from auth profiles, env, or config.
 Assistant transcript entries persist the same normalized usage shape, including
 `usage.cost` when the active model has pricing configured and the provider
 returns usage metadata. This gives `/usage cost` and transcript-backed session
 status a stable source even after the live runtime state is gone.
 
-OpenClaw keeps provider usage accounting separate from the current context
+ClawWorks keeps provider usage accounting separate from the current context
 snapshot. Provider `usage.total` can include cached input, output, and multiple
 tool-loop model calls, so it is useful for cost and telemetry but can overstate
 the live context window. Context displays and diagnostics use the latest prompt
@@ -137,12 +137,12 @@ models.providers.<provider>.models[].cost
 ```
 
 These are **USD per 1M tokens** for `input`, `output`, `cacheRead`, and
-`cacheWrite`. If pricing is missing, OpenClaw shows tokens only. Cost display is
+`cacheWrite`. If pricing is missing, ClawWorks shows tokens only. Cost display is
 not limited to API-key auth: non-API-key providers such as `aws-sdk` can show
 estimated cost when their configured model entry includes local pricing and the
 provider returns usage metadata.
 
-After sidecars and channels reach the Gateway ready path, OpenClaw starts an
+After sidecars and channels reach the Gateway ready path, ClawWorks starts an
 optional background pricing bootstrap for configured model refs that do not
 already have local pricing. That bootstrap fetches remote OpenRouter and LiteLLM
 pricing catalogs. Set `models.pricing.enabled: false` to skip those catalog
@@ -152,7 +152,7 @@ estimates.
 
 ## Cache TTL and pruning impact
 
-Provider prompt caching only applies within the cache TTL window. OpenClaw can
+Provider prompt caching only applies within the cache TTL window. ClawWorks can
 optionally run **cache-ttl pruning**: it prunes the session once the cache TTL
 has expired, then resets the cache window so subsequent requests can re-use the
 freshly cached context instead of re-caching the full history. This keeps cache
@@ -216,7 +216,7 @@ override only `cacheRetention` and inherit other model defaults unchanged.
 
 ### Anthropic 1M context
 
-OpenClaw sizes GA-capable Claude 4.x models such as Opus 4.8, Opus 4.7, Opus 4.6, and
+ClawWorks sizes GA-capable Claude 4.x models such as Opus 4.8, Opus 4.7, Opus 4.6, and
 Sonnet 4.6 with Anthropic's 1M context window. You do not need
 `params.context1m: true` for those models.
 
@@ -228,7 +228,7 @@ agents:
         alias: opus
 ```
 
-Older configs can keep `context1m: true`, but OpenClaw no longer sends
+Older configs can keep `context1m: true`, but ClawWorks no longer sends
 Anthropic's retired `context-1m-2025-08-07` beta header for this setting and
 does not expand unsupported older Claude models to 1M.
 
@@ -236,7 +236,7 @@ Requirement: the credential must be eligible for long-context usage. If not,
 Anthropic responds with a provider-side rate limit error for that request.
 
 If you authenticate Anthropic with OAuth/subscription tokens (`sk-ant-oat-*`),
-OpenClaw preserves the OAuth-required Anthropic beta headers while stripping the
+ClawWorks preserves the OAuth-required Anthropic beta headers while stripping the
 retired `context-1m-*` beta if it remains in older config.
 
 ## Tips for reducing token pressure

@@ -1,19 +1,19 @@
 ---
 summary: "Configuration overview: common tasks, quick setup, and links to the full reference"
 read_when:
-  - Setting up OpenClaw for the first time
+  - Setting up ClawWorks for the first time
   - Looking for common configuration patterns
   - Navigating to specific config sections
 title: "Configuration"
 ---
 
-OpenClaw reads an optional <Tooltip tip="JSON5 supports comments and trailing commas">**JSON5**</Tooltip> config from `~/.openclaw/openclaw.json`.
+ClawWorks reads an optional <Tooltip tip="JSON5 supports comments and trailing commas">**JSON5**</Tooltip> config from `~/.openclaw/openclaw.json`.
 The active config path must be a regular file. Symlinked `openclaw.json`
-layouts are unsupported for OpenClaw-owned writes; an atomic write may replace
+layouts are unsupported for ClawWorks-owned writes; an atomic write may replace
 the path instead of preserving the symlink. If you keep config outside the
 default state directory, point `OPENCLAW_CONFIG_PATH` directly at the real file.
 
-If the file is missing, OpenClaw uses safe defaults. Common reasons to add a config:
+If the file is missing, ClawWorks uses safe defaults. Common reasons to add a config:
 
 - Connect channels and control who can message the bot
 - Set models, tools, sandboxing, or automation (cron, hooks)
@@ -72,7 +72,7 @@ field map and defaults.
 ## Strict validation
 
 <Warning>
-OpenClaw only accepts configurations that fully match the schema. Unknown keys, malformed types, or invalid values cause the Gateway to **refuse to start**. The only root-level exception is `$schema` (string), so editors can attach JSON Schema metadata.
+ClawWorks only accepts configurations that fully match the schema. Unknown keys, malformed types, or invalid values cause the Gateway to **refuse to start**. The only root-level exception is `$schema` (string), so editors can attach JSON Schema metadata.
 </Warning>
 
 `openclaw config schema` prints the canonical JSON Schema used by Control UI
@@ -337,7 +337,7 @@ candidate contains redacted secret placeholders such as `***`.
   </Accordion>
 
   <Accordion title="Enable relay-backed push for official iOS builds">
-    Relay-backed push for public App Store/TestFlight builds uses the hosted OpenClaw relay: `https://ios-push-relay.openclaw.ai`.
+    Relay-backed push for public App Store/TestFlight builds uses the hosted ClawWorks relay: `https://ios-push-relay.openclaw.ai`.
 
     Custom relay deployments require a deliberately separate iOS build/deployment path whose relay URL matches the gateway relay URL. If you are using a custom relay build, set this in gateway config:
 
@@ -515,11 +515,11 @@ candidate contains redacted secret placeholders such as `***`.
     - **Nested includes**: supported up to 10 levels deep
     - **Relative paths**: resolved relative to the including file
     - **Path format**: include paths must not contain null bytes and must be strictly shorter than 4096 characters before and after resolution
-    - **OpenClaw-owned writes**: when a write changes only one top-level section
+    - **ClawWorks-owned writes**: when a write changes only one top-level section
       backed by a single-file include such as `plugins: { $include: "./plugins.json5" }`,
-      OpenClaw updates that included file and leaves `openclaw.json` intact
+      ClawWorks updates that included file and leaves `openclaw.json` intact
     - **Unsupported write-through**: root includes, include arrays, and includes
-      with sibling overrides fail closed for OpenClaw-owned writes instead of
+      with sibling overrides fail closed for ClawWorks-owned writes instead of
       flattening the config
     - **Confinement**: `$include` paths must resolve under the directory holding
       `openclaw.json`. To share a tree across machines or users, set
@@ -538,7 +538,7 @@ The Gateway watches `~/.openclaw/openclaw.json` and applies changes automaticall
 
 Direct file edits are treated as untrusted until they validate. The watcher waits
 for editor temp-write/rename churn to settle, reads the final file, and rejects
-invalid external edits without rewriting `openclaw.json`. OpenClaw-owned config
+invalid external edits without rewriting `openclaw.json`. ClawWorks-owned config
 writes use the same schema gate before writing; destructive clobbers such as
 dropping `gateway.mode` or shrinking the file by more than half are rejected and
 saved as `.rejected.*` for inspection.
@@ -586,7 +586,7 @@ Most fields hot-apply without downtime. In `hybrid` mode, restart-required chang
 
 ### Reload planning
 
-When you edit a source file that is referenced through `$include`, OpenClaw plans
+When you edit a source file that is referenced through `$include`, ClawWorks plans
 the reload from the source-authored layout, not the flattened in-memory view.
 That keeps hot-reload decisions (hot-apply vs restart) predictable even when a
 single top-level section lives in its own included file such as
@@ -644,7 +644,7 @@ intend to replace the full config.
 
 ## Environment variables
 
-OpenClaw reads env vars from the parent process plus:
+ClawWorks reads env vars from the parent process plus:
 
 - `.env` from the current working directory (if present)
 - `~/.openclaw/.env` (global fallback)
@@ -661,7 +661,7 @@ Neither file overrides existing env vars. You can also set inline env vars in co
 ```
 
 <Accordion title="Shell env import (optional)">
-  If enabled and expected keys aren't set, OpenClaw runs your login shell and imports only the missing keys:
+  If enabled and expected keys aren't set, ClawWorks runs your login shell and imports only the missing keys:
 
 ```json5
 {

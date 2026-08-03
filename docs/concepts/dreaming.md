@@ -8,7 +8,7 @@ read_when:
   - You want to tune consolidation without polluting MEMORY.md
 ---
 
-Dreaming is the background memory consolidation system in `memory-core`. It helps OpenClaw move strong short-term signals into durable memory while keeping the process explainable and reviewable.
+Dreaming is the background memory consolidation system in `memory-core`. It helps ClawWorks move strong short-term signals into durable memory while keeping the process explainable and reviewable.
 
 <Note>
 Dreaming is **opt-in** and disabled by default.

@@ -59,7 +59,7 @@ for indexed chunks. Configure those with `memorySearch.queryInputType` and
 
 ## How search works
 
-OpenClaw runs two retrieval paths in parallel and merges the results:
+ClawWorks runs two retrieval paths in parallel and merges the results:
 
 ```mermaid
 flowchart LR
@@ -73,7 +73,7 @@ flowchart LR
 ```
 
 - **Vector search** finds notes with similar meaning ("gateway host" matches
-  "the machine running OpenClaw").
+  "the machine running ClawWorks").
 - **BM25 keyword search** finds exact matches (IDs, error strings, config
   keys).
 

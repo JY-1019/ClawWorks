@@ -1,5 +1,5 @@
 ---
-summary: "Use SOUL.md to give your OpenClaw agent an actual voice instead of generic assistant sludge"
+summary: "Use SOUL.md to give your ClawWorks agent an actual voice instead of generic assistant sludge"
 read_when:
   - You want your agent to sound less generic
   - You are editing SOUL.md
@@ -9,7 +9,7 @@ title: "SOUL.md personality guide"
 
 `SOUL.md` is where your agent's voice lives.
 
-OpenClaw injects it on normal sessions, so it has real weight. If your agent
+ClawWorks injects it on normal sessions, so it has real weight. If your agent
 sounds bland, hedgy, or weirdly corporate, this is usually the file to fix.
 
 ## What belongs in SOUL.md
@@ -42,7 +42,7 @@ This lines up with OpenAI's prompt guidance:
 - The same guide recommends treating prompts like something you iterate on,
   pin, and evaluate, not magical prose you write once and forget.
 
-For OpenClaw, `SOUL.md` is that layer.
+For ClawWorks, `SOUL.md` is that layer.
 
 If you want better personality, write stronger instructions. If you want stable
 personality, keep them concise and versioned.
@@ -56,7 +56,7 @@ OpenAI refs:
 
 Paste this into your agent and let it rewrite `SOUL.md`.
 
-Path fixed for OpenClaw workspaces: use `SOUL.md`, not `http://SOUL.md`.
+Path fixed for ClawWorks workspaces: use `SOUL.md`, not `http://SOUL.md`.
 
 ```md
 Read your `SOUL.md`. Now rewrite it with these changes:
@@ -105,10 +105,10 @@ Sharp is good. Annoying is not.
 
 <CardGroup cols={2}>
   <Card title="Agent workspace" href="/concepts/agent-workspace" icon="folder-open">
-    Workspace files OpenClaw injects into model context.
+    Workspace files ClawWorks injects into model context.
   </Card>
   <Card title="System prompt" href="/concepts/system-prompt" icon="message-lines">
-    How `SOUL.md` is composed into OpenClaw and Codex runtime context.
+    How `SOUL.md` is composed into ClawWorks and Codex runtime context.
   </Card>
   <Card title="SOUL.md template" href="/reference/templates/SOUL" icon="file-lines">
     Starter template for a personality file.

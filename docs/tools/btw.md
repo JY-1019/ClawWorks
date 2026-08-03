@@ -9,7 +9,7 @@ title: "BTW side questions"
 `/btw` lets you ask a quick side question about the **current session** without
 turning that question into normal conversation history. `/side` is an alias.
 
-It is modeled after Claude Code's `/btw` behavior, but adapted to OpenClaw's
+It is modeled after Claude Code's `/btw` behavior, but adapted to ClawWorks's
 Gateway and multi-channel architecture.
 
 ## What it does
@@ -20,7 +20,7 @@ When you send:
 /btw what changed?
 ```
 
-OpenClaw:
+ClawWorks:
 
 1. snapshots the current session context,
 2. runs a separate ephemeral side query,
@@ -45,8 +45,8 @@ permissions and native tool surface, with guardrails that tell the model not to
 treat inherited parent-thread work as active instructions.
 
 For CLI runtime aliases, BTW uses the owning CLI backend in side-question mode
-instead of falling back to a direct provider call. OpenClaw seeds sanitized
-conversation context into a fresh one-shot CLI invocation, disables OpenClaw MCP
+instead of falling back to a direct provider call. ClawWorks seeds sanitized
+conversation context into a fresh one-shot CLI invocation, disables ClawWorks MCP
 tool bundling and reusable CLI session state for that invocation, and lets the
 backend add any CLI-native no-resume or no-tools flags it supports. Direct
 non-CLI runtimes keep the direct one-shot path.
@@ -67,7 +67,7 @@ It is intentionally **ephemeral**.
 
 BTW uses the current session as **background context only**.
 
-If the main run is currently active, OpenClaw snapshots the current message
+If the main run is currently active, ClawWorks snapshots the current message
 state and includes the in-flight main prompt as background context, while
 explicitly telling the model:
 

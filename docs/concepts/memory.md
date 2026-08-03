@@ -1,12 +1,12 @@
 ---
-summary: "How OpenClaw remembers things across sessions"
+summary: "How ClawWorks remembers things across sessions"
 title: "Memory overview"
 read_when:
   - You want to understand how memory works
   - You want to know what memory files to write
 ---
 
-OpenClaw remembers things by writing **plain Markdown files** in your agent's
+ClawWorks remembers things by writing **plain Markdown files** in your agent's
 workspace. The model only "remembers" what gets saved to disk — there is no
 hidden state.
 
@@ -43,7 +43,7 @@ into `MEMORY.md` and remove stale long-term entries. The generated workspace
 instructions and heartbeat flow can do that periodically; you do not need to
 manually edit `MEMORY.md` for every remembered detail.
 
-If `MEMORY.md` grows past the bootstrap file budget, OpenClaw keeps the file on
+If `MEMORY.md` grows past the bootstrap file budget, ClawWorks keeps the file on
 disk intact but truncates the copy injected into the model context. Treat that as
 a signal to move detailed material back into `memory/*.md`, keep only the
 durable summary in `MEMORY.md`, or raise the bootstrap limits if you explicitly
@@ -77,7 +77,7 @@ A useful action-sensitive memory makes clear:
 - what the agent should avoid doing,
 - who is the source or owner, if that affects trust or authority.
 
-Memory can preserve approval context, but it does not enforce policy. Use OpenClaw approval settings, sandboxing, and scheduled tasks for hard operational controls.
+Memory can preserve approval context, but it does not enforce policy. Use ClawWorks approval settings, sandboxing, and scheduled tasks for hard operational controls.
 
 Example:
 
@@ -102,7 +102,7 @@ tomorrow, the useful memory may be "check in after the interview," not "store
 this forever in `MEMORY.md`."
 
 [Commitments](/concepts/commitments) are opt-in, short-lived follow-up memories
-for that case. OpenClaw infers them in a hidden background pass, scopes them to
+for that case. ClawWorks infers them in a hidden background pass, scopes them to
 the same agent and channel, and delivers due check-ins through heartbeat.
 Explicit reminders still use [scheduled tasks](/automation/cron-jobs).
 
@@ -144,7 +144,7 @@ search** — combining vector similarity (semantic meaning) with keyword matchin
 an API key for any supported provider.
 
 <Info>
-OpenClaw uses OpenAI embeddings by default. Set
+ClawWorks uses OpenAI embeddings by default. Set
 `agents.defaults.memorySearch.provider` explicitly to use Gemini, Voyage,
 Mistral, local, Ollama, Bedrock, GitHub Copilot, or OpenAI-compatible
 embeddings.
@@ -185,7 +185,7 @@ dashboards, bridge mode, and Obsidian-friendly workflows.
 
 ## Automatic memory flush
 
-Before [compaction](/concepts/compaction) summarizes your conversation, OpenClaw
+Before [compaction](/concepts/compaction) summarizes your conversation, ClawWorks
 runs a silent turn that reminds the agent to save important context to memory
 files. This is on by default — you do not need to configure anything.
 

@@ -1,16 +1,16 @@
 ---
-summary: "Move from Hermes to OpenClaw with a previewed, reversible import"
+summary: "Move from Hermes to ClawWorks with a previewed, reversible import"
 read_when:
   - You are coming from Hermes and want to keep your model config, prompts, memory, and skills
-  - You want to know what OpenClaw imports automatically and what stays archive-only
+  - You want to know what ClawWorks imports automatically and what stays archive-only
   - You need a clean, scripted migration path (CI, fresh laptop, automation)
 title: "Migrating from Hermes"
 ---
 
-OpenClaw imports Hermes state through a bundled migration provider. The provider previews everything before changing state, redacts secrets in plans and reports, and creates a verified backup before apply.
+ClawWorks imports Hermes state through a bundled migration provider. The provider previews everything before changing state, redacts secrets in plans and reports, and creates a verified backup before apply.
 
 <Note>
-Imports require a fresh OpenClaw setup. If you already have local OpenClaw state, reset config, credentials, sessions, and the workspace first, or use `openclaw migrate` directly with `--overwrite` after reviewing the plan.
+Imports require a fresh ClawWorks setup. If you already have local ClawWorks state, reset config, credentials, sessions, and the workspace first, or use `openclaw migrate` directly with `--overwrite` after reviewing the plan.
 </Note>
 
 ## Two ways to import
@@ -55,12 +55,12 @@ Imports require a fresh OpenClaw setup. If you already have local OpenClaw state
     MCP server definitions from `mcp_servers` or `mcp.servers`.
   </Accordion>
   <Accordion title="Workspace files">
-    - `SOUL.md` and `AGENTS.md` are copied into the OpenClaw agent workspace.
-    - `memories/MEMORY.md` and `memories/USER.md` are **appended** to the matching OpenClaw memory files instead of overwriting them.
+    - `SOUL.md` and `AGENTS.md` are copied into the ClawWorks agent workspace.
+    - `memories/MEMORY.md` and `memories/USER.md` are **appended** to the matching ClawWorks memory files instead of overwriting them.
 
   </Accordion>
   <Accordion title="Memory configuration">
-    Memory config defaults for OpenClaw file memory. External memory providers such as Honcho are recorded as archive or manual-review items so you can move them deliberately.
+    Memory config defaults for ClawWorks file memory. External memory providers such as Honcho are recorded as archive or manual-review items so you can move them deliberately.
   </Accordion>
   <Accordion title="Skills">
     Skills with a `SKILL.md` file under `skills/<name>/` are copied, along with per-skill config values from `skills.config`.
@@ -72,7 +72,7 @@ Imports require a fresh OpenClaw setup. If you already have local OpenClaw state
 
 ## What stays archive-only
 
-The provider copies these into the migration report directory for manual review, but does **not** load them into live OpenClaw config or credentials:
+The provider copies these into the migration report directory for manual review, but does **not** load them into live ClawWorks config or credentials:
 
 - `plugins/`
 - `sessions/`
@@ -81,7 +81,7 @@ The provider copies these into the migration report directory for manual review,
 - `mcp-tokens/`
 - `state.db`
 
-OpenClaw refuses to execute or trust this state automatically because the formats and trust assumptions can drift between systems. Move what you need by hand after reviewing the archive.
+ClawWorks refuses to execute or trust this state automatically because the formats and trust assumptions can drift between systems. Move what you need by hand after reviewing the archive.
 
 ## Recommended flow
 
@@ -99,7 +99,7 @@ OpenClaw refuses to execute or trust this state automatically because the format
     openclaw migrate apply hermes --yes
     ```
 
-    OpenClaw creates and verifies a backup before applying. This non-interactive example imports non-secret state. Run without `--yes` to answer the credential prompt, or add `--include-secrets` to include supported credentials in unattended runs.
+    ClawWorks creates and verifies a backup before applying. This non-interactive example imports non-secret state. Run without `--yes` to answer the credential prompt, or add `--include-secrets` to include supported credentials in unattended runs.
 
   </Step>
   <Step title="Run doctor">
@@ -129,7 +129,7 @@ Apply refuses to continue when the plan reports conflicts (a file or config valu
 Rerun with `--overwrite` only when replacing the existing target is intentional. Providers may still write item-level backups for overwritten files in the migration report directory.
 </Warning>
 
-For a fresh OpenClaw install, conflicts are unusual. They typically appear when you re-run the import on a setup that already has user edits.
+For a fresh ClawWorks install, conflicts are unusual. They typically appear when you re-run the import on a setup that already has user edits.
 
 If a conflict surfaces mid-apply (for example, an unexpected race on a config file), Hermes marks remaining dependent config items as `skipped` with reason `blocked by earlier apply conflict` instead of writing them partially. The migration report records each blocked item so you can resolve the original conflict and rerun the import.
 
@@ -173,6 +173,6 @@ With `--json` and no `--yes`, apply prints the plan and does not mutate state. T
 
 - [`openclaw migrate`](/cli/migrate): full CLI reference, plugin contract, and JSON shapes.
 - [Onboarding](/cli/onboard): wizard flow and non-interactive flags.
-- [Migrating](/install/migrating): move an OpenClaw install between machines.
+- [Migrating](/install/migrating): move a ClawWorks install between machines.
 - [Doctor](/gateway/doctor): post-migration health check.
 - [Agent workspace](/concepts/agent-workspace): where `SOUL.md`, `AGENTS.md`, and memory files live.

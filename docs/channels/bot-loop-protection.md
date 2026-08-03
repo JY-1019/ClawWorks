@@ -9,7 +9,7 @@ sidebarTitle: "Bot loop protection"
 
 # Bot loop protection
 
-OpenClaw can accept messages written by other bots on channels that support `allowBots`.
+ClawWorks can accept messages written by other bots on channels that support `allowBots`.
 When that path is enabled, pair loop protection prevents two bot identities from
 replying to each other indefinitely.
 

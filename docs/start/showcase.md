@@ -1,13 +1,13 @@
 ---
-summary: "Community-built projects and integrations powered by OpenClaw"
+summary: "Community-built projects and integrations powered by ClawWorks"
 title: "Showcase"
-description: "Real-world OpenClaw projects from the community"
+description: "Real-world ClawWorks projects from the community"
 read_when:
-  - Looking for real OpenClaw usage examples
+  - Looking for real ClawWorks usage examples
   - Updating community project highlights
 ---
 
-OpenClaw projects are not toy demos. People are shipping PR review loops, mobile apps, home automation, voice systems, devtools, and memory-heavy workflows from the channels they already use — chat-native builds on Telegram, WhatsApp, Discord, and terminals; real automation for booking, shopping, and support without waiting for an API; and physical-world integrations with printers, vacuums, cameras, and home systems.
+ClawWorks projects are not toy demos. People are shipping PR review loops, mobile apps, home automation, voice systems, devtools, and memory-heavy workflows from the channels they already use — chat-native builds on Telegram, WhatsApp, Discord, and terminals; real automation for booking, shopping, and support without waiting for an API; and physical-world integrations with printers, vacuums, cameras, and home systems.
 
 <Info>
 **Want to be featured?** Share your project in [#self-promotion on Discord](https://discord.gg/clawd) or [tag @openclaw on X](https://x.com/openclaw).
@@ -22,9 +22,9 @@ Recent standouts across coding, devtools, mobile, and chat-native product buildi
 <Card title="PR Review to Telegram Feedback" icon="code-pull-request" href="https://x.com/i/status/2010878524543131691">
   **@bangnokia** • `review` `github` `telegram`
 
-OpenCode finishes the change, opens a PR, OpenClaw reviews the diff and replies in Telegram with suggestions plus a clear merge verdict.
+OpenCode finishes the change, opens a PR, ClawWorks reviews the diff and replies in Telegram with suggestions plus a clear merge verdict.
 
-  <img src="/assets/showcase/pr-review-telegram.jpg" alt="OpenClaw PR review feedback delivered in Telegram" />
+  <img src="/assets/showcase/pr-review-telegram.jpg" alt="ClawWorks PR review feedback delivered in Telegram" />
 </Card>
 
 <Card title="Wine Cellar Skill in Minutes" icon="wine-glass" href="https://x.com/i/status/2010916352454791216">
@@ -32,7 +32,7 @@ OpenCode finishes the change, opens a PR, OpenClaw reviews the diff and replies 
 
 Asked "Robby" (@openclaw) for a local wine cellar skill. It requests a sample CSV export and a store path, then builds and tests the skill (962 bottles in the example).
 
-  <img src="/assets/showcase/wine-cellar-skill.jpg" alt="OpenClaw building a local wine cellar skill from CSV" />
+  <img src="/assets/showcase/wine-cellar-skill.jpg" alt="ClawWorks building a local wine cellar skill from CSV" />
 </Card>
 
 <Card title="Tesco Shop Autopilot" icon="cart-shopping" href="https://x.com/i/status/2009724862470689131">
@@ -54,7 +54,7 @@ Hotkey a screen region, Gemini vision, instant Markdown in your clipboard.
 <Card title="Agents UI" icon="window-maximize" href="https://releaseflow.net/kitze/agents-ui">
   **@kitze** • `ui` `skills` `sync`
 
-Desktop app to manage skills and commands across Agents, Claude, Codex, and OpenClaw.
+Desktop app to manage skills and commands across Agents, Claude, Codex, and ClawWorks.
 
   <img src="/assets/showcase/agents-ui.jpg" alt="Agents UI app" />
 </Card>
@@ -100,7 +100,7 @@ Automated UK school meal booking via ParentPay. Uses mouse coordinates for relia
 <Card title="R2 upload (Send Me My Files)" icon="cloud-arrow-up" href="https://clawhub.ai/julianengel/skills/r2-upload">
   **@julianengel** • `files` `r2` `presigned-urls`
 
-Upload to Cloudflare R2/S3 and generate secure presigned download links. Useful for remote OpenClaw instances.
+Upload to Cloudflare R2/S3 and generate secure presigned download links. Useful for remote ClawWorks instances.
 
   <img src="/assets/showcase/r2-upload.png" alt="R2 upload skill on ClawHub" />
 </Card>
@@ -130,7 +130,7 @@ Personal AI health assistant integrating Oura ring data with calendar, appointme
 <Card title="Linear CLI" icon="terminal" href="https://github.com/Finesssee/linear-cli">
   **@NessZerra** • `devtools` `linear` `cli`
 
-CLI for Linear that integrates with agentic workflows (Claude Code, OpenClaw). Manage issues, projects, and workflows from the terminal.
+CLI for Linear that integrates with agentic workflows (Claude Code, ClawWorks). Manage issues, projects, and workflows from the terminal.
 </Card>
 
 <Card title="Beeper CLI" icon="message" href="https://github.com/blqke/beepcli">
@@ -150,23 +150,23 @@ Scheduling, browser control, support loops, and the "just do the task for me" si
 <Card title="Winix air purifier control" icon="wind" href="https://x.com/antonplex/status/2010518442471006253">
   **@antonplex** • `automation` `hardware` `air-quality`
 
-Claude Code discovered and confirmed the purifier controls, then OpenClaw takes over to manage room air quality.
+Claude Code discovered and confirmed the purifier controls, then ClawWorks takes over to manage room air quality.
 
-  <img src="/assets/showcase/winix-air-purifier.jpg" alt="Winix air purifier control via OpenClaw" />
+  <img src="/assets/showcase/winix-air-purifier.jpg" alt="Winix air purifier control via ClawWorks" />
 </Card>
 
 <Card title="Pretty sky camera shots" icon="camera" href="https://x.com/signalgaining/status/2010523120604746151">
   **@signalgaining** • `automation` `camera` `skill`
 
-Triggered by a roof camera: ask OpenClaw to snap a sky photo whenever it looks pretty. It designed a skill and took the shot.
+Triggered by a roof camera: ask ClawWorks to snap a sky photo whenever it looks pretty. It designed a skill and took the shot.
 
-  <img src="/assets/showcase/roof-camera-sky.jpg" alt="Roof camera sky snapshot captured by OpenClaw" />
+  <img src="/assets/showcase/roof-camera-sky.jpg" alt="Roof camera sky snapshot captured by ClawWorks" />
 </Card>
 
 <Card title="Visual morning briefing scene" icon="robot" href="https://x.com/buddyhadry/status/2010005331925954739">
   **@buddyhadry** • `automation` `briefing` `telegram`
 
-A scheduled prompt generates one scene image each morning (weather, tasks, date, favorite post or quote) via an OpenClaw persona.
+A scheduled prompt generates one scene image each morning (weather, tasks, date, favorite post or quote) via a ClawWorks persona.
 </Card>
 
 <Card title="Padel court booking" icon="calendar-check" href="https://github.com/joshp123/padel-cli">
@@ -198,13 +198,13 @@ Searches job listings, matches against CV keywords, and returns relevant opportu
 <Card title="Jira skill builder" icon="diagram-project" href="https://x.com/jdrhyne/status/2008336434827002232">
   **@jdrhyne** • `jira` `skill` `devtools`
 
-OpenClaw connected to Jira, then generated a new skill on the fly (before it existed on ClawHub).
+ClawWorks connected to Jira, then generated a new skill on the fly (before it existed on ClawHub).
 </Card>
 
 <Card title="Todoist skill via Telegram" icon="list-check" href="https://x.com/iamsubhrajyoti/status/2009949389884920153">
   **@iamsubhrajyoti** • `todoist` `skill` `telegram`
 
-Automated Todoist tasks and had OpenClaw generate the skill directly in Telegram chat.
+Automated Todoist tasks and had ClawWorks generate the skill directly in Telegram chat.
 </Card>
 
 <Card title="TradingView analysis" icon="chart-line">
@@ -230,7 +230,7 @@ Systems that index, search, remember, and reason over personal or team knowledge
 <Card title="xuezh Chinese learning" icon="language" href="https://github.com/joshp123/xuezh">
   **@joshp123** • `learning` `voice` `skill`
 
-Chinese learning engine with pronunciation feedback and study flows via OpenClaw.
+Chinese learning engine with pronunciation feedback and study flows via ClawWorks.
 
   <img src="/assets/showcase/xuezh-pronunciation.jpeg" alt="xuezh pronunciation feedback" />
 </Card>
@@ -264,7 +264,7 @@ Speech-first entry points, phone bridges, and transcription-heavy workflows.
 <Card title="Clawdia phone bridge" icon="phone" href="https://github.com/alejandroOPI/clawdia-bridge">
   **@alejandroOPI** • `voice` `vapi` `bridge`
 
-Vapi voice assistant to OpenClaw HTTP bridge. Near real-time phone calls with your agent.
+Vapi voice assistant to ClawWorks HTTP bridge. Near real-time phone calls with your agent.
 </Card>
 
 <Card title="OpenRouter transcription" icon="microphone" href="https://clawhub.ai/obviyus/skills/openrouter-transcribe">
@@ -279,14 +279,14 @@ Multi-lingual audio transcription via OpenRouter (Gemini, and more). Available o
 
 ## Infrastructure and deployment
 
-Packaging, deployment, and integrations that make OpenClaw easier to run and extend.
+Packaging, deployment, and integrations that make ClawWorks easier to run and extend.
 
 <CardGroup cols={2}>
 
 <Card title="Home Assistant add-on" icon="home" href="https://github.com/ngutman/openclaw-ha-addon">
   **@ngutman** • `homeassistant` `docker` `raspberry-pi`
 
-OpenClaw gateway running on Home Assistant OS with SSH tunnel support and persistent state.
+ClawWorks gateway running on Home Assistant OS with SSH tunnel support and persistent state.
 </Card>
 
 <Card title="Home Assistant skill" icon="toggle-on" href="https://clawhub.ai/homeofe/skills/openclaw-homeassistant">
@@ -300,7 +300,7 @@ Control and automate Home Assistant devices via natural language.
 <Card title="Nix packaging" icon="snowflake" href="https://github.com/openclaw/nix-openclaw">
   **@openclaw** • `nix` `packaging` `deployment`
 
-Batteries-included nixified OpenClaw configuration for reproducible deployments.
+Batteries-included nixified ClawWorks configuration for reproducible deployments.
 </Card>
 
 <Card title="CalDAV calendar" icon="calendar" href="https://clawhub.ai/asleep123/skills/caldav-calendar">
@@ -315,14 +315,14 @@ Calendar skill using khal and vdirsyncer. Self-hosted calendar integration.
 
 ## Home and hardware
 
-The physical-world side of OpenClaw: homes, sensors, cameras, vacuums, and other devices.
+The physical-world side of ClawWorks: homes, sensors, cameras, vacuums, and other devices.
 
 <CardGroup cols={2}>
 
 <Card title="GoHome automation" icon="house-signal" href="https://github.com/joshp123/gohome">
   **@joshp123** • `home` `nix` `grafana`
 
-Nix-native home automation with OpenClaw as the interface, plus Grafana dashboards.
+Nix-native home automation with ClawWorks as the interface, plus Grafana dashboards.
 
   <img src="/assets/showcase/gohome-grafana.png" alt="GoHome Grafana dashboard" />
 </Card>
@@ -346,7 +346,7 @@ Things that grew beyond a single workflow into broader products or ecosystems.
 <Card title="StarSwap marketplace" icon="star" href="https://star-swap.com/">
   **Community** • `marketplace` `astronomy` `webapp`
 
-Full astronomy gear marketplace. Built with and around the OpenClaw ecosystem.
+Full astronomy gear marketplace. Built with and around the ClawWorks ecosystem.
 </Card>
 
 </CardGroup>
@@ -368,4 +368,4 @@ Full astronomy gear marketplace. Built with and around the OpenClaw ecosystem.
 ## Related
 
 - [Getting started](/start/getting-started)
-- [OpenClaw](/start/openclaw)
+- [ClawWorks](/start/openclaw)

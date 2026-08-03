@@ -2,7 +2,7 @@
 summary: "Arcee AI setup (auth + model selection)"
 title: "Arcee AI"
 read_when:
-  - You want to use Arcee AI with OpenClaw
+  - You want to use Arcee AI with ClawWorks
   - You need the API key env var or CLI auth choice
 ---
 
@@ -105,7 +105,7 @@ openclaw gateway restart
 
 ## Built-in catalog
 
-OpenClaw currently ships this Arcee static catalog:
+ClawWorks currently ships this Arcee static catalog:
 
 | Model ref                      | Name                   | Input | Context | Cost (in/out per 1M) | Notes                                     |
 | ------------------------------ | ---------------------- | ----- | ------- | -------------------- | ----------------------------------------- |
@@ -135,7 +135,7 @@ The onboarding preset sets `arcee/trinity-large-thinking` as the default model.
 
   <Accordion title="OpenRouter routing">
     When using Arcee models via OpenRouter, the same `arcee/*` model refs apply.
-    OpenClaw handles routing transparently based on your auth choice. See the
+    ClawWorks handles routing transparently based on your auth choice. See the
     [OpenRouter provider docs](/providers/openrouter) for OpenRouter-specific
     configuration details.
   </Accordion>

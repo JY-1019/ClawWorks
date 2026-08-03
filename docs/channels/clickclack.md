@@ -1,14 +1,14 @@
 ---
 summary: "ClickClack bot-token channel setup and target syntax"
 read_when:
-  - Connecting OpenClaw to a ClickClack workspace
+  - Connecting ClawWorks to a ClickClack workspace
   - Testing ClickClack bot identities
 title: "ClickClack"
 ---
 
-ClickClack connects OpenClaw to a self-hosted ClickClack workspace through first-class ClickClack bot tokens.
+ClickClack connects ClawWorks to a self-hosted ClickClack workspace through first-class ClickClack bot tokens.
 
-Use this when you want an OpenClaw agent to appear as a ClickClack bot user. ClickClack supports independent service bots and user-owned bots; user-owned bots keep an `owner_user_id` and receive only the token scopes you grant.
+Use this when you want a ClawWorks agent to appear as a ClickClack bot user. ClickClack supports independent service bots and user-owned bots; user-owned bots keep an `owner_user_id` and receive only the token scopes you grant.
 
 ## Quick setup
 
@@ -17,7 +17,7 @@ Create a bot token in ClickClack:
 ```bash
 clickclack admin bot create \
   --workspace <workspace_id_or_slug> \
-  --name "OpenClaw" \
+  --name "ClawWorks" \
   --handle openclaw \
   --scopes bot:write \
   --plain
@@ -25,7 +25,7 @@ clickclack admin bot create \
 
 For a user-owned bot, add `--owner <user_id>`.
 
-Configure OpenClaw:
+Configure ClawWorks:
 
 ```json5
 {
@@ -109,7 +109,7 @@ Each account opens its own ClickClack realtime connection and uses its own bot t
 ```
 
 `replyMode: "model"` uses `api.runtime.llm.complete` directly for short bot replies.
-When an account sets `agentId`, OpenClaw requires the explicit
+When an account sets `agentId`, ClawWorks requires the explicit
 `plugins.entries.clickclack.llm.allowAgentIdOverride` trust bit so the plugin
 can run completions for that bot agent. Keep it off if you only use the default
 agent route.
@@ -136,7 +136,7 @@ ClickClack token scopes are enforced by the ClickClack API.
 - `bot:write`: `bot:read` plus channel messages, thread replies, DMs, and uploads.
 - `bot:admin`: `bot:write` plus channel creation.
 
-OpenClaw only needs `bot:write` for normal agent chat.
+ClawWorks only needs `bot:write` for normal agent chat.
 
 ## Troubleshooting
 

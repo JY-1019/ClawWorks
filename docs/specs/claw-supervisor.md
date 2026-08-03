@@ -1,9 +1,9 @@
 ---
 title: Claw Supervisor
-summary: "Fleet supervision plan for Codex app-server sessions controlled by OpenClaw."
+summary: "Fleet supervision plan for Codex app-server sessions controlled by ClawWorks."
 read_when:
   - Designing Codex fleet supervision
-  - Building OpenClaw tools that read, steer, or spawn Codex sessions
+  - Building ClawWorks tools that read, steer, or spawn Codex sessions
   - Choosing between local, Cloudflare, and VPS deployment for supervised Codex
 ---
 
@@ -11,22 +11,22 @@ read_when:
 
 ## Goal
 
-Claw Supervisor lets one always-on OpenClaw instance monitor and drive a fleet of Codex sessions without changing the normal Codex user experience. A user can SSH into a host, start Codex, work in the TUI, and still have the supervisor read the session, steer it, interrupt it, spawn related sessions, and accept handoffs. Codex sessions can also call back into OpenClaw through MCP.
+Claw Supervisor lets one always-on ClawWorks instance monitor and drive a fleet of Codex sessions without changing the normal Codex user experience. A user can SSH into a host, start Codex, work in the TUI, and still have the supervisor read the session, steer it, interrupt it, spawn related sessions, and accept handoffs. Codex sessions can also call back into ClawWorks through MCP.
 
 ## Product Model
 
-Codex remains the primary work surface. OpenClaw supervises Codex rather than hiding Codex inside an opaque OpenClaw subagent.
+Codex remains the primary work surface. ClawWorks supervises Codex rather than hiding Codex inside an opaque ClawWorks subagent.
 
-The OpenClaw plugin is named `codex-supervisor`. `crabfleet` remains the deployment
+The ClawWorks plugin is named `codex-supervisor`. `crabfleet` remains the deployment
 and host-fleet profile for CRAB machines rather than the reusable plugin name.
 
 The model has three roles:
 
 - Human-attached Codex: a normal interactive Codex TUI launched through a shared app-server.
 - Autonomous Codex: a Codex app-server thread spawned by the supervisor that a human can later attach to.
-- Supervisor Claw: an always-on OpenClaw agent with tools for fleet state, transcript reads, steering, interruption, spawning, and handoff.
+- Supervisor Claw: an always-on ClawWorks agent with tools for fleet state, transcript reads, steering, interruption, spawning, and handoff.
 
-OpenClaw may use its existing subagent machinery internally, but the external contract is an attachable Codex session with a Codex thread id.
+ClawWorks may use its existing subagent machinery internally, but the external contract is an attachable Codex session with a Codex thread id.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ user SSH session
   -> codex --remote unix://... or ws://...
       -> local codex app-server daemon
           <-> host sidecar / supervisor connector
-              <-> OpenClaw fleet supervisor
+              <-> ClawWorks fleet supervisor
                   <-> supervisor MCP exposed back to Codex
 ```
 
@@ -51,7 +51,7 @@ The supervisor runs:
 - Session registry.
 - Codex app-server JSON-RPC client pool.
 - MCP server for Codex-to-Claw calls.
-- OpenClaw tools for Claw-to-Codex control.
+- ClawWorks tools for Claw-to-Codex control.
 - Policy engine for autonomous actions, approvals, and loop prevention.
 
 ## Codex App-Server Contract
@@ -161,7 +161,7 @@ Autonomous spawn:
 Preferred control plane:
 
 - Host connectors keep outbound WebSocket connections to the supervisor.
-- Supervisor state lives in OpenClaw Gateway storage.
+- Supervisor state lives in ClawWorks Gateway storage.
 - Codex app-server remains local to each host; never expose a raw unauthenticated app-server to the public internet.
 
 Cloudflare viability:
@@ -183,7 +183,7 @@ VPS fallback:
 - Supervisor tools enforce per-session policy: read, steer, interrupt, spawn, approval.
 - Cross-agent messages include `originSessionId`; self-echo is dropped.
 - Broadcast requires an explicit filter and bounded target count.
-- Transcript reads redact secrets at OpenClaw boundary.
+- Transcript reads redact secrets at ClawWorks boundary.
 - Approval requests default to deny for supervisor-originated turns unless policy allows them.
 
 ## Implementation Plan
@@ -196,7 +196,7 @@ Phase 1: Local supervisor MVP
 - Add local env config for endpoints.
 - Add fake app-server tests and one live local app-server smoke.
 
-Phase 2: OpenClaw integration
+Phase 2: ClawWorks integration
 
 - Register supervisor tools in the `codex-supervisor` plugin.
 - Inject supervisor MCP into Codex thread config.
@@ -242,6 +242,6 @@ Phase 5: Multi-Claw
 
 - Exact Codex TUI attach UX for an app-server thread spawned without a TUI.
 - Whether Codex should add `exec --remote` for headless live-shared runs.
-- Durable state owner: OpenClaw Gateway DB, Cloudflare Durable Object, or VPS database.
+- Durable state owner: ClawWorks Gateway DB, Cloudflare Durable Object, or VPS database.
 - Approval policy granularity for supervisor-originated turns.
 - How much transcript summary should be injected into the always-on Claw context versus kept as a tool/resource.

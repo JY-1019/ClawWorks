@@ -7,7 +7,7 @@ read_when:
 title: "Discovery and transports"
 ---
 
-OpenClaw has two distinct problems that look similar on the surface:
+ClawWorks has two distinct problems that look similar on the surface:
 
 1. **Operator remote control**: the macOS menu bar app controlling a gateway running elsewhere.
 2. **Node pairing**: iOS/Android (and future nodes) finding a gateway and pairing securely.
@@ -44,7 +44,7 @@ Protocol details:
 
 ### 1) Bonjour / DNS-SD discovery
 
-Multicast Bonjour is best-effort and does not cross networks. OpenClaw can also browse the
+Multicast Bonjour is best-effort and does not cross networks. ClawWorks can also browse the
 same gateway beacon via a configured wide-area DNS-SD domain, so discovery can cover:
 
 - `local.` on the same LAN

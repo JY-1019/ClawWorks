@@ -1,12 +1,12 @@
 ---
-summary: "Alibaba Model Studio Wan video generation in OpenClaw"
+summary: "Alibaba Model Studio Wan video generation in ClawWorks"
 title: "Alibaba Model Studio"
 read_when:
-  - You want to use Alibaba Wan video generation in OpenClaw
+  - You want to use Alibaba Wan video generation in ClawWorks
   - You need Model Studio or DashScope API key setup for video generation
 ---
 
-OpenClaw ships a bundled `alibaba` plugin that registers a video-generation provider for Wan models on Alibaba Model Studio (the international name for DashScope). The plugin is enabled by default; you only need to set an API key.
+ClawWorks ships a bundled `alibaba` plugin that registers a video-generation provider for Wan models on Alibaba Model Studio (the international name for DashScope). The plugin is enabled by default; you only need to set an API key.
 
 | Property         | Value                                                                           |
 | ---------------- | ------------------------------------------------------------------------------- |
@@ -119,7 +119,7 @@ When a request omits `durationSeconds`, the provider sends DashScope's accepted 
   </Accordion>
 
   <Accordion title="Auth env priority">
-    OpenClaw resolves the Alibaba API key from environment variables in this order, taking the first non-empty value:
+    ClawWorks resolves the Alibaba API key from environment variables in this order, taking the first non-empty value:
 
     1. `MODELSTUDIO_API_KEY`
     2. `DASHSCOPE_API_KEY`

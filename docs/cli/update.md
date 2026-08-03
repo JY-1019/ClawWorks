@@ -9,7 +9,7 @@ title: "Update"
 
 # `openclaw update`
 
-Safely update OpenClaw and switch between stable/beta/dev channels.
+Safely update ClawWorks and switch between stable/beta/dev channels.
 
 If you installed via **npm/pnpm/bun** (global install, no git metadata),
 updates happen via the package-manager flow in [Updating](/install/updating).
@@ -49,8 +49,8 @@ openclaw --update
 - `--acknowledge-clawhub-risk`: after reviewing community ClawHub trust
   warnings, allow post-update plugin sync to continue without an interactive
   prompt. Without this, risky community ClawHub plugin releases are skipped and
-  left unchanged when OpenClaw cannot prompt. Official ClawHub packages and
-  bundled OpenClaw plugin sources bypass this release-trust prompt.
+  left unchanged when ClawWorks cannot prompt. Official ClawHub packages and
+  bundled ClawWorks plugin sources bypass this release-trust prompt.
 
 `openclaw update` does not have a `--verbose` flag. Use `--dry-run` to preview
 the planned channel/tag/install/restart actions, `--json` for machine-readable
@@ -107,7 +107,7 @@ Options:
 - `--yes`: skip confirmation prompts.
 - `--acknowledge-clawhub-risk`: after reviewing community ClawHub trust
   warnings, allow repair-time plugin convergence to continue without an
-  interactive prompt. Official ClawHub packages and bundled OpenClaw plugin
+  interactive prompt. Official ClawHub packages and bundled ClawWorks plugin
   sources bypass this release-trust prompt.
 - `--no-restart`: accepted for update command parity; repair never restarts the
   Gateway.
@@ -130,7 +130,7 @@ Options:
 
 ## What it does
 
-When you switch channels explicitly (`--channel ...`), OpenClaw also keeps the
+When you switch channels explicitly (`--channel ...`), ClawWorks also keeps the
 install method aligned:
 
 - `dev` → ensures a git checkout (default: `~/openclaw`, or `$OPENCLAW_HOME/openclaw` when
@@ -152,14 +152,14 @@ manually.
 
 For package-manager installs, `openclaw update` resolves the target package
 version before invoking the package manager. npm global installs use a staged
-install: OpenClaw installs the new package into a temporary npm prefix, verifies
+install: ClawWorks installs the new package into a temporary npm prefix, verifies
 the packaged `dist` inventory there, then swaps that clean package tree into the
 real global prefix. If verification fails, post-update doctor, plugin sync, and
 restart work do not run from the suspect tree. Even when the installed version
 already matches the target, the command refreshes the global package install,
 then runs plugin sync, a core-command completion refresh, and restart work. This
 keeps packaged sidecars and channel-owned plugin records aligned with the
-installed OpenClaw build while leaving full plugin-command completion rebuilds to
+installed ClawWorks build while leaving full plugin-command completion rebuilds to
 explicit `openclaw completion --write-state` runs.
 
 When a local managed Gateway service is installed and restart is enabled,
@@ -172,7 +172,7 @@ the restarted Gateway reports the expected package version; git-checkout updates
 verify gateway health and service readiness after the rebuild. On macOS, the
 post-update check also verifies the LaunchAgent is loaded/running for the active
 profile and the configured loopback port is healthy. If the plist is installed
-but launchd is not supervising it, OpenClaw re-bootstraps the LaunchAgent
+but launchd is not supervising it, ClawWorks re-bootstraps the LaunchAgent
 automatically, then reruns the health/version/channel readiness checks. A fresh
 bootstrap loads the RunAtLoad job directly, so update recovery does not
 immediately `kickstart -k` the newly spawned Gateway. If the Gateway still does
@@ -197,9 +197,9 @@ Gateway exits:
   handoff and scheduled its own restart so the detached helper can run
   `openclaw update --yes --json` outside the live service process.
 - `ok: false`, `result.reason: "managed-service-handoff-unavailable"`, and
-  `handoff.status: "unavailable"` mean OpenClaw could not find a supervising
+  `handoff.status: "unavailable"` mean ClawWorks could not find a supervising
   service boundary and durable service identity for a safe handoff. For
-  example, systemd handoff requires the OpenClaw unit identity
+  example, systemd handoff requires the ClawWorks unit identity
   (`OPENCLAW_SYSTEMD_UNIT`), not only ambient systemd process markers. The
   response includes `handoff.command`, the shell command to run from outside the
   Gateway.
@@ -258,8 +258,8 @@ returns the latest sentinel.
 
 On the beta update channel, tracked npm and ClawHub plugin installs that follow
 the default/latest line try a plugin `@beta` release first. If the plugin has no
-beta release, OpenClaw falls back to the recorded default/latest spec and reports
-that as a warning. For npm plugins, OpenClaw also falls back when the beta
+beta release, ClawWorks falls back to the recorded default/latest spec and reports
+that as a warning. For npm plugins, ClawWorks also falls back when the beta
 package exists but fails install validation. These plugin fallback warnings do
 not make the core update fail. Exact versions and explicit tags are not
 rewritten.
@@ -271,7 +271,7 @@ If an exact pinned npm plugin update resolves to an artifact whose integrity dif
 <Note>
 Post-update plugin sync failures that are scoped to a managed plugin and that the sync path can route around (e.g. an unreachable npm registry for a non-essential plugin) are reported as warnings after the core update succeeds. The JSON result keeps the top-level update `status: "ok"` and reports `postUpdate.plugins.status: "warning"` with `openclaw update repair` and `openclaw plugins inspect <id> --runtime --json` guidance. Unexpected updater or sync exceptions still fail the update result. Fix the plugin install or update error, then rerun `openclaw update repair`.
 
-After the per-plugin sync step, `openclaw update` runs a mandatory **post-core convergence** pass before the gateway is restarted: it repairs missing configured plugin payloads, validates each _active_ tracked install record on disk, and statically verifies its `package.json` is parseable (and any explicitly-declared `main` exists). Failures from this pass — and an invalid OpenClaw config snapshot — return `postUpdate.plugins.status: "error"` and flip the top-level update `status` to `"error"`, so `openclaw update` exits non-zero and the gateway is _not_ restarted with an unverified plugin set. The error includes structured `postUpdate.plugins.warnings[].guidance` lines pointing at `openclaw update repair` and `openclaw plugins inspect <id> --runtime --json` for follow-up. Disabled plugin entries and records that are not trusted-source-linked official sync targets are skipped here, mirroring the `skipDisabledPlugins` policy used by the missing-payload check, so a stale disabled plugin record cannot block an otherwise valid update.
+After the per-plugin sync step, `openclaw update` runs a mandatory **post-core convergence** pass before the gateway is restarted: it repairs missing configured plugin payloads, validates each _active_ tracked install record on disk, and statically verifies its `package.json` is parseable (and any explicitly-declared `main` exists). Failures from this pass — and an invalid ClawWorks config snapshot — return `postUpdate.plugins.status: "error"` and flip the top-level update `status` to `"error"`, so `openclaw update` exits non-zero and the gateway is _not_ restarted with an unverified plugin set. The error includes structured `postUpdate.plugins.warnings[].guidance` lines pointing at `openclaw update repair` and `openclaw plugins inspect <id> --runtime --json` for follow-up. Disabled plugin entries and records that are not trusted-source-linked official sync targets are skipped here, mirroring the `skipDisabledPlugins` policy used by the missing-payload check, so a stale disabled plugin record cannot block an otherwise valid update.
 
 When the updated Gateway starts, plugin loading is verify-only: startup does not
 run package managers or mutate dependency trees. Package-manager `update.run`

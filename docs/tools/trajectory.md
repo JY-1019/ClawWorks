@@ -1,14 +1,14 @@
 ---
-summary: "Export redacted trajectory bundles for debugging an OpenClaw agent session"
+summary: "Export redacted trajectory bundles for debugging a ClawWorks agent session"
 read_when:
   - Debugging why an agent answered, failed, or called tools a certain way
-  - Exporting a support bundle for an OpenClaw session
+  - Exporting a support bundle for a ClawWorks session
   - Investigating prompt context, tool calls, runtime errors, or usage metadata
   - Disabling or relocating trajectory capture
 title: "Trajectory bundles"
 ---
 
-Trajectory capture is OpenClaw's per-session flight recorder. It records a
+Trajectory capture is ClawWorks's per-session flight recorder. It records a
 structured timeline for each agent run, then `/export-trajectory` packages the
 current session into a redacted support bundle.
 
@@ -41,7 +41,7 @@ Alias:
 /trajectory
 ```
 
-OpenClaw writes the bundle under the workspace:
+ClawWorks writes the bundle under the workspace:
 
 ```text
 .openclaw/trajectory-exports/openclaw-trajectory-<session>-<timestamp>/
@@ -59,7 +59,7 @@ paths and `~` paths are rejected.
 Trajectory bundles can contain prompts, model messages, tool schemas, tool
 results, runtime events, and local paths. The chat slash command therefore runs
 through exec approval every time. Approve the export once when you intend to
-create the bundle; do not use allow-all. In group chats, OpenClaw sends the
+create the bundle; do not use allow-all. In group chats, ClawWorks sends the
 approval prompt and export result to the owner privately instead of posting the
 trajectory details back to the shared room.
 
@@ -77,7 +77,7 @@ authorization checks and owner checks for the channel.
 
 ## What gets recorded
 
-Trajectory capture is on by default for OpenClaw agent runs.
+Trajectory capture is on by default for ClawWorks agent runs.
 
 Runtime events include:
 
@@ -118,7 +118,7 @@ An exported bundle can contain:
 | `manifest.json`       | Bundle schema, source files, event counts, and generated file list                             |
 | `events.jsonl`        | Ordered runtime and transcript timeline                                                        |
 | `session-branch.json` | Redacted active transcript branch and session header                                           |
-| `metadata.json`       | OpenClaw version, OS/runtime, model, config snapshot, plugins, skills, and prompt metadata     |
+| `metadata.json`       | ClawWorks version, OS/runtime, model, config snapshot, plugins, skills, and prompt metadata    |
 | `artifacts.json`      | Final status, errors, usage, prompt cache, compaction count, assistant text, and tool metadata |
 | `prompts.json`        | Submitted prompts and selected prompt-building details                                         |
 | `system-prompt.txt`   | Latest compiled system prompt, when captured                                                   |
@@ -135,7 +135,7 @@ By default, runtime trajectory events are written beside the session file:
 <session>.trajectory.jsonl
 ```
 
-OpenClaw also writes a best-effort pointer file beside the session:
+ClawWorks also writes a best-effort pointer file beside the session:
 
 ```text
 <session>.trajectory-path.json
@@ -148,7 +148,7 @@ dedicated directory:
 export OPENCLAW_TRAJECTORY_DIR=/var/lib/openclaw/trajectories
 ```
 
-When this variable is set, OpenClaw writes one JSONL file per session id in that
+When this variable is set, ClawWorks writes one JSONL file per session id in that
 directory.
 
 Session maintenance removes trajectory sidecars when their owning session entry
@@ -158,7 +158,7 @@ belongs to that session.
 
 ## Disable capture
 
-Set `OPENCLAW_TRAJECTORY=0` before starting OpenClaw:
+Set `OPENCLAW_TRAJECTORY=0` before starting ClawWorks:
 
 ```bash
 export OPENCLAW_TRAJECTORY=0
@@ -170,22 +170,22 @@ provider artifacts, and prompt metadata may be missing.
 
 ## Tune flush timeout
 
-OpenClaw flushes runtime trajectory sidecars during agent cleanup. The default
+ClawWorks flushes runtime trajectory sidecars during agent cleanup. The default
 cleanup timeout is 10,000 ms. On slow disks or large stores, set
-`OPENCLAW_TRAJECTORY_FLUSH_TIMEOUT_MS` before starting OpenClaw:
+`OPENCLAW_TRAJECTORY_FLUSH_TIMEOUT_MS` before starting ClawWorks:
 
 ```bash
 export OPENCLAW_TRAJECTORY_FLUSH_TIMEOUT_MS=30000
 ```
 
-This controls when OpenClaw logs an `openclaw-trajectory-flush` timeout and continues.
+This controls when ClawWorks logs an `openclaw-trajectory-flush` timeout and continues.
 It does not change the trajectory size caps. To tune all agent cleanup steps
 that do not pass an explicit timeout, set `OPENCLAW_AGENT_CLEANUP_TIMEOUT_MS`.
 
 ## Privacy and limits
 
 Trajectory bundles are designed for support and debugging, not public posting.
-OpenClaw redacts sensitive values before writing export files:
+ClawWorks redacts sensitive values before writing export files:
 
 - credentials and known secret-like payload fields
 - image data
@@ -208,7 +208,7 @@ and cannot know every application-specific secret.
 
 If the export has no runtime events:
 
-- confirm OpenClaw was started without `OPENCLAW_TRAJECTORY=0`
+- confirm ClawWorks was started without `OPENCLAW_TRAJECTORY=0`
 - check whether `OPENCLAW_TRAJECTORY_DIR` points to a writable directory
 - run another message in the session, then export again
 - inspect `manifest.json` for `runtimeEventCount`

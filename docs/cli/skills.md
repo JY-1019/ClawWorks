@@ -106,7 +106,7 @@ Notes:
   blocked community releases are refused. Risky community releases require
   review and `--acknowledge-clawhub-risk` when a non-interactive command should
   continue after that review. Official ClawHub skill publishers and bundled
-  OpenClaw skill sources bypass this release-trust prompt.
+  ClawWorks skill sources bypass this release-trust prompt.
 - `--global` targets the shared managed skills directory and cannot be combined
   with `--agent <id>`.
 - `--agent <id>` targets one configured agent workspace and overrides current
@@ -131,7 +131,7 @@ Notes:
 - `verify --card` prints the generated Skill Card Markdown instead of JSON. The
   command exits non-zero when ClawHub returns `ok: false` or `decision: "fail"`;
   unsigned signatures are informational unless ClawHub policy changes.
-- Installed ClawHub bundles can include a generated `skill-card.md`. OpenClaw
+- Installed ClawHub bundles can include a generated `skill-card.md`. ClawWorks
   treats verification as a ClawHub server decision and does not reject an
   installed skill just because that generated card changes the bundle
   fingerprint.

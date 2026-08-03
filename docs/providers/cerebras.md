@@ -2,7 +2,7 @@
 summary: "Cerebras setup (auth + model selection)"
 title: "Cerebras"
 read_when:
-  - You want to use Cerebras with OpenClaw
+  - You want to use Cerebras with ClawWorks
   - You need the Cerebras API key env var or CLI auth choice
 ---
 
@@ -75,7 +75,7 @@ openclaw onboard --non-interactive \
 
 ## Built-in catalog
 
-OpenClaw ships a static Cerebras catalog that mirrors the public OpenAI-compatible endpoint. All four models share a 128k context and 8,192 max-output tokens.
+ClawWorks ships a static Cerebras catalog that mirrors the public OpenAI-compatible endpoint. All four models share a 128k context and 8,192 max-output tokens.
 
 | Model ref                                 | Name                 | Reasoning | Notes                                  |
 | ----------------------------------------- | -------------------- | --------- | -------------------------------------- |

@@ -1,5 +1,5 @@
 ---
-summary: "Use OpenShell as a managed sandbox backend for OpenClaw agents"
+summary: "Use OpenShell as a managed sandbox backend for ClawWorks agents"
 title: OpenShell
 read_when:
   - You want cloud-managed sandboxes instead of local Docker
@@ -7,8 +7,8 @@ read_when:
   - You need to choose between mirror and remote workspace modes
 ---
 
-OpenShell is a managed sandbox backend for OpenClaw. Instead of running Docker
-containers locally, OpenClaw delegates sandbox lifecycle to the `openshell` CLI,
+OpenShell is a managed sandbox backend for ClawWorks. Instead of running Docker
+containers locally, ClawWorks delegates sandbox lifecycle to the `openshell` CLI,
 which provisions remote environments with SSH-based command execution.
 
 The OpenShell plugin reuses the same core SSH transport and remote filesystem
@@ -22,7 +22,7 @@ and an optional `mirror` workspace mode.
 - The `openshell` CLI installed and on `PATH` (or set a custom path via
   `plugins.entries.openshell.config.command`)
 - An OpenShell account with sandbox access
-- OpenClaw Gateway running on the host
+- ClawWorks Gateway running on the host
 
 ## Quick start
 
@@ -58,7 +58,7 @@ openclaw plugins install @openclaw/openshell-sandbox
 }
 ```
 
-2. Restart the Gateway. On the next agent turn, OpenClaw creates an OpenShell
+2. Restart the Gateway. On the next agent turn, ClawWorks creates an OpenShell
    sandbox and routes tool execution through it.
 
 3. Verify:
@@ -79,14 +79,14 @@ workspace to stay canonical**.
 
 Behavior:
 
-- Before `exec`, OpenClaw syncs the local workspace into the OpenShell sandbox.
-- After `exec`, OpenClaw syncs the remote workspace back to the local workspace.
+- Before `exec`, ClawWorks syncs the local workspace into the OpenShell sandbox.
+- After `exec`, ClawWorks syncs the remote workspace back to the local workspace.
 - File tools still operate through the sandbox bridge, but the local workspace
   remains the source of truth between turns.
 
 Best for:
 
-- You edit files locally outside OpenClaw and want those changes visible in the
+- You edit files locally outside ClawWorks and want those changes visible in the
   sandbox automatically.
 - You want the OpenShell sandbox to behave as much like the Docker backend as
   possible.
@@ -101,11 +101,11 @@ Use `plugins.entries.openshell.config.mode: "remote"` when you want the
 
 Behavior:
 
-- When the sandbox is first created, OpenClaw seeds the remote workspace from
+- When the sandbox is first created, ClawWorks seeds the remote workspace from
   the local workspace once.
 - After that, `exec`, `read`, `write`, `edit`, and `apply_patch` operate
   directly against the remote OpenShell workspace.
-- OpenClaw does **not** sync remote changes back into the local workspace.
+- ClawWorks does **not** sync remote changes back into the local workspace.
 - Prompt-time media reads still work because file and media tools read through
   the sandbox bridge.
 
@@ -116,7 +116,7 @@ Best for:
 - You do not want host-local edits to silently overwrite remote sandbox state.
 
 <Warning>
-If you edit files on the host outside OpenClaw after the initial seed, the remote sandbox does **not** see those changes. Use `openclaw sandbox recreate` to re-seed.
+If you edit files on the host outside ClawWorks after the initial seed, the remote sandbox does **not** see those changes. Use `openclaw sandbox recreate` to re-seed.
 </Warning>
 
 ### Choosing a mode
@@ -298,9 +298,9 @@ the intended remote workspace.
 
 ## How it works
 
-1. OpenClaw calls `openshell sandbox create` (with `--from`, `--gateway`,
+1. ClawWorks calls `openshell sandbox create` (with `--from`, `--gateway`,
    `--policy`, `--providers`, `--gpu` flags as configured).
-2. OpenClaw calls `openshell sandbox ssh-config <name>` to get SSH connection
+2. ClawWorks calls `openshell sandbox ssh-config <name>` to get SSH connection
    details for the sandbox.
 3. Core writes the SSH config to a temp file and opens an SSH session using the
    same remote filesystem bridge as the generic SSH backend.

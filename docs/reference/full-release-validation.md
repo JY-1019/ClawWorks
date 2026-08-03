@@ -171,7 +171,7 @@ summaries include per-phase timings for packaged upgrade lanes, and long-running
 commands print heartbeat lines so a stuck Windows update is visible before the
 job timeout.
 
-QA release-check failures block normal release validation. Required OpenClaw
+QA release-check failures block normal release validation. Required ClawWorks
 dynamic tool drift in the standard tier also blocks the release-check verifier.
 Tideclaw alpha runs may still treat non-package-safety release-check lanes as
 advisory. When `live_suite_filter` explicitly requests a gated QA live lane such

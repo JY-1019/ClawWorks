@@ -1,22 +1,22 @@
 ---
-summary: "Tool Search: compact large OpenClaw tool catalogs behind search, describe, and call"
+summary: "Tool Search: compact large ClawWorks tool catalogs behind search, describe, and call"
 title: "Tool Search"
 read_when:
-  - You want OpenClaw agents to use a large tool catalog without adding every tool schema to the prompt
-  - You want OpenClaw tools, MCP tools, and client tools exposed through one compact runtime surface
-  - You are implementing or debugging tool discovery for OpenClaw runs
+  - You want ClawWorks agents to use a large tool catalog without adding every tool schema to the prompt
+  - You want ClawWorks tools, MCP tools, and client tools exposed through one compact runtime surface
+  - You are implementing or debugging tool discovery for ClawWorks runs
 ---
 
-Tool Search is an experimental OpenClaw agent runtime feature. It gives agents one
+Tool Search is an experimental ClawWorks agent runtime feature. It gives agents one
 compact way to discover and call large tool catalogs. It is useful when the run
 has many available tools but the model is likely to need only a few of them.
 
-This page documents OpenClaw Tool Search. It is not the Codex-native tool
+This page documents ClawWorks Tool Search. It is not the Codex-native tool
 search or dynamic-tools surface. Codex-native code mode, tool search, deferred
 dynamic tools, and nested tool calls are stable Codex harness surfaces and do
 not depend on `tools.toolSearch`.
 
-When enabled for OpenClaw runs, the model receives one `tool_search_code` tool
+When enabled for ClawWorks runs, the model receives one `tool_search_code` tool
 by default. That tool runs a short JavaScript body in an isolated Node
 subprocess with an `openclaw.tools` bridge:
 
@@ -29,30 +29,30 @@ return await openclaw.tools.call(tool.id, {
 });
 ```
 
-The catalog can include OpenClaw tools, plugin tools, MCP tools, and
+The catalog can include ClawWorks tools, plugin tools, MCP tools, and
 client-provided tools. The model does not see every full schema up front.
 Instead, it searches compact descriptors, describes one selected tool when it
-needs the exact schema, and calls that tool through OpenClaw.
+needs the exact schema, and calls that tool through ClawWorks.
 
-Codex harness runs do not receive these experimental OpenClaw Tool Search
-controls. OpenClaw passes product capabilities to Codex as dynamic tools, and
+Codex harness runs do not receive these experimental ClawWorks Tool Search
+controls. ClawWorks passes product capabilities to Codex as dynamic tools, and
 Codex owns the stable native code mode, native tool search, deferred dynamic
 tools, and nested tool calls.
 
 ## How a turn runs
 
-At planning time the OpenClaw embedded runner builds the effective catalog for the
+At planning time the ClawWorks embedded runner builds the effective catalog for the
 run:
 
 1. Resolve the active tool policy for the agent, profile, sandbox, and session.
-2. List eligible OpenClaw and plugin tools.
+2. List eligible ClawWorks and plugin tools.
 3. List eligible MCP tools through the session MCP runtime.
 4. Add eligible client tools supplied for the current run.
 5. Index compact descriptors for search.
-6. Expose the OpenClaw code bridge, the structured fallback tools, or the
+6. Expose the ClawWorks code bridge, the structured fallback tools, or the
    compact directory surface to the model.
 
-At execution time every real tool call returns to OpenClaw. The isolated Node
+At execution time every real tool call returns to ClawWorks. The isolated Node
 runtime does not hold plugin implementations, MCP client objects, or secrets.
 `openclaw.tools.call(...)` crosses the bridge back into the Gateway, where the
 normal policy, approval, hook, logging, and result handling still apply.
@@ -66,23 +66,23 @@ normal policy, approval, hook, logging, and result handling still apply.
   structured tools for providers that should not receive code.
 - `directory`: exposes `tool_search`, `tool_describe`, and `tool_call` plus a
   bounded prompt directory of available tool names and descriptions for
-  providers that should see tool names without every full schema. OpenClaw can
+  providers that should see tool names without every full schema. ClawWorks can
   also expose a small bounded set of likely or required tool schemas directly
   for the current turn.
 
-All modes use the same policy-filtered catalog and normal OpenClaw execution
+All modes use the same policy-filtered catalog and normal ClawWorks execution
 path. If the current runtime cannot launch the isolated Node code-mode child
 process, the default `code` mode falls back to `tools` before catalog
 compaction. In `directory` mode, client-provided tools stay directly visible
-for the current run while OpenClaw tools, plugin tools, and MCP tools can be
+for the current run while ClawWorks tools, plugin tools, and MCP tools can be
 compacted behind the directory catalog. A direct call to an exact hidden
 directory name is hydrated from that same authorized catalog before execution.
 
-All modes are experimental. Prefer direct tool exposure for small OpenClaw tool
+All modes are experimental. Prefer direct tool exposure for small ClawWorks tool
 catalogs, and prefer the Codex-native stable surfaces for Codex harness runs.
 
 There is no separate source-selection config. When Tool Search is enabled, the
-catalog includes eligible OpenClaw, MCP, and client tools after normal policy
+catalog includes eligible ClawWorks, MCP, and client tools after normal policy
 filtering.
 
 ## Why this exists
@@ -128,7 +128,7 @@ const calendarCreate = await openclaw.tools.describe("mcp:calendar:create_event"
 
 `openclaw.tools.call(id, args)`
 
-Calls a selected tool through OpenClaw.
+Calls a selected tool through ClawWorks.
 
 ```js
 await openclaw.tools.call(calendarCreate.id, {
@@ -152,16 +152,16 @@ Directory mode exposes:
 It also keeps client-provided tools directly visible and may expose a small
 bounded set of likely or required catalog tool schemas directly for the current
 turn. If the bounded directory omits entries, use `tool_search` to find them. If
-the model requests an exact hidden directory tool name directly, OpenClaw
+the model requests an exact hidden directory tool name directly, ClawWorks
 hydrates it from the authorized catalog before normal execution.
-Directory-mode client tool names must not collide with OpenClaw, plugin, or MCP
+Directory-mode client tool names must not collide with ClawWorks, plugin, or MCP
 tool names because exact deferred dispatch uses those names.
 
 ## Runtime boundary
 
 The code bridge runs in a short-lived Node subprocess. The subprocess starts
 with Node permission mode enabled, an empty environment, no filesystem or
-network grants, and no child-process or worker grants. OpenClaw enforces a
+network grants, and no child-process or worker grants. ClawWorks enforces a
 parent-process wall-clock timeout and kills the subprocess on timeout, including
 after async continuations.
 
@@ -172,7 +172,7 @@ The runtime exposes only:
 - `openclaw.tools.describe`
 - `openclaw.tools.call`
 
-Normal OpenClaw behavior still applies to final calls:
+Normal ClawWorks behavior still applies to final calls:
 
 - tool allow and deny policies
 - per-agent and per-sandbox tool restrictions
@@ -183,7 +183,7 @@ Normal OpenClaw behavior still applies to final calls:
 
 ## Config
 
-Enable Tool Search for OpenClaw runs with the default code bridge:
+Enable Tool Search for ClawWorks runs with the default code bridge:
 
 ```bash
 openclaw config set tools.toolSearch true
@@ -199,7 +199,7 @@ Equivalent JSON:
 }
 ```
 
-Use the structured fallback tools instead for OpenClaw runs:
+Use the structured fallback tools instead for ClawWorks runs:
 
 ```json5
 {
@@ -211,7 +211,7 @@ Use the structured fallback tools instead for OpenClaw runs:
 }
 ```
 
-Use the compact directory surface instead for OpenClaw runs:
+Use the compact directory surface instead for ClawWorks runs:
 
 ```json5
 {
@@ -255,7 +255,7 @@ Tool Search records enough telemetry to compare it with direct tool exposure:
 - total serialized tool and prompt bytes sent to the harness
 - catalog size and source breakdown
 - search, describe, and call counts
-- final tool calls executed through OpenClaw
+- final tool calls executed through ClawWorks
 - selected tool ids and sources
 
 Session logs should make it possible to answer:
@@ -263,11 +263,11 @@ Session logs should make it possible to answer:
 - how many tool schemas the model saw up front
 - how many search and describe operations it performed
 - which final tool was called
-- whether the result came from OpenClaw, MCP, or a client tool
+- whether the result came from ClawWorks, MCP, or a client tool
 
 ## E2E validation
 
-The QA Lab gateway scenario proves both paths with the OpenClaw runtime:
+The QA Lab gateway scenario proves both paths with the ClawWorks runtime:
 
 ```bash
 pnpm openclaw qa suite --provider-mode mock-openai --scenario tool-search-gateway-e2e

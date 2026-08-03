@@ -1,12 +1,12 @@
 ---
-summary: "Model providers (LLMs) supported by OpenClaw"
+summary: "Model providers (LLMs) supported by ClawWorks"
 read_when:
   - You want to choose a model provider
   - You want quick setup examples for LLM auth + model selection
 title: "Model provider quickstart"
 ---
 
-OpenClaw can use many LLM providers. Pick one, authenticate, then set the default
+ClawWorks can use many LLM providers. Pick one, authenticate, then set the default
 model as `provider/model`.
 
 ## Quick start (two steps)

@@ -1,24 +1,24 @@
 ---
-summary: "Run OpenClaw through inferrs (OpenAI-compatible local server)"
+summary: "Run ClawWorks through inferrs (OpenAI-compatible local server)"
 read_when:
-  - You want to run OpenClaw against a local inferrs server
+  - You want to run ClawWorks against a local inferrs server
   - You are serving Gemma or another model through inferrs
-  - You need the exact OpenClaw compat flags for inferrs
+  - You need the exact ClawWorks compat flags for inferrs
 title: "Inferrs"
 ---
 
-[inferrs](https://github.com/ericcurtin/inferrs) can serve local models behind an OpenAI-compatible `/v1` API. OpenClaw works with `inferrs` through the generic `openai-completions` path.
+[inferrs](https://github.com/ericcurtin/inferrs) can serve local models behind an OpenAI-compatible `/v1` API. ClawWorks works with `inferrs` through the generic `openai-completions` path.
 
 | Property           | Value                                                              |
 | ------------------ | ------------------------------------------------------------------ |
 | Provider id        | `inferrs` (custom; configure under `models.providers.inferrs`)     |
-| Plugin             | none — `inferrs` is not a bundled OpenClaw provider plugin         |
+| Plugin             | none — `inferrs` is not a bundled ClawWorks provider plugin        |
 | Auth env var       | Optional. Any value works if your inferrs server has no auth       |
 | API                | OpenAI-compatible (`openai-completions`)                           |
 | Suggested base URL | `http://127.0.0.1:8080/v1` (or wherever your inferrs server lives) |
 
 <Note>
-  `inferrs` is currently best treated as a custom self-hosted OpenAI-compatible backend, not a dedicated OpenClaw provider plugin. You configure it through `models.providers.inferrs` rather than an onboarding choice flag. If you need a true bundled plugin with auto-discovery, see [SGLang](/providers/sglang) or [vLLM](/providers/vllm).
+  `inferrs` is currently best treated as a custom self-hosted OpenAI-compatible backend, not a dedicated ClawWorks provider plugin. You configure it through `models.providers.inferrs` rather than an onboarding choice flag. If you need a true bundled plugin with auto-discovery, see [SGLang](/providers/sglang) or [vLLM](/providers/vllm).
 </Note>
 
 ## Getting started
@@ -38,7 +38,7 @@ title: "Inferrs"
     curl http://127.0.0.1:8080/v1/models
     ```
   </Step>
-  <Step title="Add an OpenClaw provider entry">
+  <Step title="Add a ClawWorks provider entry">
     Add an explicit provider entry and point your default model at it. See the full config example below.
   </Step>
 </Steps>
@@ -88,7 +88,7 @@ This example uses Gemma 4 on a local `inferrs` server.
 
 ## On-demand startup
 
-Inferrs can also be started by OpenClaw only when an `inferrs/...` model is
+Inferrs can also be started by ClawWorks only when an `inferrs/...` model is
 selected. Add `localService` to the same provider entry:
 
 ```json5
@@ -148,7 +148,7 @@ path in config. For the full field reference, see
     `messages[].content`, not structured content-part arrays.
 
     <Warning>
-    If OpenClaw runs fail with an error like:
+    If ClawWorks runs fail with an error like:
 
     ```text
     messages[1].content: invalid type: sequence, expected a string
@@ -163,14 +163,14 @@ path in config. For the full field reference, see
     }
     ```
 
-    OpenClaw will flatten pure text content parts into plain strings before sending
+    ClawWorks will flatten pure text content parts into plain strings before sending
     the request.
 
   </Accordion>
 
   <Accordion title="Gemma and tool-schema caveat">
     Some current `inferrs` + Gemma combinations accept small direct
-    `/v1/chat/completions` requests but still fail on full OpenClaw agent-runtime
+    `/v1/chat/completions` requests but still fail on full ClawWorks agent-runtime
     turns.
 
     If that happens, try this first:
@@ -182,12 +182,12 @@ path in config. For the full field reference, see
     }
     ```
 
-    That disables OpenClaw's tool schema surface for the model and can reduce prompt
+    That disables ClawWorks's tool schema surface for the model and can reduce prompt
     pressure on stricter local backends.
 
-    If tiny direct requests still work but normal OpenClaw agent turns continue to
+    If tiny direct requests still work but normal ClawWorks agent turns continue to
     crash inside `inferrs`, the remaining issue is usually upstream model/server
-    behavior rather than OpenClaw's transport layer.
+    behavior rather than ClawWorks's transport layer.
 
   </Accordion>
 
@@ -218,7 +218,7 @@ path in config. For the full field reference, see
     - Native OpenAI-only request shaping does not apply here
     - No `service_tier`, no Responses `store`, no prompt-cache hints, and no
       OpenAI reasoning-compat payload shaping
-    - Hidden OpenClaw attribution headers (`originator`, `version`, `User-Agent`)
+    - Hidden ClawWorks attribution headers (`originator`, `version`, `User-Agent`)
       are not injected on custom `inferrs` base URLs
 
   </Accordion>
@@ -244,7 +244,7 @@ path in config. For the full field reference, see
   </Accordion>
 
   <Accordion title="inferrs still crashes on larger agent turns">
-    If OpenClaw no longer gets schema errors but `inferrs` still crashes on larger
+    If ClawWorks no longer gets schema errors but `inferrs` still crashes on larger
     agent turns, treat it as an upstream `inferrs` or model limitation. Reduce
     prompt pressure or switch to a different local backend or model.
   </Accordion>
@@ -258,7 +258,7 @@ For general help, see [Troubleshooting](/help/troubleshooting) and [FAQ](/help/f
 
 <CardGroup cols={2}>
   <Card title="Local models" href="/gateway/local-models" icon="server">
-    Running OpenClaw against local model servers.
+    Running ClawWorks against local model servers.
   </Card>
   <Card title="Local model services" href="/gateway/local-model-services" icon="play">
     Starting local model servers on demand for configured providers.

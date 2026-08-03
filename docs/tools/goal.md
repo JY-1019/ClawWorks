@@ -2,7 +2,7 @@
 doc-schema-version: 1
 summary: "Session goals: durable per-session objectives, /goal controls, model goal tools, token budgets, and TUI status"
 read_when:
-  - You want OpenClaw to keep one objective visible across a long session
+  - You want ClawWorks to keep one objective visible across a long session
   - You need to pause, resume, block, complete, or clear a session goal
   - You want to understand the get_goal, create_goal, and update_goal tools
   - You want to see how goals appear in the TUI
@@ -11,7 +11,7 @@ title: "Goal"
 
 # Goal
 
-A **goal** is one durable objective attached to the current OpenClaw session.
+A **goal** is one durable objective attached to the current ClawWorks session.
 It gives the agent and the operator a shared target for long-running work,
 without turning that target into a background task, reminder, cron job, or
 standing order.
@@ -131,7 +131,7 @@ start fresh session context.
 Goals can have an optional positive token budget. The budget is stored with the
 goal and measured from the session's fresh token count at creation time. If the
 current session only has stale or unknown token usage when the goal starts,
-OpenClaw waits for the next fresh session token snapshot and uses that as the
+ClawWorks waits for the next fresh session token snapshot and uses that as the
 baseline, so tokens spent before the goal existed are not charged to the goal.
 
 When token usage reaches the budget, the goal changes to `budget_limited`. This
@@ -140,12 +140,12 @@ agent that the goal is no longer actively being pursued until it is resumed or
 cleared.
 
 Token budgets are a session-goal guardrail, not a billing cap. Provider quota,
-cost reporting, and context-window behavior still use the normal OpenClaw
+cost reporting, and context-window behavior still use the normal ClawWorks
 usage and model controls.
 
 ## Model tools
 
-OpenClaw exposes three core goal tools to agent harnesses:
+ClawWorks exposes three core goal tools to agent harnesses:
 
 - `get_goal`: read the current session goal, including status, objective, token
   usage, and token budget.
@@ -183,7 +183,7 @@ token budget, and available commands.
 
 ## Channel behavior
 
-The `/goal` command works in command-capable OpenClaw sessions, including the
+The `/goal` command works in command-capable ClawWorks sessions, including the
 TUI and chat surfaces that permit text commands. Goal state is attached to the
 session key, not the transport. If two surfaces use the same session, they see
 the same goal.
@@ -204,7 +204,7 @@ starting a different objective.
 before starting or resuming another objective.
 
 If token usage looks like `0` or stale, the active session may not have a fresh
-token snapshot yet. Usage refreshes as OpenClaw records session usage and
+token snapshot yet. Usage refreshes as ClawWorks records session usage and
 transcript-derived totals.
 
 ## Related

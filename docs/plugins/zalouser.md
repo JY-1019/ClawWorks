@@ -1,12 +1,12 @@
 ---
 summary: "Zalo Personal plugin: QR login + messaging via native zca-js (plugin install + channel config + tool)"
 read_when:
-  - You want Zalo Personal (unofficial) support in OpenClaw
+  - You want Zalo Personal (unofficial) support in ClawWorks
   - You are configuring or developing the zalouser plugin
 title: "Zalo personal plugin"
 ---
 
-Zalo Personal support for OpenClaw via a plugin, using native `zca-js` to automate a normal Zalo user account.
+Zalo Personal support for ClawWorks via a plugin, using native `zca-js` to automate a normal Zalo user account.
 
 <Warning>
 Unofficial automation may lead to account suspension or ban. Use at your own risk.
@@ -68,7 +68,7 @@ Channel config lives under `channels.zalouser` (not `plugins.entries.*`):
 openclaw channels login --channel zalouser
 openclaw channels logout --channel zalouser
 openclaw channels status --probe
-openclaw message send --channel zalouser --target <threadId> --message "Hello from OpenClaw"
+openclaw message send --channel zalouser --target <threadId> --message "Hello from ClawWorks"
 openclaw directory peers list --channel zalouser --query "name"
 ```
 

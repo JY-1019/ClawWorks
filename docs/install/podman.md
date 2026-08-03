@@ -1,11 +1,11 @@
 ---
-summary: "Run OpenClaw in a rootless Podman container"
+summary: "Run ClawWorks in a rootless Podman container"
 read_when:
   - You want a containerized gateway with Podman instead of Docker
 title: "Podman"
 ---
 
-Run the OpenClaw Gateway in a rootless Podman container, managed by your current non-root user.
+Run the ClawWorks Gateway in a rootless Podman container, managed by your current non-root user.
 
 The intended model is:
 
@@ -17,7 +17,7 @@ The intended model is:
 ## Prerequisites
 
 - **Podman** in rootless mode
-- **OpenClaw CLI** installed on the host
+- **ClawWorks CLI** installed on the host
 - **Optional:** `systemd --user` if you want Quadlet-managed auto-start
 - **Optional:** `sudo` only if you want `loginctl enable-linger "$(whoami)"` for boot persistence on a headless host
 
@@ -72,7 +72,7 @@ Container start:
 ./scripts/run-openclaw-podman.sh launch
 ```
 
-The script starts the container as your current uid/gid with `--userns=keep-id` and bind-mounts your OpenClaw state into the container.
+The script starts the container as your current uid/gid with `--userns=keep-id` and bind-mounts your ClawWorks state into the container.
 
 Onboarding:
 
@@ -84,7 +84,7 @@ Then open `http://127.0.0.1:18789/` and use the token from `~/.openclaw/.env`.
 
 Model auth in Podman:
 
-- Use OpenClaw-managed auth during setup: Anthropic API keys for Anthropic, or OpenAI Codex browser OAuth/device-code auth for Codex-backed OpenAI.
+- Use ClawWorks-managed auth during setup: Anthropic API keys for Anthropic, or OpenAI Codex browser OAuth/device-code auth for Codex-backed OpenAI.
 - The Podman launcher does not mount host CLI credential homes such as `~/.claude` or `~/.codex` into the setup or gateway container.
 - Existing host CLI logins are same-host convenience paths. For container installs, keep provider auth in the mounted `~/.openclaw` state that setup manages.
 

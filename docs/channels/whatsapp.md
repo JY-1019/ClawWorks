@@ -16,7 +16,7 @@ Status: production-ready via WhatsApp Web (Baileys). Gateway owns linked session
 - Dev channel + git checkout: defaults to the local plugin path.
 - Stable/Beta: installs the official `@openclaw/whatsapp` plugin from ClawHub
   first, with npm as the fallback.
-- The WhatsApp runtime is distributed outside the core OpenClaw npm package so
+- The WhatsApp runtime is distributed outside the core ClawWorks npm package so
   WhatsApp-specific runtime dependencies stay with the external plugin.
 
 Manual install stays available:
@@ -106,7 +106,7 @@ openclaw pairing approve whatsapp <CODE>
 </Steps>
 
 <Note>
-OpenClaw recommends running WhatsApp on a separate number when possible. (The channel metadata and setup flow are optimized for that setup, but personal-number setups are also supported.)
+ClawWorks recommends running WhatsApp on a separate number when possible. (The channel metadata and setup flow are optimized for that setup, but personal-number setups are also supported.)
 </Note>
 
 <Warning>
@@ -122,7 +122,7 @@ handoff path over manual terminal capture.
   <Accordion title="Dedicated number (recommended)">
     This is the cleanest operational mode:
 
-    - separate WhatsApp identity for OpenClaw
+    - separate WhatsApp identity for ClawWorks
     - clearer DM allowlists and routing boundaries
     - lower chance of self-chat confusion
 
@@ -153,7 +153,7 @@ handoff path over manual terminal capture.
   </Accordion>
 
   <Accordion title="WhatsApp Web-only channel scope">
-    The messaging platform channel is WhatsApp Web-based (`Baileys`) in current OpenClaw channel architecture.
+    The messaging platform channel is WhatsApp Web-based (`Baileys`) in current ClawWorks channel architecture.
 
     There is no separate Twilio WhatsApp messaging channel in the built-in chat-channel registry.
 
@@ -164,7 +164,7 @@ handoff path over manual terminal capture.
 
 - Gateway owns the WhatsApp socket and reconnect loop.
 - The reconnect watchdog uses WhatsApp Web transport activity, not only inbound app-message volume, so a quiet linked-device session is not restarted solely because nobody has sent a message recently. A longer application-silence cap still forces a reconnect if transport frames keep arriving but no application messages are handled for the watchdog window; after a transient reconnect for a recently active session, that application-silence check uses the normal message timeout for the first recovery window.
-- Baileys socket timings are explicit under `web.whatsapp.*`: `keepAliveIntervalMs` controls WhatsApp Web application pings, `connectTimeoutMs` controls the opening handshake timeout, and `defaultQueryTimeoutMs` controls Baileys query waits plus OpenClaw's local outbound send/presence and inbound read-receipt operation bounds.
+- Baileys socket timings are explicit under `web.whatsapp.*`: `keepAliveIntervalMs` controls WhatsApp Web application pings, `connectTimeoutMs` controls the opening handshake timeout, and `defaultQueryTimeoutMs` controls Baileys query waits plus ClawWorks's local outbound send/presence and inbound read-receipt operation bounds.
 - Outbound sends require an active WhatsApp listener for the target account.
 - Group sends attach native mention metadata for `@+<digits>` and `@<digits>` tokens in text and media captions when the token matches current WhatsApp participant metadata, including LID-backed groups.
 - Status and broadcast chats are ignored (`@status`, `@broadcast`).
@@ -173,7 +173,7 @@ handoff path over manual terminal capture.
 - Group sessions are isolated (`agent:<agentId>:whatsapp:group:<jid>`).
 - WhatsApp Channels/Newsletters can be explicit outbound targets with their native `@newsletter` JID. Outbound newsletter sends use channel session metadata (`agent:<agentId>:whatsapp:channel:<jid>`) rather than DM session semantics.
 - WhatsApp Web transport honors standard proxy environment variables on the gateway host (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` / lowercase variants). Prefer host-level proxy config over channel-specific WhatsApp proxy settings.
-- When `messages.removeAckAfterReply` is enabled, OpenClaw clears the WhatsApp ack reaction after a visible reply is delivered.
+- When `messages.removeAckAfterReply` is enabled, ClawWorks clears the WhatsApp ack reaction after a visible reply is delivered.
 
 ## Approval prompts
 
@@ -269,7 +269,7 @@ content and identifiers.
     - pairings are persisted in channel allow-store and merged with configured `allowFrom`
     - scheduled automation and heartbeat recipient fallback use explicit delivery targets or configured `allowFrom`; DM pairing approvals are not implicit cron or heartbeat recipients
     - if no allowlist is configured, the linked self number is allowed by default
-    - OpenClaw never auto-pairs outbound `fromMe` DMs (messages you send to yourself from the linked device)
+    - ClawWorks never auto-pairs outbound `fromMe` DMs (messages you send to yourself from the linked device)
 
   </Tab>
 
@@ -350,7 +350,7 @@ WhatsApp supports persistent ACP bindings with top-level `bindings[]` entries:
 
 - Direct chats match E.164 numbers such as `+15555550123`.
 - Groups match WhatsApp group JIDs such as `120363424282127706@g.us`.
-- Group allowlists, sender policy, and mention or activation gating run before OpenClaw ensures the configured ACP session exists.
+- Group allowlists, sender policy, and mention or activation gating run before ClawWorks ensures the configured ACP session exists.
 - A matched configured ACP binding owns the route. WhatsApp broadcast groups do not fan out that turn to ordinary WhatsApp sessions.
 
 ## Personal-number and self-chat behavior
@@ -376,7 +376,7 @@ When the linked self number is also present in `allowFrom`, WhatsApp self-chat s
     ```
 
     Reply metadata fields are also populated when available (`ReplyToId`, `ReplyToBody`, `ReplyToSender`, sender JID/E.164).
-    When the quoted reply target is downloadable media, OpenClaw saves it through
+    When the quoted reply target is downloadable media, ClawWorks saves it through
     the normal inbound media store and exposes it as `MediaPath`/`MediaType` so
     the agent can inspect the referenced image instead of only seeing
     `<media:image>`.
@@ -563,7 +563,7 @@ Behavior notes:
 
 ## Lifecycle status reactions
 
-Set `messages.statusReactions.enabled: true` to let WhatsApp replace the ack reaction during a turn instead of leaving a static receipt emoji. When enabled, OpenClaw uses the same inbound message reaction slot for lifecycle states such as queued, thinking, tool activity, compaction, done, and error.
+Set `messages.statusReactions.enabled: true` to let WhatsApp replace the ack reaction during a turn instead of leaving a static receipt emoji. When enabled, ClawWorks uses the same inbound message reaction slot for lifecycle states such as queued, thinking, tool activity, compaction, done, and error.
 
 ```json5
 {
@@ -708,7 +708,7 @@ Behavior notes:
   </Accordion>
 
   <Accordion title="Reply appears in transcript but not in WhatsApp">
-    Transcript rows record what the agent generated. WhatsApp delivery is checked separately: OpenClaw only treats an auto-reply as sent after Baileys returns an outbound message id for at least one visible text or media send.
+    Transcript rows record what the agent generated. WhatsApp delivery is checked separately: ClawWorks only treats an auto-reply as sent after Baileys returns an outbound message id for at least one visible text or media send.
 
     Ack reactions are independent pre-reply receipts. A successful reaction does not prove that the later text or media reply was accepted by WhatsApp.
 
@@ -725,7 +725,7 @@ Behavior notes:
     - mention gating (`requireMention` + mention patterns)
     - duplicate keys in `openclaw.json` (JSON5): later entries override earlier ones, so keep a single `groupPolicy` per scope
 
-    If `channels.whatsapp.groups` is present, WhatsApp can still observe messages from other groups, but OpenClaw drops them before session routing. Add the group JID to `channels.whatsapp.groups` or add `groups["*"]` to admit all groups while keeping sender authorization under `groupPolicy` and `groupAllowFrom`.
+    If `channels.whatsapp.groups` is present, WhatsApp can still observe messages from other groups, but ClawWorks drops them before session routing. Add the group JID to `channels.whatsapp.groups` or add `groups["*"]` to admit all groups while keeping sender authorization under `groupPolicy` and `groupAllowFrom`.
 
   </Accordion>
 

@@ -8,7 +8,7 @@ title: "Android app"
 ---
 
 <Note>
-The official Android app is available on [Google Play](https://play.google.com/store/apps/details?id=ai.openclaw.app&hl=en_IN). It is a companion node and requires a running OpenClaw Gateway. The source code is also available in the [OpenClaw repository](https://github.com/openclaw/openclaw) under `apps/android`; see [apps/android/README.md](https://github.com/openclaw/openclaw/blob/main/apps/android/README.md) for build instructions.
+The official Android app is available on [Google Play](https://play.google.com/store/apps/details?id=ai.openclaw.app&hl=en_IN). It is a companion node and requires a running ClawWorks Gateway. The source code is also available in the [ClawWorks repository](https://github.com/openclaw/openclaw) under `apps/android`; see [apps/android/README.md](https://github.com/openclaw/openclaw/blob/main/apps/android/README.md) for build instructions.
 </Note>
 
 ## Support snapshot
@@ -232,9 +232,9 @@ See [Camera node](/nodes/camera) for parameters and CLI helpers.
 
 ## Assistant entrypoints
 
-Android supports launching OpenClaw from the system assistant trigger (Google
+Android supports launching ClawWorks from the system assistant trigger (Google
 Assistant). When configured, holding the home button or saying "Hey Google, ask
-OpenClaw..." opens the app and hands the prompt into the chat composer.
+ClawWorks..." opens the app and hands the prompt into the chat composer.
 
 This uses Android **App Actions** metadata declared in the app manifest. No
 extra configuration is needed on the gateway side -- the assistant intent is
@@ -242,7 +242,7 @@ handled entirely by the Android app and forwarded as a normal chat message.
 
 <Note>
 App Actions availability depends on the device, Google Play Services version,
-and whether the user has set OpenClaw as the default assistant app.
+and whether the user has set ClawWorks as the default assistant app.
 </Note>
 
 ## Notification forwarding

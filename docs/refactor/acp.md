@@ -24,7 +24,7 @@ surface; it is a safer internal contract for the existing ACP and ACPX behavior.
 ## Goals
 
 - Cleanup never signals a process unless current live evidence matches an
-  OpenClaw-owned lease.
+  ClawWorks-owned lease.
 - `cancel`, `close`, and startup reaping have distinct lifecycle intents.
 - `sessions_list`, `sessions_history`, `sessions_send`, and status checks use
   the same requester-owned session model.

@@ -8,7 +8,7 @@ title: "Release channels"
 sidebarTitle: "Release Channels"
 ---
 
-OpenClaw ships three update channels:
+ClawWorks ships three update channels:
 
 - **stable**: npm dist-tag `latest`. Recommended for most users.
 - **beta**: npm dist-tag `beta` when it is current; if beta is missing or older than
@@ -79,12 +79,12 @@ Notes:
 - `--tag` applies to **package (npm) installs only**. Git installs ignore it.
 - The tag is not persisted. Your next `openclaw update` uses your configured
   channel as usual.
-- For package installs, OpenClaw pre-packs GitHub/git source specs into a
+- For package installs, ClawWorks pre-packs GitHub/git source specs into a
   temporary tarball before the staged npm install. Use `--channel dev` or
   `--install-method git --version main` when you want the moving `main`
   checkout as your persistent install.
 - Downgrade protection: if the target version is older than your current version,
-  OpenClaw prompts for confirmation (skip with `--yes`).
+  ClawWorks prompts for confirmation (skip with `--yes`).
 - `--channel beta` is different from `--tag beta`: the channel flow can fall back
   to stable/latest when beta is missing or older, while `--tag beta` targets the
   raw `beta` dist-tag for that one run.
@@ -105,7 +105,7 @@ whether a downgrade confirmation would be required.
 
 ## Plugins and channels
 
-When you switch channels with `openclaw update`, OpenClaw also syncs plugin
+When you switch channels with `openclaw update`, ClawWorks also syncs plugin
 sources:
 
 - `dev` prefers bundled plugins from the git checkout.

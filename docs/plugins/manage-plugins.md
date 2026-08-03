@@ -1,5 +1,5 @@
 ---
-summary: "Quick examples for listing, installing, updating, inspecting, and uninstalling OpenClaw plugins"
+summary: "Quick examples for listing, installing, updating, inspecting, and uninstalling ClawWorks plugins"
 read_when:
   - You want quick plugin list, install, update, inspect, or uninstall examples
   - You want to choose a plugin install source
@@ -37,7 +37,7 @@ openclaw plugins list --json \
   | jq '.plugins[] | {id, enabled, format, source, dependencyStatus}'
 ```
 
-`plugins list` is a cold inventory check. It shows what OpenClaw can discover
+`plugins list` is a cold inventory check. It shows what ClawWorks can discover
 from config, manifests, and the plugin registry; it does not prove that an
 already-running Gateway imported the plugin runtime. The JSON output includes
 registry diagnostics and each plugin's static `dependencyStatus` when the
@@ -73,7 +73,7 @@ openclaw plugins install --link ./my-plugin
 
 Bare package specs install from npm during the launch cutover. Use `clawhub:`,
 `npm:`, `git:`, or `npm-pack:` when you need deterministic source selection.
-If the bare name matches an official plugin id, OpenClaw can install the
+If the bare name matches an official plugin id, ClawWorks can install the
 catalog entry directly.
 
 Use `--force` only when you intentionally want to overwrite an existing install
@@ -106,12 +106,12 @@ openclaw plugins update --all
 openclaw plugins update <plugin-id> --dry-run
 ```
 
-When you pass a plugin id, OpenClaw reuses the tracked install spec. Stored
+When you pass a plugin id, ClawWorks reuses the tracked install spec. Stored
 dist-tags such as `@beta` and exact pinned versions continue to be used on
 later `update <plugin-id>` runs.
 
 `openclaw plugins update --all` is the bulk maintenance path. It still respects
-ordinary tracked install specs, but trusted official OpenClaw plugin records can
+ordinary tracked install specs, but trusted official ClawWorks plugin records can
 sync to the current official catalog target instead of staying on a stale exact
 official package. If `update.channel` is set to `beta`, that bulk official sync
 uses the beta-channel context. Use a targeted `update <plugin-id>` when you
@@ -153,7 +153,7 @@ the install instead.
 
 | Source      | Use when                                                                    | Example                                                        |
 | ----------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| ClawHub     | You want OpenClaw-native discovery, scan summaries, versions, and hints     | `openclaw plugins install clawhub:<package>`                   |
+| ClawHub     | You want ClawWorks-native discovery, scan summaries, versions, and hints    | `openclaw plugins install clawhub:<package>`                   |
 | npmjs.com   | You already ship JavaScript packages or need npm dist-tags/private registry | `openclaw plugins install npm:@acme/openclaw-plugin`           |
 | git         | You want a branch, tag, or commit from a repository                         | `openclaw plugins install git:github.com/<owner>/<repo>@<ref>` |
 | local path  | You are developing or testing a plugin on the same machine                  | `openclaw plugins install --link ./my-plugin`                  |
@@ -166,7 +166,7 @@ standalone plugin files in `plugins.load.paths` instead of installing them with
 
 ## Publish plugins
 
-ClawHub is the primary public discovery surface for OpenClaw plugins. Publish
+ClawHub is the primary public discovery surface for ClawWorks plugins. Publish
 there when you want users to find plugin metadata, version history, registry
 scan results, and install hints before they install.
 

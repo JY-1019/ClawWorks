@@ -6,7 +6,7 @@ read_when:
 title: "Grok search"
 ---
 
-OpenClaw supports Grok as a `web_search` provider, using xAI web-grounded
+ClawWorks supports Grok as a `web_search` provider, using xAI web-grounded
 responses to produce AI-synthesized answers backed by live search results
 with citations.
 
@@ -14,7 +14,7 @@ Grok web search prefers your existing xAI OAuth sign-in when one is available.
 If no OAuth profile exists, the same xAI API key can also power the built-in
 `x_search` tool for X (formerly Twitter) post search and the `code_execution`
 tool. If you store the key under `plugins.entries.xai.config.webSearch.apiKey`,
-OpenClaw reuses it as a fallback for the bundled xAI model provider too.
+ClawWorks reuses it as a fallback for the bundled xAI model provider too.
 
 For post-level X metrics such as reposts, replies, bookmarks, or views, prefer
 `x_search` with the exact post URL or status ID instead of a broad search
@@ -27,9 +27,9 @@ If you choose **Grok** during:
 - `openclaw onboard`
 - `openclaw configure --section web`
 
-OpenClaw can use an existing xAI OAuth profile without prompting for a separate
+ClawWorks can use an existing xAI OAuth profile without prompting for a separate
 web-search key. If OAuth is not available, it falls back to xAI API-key setup.
-OpenClaw can also show a separate follow-up step to enable `x_search` with the
+ClawWorks can also show a separate follow-up step to enable `x_search` with the
 same xAI credential. That follow-up:
 
 - only appears after you choose Grok for `web_search`
@@ -117,7 +117,7 @@ web-grounded searches can run longer than the shared `web_search` default. Set
 ## Base URL overrides
 
 Set `plugins.entries.xai.config.webSearch.baseUrl` when Grok web search should
-route through an operator proxy or xAI-compatible Responses endpoint. OpenClaw
+route through an operator proxy or xAI-compatible Responses endpoint. ClawWorks
 posts to `<baseUrl>/responses` after trimming trailing slashes. `x_search`
 uses the same `webSearch.baseUrl` fallback unless
 `plugins.entries.xai.config.xSearch.baseUrl` is set.

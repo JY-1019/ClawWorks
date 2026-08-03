@@ -1,22 +1,22 @@
 ---
-summary: "BlueBubbles support was removed from OpenClaw. Use the bundled iMessage plugin with imsg for new and migrated iMessage setups."
+summary: "BlueBubbles support was removed from ClawWorks. Use the bundled iMessage plugin with imsg for new and migrated iMessage setups."
 read_when:
   - You used the old BlueBubbles channel and need to move to iMessage
-  - You are choosing the supported OpenClaw iMessage setup
+  - You are choosing the supported ClawWorks iMessage setup
   - You need a short explanation of the BlueBubbles removal
 title: "BlueBubbles removal and the imsg iMessage path"
 ---
 
 # BlueBubbles removal and the imsg iMessage path
 
-OpenClaw no longer ships the BlueBubbles channel. iMessage support now runs through the bundled `imessage` plugin, which starts [`imsg`](https://github.com/steipete/imsg) locally or through an SSH wrapper and talks JSON-RPC over stdin/stdout.
+ClawWorks no longer ships the BlueBubbles channel. iMessage support now runs through the bundled `imessage` plugin, which starts [`imsg`](https://github.com/steipete/imsg) locally or through an SSH wrapper and talks JSON-RPC over stdin/stdout.
 
 If your config still contains `channels.bluebubbles`, migrate it to `channels.imessage`. The legacy `/channels/bluebubbles` docs URL redirects to [Coming from BlueBubbles](/channels/imessage-from-bluebubbles), which has the full config translation table and cutover checklist.
 
 ## What changed
 
-- There is no BlueBubbles HTTP server, webhook route, REST password, or BlueBubbles plugin runtime in the supported OpenClaw iMessage path.
-- OpenClaw reads and watches Messages through `imsg` on the Mac where Messages.app is signed in.
+- There is no BlueBubbles HTTP server, webhook route, REST password, or BlueBubbles plugin runtime in the supported ClawWorks iMessage path.
+- ClawWorks reads and watches Messages through `imsg` on the Mac where Messages.app is signed in.
 - Basic send, receive, history, and media use the normal `imsg` surfaces and macOS permissions.
 - Advanced actions such as threaded replies, tapbacks, edit, unsend, effects, read receipts, typing indicators, and group management require `imsg launch` with the private API bridge available.
 - Linux and Windows gateways can still use iMessage by setting `channels.imessage.cliPath` to an SSH wrapper that runs `imsg` on the signed-in Mac.
@@ -32,7 +32,7 @@ If your config still contains `channels.bluebubbles`, migrate it to `channels.im
    imsg rpc --help
    ```
 
-2. Grant Full Disk Access and Automation permissions to the process context that runs `imsg` and OpenClaw.
+2. Grant Full Disk Access and Automation permissions to the process context that runs `imsg` and ClawWorks.
 
 3. Translate the old config:
 

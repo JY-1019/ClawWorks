@@ -7,7 +7,7 @@ read_when:
 title: "Exa search"
 ---
 
-OpenClaw supports [Exa AI](https://exa.ai/) as a `web_search` provider. Exa
+ClawWorks supports [Exa AI](https://exa.ai/) as a `web_search` provider. Exa
 offers neural, keyword, and hybrid search modes with built-in content
 extraction (highlights, text, summaries).
 
@@ -47,7 +47,7 @@ openclaw gateway restart
         config: {
           webSearch: {
             apiKey: "exa-...", // optional if EXA_API_KEY is set
-            baseUrl: "https://api.exa.ai", // optional; OpenClaw appends /search
+            baseUrl: "https://api.exa.ai", // optional; ClawWorks appends /search
           },
         },
       },
@@ -69,7 +69,7 @@ For a gateway install, put it in `~/.openclaw/.env`.
 ## Base URL override
 
 Set `plugins.entries.exa.config.webSearch.baseUrl` when Exa search requests
-should go through a compatible proxy or alternate Exa endpoint. OpenClaw
+should go through a compatible proxy or alternate Exa endpoint. ClawWorks
 normalizes bare hosts by prepending `https://` and appends `/search` unless the
 path already ends there. The resolved endpoint is included in the search cache
 key, so results from different Exa endpoints are not shared.

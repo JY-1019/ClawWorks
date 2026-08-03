@@ -1,5 +1,5 @@
 ---
-summary: "What experimental flags mean in OpenClaw and which ones are currently documented"
+summary: "What experimental flags mean in ClawWorks and which ones are currently documented"
 title: "Experimental features"
 read_when:
   - You see an `.experimental` config key and want to know whether it is stable
@@ -7,7 +7,7 @@ read_when:
   - You want one place to find the currently documented experimental flags
 ---
 
-Experimental features in OpenClaw are **opt-in preview surfaces**. They are
+Experimental features in ClawWorks are **opt-in preview surfaces**. They are
 behind explicit flags because they still need real-world mileage before they
 deserve a stable default or a long-lived public contract.
 
@@ -16,31 +16,31 @@ Treat them differently from normal config:
 - Keep them **off by default** unless the related doc tells you to try one.
 - Expect **shape and behavior to change** faster than stable config.
 - Prefer the stable path first when one already exists.
-- If you are rolling OpenClaw out broadly, test experimental flags in a smaller
+- If you are rolling ClawWorks out broadly, test experimental flags in a smaller
   environment before baking them into a shared baseline.
 
 ## Currently documented flags
 
 | Surface                  | Key                                                                                        | Use it when                                                                                                                       | More                                                                                          |
 | ------------------------ | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Local model runtime      | `agents.defaults.experimental.localModelLean`, `agents.list[].experimental.localModelLean` | A smaller or stricter local backend chokes on OpenClaw's full default tool surface                                                | [Local Models](/gateway/local-models)                                                         |
+| Local model runtime      | `agents.defaults.experimental.localModelLean`, `agents.list[].experimental.localModelLean` | A smaller or stricter local backend chokes on ClawWorks's full default tool surface                                               | [Local Models](/gateway/local-models)                                                         |
 | Memory search            | `agents.defaults.memorySearch.experimental.sessionMemory`                                  | You want `memory_search` to index prior session transcripts and accept the extra storage/indexing cost                            | [Memory configuration reference](/reference/memory-config#session-memory-search-experimental) |
-| Codex harness            | `plugins.entries.codex.config.appServer.experimental.sandboxExecServer`                    | You want native Codex app-server 0.132.0 or newer to target an OpenClaw sandbox-backed exec-server instead of disabling Code Mode | [Codex harness reference](/plugins/codex-harness-reference#sandboxed-native-execution)        |
+| Codex harness            | `plugins.entries.codex.config.appServer.experimental.sandboxExecServer`                    | You want native Codex app-server 0.132.0 or newer to target a ClawWorks sandbox-backed exec-server instead of disabling Code Mode | [Codex harness reference](/plugins/codex-harness-reference#sandboxed-native-execution)        |
 | Structured planning tool | `tools.experimental.planTool`                                                              | You want the structured `update_plan` tool exposed for multi-step work tracking in compatible runtimes and UIs                    | [Gateway configuration reference](/gateway/config-tools#toolsexperimental)                    |
 
 ## Local model lean mode
 
-`agents.defaults.experimental.localModelLean: true` is a pressure-release valve for weaker local-model setups. When it is on, OpenClaw drops three default tools — `browser`, `cron`, and `message` — from the agent's tool surface for every turn. It also defaults that run to structured Tool Search controls when `tools.toolSearch` is not explicitly configured, so larger plugin, MCP, or client tool catalogs stay behind `tool_search`, `tool_describe`, and `tool_call` instead of being dumped into the prompt. Runs that require direct `message` delivery keep that tool direct instead of enabling the lean-mode Tool Search default. Use `agents.list[].experimental.localModelLean` to enable or disable the same behavior for one configured agent.
+`agents.defaults.experimental.localModelLean: true` is a pressure-release valve for weaker local-model setups. When it is on, ClawWorks drops three default tools — `browser`, `cron`, and `message` — from the agent's tool surface for every turn. It also defaults that run to structured Tool Search controls when `tools.toolSearch` is not explicitly configured, so larger plugin, MCP, or client tool catalogs stay behind `tool_search`, `tool_describe`, and `tool_call` instead of being dumped into the prompt. Runs that require direct `message` delivery keep that tool direct instead of enabling the lean-mode Tool Search default. Use `agents.list[].experimental.localModelLean` to enable or disable the same behavior for one configured agent.
 
 ### Why these three tools
 
-These three tools have the largest descriptions and the most parameter shapes in the default OpenClaw runtime. On a small-context or stricter OpenAI-compatible backend that is the difference between:
+These three tools have the largest descriptions and the most parameter shapes in the default ClawWorks runtime. On a small-context or stricter OpenAI-compatible backend that is the difference between:
 
 - Tool schemas fitting cleanly in the prompt vs. crowding out conversation history.
 - The model picking the right tool vs. emitting malformed tool calls because there are too many similar-looking schemas.
 - The Chat Completions adapter staying inside the server's structured-output limits vs. tripping a 400 on tool-call payload size.
 
-Removing them does not silently rewire OpenClaw — it just makes the direct tool list shorter. The model still has `read`, `write`, `edit`, `exec`, `apply_patch`, web search/fetch (when configured), memory, and session/agent tools available. Extra catalogs remain callable through Tool Search unless you explicitly set `tools.toolSearch: false`.
+Removing them does not silently rewire ClawWorks — it just makes the direct tool list shorter. The model still has `read`, `write`, `edit`, `exec`, `apply_patch`, web search/fetch (when configured), memory, and session/agent tools available. Extra catalogs remain callable through Tool Search unless you explicitly set `tools.toolSearch: false`.
 
 ### When to turn it on
 
@@ -56,7 +56,7 @@ If your backend handles the full default runtime cleanly, leave this off. Lean m
 
 Lean mode also does not replace `tools.profile`, `tools.allow`/`tools.deny`, or the model `compat.supportsTools: false` escape hatch. If you need a permanent narrower tool surface for a specific agent, prefer those stable knobs over the experimental flag.
 
-If you already tune Tool Search globally, OpenClaw leaves that operator config alone. Set `tools.toolSearch: false` to opt out of the lean-mode Tool Search default.
+If you already tune Tool Search globally, ClawWorks leaves that operator config alone. Set `tools.toolSearch: false` to opt out of the lean-mode Tool Search default.
 
 ### Enable
 
@@ -100,7 +100,7 @@ The deep status output lists the active agent tools; `browser`, `cron`, and `mes
 
 ## Experimental does not mean hidden
 
-If a feature is experimental, OpenClaw should say so plainly in docs and in the
+If a feature is experimental, ClawWorks should say so plainly in docs and in the
 config path itself. What it should **not** do is smuggle preview behavior into a
 stable-looking default knob and pretend that is normal. That's how config
 surfaces get messy.

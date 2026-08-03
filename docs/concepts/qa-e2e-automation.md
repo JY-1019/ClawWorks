@@ -8,7 +8,7 @@ read_when:
 title: "QA overview"
 ---
 
-The private QA stack is meant to exercise OpenClaw in a more realistic,
+The private QA stack is meant to exercise ClawWorks in a more realistic,
 channel-shaped way than a single unit test can.
 
 Current pieces:
@@ -34,7 +34,7 @@ script aliases; both forms are supported.
 | `qa run`                                            | Bundled QA self-check without `--qa-profile`; taxonomy-backed maturity profile runner with `--qa-profile smoke-ci`, `--qa-profile release`, or `--qa-profile all`.                                                                                                      |
 | `qa suite`                                          | Run repo-backed scenarios against the QA gateway lane. Aliases: `pnpm openclaw qa suite --runner multipass` for a disposable Linux VM.                                                                                                                                  |
 | `qa coverage`                                       | Print the YAML scenario-coverage inventory (`--json` for machine output).                                                                                                                                                                                               |
-| `qa parity-report`                                  | Compare two `qa-suite-summary.json` files and write the agentic parity report, or use `--runtime-axis --token-efficiency` to write Codex-vs-OpenClaw runtime parity and token-efficiency reports from one runtime-pair summary.                                         |
+| `qa parity-report`                                  | Compare two `qa-suite-summary.json` files and write the agentic parity report, or use `--runtime-axis --token-efficiency` to write Codex-vs-ClawWorks runtime parity and token-efficiency reports from one runtime-pair summary.                                        |
 | `qa character-eval`                                 | Run the character QA scenario across multiple live models with a judged report. See [Reporting](#reporting).                                                                                                                                                            |
 | `qa manual`                                         | Run a one-off prompt against the selected provider/model lane.                                                                                                                                                                                                          |
 | `qa ui`                                             | Start the QA debugger UI and local QA bus (alias: `pnpm qa:lab:ui`).                                                                                                                                                                                                    |
@@ -77,7 +77,7 @@ Use `smoke-ci` for deterministic profile proof with mock model providers and
 Crabline fake provider servers. Use `release` for Stable/LTS proof against live
 channels. Use `all` only for explicit full-taxonomy evidence runs; it selects
 every active maturity category and can be dispatched through the `QA Profile
-Evidence` workflow with `qa_profile=all`. When a command also needs an OpenClaw
+Evidence` workflow with `qa_profile=all`. When a command also needs a ClawWorks
 root profile, put the root profile before the QA command:
 
 ```bash
@@ -252,7 +252,7 @@ reused leases also keep Crabbox's pnpm store cache warm. The default
 inside the VM. Use `--hydrate-mode prehydrated` only when the reused remote
 workspace already has `node_modules` and a built `dist/`; that mode skips the
 expensive install/build step and fails closed when the workspace is not ready.
-With `--gateway-setup`, Mantis leaves a persistent OpenClaw Slack gateway
+With `--gateway-setup`, Mantis leaves a persistent ClawWorks Slack gateway
 running inside the VM on port `38973`; without it, the command runs the normal
 bot-to-bot Slack QA lane and exits after artifact capture.
 
@@ -337,7 +337,7 @@ For a disposable Linux VM lane without bringing Docker into the QA path, run:
 pnpm openclaw qa suite --runner multipass --scenario channel-chat-baseline
 ```
 
-This boots a fresh Multipass guest, installs dependencies, builds OpenClaw
+This boots a fresh Multipass guest, installs dependencies, builds ClawWorks
 inside the guest, runs `qa suite`, then copies the normal QA report and
 summary back into `.artifacts/qa-e2e/...` on the host.
 It reuses the same scenario-selection behavior as `qa suite` on the host.
@@ -446,7 +446,7 @@ creating a separate RTT command or Telegram-specific summary format.
 pnpm openclaw qa discord
 ```
 
-Targets one real private Discord guild channel with two bots: a driver bot controlled by the harness and a SUT bot started by the child OpenClaw gateway through the bundled Discord plugin. Verifies channel mention handling, that the SUT bot has registered the native `/help` command with Discord, and opt-in Mantis evidence scenarios.
+Targets one real private Discord guild channel with two bots: a driver bot controlled by the harness and a SUT bot started by the child ClawWorks gateway through the bundled Discord plugin. Verifies channel mention handling, that the SUT bot has registered the native `/help` command with Discord, and opt-in Mantis evidence scenarios.
 
 Required env when `--credential-source env`:
 
@@ -501,7 +501,7 @@ Output artifacts:
 pnpm openclaw qa slack
 ```
 
-Targets one real private Slack channel with two distinct bots: a driver bot controlled by the harness and a SUT bot started by the child OpenClaw gateway through the bundled Slack plugin.
+Targets one real private Slack channel with two distinct bots: a driver bot controlled by the harness and a SUT bot started by the child ClawWorks gateway through the bundled Slack plugin.
 
 Required env when `--credential-source env`:
 
@@ -566,7 +566,7 @@ Go to [api.slack.com/apps](https://api.slack.com/apps) → _Create New App_ → 
 {
   "display_information": {
     "name": "OpenClaw QA Driver",
-    "description": "Test driver bot for OpenClaw QA Slack live lane"
+    "description": "Test driver bot for ClawWorks QA Slack live lane"
   },
   "features": {
     "bot_user": {
@@ -595,7 +595,7 @@ Repeat _Create New App → From a manifest_ in the same workspace. This QA app i
 {
   "display_information": {
     "name": "OpenClaw QA SUT",
-    "description": "OpenClaw QA SUT connector for OpenClaw"
+    "description": "OpenClaw QA SUT connector for ClawWorks"
   },
   "features": {
     "bot_user": {
@@ -722,7 +722,7 @@ pnpm openclaw qa whatsapp
 ```
 
 Targets two dedicated WhatsApp Web accounts: a driver account controlled by
-the harness and a SUT account started by the child OpenClaw gateway through the
+the harness and a SUT account started by the child ClawWorks gateway through the
 bundled WhatsApp plugin.
 
 Required env when `--credential-source env`:
@@ -861,7 +861,7 @@ The baseline list should stay broad enough to cover:
 
 `qa suite` has two local provider mock lanes:
 
-- `mock-openai` is the scenario-aware OpenClaw mock. It remains the default
+- `mock-openai` is the scenario-aware ClawWorks mock. It remains the default
   deterministic mock lane for repo-backed QA and parity gates.
 - `aimock` starts an AIMock-backed provider server for experimental protocol,
   fixture, record/replay, and chaos coverage. It is additive and does not
@@ -877,7 +877,7 @@ provider names.
 
 `qa-lab` owns a generic transport seam for YAML QA scenarios. `qa-channel` is
 the synthetic default. `crabline` starts local provider-shaped servers and runs
-OpenClaw's normal channel plugins against them. `live` is reserved for real
+ClawWorks's normal channel plugins against them. `live` is reserved for real
 provider credentials and external channels.
 
 At the architecture level, the split is:

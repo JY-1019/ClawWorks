@@ -1,7 +1,7 @@
 ---
-summary: "How OpenClaw validates update paths, package migrations, and plugin install/update behavior"
+summary: "How ClawWorks validates update paths, package migrations, and plugin install/update behavior"
 read_when:
-  - Changing OpenClaw update, doctor, package acceptance, or plugin install behavior
+  - Changing ClawWorks update, doctor, package acceptance, or plugin install behavior
   - Preparing or approving a release candidate
   - Debugging package update, plugin dependency cleanup, or plugin install regressions
 title: "Testing: updates and plugins"
@@ -197,7 +197,7 @@ tolerance, stale plugin dependency cleanup, offline plugin coverage, plugin
 update behavior, and Telegram package QA on the same resolved artifact without
 making the default release package gate walk every published release.
 
-`last-stable-4` resolves to the four latest stable npm-published OpenClaw
+`last-stable-4` resolves to the four latest stable npm-published ClawWorks
 releases. Release package acceptance pins `2026.4.23` as the first plugin-update
 compatibility boundary, `2026.5.2` as a plugin-architecture churn boundary, and
 `2026.4.15` as an older 2026.4.1x published-update baseline; the resolver
