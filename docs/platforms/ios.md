@@ -137,7 +137,7 @@ Compatibility note:
 The relay exists to enforce two constraints that direct APNs-on-gateway cannot provide for
 official iOS builds:
 
-- Only genuine ClawWorks iOS builds distributed through Apple can use the hosted relay.
+- Only genuine OpenClaw iOS builds distributed through Apple can use the hosted relay.
 - A gateway can send relay-backed pushes only for iOS devices that paired with that specific
   gateway.
 

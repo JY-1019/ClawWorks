@@ -112,7 +112,7 @@ If you use the `device-pair` plugin, you can do first-time device pairing entire
 
 1. In Telegram, message your bot: `/pair`
 2. The bot replies with two messages: an instruction message and a separate **setup code** message (easy to copy/paste in Telegram).
-3. On your phone, open the ClawWorks iOS app → Settings → Gateway.
+3. On your phone, open the OpenClaw iOS app → Settings → Gateway.
 4. Scan the QR code or paste the setup code and connect.
 5. Back in Telegram: `/pair pending` (review request IDs, role, and scopes), then approve.
 

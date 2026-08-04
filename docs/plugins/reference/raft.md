@@ -1,5 +1,5 @@
 ---
-summary: "OpenClaw Raft channel plugin for secure CLI wake bridges."
+summary: "ClawWorks Raft channel plugin for secure CLI wake bridges."
 read_when:
   - You are installing, configuring, or auditing the raft plugin
 title: "Raft plugin"
@@ -7,7 +7,7 @@ title: "Raft plugin"
 
 # Raft plugin
 
-OpenClaw Raft channel plugin for secure CLI wake bridges.
+ClawWorks Raft channel plugin for secure CLI wake bridges.
 
 ## Distribution
 

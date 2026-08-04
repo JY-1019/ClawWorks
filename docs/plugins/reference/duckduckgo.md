@@ -12,7 +12,7 @@ Adds web search provider support.
 ## Distribution
 
 - Package: `@openclaw/duckduckgo-plugin`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

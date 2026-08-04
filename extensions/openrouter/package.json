@@ -2,7 +2,7 @@
   "name": "@openclaw/openrouter-provider",
   "version": "2026.6.10",
   "private": true,
-  "description": "OpenClaw OpenRouter provider plugin",
+  "description": "ClawWorks OpenRouter provider plugin",
   "type": "module",
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*"

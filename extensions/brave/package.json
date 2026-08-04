@@ -1,7 +1,7 @@
 {
   "name": "@openclaw/brave-plugin",
   "version": "2026.6.10",
-  "description": "OpenClaw Brave Search provider plugin for web search.",
+  "description": "ClawWorks Brave Search provider plugin for web search.",
   "repository": {
     "type": "git",
     "url": "https://github.com/openclaw/openclaw"

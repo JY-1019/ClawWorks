@@ -12,7 +12,7 @@ Adds memory embedding provider support.
 ## Distribution
 
 - Package: `@openclaw/voyage-provider`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

@@ -12,7 +12,7 @@ Adds text-to-speech provider support.
 ## Distribution
 
 - Package: `@openclaw/microsoft-speech`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

@@ -1,7 +1,7 @@
 {
   "id": "raft",
   "name": "Raft",
-  "description": "OpenClaw Raft channel plugin for secure CLI wake bridges.",
+  "description": "ClawWorks Raft channel plugin for secure CLI wake bridges.",
   "activation": {
     "onStartup": false
   },

@@ -1,5 +1,5 @@
 ---
-summary: "Adds Chutes model provider support to OpenClaw."
+summary: "Adds Chutes model provider support to ClawWorks."
 read_when:
   - You are installing, configuring, or auditing the chutes plugin
 title: "Chutes plugin"
@@ -7,7 +7,7 @@ title: "Chutes plugin"
 
 # Chutes plugin
 
-Adds Chutes model provider support to OpenClaw.
+Adds Chutes model provider support to ClawWorks.
 
 ## Distribution
 

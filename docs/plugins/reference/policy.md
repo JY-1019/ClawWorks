@@ -12,7 +12,7 @@ Adds policy-backed doctor checks for workspace conformance.
 ## Distribution
 
 - Package: `@openclaw/policy`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 
@@ -22,16 +22,16 @@ plugin
 
 ## Behavior
 
-The Policy plugin contributes doctor health checks for policy-managed OpenClaw
+The Policy plugin contributes doctor health checks for policy-managed ClawWorks
 settings and governed workspace declarations. Policy currently covers channel
 conformance, governed tool metadata, MCP server posture, model-provider posture,
 private-network access posture, Gateway exposure posture, agent workspace/tool
 posture, configured global/per-agent tool posture, configured sandbox runtime
-posture, ingress/channel access posture, data-handling posture, and OpenClaw config secret
+posture, ingress/channel access posture, data-handling posture, and ClawWorks config secret
 provider/auth profile posture.
 
 Policy stores authored requirements in `policy.jsonc`, observes existing
-OpenClaw settings and workspace declarations as evidence, and reports drift
+ClawWorks settings and workspace declarations as evidence, and reports drift
 through `openclaw policy check` and `openclaw doctor --lint`. A clean policy
 check emits policy, evidence, findings, and attestation hashes that operators
 can record for audit.

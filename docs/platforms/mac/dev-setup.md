@@ -45,7 +45,7 @@ The macOS app expects a global `openclaw` CLI install to manage background tasks
 
 **To install it (recommended):**
 
-1. Open the ClawWorks app.
+1. Open the OpenClaw app.
 2. Go to the **General** settings tab.
 3. Click **"Install CLI"**.
 

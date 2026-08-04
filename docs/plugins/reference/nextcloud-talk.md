@@ -1,5 +1,5 @@
 ---
-summary: "OpenClaw Nextcloud Talk channel plugin for conversations."
+summary: "ClawWorks Nextcloud Talk channel plugin for conversations."
 read_when:
   - You are installing, configuring, or auditing the nextcloud-talk plugin
 title: "Nextcloud Talk plugin"
@@ -7,7 +7,7 @@ title: "Nextcloud Talk plugin"
 
 # Nextcloud Talk plugin
 
-OpenClaw Nextcloud Talk channel plugin for conversations.
+ClawWorks Nextcloud Talk channel plugin for conversations.
 
 ## Distribution
 

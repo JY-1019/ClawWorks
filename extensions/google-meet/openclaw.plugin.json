@@ -1,7 +1,7 @@
 {
   "id": "google-meet",
   "name": "Google Meet",
-  "description": "OpenClaw Google Meet participant plugin for joining calls through Chrome or Twilio transports.",
+  "description": "ClawWorks Google Meet participant plugin for joining calls through Chrome or Twilio transports.",
   "icon": "https://cdn.simpleicons.org/googlemeet",
   "enabledByDefault": false,
   "commandAliases": [{ "name": "googlemeet" }],

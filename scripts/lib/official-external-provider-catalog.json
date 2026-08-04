@@ -2,7 +2,7 @@
   "entries": [
     {
       "name": "@openclaw/amazon-bedrock-provider",
-      "description": "OpenClaw Amazon Bedrock provider plugin",
+      "description": "ClawWorks Amazon Bedrock provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -27,7 +27,7 @@
     },
     {
       "name": "@openclaw/amazon-bedrock-mantle-provider",
-      "description": "OpenClaw Amazon Bedrock Mantle provider plugin",
+      "description": "ClawWorks Amazon Bedrock Mantle provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -52,7 +52,7 @@
     },
     {
       "name": "@openclaw/anthropic-vertex-provider",
-      "description": "OpenClaw Anthropic Vertex provider plugin",
+      "description": "ClawWorks Anthropic Vertex provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -77,7 +77,7 @@
     },
     {
       "name": "@openclaw/arcee-provider",
-      "description": "OpenClaw Arcee provider plugin.",
+      "description": "ClawWorks Arcee provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -143,7 +143,7 @@
     },
     {
       "name": "@openclaw/cerebras-provider",
-      "description": "OpenClaw Cerebras provider plugin.",
+      "description": "ClawWorks Cerebras provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -192,7 +192,7 @@
     },
     {
       "name": "@openclaw/chutes-provider",
-      "description": "OpenClaw Chutes.ai provider plugin.",
+      "description": "ClawWorks Chutes.ai provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -255,7 +255,7 @@
     },
     {
       "name": "@openclaw/cohere-provider",
-      "description": "OpenClaw Cohere provider plugin",
+      "description": "ClawWorks Cohere provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -301,7 +301,7 @@
     },
     {
       "name": "@openclaw/cloudflare-ai-gateway-provider",
-      "description": "OpenClaw Cloudflare AI Gateway provider plugin.",
+      "description": "ClawWorks Cloudflare AI Gateway provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -351,7 +351,7 @@
     },
     {
       "name": "@openclaw/codex",
-      "description": "OpenClaw Codex harness and model provider plugin",
+      "description": "ClawWorks Codex harness and model provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -389,7 +389,7 @@
     },
     {
       "name": "@openclaw/deepinfra-provider",
-      "description": "OpenClaw DeepInfra provider plugin.",
+      "description": "ClawWorks DeepInfra provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -456,7 +456,7 @@
     },
     {
       "name": "@openclaw/deepseek-provider",
-      "description": "OpenClaw DeepSeek provider plugin.",
+      "description": "ClawWorks DeepSeek provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -505,7 +505,7 @@
     },
     {
       "name": "@openclaw/gmi-provider",
-      "description": "OpenClaw GMI Cloud provider plugin",
+      "description": "ClawWorks GMI Cloud provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -548,7 +548,7 @@
     },
     {
       "name": "@openclaw/groq-provider",
-      "description": "OpenClaw Groq media-understanding provider.",
+      "description": "ClawWorks Groq media-understanding provider.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -602,7 +602,7 @@
     },
     {
       "name": "@openclaw/kilocode-provider",
-      "description": "OpenClaw Kilo Gateway provider plugin.",
+      "description": "ClawWorks Kilo Gateway provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -652,7 +652,7 @@
     },
     {
       "name": "@openclaw/kimi-provider",
-      "description": "OpenClaw Kimi provider plugin.",
+      "description": "ClawWorks Kimi provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -705,7 +705,7 @@
     },
     {
       "name": "@openclaw/pixverse-provider",
-      "description": "OpenClaw PixVerse video provider plugin",
+      "description": "ClawWorks PixVerse video provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -746,7 +746,7 @@
     },
     {
       "name": "@openclaw/qianfan-provider",
-      "description": "OpenClaw Qianfan provider plugin.",
+      "description": "ClawWorks Qianfan provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -795,7 +795,7 @@
     },
     {
       "name": "@openclaw/qwen-provider",
-      "description": "OpenClaw Qwen Cloud provider plugin.",
+      "description": "ClawWorks Qwen Cloud provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -954,7 +954,7 @@
     },
     {
       "name": "@openclaw/fireworks-provider",
-      "description": "OpenClaw Fireworks provider plugin",
+      "description": "ClawWorks Fireworks provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -1007,7 +1007,7 @@
     },
     {
       "name": "@openclaw/moonshot-provider",
-      "description": "OpenClaw Moonshot provider plugin",
+      "description": "ClawWorks Moonshot provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -1106,7 +1106,7 @@
     },
     {
       "name": "@openclaw/tencent-provider",
-      "description": "OpenClaw Tencent Cloud provider plugin (TokenHub + Token Plan)",
+      "description": "ClawWorks Tencent Cloud provider plugin (TokenHub + Token Plan)",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -1156,7 +1156,7 @@
     },
     {
       "name": "@openclaw/venice-provider",
-      "description": "OpenClaw Venice provider plugin",
+      "description": "ClawWorks Venice provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -1206,7 +1206,7 @@
     },
     {
       "name": "@openclaw/vercel-ai-gateway-provider",
-      "description": "OpenClaw Vercel AI Gateway provider plugin",
+      "description": "ClawWorks Vercel AI Gateway provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -1256,7 +1256,7 @@
     },
     {
       "name": "@openclaw/zai-provider",
-      "description": "OpenClaw Z.AI provider plugin",
+      "description": "ClawWorks Z.AI provider plugin",
       "source": "official",
       "kind": "provider",
       "openclaw": {
@@ -1379,7 +1379,7 @@
     },
     {
       "name": "@openclaw/stepfun-provider",
-      "description": "OpenClaw StepFun provider plugin.",
+      "description": "ClawWorks StepFun provider plugin.",
       "source": "official",
       "kind": "provider",
       "openclaw": {

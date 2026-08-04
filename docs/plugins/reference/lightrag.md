@@ -12,7 +12,7 @@ Registers LightRAG servers as ClawWorks enterprise knowledge foundations for kno
 ## Distribution
 
 - Package: `@openclaw/lightrag-plugin`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

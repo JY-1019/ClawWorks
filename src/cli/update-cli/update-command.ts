@@ -856,7 +856,7 @@ export function formatPostUpdateGatewayRecoveryInstructions(
   const beforeVersion = normalizeOptionalString(result.before?.version);
   if (isPackageManagerUpdateMode(result.mode) && beforeVersion) {
     lines.push(
-      `Rollback: reinstall OpenClaw ${beforeVersion} with the same package manager, then rerun \`${replaceCliName(formatCliCommand("openclaw gateway install --force"), CLI_NAME)}\`.`,
+      `Rollback: reinstall ClawWorks ${beforeVersion} with the same package manager, then rerun \`${replaceCliName(formatCliCommand("openclaw gateway install --force"), CLI_NAME)}\`.`,
     );
   }
   return lines;
@@ -1017,7 +1017,7 @@ async function maybeStopManagedServiceBeforeMutableUpdate(params: {
     if (!params.jsonMode) {
       defaultRuntime.log(
         theme.muted(
-          "Managed gateway service points at a different OpenClaw root; leaving it running during this git update.",
+          "Managed gateway service points at a different ClawWorks root; leaving it running during this git update.",
         ),
       );
     }
@@ -3488,7 +3488,7 @@ async function updateCommandInternal(opts: UpdateCommandOptions): Promise<void> 
         );
         defaultRuntime.log(
           theme.warn(
-            `Shell OpenClaw root differs from the managed gateway service root: ${managedServiceRootRedirect.previousRoot}`,
+            `Shell ClawWorks root differs from the managed gateway service root: ${managedServiceRootRedirect.previousRoot}`,
           ),
         );
         defaultRuntime.log(
@@ -3718,7 +3718,7 @@ async function updateCommandInternal(opts: UpdateCommandOptions): Promise<void> 
 
   const showProgress = !opts.json && process.stdout.isTTY;
   if (!opts.json) {
-    defaultRuntime.log(theme.heading("Updating OpenClaw..."));
+    defaultRuntime.log(theme.heading("Updating ClawWorks..."));
     defaultRuntime.log("");
   }
 
@@ -3775,7 +3775,7 @@ async function updateCommandInternal(opts: UpdateCommandOptions): Promise<void> 
       defaultRuntime.error(
         [
           `${updateLabel} cannot run from inside the gateway service process.`,
-          "That path replaces the active OpenClaw dist tree while the live gateway may still lazy-load old chunks.",
+          "That path replaces the active ClawWorks dist tree while the live gateway may still lazy-load old chunks.",
           `Run \`${replaceCliName(formatCliCommand("openclaw update"), CLI_NAME)}\` from a shell outside the gateway service, or stop the gateway service first and then update.`,
         ].join("\n"),
       );
@@ -3888,7 +3888,7 @@ async function updateCommandInternal(opts: UpdateCommandOptions): Promise<void> 
     if (result.reason === "not-git-install") {
       defaultRuntime.log(
         theme.warn(
-          `Skipped: this OpenClaw install isn't a git checkout, and the package manager couldn't be detected. Update via your package manager, then run \`${replaceCliName(formatCliCommand("openclaw doctor"), CLI_NAME)}\` and \`${replaceCliName(formatCliCommand("openclaw gateway restart"), CLI_NAME)}\`.`,
+          `Skipped: this ClawWorks install isn't a git checkout, and the package manager couldn't be detected. Update via your package manager, then run \`${replaceCliName(formatCliCommand("openclaw doctor"), CLI_NAME)}\` and \`${replaceCliName(formatCliCommand("openclaw gateway restart"), CLI_NAME)}\`.`,
         ),
       );
       defaultRuntime.log(

@@ -36,7 +36,7 @@
             },
             "apiKey": {
               "type": ["string", "object"],
-              "description": "LightRAG API key (X-API-Key). A string or an OpenClaw secret reference."
+              "description": "LightRAG API key (X-API-Key). A string or a ClawWorks secret reference."
             },
             "mode": {
               "type": "string",

@@ -1,5 +1,5 @@
 ---
-summary: "Adds Kilocode model provider support to OpenClaw."
+summary: "Adds Kilocode model provider support to ClawWorks."
 read_when:
   - You are installing, configuring, or auditing the kilocode plugin
 title: "Kilocode plugin"
@@ -7,7 +7,7 @@ title: "Kilocode plugin"
 
 # Kilocode plugin
 
-Adds Kilocode model provider support to OpenClaw.
+Adds Kilocode model provider support to ClawWorks.
 
 ## Distribution
 

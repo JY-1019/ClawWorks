@@ -87,7 +87,7 @@ export const SmsChannelConfigSchema = buildChannelConfigSchema(SmsConfigSchema, 
     },
     textChunkLimit: {
       label: "SMS Text Chunk Limit",
-      help: "Maximum characters per outbound SMS chunk before OpenClaw splits long replies.",
+      help: "Maximum characters per outbound SMS chunk before ClawWorks splits long replies.",
     },
   },
 });

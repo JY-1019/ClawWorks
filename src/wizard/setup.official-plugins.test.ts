@@ -122,22 +122,22 @@ describe("setupOfficialPluginInstalls", () => {
         {
           value: "acpx",
           label: "ACPX Runtime",
-          hint: "OpenClaw ACP runtime backend",
+          hint: "ClawWorks ACP runtime backend",
         },
         {
           value: "diagnostics-otel",
           label: "Diagnostics OpenTelemetry",
-          hint: "OpenClaw diagnostics OpenTelemetry exporter",
+          hint: "ClawWorks diagnostics OpenTelemetry exporter",
         },
         {
           value: "diagnostics-prometheus",
           label: "Diagnostics Prometheus",
-          hint: "OpenClaw diagnostics Prometheus exporter",
+          hint: "ClawWorks diagnostics Prometheus exporter",
         },
         {
           value: "tokenjuice",
           label: "Tokenjuice",
-          hint: "OpenClaw tokenjuice exec output compaction plugin",
+          hint: "ClawWorks tokenjuice exec output compaction plugin",
         },
       ]),
     );
@@ -146,7 +146,7 @@ describe("setupOfficialPluginInstalls", () => {
       entry: {
         pluginId: "diagnostics-otel",
         label: "Diagnostics OpenTelemetry",
-        description: "OpenClaw diagnostics OpenTelemetry exporter",
+        description: "ClawWorks diagnostics OpenTelemetry exporter",
         install: {
           clawhubSpec: "clawhub:@openclaw/diagnostics-otel",
           npmSpec: "@openclaw/diagnostics-otel",

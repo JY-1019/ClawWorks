@@ -1,5 +1,5 @@
 ---
-summary: "Adds Cerebras model provider support to OpenClaw."
+summary: "Adds Cerebras model provider support to ClawWorks."
 read_when:
   - You are installing, configuring, or auditing the cerebras plugin
 title: "Cerebras plugin"
@@ -7,7 +7,7 @@ title: "Cerebras plugin"
 
 # Cerebras plugin
 
-Adds Cerebras model provider support to OpenClaw.
+Adds Cerebras model provider support to ClawWorks.
 
 ## Distribution
 

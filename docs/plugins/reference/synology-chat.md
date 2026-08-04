@@ -1,5 +1,5 @@
 ---
-summary: "Synology Chat channel plugin for OpenClaw channels and direct messages."
+summary: "Synology Chat channel plugin for ClawWorks channels and direct messages."
 read_when:
   - You are installing, configuring, or auditing the synology-chat plugin
 title: "Synology Chat plugin"
@@ -7,7 +7,7 @@ title: "Synology Chat plugin"
 
 # Synology Chat plugin
 
-Synology Chat channel plugin for OpenClaw channels and direct messages.
+Synology Chat channel plugin for ClawWorks channels and direct messages.
 
 ## Distribution
 

@@ -1,7 +1,7 @@
 ---
-summary: "Generated index of OpenClaw plugin reference pages"
+summary: "Generated index of ClawWorks plugin reference pages"
 read_when:
-  - You need a reference page for a specific OpenClaw plugin
+  - You need a reference page for a specific ClawWorks plugin
   - You are auditing plugin docs coverage
 title: "Plugin reference"
 ---

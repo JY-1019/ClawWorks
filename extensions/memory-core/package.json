@@ -2,7 +2,7 @@
   "name": "@openclaw/memory-core",
   "version": "2026.6.10",
   "private": true,
-  "description": "OpenClaw core memory search plugin",
+  "description": "ClawWorks core memory search plugin",
   "type": "module",
   "dependencies": {
     "chokidar": "5.0.0",

@@ -1,7 +1,7 @@
 {
   "name": "@openclaw/zai-provider",
   "version": "2026.6.10",
-  "description": "OpenClaw Z.AI provider plugin",
+  "description": "ClawWorks Z.AI provider plugin",
   "type": "module",
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*"

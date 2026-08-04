@@ -12,7 +12,7 @@ Generic JSON-only LLM tool for structured tasks callable from workflows.
 ## Distribution
 
 - Package: `@openclaw/llm-task`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

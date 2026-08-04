@@ -12,7 +12,7 @@ Experimental Canvas control and A2UI rendering surfaces for paired nodes.
 ## Distribution
 
 - Package: `@openclaw/canvas-plugin`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

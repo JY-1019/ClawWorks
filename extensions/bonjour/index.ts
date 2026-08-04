@@ -9,6 +9,10 @@ function formatBonjourInstanceName(displayName: string) {
   if (!trimmed) {
     return "OpenClaw";
   }
+  // The DNS-SD instance name is a machine identity: iOS and Android derive their
+  // persisted gateway id from it (GatewayEndpointID.swift, GatewayDiscovery.kt),
+  // so renaming it makes an upgraded gateway look like a brand-new endpoint and
+  // drops preferred-gateway state and TLS pins.
   if (/openclaw/i.test(trimmed)) {
     return trimmed;
   }
@@ -19,7 +23,7 @@ function formatBonjourInstanceName(displayName: string) {
 export default definePluginEntry({
   id: "bonjour",
   name: "Bonjour Gateway Discovery",
-  description: "Advertise the local OpenClaw gateway over Bonjour/mDNS.",
+  description: "Advertise the local ClawWorks gateway over Bonjour/mDNS.",
   register(api) {
     api.registerGatewayDiscoveryService({
       id: "bonjour",

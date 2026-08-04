@@ -1,5 +1,5 @@
 ---
-summary: "OpenClaw Brave Search provider plugin for web search."
+summary: "ClawWorks Brave Search provider plugin for web search."
 read_when:
   - You are installing, configuring, or auditing the brave plugin
 title: "Brave plugin"
@@ -7,7 +7,7 @@ title: "Brave plugin"
 
 # Brave plugin
 
-OpenClaw Brave Search provider plugin for web search.
+ClawWorks Brave Search provider plugin for web search.
 
 ## Distribution
 

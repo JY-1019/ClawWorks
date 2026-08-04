@@ -1,7 +1,7 @@
-/** Shared command registry builders used by browser-safe and runtime command lists. */
-import { formatFastModeAutoLabel, resolveFastModeModelAutoOnSeconds } from "../shared/fast-mode.js";
 import { normalizeOptionalLowercaseString } from "../../packages/normalization-core/src/string-coerce.js";
 import { normalizeStringEntries } from "../../packages/normalization-core/src/string-normalization.js";
+/** Shared command registry builders used by browser-safe and runtime command lists. */
+import { formatFastModeAutoLabel, resolveFastModeModelAutoOnSeconds } from "../shared/fast-mode.js";
 import { COMMAND_ARG_FORMATTERS } from "./commands-args.js";
 import type {
   ChatCommandDefinition,
@@ -579,7 +579,7 @@ export function buildBuiltinChatCommands(
     defineChatCommand({
       key: "mcp",
       nativeName: "mcp",
-      description: "Show or set OpenClaw MCP servers.",
+      description: "Show or set ClawWorks MCP servers.",
       textAlias: "/mcp",
       category: "management",
       tier: "power",
@@ -685,7 +685,7 @@ export function buildBuiltinChatCommands(
     defineChatCommand({
       key: "restart",
       nativeName: "restart",
-      description: "Restart OpenClaw.",
+      description: "Restart ClawWorks.",
       textAlias: "/restart",
       category: "tools",
       tier: "power",

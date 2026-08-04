@@ -1,5 +1,5 @@
 ---
-summary: "Adds Fireworks model provider support to OpenClaw."
+summary: "Adds Fireworks model provider support to ClawWorks."
 read_when:
   - You are installing, configuring, or auditing the fireworks plugin
 title: "Fireworks plugin"
@@ -7,7 +7,7 @@ title: "Fireworks plugin"
 
 # Fireworks plugin
 
-Adds Fireworks model provider support to OpenClaw.
+Adds Fireworks model provider support to ClawWorks.
 
 ## Distribution
 

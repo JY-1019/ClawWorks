@@ -2,7 +2,7 @@
   "name": "@openclaw/migrate-claude",
   "version": "2026.6.10",
   "private": true,
-  "description": "Claude to OpenClaw migration provider",
+  "description": "Claude to ClawWorks migration provider",
   "type": "module",
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*",

@@ -397,7 +397,7 @@ fi
 
 # Check 4: Were there any warnings about split install in the update output?
 if [ -f "$ARTIFACTS/update.err" ]; then
-  if grep -qi "Shell OpenClaw root differs" "$ARTIFACTS/update.err" 2>/dev/null; then
+  if grep -qi "Shell ClawWorks root differs" "$ARTIFACTS/update.err" 2>/dev/null; then
     echo "OK: Update warned about split root"
   fi
   if grep -qi "Managed gateway service Node" "$ARTIFACTS/update.err" 2>/dev/null; then

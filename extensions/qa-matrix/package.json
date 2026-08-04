@@ -2,7 +2,7 @@
   "name": "@openclaw/qa-matrix",
   "version": "2026.6.10",
   "private": true,
-  "description": "OpenClaw Matrix QA runner plugin",
+  "description": "ClawWorks Matrix QA runner plugin",
   "type": "module",
   "dependencies": {
     "undici": "8.5.0"

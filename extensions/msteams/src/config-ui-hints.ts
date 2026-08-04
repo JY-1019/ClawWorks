@@ -28,7 +28,7 @@ export const msTeamsChannelConfigUiHints = {
   },
   "streaming.progress.labels": {
     label: "MS Teams Progress Label Pool",
-    help: 'Candidate labels for streaming.progress.label="auto". Leave unset to use OpenClaw built-in progress labels.',
+    help: 'Candidate labels for streaming.progress.label="auto". Leave unset to use ClawWorks built-in progress labels.',
   },
   "streaming.progress.maxLines": {
     label: "MS Teams Progress Max Lines",

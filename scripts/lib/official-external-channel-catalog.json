@@ -162,7 +162,7 @@
     },
     {
       "name": "@openclaw/clickclack",
-      "description": "OpenClaw ClickClack channel plugin",
+      "description": "ClawWorks ClickClack channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -197,7 +197,7 @@
     },
     {
       "name": "@openclaw/discord",
-      "description": "OpenClaw Discord channel plugin",
+      "description": "ClawWorks Discord channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -223,7 +223,7 @@
     },
     {
       "name": "@openclaw/feishu",
-      "description": "OpenClaw Feishu/Lark channel plugin",
+      "description": "ClawWorks Feishu/Lark channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -247,7 +247,7 @@
     },
     {
       "name": "@openclaw/googlechat",
-      "description": "OpenClaw Google Chat channel plugin",
+      "description": "ClawWorks Google Chat channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -297,7 +297,7 @@
     },
     {
       "name": "@openclaw/irc",
-      "description": "OpenClaw IRC channel plugin",
+      "description": "ClawWorks IRC channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -337,7 +337,7 @@
     },
     {
       "name": "@openclaw/line",
-      "description": "OpenClaw LINE channel plugin",
+      "description": "ClawWorks LINE channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -362,7 +362,7 @@
     },
     {
       "name": "@openclaw/mattermost",
-      "description": "OpenClaw Mattermost channel plugin",
+      "description": "ClawWorks Mattermost channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -390,7 +390,7 @@
     },
     {
       "name": "@openclaw/matrix",
-      "description": "OpenClaw Matrix channel plugin",
+      "description": "ClawWorks Matrix channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -444,7 +444,7 @@
     },
     {
       "name": "@openclaw/msteams",
-      "description": "OpenClaw Microsoft Teams channel plugin",
+      "description": "ClawWorks Microsoft Teams channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -467,7 +467,7 @@
     },
     {
       "name": "@openclaw/nextcloud-talk",
-      "description": "OpenClaw Nextcloud Talk channel plugin",
+      "description": "ClawWorks Nextcloud Talk channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -491,7 +491,7 @@
     },
     {
       "name": "@openclaw/nostr",
-      "description": "OpenClaw Nostr channel plugin for NIP-04 encrypted DMs",
+      "description": "ClawWorks Nostr channel plugin for NIP-04 encrypted DMs",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -514,7 +514,7 @@
     },
     {
       "name": "@openclaw/qqbot",
-      "description": "OpenClaw QQ Bot channel plugin",
+      "description": "ClawWorks QQ Bot channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -537,7 +537,7 @@
     },
     {
       "name": "@openclaw/signal",
-      "description": "OpenClaw Signal channel plugin",
+      "description": "ClawWorks Signal channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -577,7 +577,7 @@
     },
     {
       "name": "@openclaw/slack",
-      "description": "OpenClaw Slack channel plugin",
+      "description": "ClawWorks Slack channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -612,7 +612,7 @@
     },
     {
       "name": "@openclaw/sms",
-      "description": "OpenClaw SMS channel plugin for Twilio text messages.",
+      "description": "ClawWorks SMS channel plugin for Twilio text messages.",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -648,7 +648,7 @@
     },
     {
       "name": "@openclaw/synology-chat",
-      "description": "Synology Chat channel plugin for OpenClaw",
+      "description": "Synology Chat channel plugin for ClawWorks",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -658,7 +658,7 @@
           "selectionLabel": "Synology Chat (Webhook)",
           "docsPath": "/channels/synology-chat",
           "docsLabel": "synology-chat",
-          "blurb": "Connect your Synology NAS Chat to OpenClaw with full agent capabilities.",
+          "blurb": "Connect your Synology NAS Chat to ClawWorks with full agent capabilities.",
           "order": 90
         },
         "install": {
@@ -670,7 +670,7 @@
     },
     {
       "name": "@openclaw/raft",
-      "description": "OpenClaw Raft channel plugin",
+      "description": "ClawWorks Raft channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -720,7 +720,7 @@
     },
     {
       "name": "@openclaw/tlon",
-      "description": "OpenClaw Tlon/Urbit channel plugin",
+      "description": "ClawWorks Tlon/Urbit channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -743,7 +743,7 @@
     },
     {
       "name": "@openclaw/twitch",
-      "description": "OpenClaw Twitch channel plugin",
+      "description": "ClawWorks Twitch channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -764,7 +764,7 @@
     },
     {
       "name": "@openclaw/whatsapp",
-      "description": "OpenClaw WhatsApp channel plugin",
+      "description": "ClawWorks WhatsApp channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -788,7 +788,7 @@
     },
     {
       "name": "@openclaw/zalo",
-      "description": "OpenClaw Zalo channel plugin",
+      "description": "ClawWorks Zalo channel plugin",
       "source": "official",
       "kind": "channel",
       "openclaw": {
@@ -812,7 +812,7 @@
     },
     {
       "name": "@openclaw/zalouser",
-      "description": "OpenClaw Zalo Personal Account plugin via native zca-js integration",
+      "description": "ClawWorks Zalo Personal Account plugin via native zca-js integration",
       "source": "official",
       "kind": "channel",
       "openclaw": {

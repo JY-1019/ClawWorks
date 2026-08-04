@@ -24,7 +24,7 @@ export const mattermostChannelConfigUiHints = {
   },
   "streaming.progress.labels": {
     label: "Mattermost Progress Label Pool",
-    help: 'Candidate labels for streaming.progress.label="auto". Leave unset to use OpenClaw built-in progress labels.',
+    help: 'Candidate labels for streaming.progress.label="auto". Leave unset to use ClawWorks built-in progress labels.',
   },
   "streaming.progress.maxLines": {
     label: "Mattermost Progress Max Lines",

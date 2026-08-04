@@ -1,4 +1,4 @@
-// Device Pair plugin entrypoint registers its OpenClaw integration.
+// Device Pair plugin entrypoint registers its ClawWorks integration.
 import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -645,7 +645,7 @@ async function sendQrPngToSupportedChannel(params: {
 export default definePluginEntry({
   id: "device-pair",
   name: "Device Pair",
-  description: "QR/bootstrap pairing helpers for OpenClaw devices",
+  description: "QR/bootstrap pairing helpers for ClawWorks devices",
   register(api: OpenClawPluginApi) {
     let notifierService: ReturnType<NotifyModule["createPairingNotifierService"]> | undefined;
     api.registerService({

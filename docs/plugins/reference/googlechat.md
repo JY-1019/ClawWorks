@@ -1,5 +1,5 @@
 ---
-summary: "OpenClaw Google Chat channel plugin for spaces and direct messages."
+summary: "ClawWorks Google Chat channel plugin for spaces and direct messages."
 read_when:
   - You are installing, configuring, or auditing the googlechat plugin
 title: "Google Chat plugin"
@@ -7,7 +7,7 @@ title: "Google Chat plugin"
 
 # Google Chat plugin
 
-OpenClaw Google Chat channel plugin for spaces and direct messages.
+ClawWorks Google Chat channel plugin for spaces and direct messages.
 
 ## Distribution
 

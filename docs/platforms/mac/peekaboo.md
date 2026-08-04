@@ -68,7 +68,7 @@ export PEEKABOO_BRIDGE_SOCKET=/path/to/bridge.sock
 ## Security and permissions
 
 - The bridge validates **caller code signatures**; an allowlist of TeamIDs is
-  enforced (Peekaboo host TeamID + ClawWorks app TeamID).
+  enforced (Peekaboo host TeamID + OpenClaw app TeamID).
 - Prefer the signed bridge/app identity over a generic `node` runtime for
   Accessibility. Granting Accessibility to `node` lets any package launched by
   that Node executable inherit GUI automation access; see

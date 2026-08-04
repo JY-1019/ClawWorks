@@ -2,7 +2,7 @@
   "name": "@openclaw/xai-plugin",
   "version": "2026.6.10",
   "private": true,
-  "description": "OpenClaw xAI plugin",
+  "description": "ClawWorks xAI plugin",
   "type": "module",
   "dependencies": {
     "typebox": "1.1.39"

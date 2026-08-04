@@ -4,7 +4,7 @@
     "onStartup": true
   },
   "name": "Diffs",
-  "description": "OpenClaw read-only diff viewer plugin and file renderer for agents.",
+  "description": "ClawWorks read-only diff viewer plugin and file renderer for agents.",
   "contracts": {
     "tools": ["diffs"]
   },

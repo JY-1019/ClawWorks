@@ -171,7 +171,7 @@ export function resolveNodeRunner(): string {
   return "node";
 }
 
-/** Locate the installed OpenClaw package root that should receive update operations. */
+/** Locate the installed ClawWorks package root that should receive update operations. */
 export async function resolveUpdateRoot(): Promise<string> {
   return (
     (await resolveOpenClawPackageRoot({
@@ -235,7 +235,7 @@ export async function runUpdateStep(params: {
   };
 }
 
-/** Ensure the configured source-update directory exists and points at an OpenClaw checkout. */
+/** Ensure the configured source-update directory exists and points at a ClawWorks checkout. */
 export async function ensureGitCheckout(params: {
   dir: string;
   timeoutMs: number;
@@ -280,7 +280,7 @@ export async function ensureGitCheckout(params: {
   return null;
 }
 
-/** Detect the package manager that owns a global/package OpenClaw install. */
+/** Detect the package manager that owns a global/package ClawWorks install. */
 export async function resolveGlobalManager(params: {
   root: string;
   installKind: "git" | "package" | "unknown";

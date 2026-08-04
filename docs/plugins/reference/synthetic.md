@@ -1,5 +1,5 @@
 ---
-summary: "Adds Synthetic model provider support to OpenClaw."
+summary: "Adds Synthetic model provider support to ClawWorks."
 read_when:
   - You are installing, configuring, or auditing the synthetic plugin
 title: "Synthetic plugin"
@@ -7,12 +7,12 @@ title: "Synthetic plugin"
 
 # Synthetic plugin
 
-Adds Synthetic model provider support to OpenClaw.
+Adds Synthetic model provider support to ClawWorks.
 
 ## Distribution
 
 - Package: `@openclaw/synthetic-provider`
-- Install route: included in OpenClaw
+- Install route: included in ClawWorks
 
 ## Surface
 

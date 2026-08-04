@@ -52,7 +52,7 @@ export const matrixChannelConfigUiHints = {
   },
   "streaming.progress.labels": {
     label: "Matrix Progress Label Pool",
-    help: 'Candidate labels for streaming.progress.label="auto". Leave unset to use OpenClaw built-in progress labels.',
+    help: 'Candidate labels for streaming.progress.label="auto". Leave unset to use ClawWorks built-in progress labels.',
   },
   "streaming.progress.maxLines": {
     label: "Matrix Progress Max Lines",

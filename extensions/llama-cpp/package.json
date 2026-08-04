@@ -1,7 +1,7 @@
 {
   "name": "@openclaw/llama-cpp-provider",
   "version": "2026.6.10",
-  "description": "OpenClaw llama.cpp embedding provider plugin",
+  "description": "ClawWorks llama.cpp embedding provider plugin",
   "repository": {
     "type": "git",
     "url": "https://github.com/openclaw/openclaw"

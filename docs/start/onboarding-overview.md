@@ -50,7 +50,7 @@ CLI command docs: [`openclaw onboard`](/cli/onboard)
 
 ## macOS app onboarding
 
-Open the ClawWorks app. The first-run wizard walks you through the same steps
+Open the OpenClaw app. The first-run wizard walks you through the same steps
 with a visual interface.
 
 Full reference: [Onboarding (macOS App)](/start/onboarding)

@@ -1,7 +1,7 @@
 {
   "name": "@openclaw/kimi-provider",
   "version": "2026.6.10",
-  "description": "OpenClaw Kimi provider plugin.",
+  "description": "ClawWorks Kimi provider plugin.",
   "repository": {
     "type": "git",
     "url": "https://github.com/openclaw/openclaw"

@@ -1,7 +1,7 @@
 {
   "id": "pixverse",
   "name": "PixVerse",
-  "description": "OpenClaw PixVerse video generation provider plugin.",
+  "description": "ClawWorks PixVerse video generation provider plugin.",
   "activation": {
     "onStartup": false
   },

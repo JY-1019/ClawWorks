@@ -2,7 +2,7 @@
   "name": "@openclaw/codex-supervisor",
   "version": "2026.6.10",
   "private": true,
-  "description": "OpenClaw Codex app-server fleet supervision plugin.",
+  "description": "ClawWorks Codex app-server fleet supervision plugin.",
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

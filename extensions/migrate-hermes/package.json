@@ -2,7 +2,7 @@
   "name": "@openclaw/migrate-hermes",
   "version": "2026.6.10",
   "private": true,
-  "description": "Hermes to OpenClaw migration provider",
+  "description": "Hermes to ClawWorks migration provider",
   "type": "module",
   "dependencies": {
     "yaml": "2.9.0"
