@@ -533,7 +533,7 @@ function resolveThreadConfigAppsForRecord(params: {
 
 function isPluginAppReadyForThreadStart(app: CodexPluginOwnedApp): boolean {
   // `app/list` is the source of truth for inventory and access posture, but
-  // OpenClaw owns the per-thread enablement decision. A listed app that is
+  // ClawWorks owns the per-thread enablement decision. A listed app that is
   // accessible can be re-enabled for this thread via `config.apps[app.id]`.
   return app.accessible;
 }

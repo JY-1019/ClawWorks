@@ -85,7 +85,7 @@ async function runProcess(
 ): Promise<void> {
   const backend = execServer.sandbox.backend;
   if (!backend) {
-    throw new Error("OpenClaw sandbox backend is unavailable.");
+    throw new Error("ClawWorks sandbox backend is unavailable.");
   }
   throwIfProcessStartCancelled(managed);
   const execSpec = await backend.buildExecSpec({
@@ -106,7 +106,7 @@ async function runProcess(
   }
   const [command, ...args] = execSpec.argv;
   if (!command) {
-    throw new Error("OpenClaw sandbox exec spec did not provide a command.");
+    throw new Error("ClawWorks sandbox exec spec did not provide a command.");
   }
   const child = spawn(command, args, {
     env: execSpec.env,

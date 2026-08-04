@@ -147,7 +147,7 @@ describe("Codex app-server dynamic tool schema boundary contract", () => {
     expect(startPayload?.experimentalRawEvents).toBe(true);
     expect(startPayload?.persistExtendedHistory).toBe(true);
     expect(typeof startPayload?.developerInstructions).toBe("string");
-    expect(startPayload?.developerInstructions).toContain("OpenClaw");
+    expect(startPayload?.developerInstructions).toContain("ClawWorks");
   });
 
   it("accepts Codex app-server priority service tier responses", async () => {

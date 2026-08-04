@@ -165,7 +165,7 @@ describe("happy path prompt snapshots", () => {
     );
     expect(telegram).toContain("### User: Codex Config Instructions");
     expect(telegram).toContain("### User: Turn Input Text");
-    expect(telegram).toContain("OpenClaw runtime context for this turn:");
+    expect(telegram).toContain("ClawWorks runtime context for this turn:");
     expect(telegram).toContain("<SOUL.md contents will be here>");
     expect(telegram).toContain("<IDENTITY.md contents will be here>");
     expect(telegram).toContain("<TOOLS.md contents will be here>");
@@ -181,7 +181,7 @@ describe("happy path prompt snapshots", () => {
     const group = readCommittedSnapshot("discord-group-codex-message-tool.md");
     const heartbeat = readCommittedSnapshot("telegram-heartbeat-codex-tool.md");
     const heartbeatPhrase = "Use heartbeats to create useful proactive progress";
-    const agentSoulHeading = "## OpenClaw Agent Soul";
+    const agentSoulHeading = "## ClawWorks Agent Soul";
 
     expect(direct).toContain('"collaborationMode": {');
     expect(direct).toContain('"developer_instructions": "# Collaboration Mode: Default');
@@ -191,15 +191,15 @@ describe("happy path prompt snapshots", () => {
     expect(group).toContain(agentSoulHeading);
     expect(direct).not.toContain(heartbeatPhrase);
     expect(group).not.toContain(heartbeatPhrase);
-    expect(direct).not.toContain("This is an OpenClaw heartbeat turn.");
-    expect(group).not.toContain("This is an OpenClaw heartbeat turn.");
+    expect(direct).not.toContain("This is a ClawWorks heartbeat turn.");
+    expect(group).not.toContain("This is a ClawWorks heartbeat turn.");
 
     expect(heartbeat).toContain('"collaborationMode": {');
-    expect(heartbeat).toContain('"developer_instructions": "This is an OpenClaw heartbeat turn.');
+    expect(heartbeat).toContain('"developer_instructions": "This is a ClawWorks heartbeat turn.');
     expect(heartbeat).toContain(agentSoulHeading);
     const openClawRuntimeInstructions = renderedPromptSection(
       heartbeat,
-      "### Developer: OpenClaw Runtime Instructions",
+      "### Developer: ClawWorks Runtime Instructions",
       "### Developer: Codex Collaboration Mode Instructions",
     );
     const collaborationModeInstructions = renderedPromptSection(

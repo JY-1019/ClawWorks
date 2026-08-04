@@ -21,7 +21,7 @@ describe("Codex app-server policy", () => {
     expect(resolved.approvalPolicy).toBe("never");
   });
 
-  it("promotes implicit yolo approval policy when OpenClaw tool policy requires review", () => {
+  it("promotes implicit yolo approval policy when ClawWorks tool policy requires review", () => {
     const appServer = resolveCodexAppServerRuntimeOptions({ env: {}, requirementsToml: null });
 
     const resolved = resolveCodexAppServerForOpenClawToolPolicy({

@@ -86,6 +86,20 @@ describe("internal runtime context codec", () => {
     ).toBe(false);
   });
 
+  it("still detects runtime context stored under the pre-rename headers", () => {
+    const notice =
+      "This context is runtime-generated, not user-authored. Keep internal details private.";
+    for (const header of [
+      "OpenClaw runtime event.",
+      "OpenClaw runtime context for the immediately preceding user message.",
+    ]) {
+      expect(hasInternalRuntimeContext(`${header}\n${notice}\n\nbody`)).toBe(true);
+    }
+    expect(
+      hasInternalRuntimeContext(`OpenClaw runtime context (internal):\n${notice}\n\nbody`),
+    ).toBe(true);
+  });
+
   it("fuzzes delimiter injection and nested marker handling deterministically", () => {
     const rng = createDeterministicRng(0xc0ff_ee42);
     const tokenPool = [

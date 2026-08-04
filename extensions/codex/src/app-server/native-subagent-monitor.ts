@@ -1,6 +1,6 @@
 /**
  * Monitors Codex native subagent threads and mirrors their lifecycle/completion
- * into OpenClaw task runtime records for parent sessions.
+ * into ClawWorks task runtime records for parent sessions.
  */
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";

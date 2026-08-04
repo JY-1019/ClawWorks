@@ -25,7 +25,7 @@ describe("formatCodexUsageLimitErrorMessage", () => {
 
     expect(message).toContain("You've reached your Codex subscription usage limit.");
     expect(message).toContain("Your weekly Codex usage limit is reached.");
-    expect(message).toContain("OpenClaw could not determine a reset time from Codex.");
+    expect(message).toContain("ClawWorks could not determine a reset time from Codex.");
     expect(message).toContain("Wait until Codex becomes available");
     expect(message).toContain("use another Codex account if available");
     expect(message).toContain("switch to another configured model/provider");
@@ -125,7 +125,7 @@ describe("formatCodexUsageLimitErrorMessage", () => {
       nowMs,
     });
 
-    expect(message).toContain("OpenClaw could not determine a reset time from Codex.");
+    expect(message).toContain("ClawWorks could not determine a reset time from Codex.");
     expect(message).toContain("Wait until Codex becomes available");
     expect(message).not.toContain("Next reset");
     expect(message).not.toContain("1 hour");
@@ -275,7 +275,7 @@ describe("Codex rate limit blocking resets", () => {
         rateLimits: payload,
         nowMs,
       }),
-    ).toContain("OpenClaw could not determine a reset time from Codex.");
+    ).toContain("ClawWorks could not determine a reset time from Codex.");
   });
 });
 

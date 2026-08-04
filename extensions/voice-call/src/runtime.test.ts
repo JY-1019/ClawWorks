@@ -467,8 +467,8 @@ describe("createVoiceCallRuntime lifecycle", () => {
     });
     expect(runEmbeddedAgent).toHaveBeenCalledOnce();
     const consultParams = requireRecord(
-      firstCallParam(runEmbeddedAgent.mock.calls as unknown[][], "embedded OpenClaw consult"),
-      "embedded OpenClaw consult params",
+      firstCallParam(runEmbeddedAgent.mock.calls as unknown[][], "embedded ClawWorks consult"),
+      "embedded ClawWorks consult params",
     );
     expect(consultParams.sessionKey).toBe("agent:main:voice:15550009999");
     expect(consultParams.spawnedBy).toBe("agent:main:discord:channel:general");
@@ -533,9 +533,9 @@ describe("createVoiceCallRuntime lifecycle", () => {
     const consultParams = requireRecord(
       firstCallParam(
         runEmbeddedAgent.mock.calls as unknown[][],
-        "per-call embedded OpenClaw consult",
+        "per-call embedded ClawWorks consult",
       ),
-      "per-call embedded OpenClaw consult params",
+      "per-call embedded ClawWorks consult params",
     );
     expect(consultParams.sessionKey).toBe("agent:main:voice:call:call-1");
   });
@@ -575,7 +575,7 @@ describe("createVoiceCallRuntime lifecycle", () => {
     mocks.resolveRealtimeFastContextConsult.mockResolvedValue({
       handled: true,
       result: {
-        text: "Fast OpenClaw memory or session context found.\nThe caller's basement lights are on.",
+        text: "Fast ClawWorks memory or session context found.\nThe caller's basement lights are on.",
       },
     });
 
@@ -657,9 +657,9 @@ describe("createVoiceCallRuntime lifecycle", () => {
     const consultParams = requireRecord(
       firstCallParam(
         runEmbeddedAgent.mock.calls as unknown[][],
-        "configured embedded OpenClaw consult",
+        "configured embedded ClawWorks consult",
       ),
-      "configured embedded OpenClaw consult params",
+      "configured embedded ClawWorks consult params",
     );
     expect(consultParams.thinkLevel).toBe("low");
     expect(consultParams.fastMode).toBe(true);

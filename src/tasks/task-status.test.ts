@@ -91,6 +91,34 @@ describe("task status formatting", () => {
     expect(formatTaskStatusDetail(task)).toBeUndefined();
   });
 
+  it("strips from the earliest header when both brand spellings are present", () => {
+    const notice =
+      "This context is runtime-generated, not user-authored. Keep internal details private.";
+    // The legacy block has no `[Internal task completion event]`, so the legacy
+    // sweep leaves it; only the inline-header cut can remove it, and it has to
+    // cut at the earlier of the two spellings.
+    const task = makeTask({
+      status: "failed",
+      error: [
+        "Visible failure line.",
+        "",
+        "OpenClaw runtime context (internal):",
+        notice,
+        "",
+        "secret-from-the-old-block",
+        "",
+        "ClawWorks runtime context (internal):",
+        notice,
+        "",
+        "secret-from-the-new-block",
+      ].join("\n"),
+    });
+
+    const detail = formatTaskStatusDetail(task);
+    expect(detail).toBe("Visible failure line.");
+    expect(detail).not.toContain("secret-from-the-old-block");
+  });
+
   it("sanitizes task titles before truncation", () => {
     const task = makeTask({
       task: [

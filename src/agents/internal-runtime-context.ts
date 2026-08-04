@@ -16,14 +16,23 @@ export const OPENCLAW_RUNTIME_CONTEXT_NOTICE =
   "This context is runtime-generated, not user-authored. Keep internal details private.";
 /** Header for context attached to the immediately preceding user message. */
 export const OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER =
-  "OpenClaw runtime context for the immediately preceding user message.";
+  "ClawWorks runtime context for the immediately preceding user message.";
 /** Header for runtime events passed as prompt context. */
-export const OPENCLAW_RUNTIME_EVENT_HEADER = "OpenClaw runtime event.";
+export const OPENCLAW_RUNTIME_EVENT_HEADER = "ClawWorks runtime event.";
 /** Custom message type used for structured runtime-context messages. */
 export const OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE = "openclaw.runtime-context";
 
-const LEGACY_INTERNAL_CONTEXT_HEADER =
-  ["OpenClaw runtime context (internal):", OPENCLAW_RUNTIME_CONTEXT_NOTICE, ""].join("\n") + "\n";
+/** Inline header that marks a runtime-context block for stripping. */
+export const INTERNAL_CONTEXT_INLINE_HEADER = "ClawWorks runtime context (internal):";
+// Transcripts written before the rename carry the old spelling. Stripping keys
+// off both, or hidden runtime context leaks into user-visible replies for every
+// session that predates it.
+const LEGACY_INTERNAL_CONTEXT_INLINE_HEADER = "OpenClaw runtime context (internal):";
+
+const LEGACY_INTERNAL_CONTEXT_HEADERS = [
+  INTERNAL_CONTEXT_INLINE_HEADER,
+  LEGACY_INTERNAL_CONTEXT_INLINE_HEADER,
+].map((header) => [header, OPENCLAW_RUNTIME_CONTEXT_NOTICE, ""].join("\n") + "\n");
 
 const LEGACY_INTERNAL_EVENT_MARKER = "[Internal task completion event]";
 const LEGACY_INTERNAL_EVENT_SEPARATOR = "\n\n---\n\n";
@@ -140,14 +149,22 @@ function findLegacyInternalEventEnd(text: string, start: number): number | null 
 
 function stripLegacyInternalRuntimeContext(text: string): string {
   let next = text;
+  for (const header of LEGACY_INTERNAL_CONTEXT_HEADERS) {
+    next = stripLegacyInternalRuntimeContextForHeader(next, header);
+  }
+  return next;
+}
+
+function stripLegacyInternalRuntimeContextForHeader(text: string, header: string): string {
+  let next = text;
   let searchFrom = 0;
   for (;;) {
-    const headerStart = next.indexOf(LEGACY_INTERNAL_CONTEXT_HEADER, searchFrom);
+    const headerStart = next.indexOf(header, searchFrom);
     if (headerStart === -1) {
       return next;
     }
 
-    const eventStart = headerStart + LEGACY_INTERNAL_CONTEXT_HEADER.length;
+    const eventStart = headerStart + header.length;
     if (!next.startsWith(LEGACY_INTERNAL_EVENT_MARKER, eventStart)) {
       searchFrom = eventStart;
       continue;
@@ -180,10 +197,20 @@ function stripLegacyInternalRuntimeContext(text: string): string {
   }
 }
 
+// Same reason as LEGACY_INTERNAL_CONTEXT_HEADERS: replayed pre-rename turns
+// still carry the old header line. Detection and stripping share this set, so a
+// session stored before the rename stays repairable instead of reading as
+// context-free.
+const RUNTIME_CONTEXT_PROMPT_HEADERS = [
+  OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
+  OPENCLAW_RUNTIME_EVENT_HEADER,
+  "OpenClaw runtime context for the immediately preceding user message.",
+  "OpenClaw runtime event.",
+];
+const RUNTIME_CONTEXT_PROMPT_HEADER_SET = new Set(RUNTIME_CONTEXT_PROMPT_HEADERS);
+
 function isRuntimeContextPromptHeader(line: string): boolean {
-  return (
-    line === OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER || line === OPENCLAW_RUNTIME_EVENT_HEADER
-  );
+  return RUNTIME_CONTEXT_PROMPT_HEADER_SET.has(line);
 }
 
 function stripRuntimeContextPromptPreface(text: string): string {
@@ -254,11 +281,10 @@ export function hasInternalRuntimeContext(text: string): boolean {
   }
   return (
     findDelimitedTokenIndex(text, INTERNAL_RUNTIME_CONTEXT_BEGIN, 0) !== -1 ||
-    text.includes(LEGACY_INTERNAL_CONTEXT_HEADER) ||
-    text.includes(
-      `${OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER}\n${OPENCLAW_RUNTIME_CONTEXT_NOTICE}`,
-    ) ||
-    text.includes(`${OPENCLAW_RUNTIME_EVENT_HEADER}\n${OPENCLAW_RUNTIME_CONTEXT_NOTICE}`)
+    LEGACY_INTERNAL_CONTEXT_HEADERS.some((header) => text.includes(header)) ||
+    RUNTIME_CONTEXT_PROMPT_HEADERS.some((header) =>
+      text.includes(`${header}\n${OPENCLAW_RUNTIME_CONTEXT_NOTICE}`),
+    )
   );
 }
 

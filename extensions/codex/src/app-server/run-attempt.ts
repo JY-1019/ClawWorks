@@ -562,7 +562,7 @@ export async function runCodexAppServerAttempt(
     agentDir,
   });
   if (configuredAppServer.approvalPolicy === "never" && appServer.approvalPolicy === "untrusted") {
-    embeddedAgentLog.info("codex app-server approval policy promoted for OpenClaw tool policy", {
+    embeddedAgentLog.info("codex app-server approval policy promoted for ClawWorks tool policy", {
       from: "never",
       to: "untrusted",
       beforeToolCallHook: beforeToolCallPolicy.hasBeforeToolCallHook,
@@ -1094,7 +1094,7 @@ export async function runCodexAppServerAttempt(
     }
   }
   // Codex app-server threads own conversation continuity. The mirrored
-  // OpenClaw transcript is persistence/search state. Context-engine output is
+  // ClawWorks transcript is persistence/search state. Context-engine output is
   // rendered into the prompt/developer instructions, not parallel history.
   const codexModelInputHistoryMessages: typeof historyMessages = [];
   const buildPromptFromCurrentInputs = () =>
@@ -2512,7 +2512,7 @@ export async function runCodexAppServerAttempt(
     thread.lifecycle.action === "resumed" ? (thread.lifecycle.activeTurnIds ?? []) : [];
   if (activeNativeTurnIds.length > 0) {
     // A resumed Codex thread can already be running a native compact/review turn.
-    // Starting an OpenClaw turn before that native turn completes can wedge the
+    // Starting an ClawWorks turn before that native turn completes can wedge the
     // accepted turn behind a completion event we intentionally ignore.
     embeddedAgentLog.info(
       "codex app-server resumed thread has active native turn; waiting before turn/start",
@@ -2550,7 +2550,7 @@ export async function runCodexAppServerAttempt(
     let turnStartError = error;
     if (isCodexActiveCompactTurnError(turnStartError)) {
       // Codex native compaction returns before its compact turn finishes. If
-      // the next OpenClaw turn collides with that compact turn, wait for the
+      // the next ClawWorks turn collides with that compact turn, wait for the
       // terminal notification and retry once instead of surfacing drift.
       embeddedAgentLog.info(
         "codex app-server turn/start blocked by active compact turn; waiting to retry",
@@ -2578,8 +2578,8 @@ export async function runCodexAppServerAttempt(
       }) &&
       restartContextEngineCodexThread
     ) {
-      // Do not try to pre-compact or summarize through OpenClaw here. Codex owns
-      // automatic compaction; OpenClaw may only discard a stale projection thread
+      // Do not try to pre-compact or summarize through ClawWorks here. Codex owns
+      // automatic compaction; ClawWorks may only discard a stale projection thread
       // and let Codex start cleanly.
       embeddedAgentLog.warn(
         "codex app-server context-engine turn overflowed on resume; retrying with fresh thread",

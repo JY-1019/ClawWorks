@@ -1,5 +1,5 @@
 /**
- * Hosts the local OpenClaw sandbox exec-server that Codex app-server native
+ * Hosts the local ClawWorks sandbox exec-server that Codex app-server native
  * execution can register as an external environment.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -77,7 +77,7 @@ export async function ensureCodexSandboxExecServerEnvironment(params: {
   }
   if (!canExposeLocalExecServerToAppServer(params.appServerStartOptions)) {
     throw new Error(
-      "OpenClaw Codex exec-server uses a local loopback URL and cannot be registered with a remote Codex app-server.",
+      "ClawWorks Codex exec-server uses a local loopback URL and cannot be registered with a remote Codex app-server.",
     );
   }
   assertCodexSandboxExecServerSupported(params.client);
@@ -130,7 +130,7 @@ function assertCodexSandboxExecServerSupported(client: CodexAppServerClient): vo
     ) < 0
   ) {
     throw new Error(
-      `Codex app-server ${MIN_CODEX_SANDBOX_EXEC_SERVER_APP_SERVER_VERSION} or newer is required for OpenClaw sandbox exec-server environments, but detected ${
+      `Codex app-server ${MIN_CODEX_SANDBOX_EXEC_SERVER_APP_SERVER_VERSION} or newer is required for ClawWorks sandbox exec-server environments, but detected ${
         detectedVersion ?? "an unknown version"
       }. Disable appServer.experimental.sandboxExecServer or configure a newer Codex app-server binary.`,
     );
@@ -204,7 +204,7 @@ async function startOpenClawExecServer(sandbox: SandboxContext): Promise<OpenCla
   await once(server, "listening");
   const address = server.address();
   if (!address || typeof address === "string") {
-    throw new Error("OpenClaw Codex exec-server did not bind to a TCP port.");
+    throw new Error("ClawWorks Codex exec-server did not bind to a TCP port.");
   }
   const environmentId = buildEnvironmentId(sandbox);
   const authPath = `/openclaw-${randomUUID()}`;
@@ -371,6 +371,6 @@ async function dispatchRequest(
     case "http/request":
       return await httpRequest(execServer, socket, request.params);
     default:
-      throw new Error(`Unsupported OpenClaw sandbox exec-server method: ${request.method}`);
+      throw new Error(`Unsupported ClawWorks sandbox exec-server method: ${request.method}`);
   }
 }

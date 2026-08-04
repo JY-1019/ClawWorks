@@ -1,6 +1,6 @@
 /**
  * Persists and normalizes the Codex app-server thread binding associated with
- * an OpenClaw session file.
+ * a ClawWorks session file.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs/promises";
@@ -54,7 +54,7 @@ export type CodexAppServerAuthProfileLookup = {
   config?: ProviderAuthAliasConfig;
 };
 
-/** Durable sidecar binding connecting an OpenClaw session file to a Codex thread. */
+/** Durable sidecar binding connecting a ClawWorks session file to a Codex thread. */
 export type CodexAppServerThreadBinding = {
   schemaVersion: 2;
   threadId: string;

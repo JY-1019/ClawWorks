@@ -430,13 +430,23 @@ function hasCodexHarnessMetadata(params: HandleCommandsParams): boolean {
   );
 }
 
+// These prefixes are produced by the Codex plugin
+// (extensions/codex/src/command-handlers.ts); they must be edited together or
+// `/diagnostics` starts appending a Codex add-on for sessions that have no
+// Codex thread at all. `@openclaw/codex` ships on its own version, so an
+// upgraded host can run against a pre-rename plugin: both spellings are
+// accepted until the oldest supported plugin emits the current one. A
+// structured status on the command result would remove the coupling entirely,
+// but that is a plugin SDK surface change.
+const CODEX_DIAGNOSTICS_UNAVAILABLE_PREFIXES = [
+  "No Codex thread is attached to this ClawWorks session yet.",
+  "No Codex thread is attached to this OpenClaw session yet.",
+  "Cannot send Codex diagnostics because this command did not include a ClawWorks session file.",
+  "Cannot send Codex diagnostics because this command did not include an OpenClaw session file.",
+];
+
 function isCodexDiagnosticsUnavailableText(text: string | undefined): boolean {
-  return (
-    text?.startsWith("No Codex thread is attached to this OpenClaw session yet.") === true ||
-    text?.startsWith(
-      "Cannot send Codex diagnostics because this command did not include an OpenClaw session file.",
-    ) === true
-  );
+  return CODEX_DIAGNOSTICS_UNAVAILABLE_PREFIXES.some((prefix) => text?.startsWith(prefix) === true);
 }
 
 async function executeCodexDiagnosticsAddon(

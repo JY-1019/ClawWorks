@@ -152,7 +152,7 @@ export function formatAgentInternalEventsForPrompt(events?: AgentInternalEvent[]
   }
   return [
     INTERNAL_RUNTIME_CONTEXT_BEGIN,
-    "OpenClaw runtime context (internal):",
+    "ClawWorks runtime context (internal):",
     "This context is runtime-generated, not user-authored. Keep internal details private.",
     "",
     blocks.join("\n\n---\n\n"),

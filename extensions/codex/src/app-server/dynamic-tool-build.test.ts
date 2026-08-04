@@ -172,7 +172,7 @@ describe("Codex app-server dynamic tool build", () => {
         localWorkspaceRoot: "/Users/kevinlin/code/openclaw",
         remoteWorkspaceRoot: "/home/oai/openclaw-workspaces",
       }),
-    ).toThrow("outside OpenClaw workspace root");
+    ).toThrow("outside ClawWorks workspace root");
   });
 
   it("maps Windows child paths through remote Codex app-server workspaces", () => {
@@ -616,7 +616,7 @@ describe("Codex app-server dynamic tool build", () => {
     expect(persistentWebSearchAllowed).toBe(false);
   });
 
-  it("exposes OpenClaw sandbox shell tools under distinct names for non-Docker sandbox backends", async () => {
+  it("exposes ClawWorks sandbox shell tools under distinct names for non-Docker sandbox backends", async () => {
     setOpenClawCodingToolsFactoryForTests(() => [
       createRuntimeDynamicTool("read"),
       createRuntimeDynamicTool("write"),
@@ -646,7 +646,7 @@ describe("Codex app-server dynamic tool build", () => {
     );
   });
 
-  it("exposes Docker sandbox shell tools when OpenClaw sandboxing disables native Code Mode", async () => {
+  it("exposes Docker sandbox shell tools when ClawWorks sandboxing disables native Code Mode", async () => {
     setOpenClawCodingToolsFactoryForTests(() => [
       createRuntimeDynamicTool("exec"),
       createRuntimeDynamicTool("process"),
@@ -1293,7 +1293,7 @@ describe("Codex app-server dynamic tool build", () => {
     expect(shouldEnableCodexAppServerNativeToolSurface(runtimePolicyParams)).toBe(true);
   });
 
-  it("disables Codex native tool surfaces whenever an OpenClaw sandbox is active", () => {
+  it("disables Codex native tool surfaces whenever a ClawWorks sandbox is active", () => {
     const workspaceDir = path.join(tempDir, "workspace");
     const params = createParams(path.join(tempDir, "session.jsonl"), workspaceDir);
     params.disableTools = false;

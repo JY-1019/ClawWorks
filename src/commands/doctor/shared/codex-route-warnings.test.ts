@@ -3828,7 +3828,7 @@ describe("collectCodexRouteWarnings", () => {
     expect(store.main.authProfileOverride).toBe("openai-codex:default");
   });
 
-  it("clears stale Codex overrides while preserving explicit OpenClaw session pins", () => {
+  it("clears stale Codex overrides while preserving explicit ClawWorks session pins", () => {
     const store: Record<string, SessionEntry> = {
       main: {
         sessionId: "s1",

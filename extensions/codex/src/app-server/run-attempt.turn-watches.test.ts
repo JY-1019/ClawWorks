@@ -184,7 +184,7 @@ describe("runCodexAppServerAttempt turn watches", () => {
     expect(toolResult.success).toBe(false);
     expect(toolResult.contentItems?.[0]?.type).toBe("inputText");
     expect(toolResult.contentItems?.[0]?.text).toMatch(
-      /^(Unknown OpenClaw tool: message|Action send requires a target\.)$/u,
+      /^(Unknown ClawWorks tool: message|Action send requires a target\.)$/u,
     );
 
     const result = await run;
@@ -1423,7 +1423,7 @@ describe("runCodexAppServerAttempt turn watches", () => {
     expect(request.mock.calls.some(([method]) => method === "turn/interrupt")).toBe(false);
   });
 
-  it("keeps waiting after an OpenClaw dynamic tool response before final synthesis", async () => {
+  it("keeps waiting after an ClawWorks dynamic tool response before final synthesis", async () => {
     let notify: (notification: CodexServerNotification) => Promise<void> = async () => undefined;
     let handleRequest:
       | ((request: { id: string; method: string; params?: unknown }) => Promise<unknown>)
@@ -3107,8 +3107,8 @@ describe("runCodexAppServerAttempt turn watches", () => {
   it("clears the thread binding after a completion-idle timeout so the next turn starts fresh", async () => {
     // Regression for openclaw#89974. The "user interrupted the previous turn on
     // purpose" wording is Codex's generic <turn_aborted> rollout marker, written
-    // whenever a turn is interrupted (including OpenClaw's own watchdog abort).
-    // OpenClaw cannot change that text (turn/interrupt carries no reason); it can
+    // whenever a turn is interrupted (including ClawWorks's own watchdog abort).
+    // ClawWorks cannot change that text (turn/interrupt carries no reason); it can
     // only avoid replaying it. This proves a turn_completion_idle_timeout clears
     // the timed-out thread's binding so the next turn starts a fresh thread
     // rather than resuming the thread that may hold that marker.
@@ -3141,7 +3141,7 @@ describe("runCodexAppServerAttempt turn watches", () => {
     // The timed-out thread's binding is gone, so it cannot be resumed.
     expect(await readCodexAppServerBinding(sessionFile)).toBeUndefined();
 
-    // Turn 2: with no binding, OpenClaw starts a brand-new thread instead of
+    // Turn 2: with no binding, ClawWorks starts a brand-new thread instead of
     // resuming the timed-out one, so Codex's interrupt marker never replays.
     const secondHarness = createStartedThreadHarness();
     const secondRun = runCodexAppServerAttempt(createParams(sessionFile, workspaceDir));

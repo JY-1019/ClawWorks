@@ -3,7 +3,7 @@ import {
   reviewExecRequestWithConfiguredModel,
 } from "openclaw/plugin-sdk/agent-harness-exec-review-runtime";
 /**
- * Bridges Codex app-server approval requests into OpenClaw policy hooks and
+ * Bridges Codex app-server approval requests into ClawWorks policy hooks and
  * plugin approval UX.
  */
 import {
@@ -170,7 +170,7 @@ export async function handleCodexAppServerApprovalRequest(params: {
       });
       return buildApprovalResponse(params.method, context.requestParams, autoReviewOutcome.outcome);
     }
-    // Native hook/model policy did not decide; fall back to the OpenClaw
+    // Native hook/model policy did not decide; fall back to the ClawWorks
     // approval route so user-facing runs still get an approval prompt.
     const requestResult = await requestPluginApproval({
       paramsForRun: params.paramsForRun,
@@ -253,7 +253,7 @@ export async function handleCodexAppServerApprovalRequest(params: {
   }
 }
 
-/** Converts an OpenClaw approval outcome into the app-server method response. */
+/** Converts a ClawWorks approval outcome into the app-server method response. */
 export function buildApprovalResponse(
   method: string,
   requestParams: JsonObject | undefined,
@@ -424,7 +424,7 @@ async function runInternalExecAutoReviewForApprovalRequest(params: {
   }
   return {
     outcome: "approved-once",
-    reason: `Codex app-server command approval granted by OpenClaw exec auto-reviewer: ${formatCodexDisplayText(
+    reason: `Codex app-server command approval granted by ClawWorks exec auto-reviewer: ${formatCodexDisplayText(
       decision.rationale,
     )}`,
   };
@@ -682,7 +682,7 @@ async function runOpenClawToolPolicyForApprovalRequest(params: {
     return {
       outcome: "denied",
       reason:
-        "OpenClaw tool policy rewrote Codex app-server approval params; refusing original request.",
+        "ClawWorks tool policy rewrote Codex app-server approval params; refusing original request.",
     };
   }
   if (outcome.approvalResolution) {
@@ -785,7 +785,7 @@ async function runNativeRelayToolPolicyForApprovalRequest(params: {
     return {
       handled: true,
       blocked: true,
-      reason: `OpenClaw native hook relay unavailable for Codex app-server approval: ${formatCodexDisplayText(
+      reason: `ClawWorks native hook relay unavailable for Codex app-server approval: ${formatCodexDisplayText(
         formatErrorMessage(error),
       )}`,
     };
@@ -827,7 +827,7 @@ function readNativeRelayPreToolUseDecision(
       reason:
         sanitizeRelayDecisionReason(response?.stderr) ||
         sanitizeRelayDecisionReason(response?.stdout) ||
-        "OpenClaw native hook relay failed for Codex app-server approval.",
+        "ClawWorks native hook relay failed for Codex app-server approval.",
     };
   }
   const stdout = response.stdout?.trim();
@@ -841,7 +841,7 @@ function readNativeRelayPreToolUseDecision(
       blocked: true,
       reason:
         readString(output, "permissionDecisionReason") ||
-        "OpenClaw native hook policy denied Codex app-server approval.",
+        "ClawWorks native hook policy denied Codex app-server approval.",
     };
   }
   // The app-server bridge invokes the relay in report mode, where the relay
@@ -849,8 +849,8 @@ function readNativeRelayPreToolUseDecision(
   return {
     blocked: true,
     reason: output
-      ? "OpenClaw native hook relay returned a non-deny Codex app-server approval decision."
-      : "OpenClaw native hook relay returned an unreadable Codex app-server approval result.",
+      ? "ClawWorks native hook relay returned a non-deny Codex app-server approval decision."
+      : "ClawWorks native hook relay returned an unreadable Codex app-server approval result.",
   };
 }
 
@@ -983,7 +983,7 @@ function requestedPermissions(requestParams: JsonObject | undefined): JsonObject
 function unsupportedApprovalResponse(): JsonValue {
   return {
     decision: "decline",
-    reason: "OpenClaw codex app-server bridge does not grant native approvals yet.",
+    reason: "ClawWorks codex app-server bridge does not grant native approvals yet.",
   };
 }
 

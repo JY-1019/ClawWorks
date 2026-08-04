@@ -292,7 +292,7 @@ export function formatPermissionsMode(binding: {
 async function requireThreadBinding(sessionFile: string, lookup: CodexAppServerBindingLookup = {}) {
   const binding = await readCodexAppServerBinding(sessionFile, lookup);
   if (!binding?.threadId) {
-    throw new Error("No Codex thread is attached to this OpenClaw session yet.");
+    throw new Error("No Codex thread is attached to this ClawWorks session yet.");
   }
   return binding;
 }

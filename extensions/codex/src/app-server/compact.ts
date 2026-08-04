@@ -1,5 +1,5 @@
 /**
- * Native Codex app-server compaction bridge for bound OpenClaw sessions.
+ * Native Codex app-server compaction bridge for bound ClawWorks sessions.
  */
 import {
   embeddedAgentLog,
@@ -57,7 +57,7 @@ function warnIfIgnoringOpenClawCompactionOverrides(
   }
   warnedIgnoredCompactionOverrides.add(warningKey);
   embeddedAgentLog.warn(
-    "ignoring OpenClaw compaction overrides for Codex app-server compaction; Codex uses native server-side compaction",
+    "ignoring ClawWorks compaction overrides for Codex app-server compaction; Codex uses native server-side compaction",
     {
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,

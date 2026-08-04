@@ -6,7 +6,7 @@
  * ../codex/codex-rs/config/src/skills_config.rs:30-32, applied per thread through
  * the thread-config override in
  * ../codex/codex-rs/app-server-protocol/src/protocol/v2/thread.rs:94-95).
- * OpenClaw narrows its own catalog for a governed run, but that block belongs to
+ * ClawWorks narrows its own catalog for a governed run, but that block belongs to
  * Codex, so a governed thread would still be offered skills the work-map never
  * granted.
  *

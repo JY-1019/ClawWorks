@@ -1,5 +1,5 @@
 /**
- * Thin Codex app-server timeout adapter around OpenClaw's shared security
+ * Thin Codex app-server timeout adapter around ClawWorks's shared security
  * runtime timeout helper.
  */
 import { withTimeout as withSharedTimeout } from "openclaw/plugin-sdk/security-runtime";

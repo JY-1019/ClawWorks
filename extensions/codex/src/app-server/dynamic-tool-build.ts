@@ -1,6 +1,6 @@
 /**
  * Builds the Codex app-server dynamic tool list for one turn, including
- * OpenClaw-owned tools, Codex native-tool fallback rules, sandbox shell shims,
+ * ClawWorks-owned tools, Codex native-tool fallback rules, sandbox shell shims,
  * and provider allowlist normalization.
  */
 import {
@@ -39,7 +39,7 @@ type OpenClawCodingToolsOptions = NonNullable<
 >;
 type OpenClawExecOptions = NonNullable<OpenClawCodingToolsOptions["exec"]>;
 
-/** Factory seam for constructing OpenClaw runtime tools without eagerly loading agent-harness. */
+/** Factory seam for constructing ClawWorks runtime tools without eagerly loading agent-harness. */
 export type OpenClawCodingToolsFactory =
   (typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingTools"];
 type OpenClawDynamicTool = ReturnType<OpenClawCodingToolsFactory>[number];
@@ -483,7 +483,7 @@ export function shouldEnableCodexAppServerNativeToolSurface(
     return canCodexAppServerNativeToolSurfaceHonorSandbox(sandbox, options);
   }
   // Codex native code mode exposes its shell/file surface as one app-server
-  // capability, so narrow OpenClaw allowlists must fail closed rather than
+  // capability, so narrow ClawWorks allowlists must fail closed rather than
   // widening `message` or `web_search` into shell access.
   return (
     hasWildcardCodexToolsAllow(toolsAllow) &&
@@ -491,7 +491,7 @@ export function shouldEnableCodexAppServerNativeToolSurface(
   );
 }
 
-/** Returns true when OpenClaw policy requires the Node-owned exec/process tools instead. */
+/** Returns true when ClawWorks policy requires the Node-owned exec/process tools instead. */
 export function isCodexNativeExecutionBlockedByNodeExecHost(
   params: EmbeddedRunAttemptParams,
   options: {
@@ -539,7 +539,7 @@ function canCodexAppServerNativeToolSurfaceHonorSandbox(
   }
   // Codex app-server native shell, filesystem, and user MCP execution are owned
   // by the app-server process. Without the explicit exec-server integration,
-  // active OpenClaw sandboxing must disable the native surface and route shell
+  // active ClawWorks sandboxing must disable the native surface and route shell
   // access through sandbox-backed dynamic tools instead.
   return false;
 }
@@ -564,7 +564,7 @@ function filterCodexMemoryFlushDynamicTools<T extends { name: string }>(tools: T
   );
 }
 
-/** Requires a Codex sandbox environment only when native tools must run inside OpenClaw sandboxing. */
+/** Requires a Codex sandbox environment only when native tools must run inside ClawWorks sandboxing. */
 export function shouldRequireCodexSandboxExecServerEnvironment(params: {
   sandbox?: OpenClawSandboxContext;
   nativeToolSurfaceEnabled: boolean;
@@ -602,7 +602,7 @@ export function resolveCodexAppServerExecutionCwd(params: {
   });
 }
 
-/** Projects a local OpenClaw workspace cwd into the remote Codex app-server workspace root. */
+/** Projects a local ClawWorks workspace cwd into the remote Codex app-server workspace root. */
 export function mapCodexAppServerRemoteWorkspacePath(params: {
   value: string;
   localWorkspaceRoot: string;
@@ -623,7 +623,7 @@ export function mapCodexAppServerRemoteWorkspacePath(params: {
   const prefix = `${localRoot}/`;
   if (!normalizedValue.startsWith(prefix)) {
     throw new Error(
-      `Codex remoteWorkspaceRoot is configured but cwd ${params.value} is outside OpenClaw workspace root ${params.localWorkspaceRoot}; refusing to send a gateway-local cwd to the remote Codex app-server.`,
+      `Codex remoteWorkspaceRoot is configured but cwd ${params.value} is outside ClawWorks workspace root ${params.localWorkspaceRoot}; refusing to send a gateway-local cwd to the remote Codex app-server.`,
     );
   }
   return joinRemoteWorkspacePath(remoteRoot, normalizedValue.slice(prefix.length));
@@ -641,7 +641,7 @@ function joinRemoteWorkspacePath(remoteRoot: string, suffix: string): string {
   return remoteRoot === "/" ? `/${suffix}` : `${remoteRoot}/${suffix}`;
 }
 
-/** Converts OpenClaw sandbox networking into Codex's external-sandbox policy shape. */
+/** Converts ClawWorks sandbox networking into Codex's external-sandbox policy shape. */
 export function resolveCodexExternalSandboxPolicyForOpenClawSandbox(
   sandbox: OpenClawSandboxContext | undefined,
 ): CodexSandboxPolicy {
@@ -696,7 +696,7 @@ export function addSandboxShellDynamicToolsIfAvailable(
     ...execTool,
     name: "sandbox_exec",
     description:
-      "Run a shell command through OpenClaw's configured sandbox backend for this session. Use when OpenClaw sandboxing is active or when a command must execute in the sandbox backend, such as an SSH-backed sandbox or Docker container-path bind layout. Use Codex's native shell only when no OpenClaw sandbox is active and native Code Mode is available.",
+      "Run a shell command through ClawWorks's configured sandbox backend for this session. Use when ClawWorks sandboxing is active or when a command must execute in the sandbox backend, such as an SSH-backed sandbox or Docker container-path bind layout. Use Codex's native shell only when no ClawWorks sandbox is active and native Code Mode is available.",
     execute: async (toolCallId, args, signal, onUpdate) => {
       const result = await execTool.execute(toolCallId, args, signal, onUpdate);
       return {
@@ -718,7 +718,7 @@ export function addSandboxShellDynamicToolsIfAvailable(
     ...processTool,
     name: "sandbox_process",
     description:
-      "Manage sandbox_exec sessions that were started through OpenClaw's configured sandbox backend for this session: list, poll, log, write, send-keys, submit, paste, kill, clear, or remove. Use only for sandbox_exec follow-up; use Codex's native shell session handling only when no OpenClaw sandbox is active and native Code Mode is available.",
+      "Manage sandbox_exec sessions that were started through ClawWorks's configured sandbox backend for this session: list, poll, log, write, send-keys, submit, paste, kill, clear, or remove. Use only for sandbox_exec follow-up; use Codex's native shell session handling only when no ClawWorks sandbox is active and native Code Mode is available.",
   };
   return [...filteredTools, sandboxExecTool, sandboxProcessTool];
 }
@@ -802,7 +802,7 @@ function createNodeExecDynamicTool(
     ...execTool,
     name: CODEX_NODE_EXEC_DYNAMIC_TOOL_NAME,
     description:
-      "Run a shell command on the OpenClaw configured remote node for this session. This tool always uses OpenClaw host=node internally and follows the existing node exec approval and allowlist policy. Use node_process for follow-up on backgrounded node_exec sessions. Use Codex's native shell for local app-server work.",
+      "Run a shell command on the ClawWorks configured remote node for this session. This tool always uses ClawWorks host=node internally and follows the existing node exec approval and allowlist policy. Use node_process for follow-up on backgrounded node_exec sessions. Use Codex's native shell for local app-server work.",
     parameters: hideNodeExecDynamicToolParameters(execTool.parameters),
     execute: async (toolCallId, args, signal, onUpdate) => {
       const result = await execTool.execute(
@@ -833,7 +833,7 @@ function createNodeProcessDynamicTool(processTool: OpenClawDynamicTool): OpenCla
     ...processTool,
     name: CODEX_NODE_PROCESS_DYNAMIC_TOOL_NAME,
     description:
-      "Manage node_exec sessions that were started on the OpenClaw configured remote node for this session: list, poll, log, write, send-keys, submit, paste, kill, clear, or remove. Use only for node_exec follow-up; use Codex's native shell session handling for local app-server work.",
+      "Manage node_exec sessions that were started on the ClawWorks configured remote node for this session: list, poll, log, write, send-keys, submit, paste, kill, clear, or remove. Use only for node_exec follow-up; use Codex's native shell session handling for local app-server work.",
   };
 }
 

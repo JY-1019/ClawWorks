@@ -7,7 +7,7 @@ import type {
   CodexPluginConfig,
 } from "./config.js";
 
-/** Tool names owned by Codex app-server and normally excluded from OpenClaw dynamic tools. */
+/** Tool names owned by Codex app-server and normally excluded from ClawWorks dynamic tools. */
 export const CODEX_APP_SERVER_OWNED_DYNAMIC_TOOL_EXCLUDES = [
   "read",
   "write",
@@ -32,7 +32,7 @@ type CodexDynamicToolProfileEnv = {
   OPENCLAW_QA_FORCE_RUNTIME?: string;
 };
 
-/** Normalizes OpenClaw/Codex tool names before filtering and allowlist checks. */
+/** Normalizes ClawWorks/Codex tool names before filtering and allowlist checks. */
 export function normalizeCodexDynamicToolName(name: string): string {
   const normalized = name.trim().toLowerCase();
   return DYNAMIC_TOOL_NAME_ALIASES[normalized] ?? normalized;
@@ -99,7 +99,7 @@ export function resolveCodexDynamicToolsLoadingForRuntime(
   return loading === "searchable" && options.connectionClass === "remote" ? "direct" : loading;
 }
 
-/** Filters OpenClaw tools that Codex owns natively or config explicitly excludes. */
+/** Filters ClawWorks tools that Codex owns natively or config explicitly excludes. */
 export function filterCodexDynamicTools<T extends { name: string }>(
   tools: T[],
   config: Pick<CodexPluginConfig, "codexDynamicToolsExclude">,

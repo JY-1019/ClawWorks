@@ -1,5 +1,5 @@
 /**
- * Bridges Codex item/tool user-input requests to OpenClaw messaging prompts and
+ * Bridges Codex item/tool user-input requests to ClawWorks messaging prompts and
  * turns replies into app-server answer payloads.
  */
 import {

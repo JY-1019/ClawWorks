@@ -234,7 +234,7 @@ describe("CodexAppServerClient", () => {
       params: {
         clientInfo: {
           name: "openclaw",
-          title: "OpenClaw",
+          title: "ClawWorks",
           version: OPENCLAW_VERSION,
         },
         capabilities: {
@@ -504,7 +504,7 @@ describe("CodexAppServerClient", () => {
         contentItems: [
           {
             type: "inputText",
-            text: `OpenClaw dynamic tool call timed out after ${testing.CODEX_DYNAMIC_TOOL_SERVER_REQUEST_TIMEOUT_MS}ms before sending a response to Codex.`,
+            text: `ClawWorks dynamic tool call timed out after ${testing.CODEX_DYNAMIC_TOOL_SERVER_REQUEST_TIMEOUT_MS}ms before sending a response to Codex.`,
           },
         ],
       },

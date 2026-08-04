@@ -166,7 +166,7 @@ function evaluateSpeechReadiness(session: GoogleMeetSession): {
       reason: health.manualActionReason ?? "browser-unverified",
       message:
         health.manualActionMessage ??
-        "Resolve the Google Meet browser prompt before asking OpenClaw to speak.",
+        "Resolve the Google Meet browser prompt before asking ClawWorks to speak.",
     };
   }
   if (health?.inCall === true) {
@@ -174,7 +174,7 @@ function evaluateSpeechReadiness(session: GoogleMeetSession): {
       return {
         ready: false,
         reason: "meet-microphone-muted",
-        message: "Turn on the OpenClaw Google Meet microphone before asking OpenClaw to speak.",
+        message: "Turn on the ClawWorks Google Meet microphone before asking ClawWorks to speak.",
       };
     }
     if (session.chrome.audioBridge) {

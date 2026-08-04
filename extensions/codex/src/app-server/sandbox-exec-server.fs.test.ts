@@ -20,7 +20,7 @@ afterEach(async () => {
   await closeCodexSandboxExecServersForTests();
 });
 
-describe("OpenClaw Codex sandbox exec-server filesystem", () => {
+describe("ClawWorks Codex sandbox exec-server filesystem", () => {
   it("routes file writes through the sandbox fs bridge", async () => {
     const writeFile = vi.fn(async () => undefined);
     const sandbox = createSandboxContext({ writeFile });

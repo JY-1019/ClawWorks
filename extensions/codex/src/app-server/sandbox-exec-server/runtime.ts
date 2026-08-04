@@ -11,7 +11,7 @@ export function requireBackend(
 ): NonNullable<SandboxContext["backend"]> {
   const backend = execServer.sandbox.backend;
   if (!backend) {
-    throw new Error("OpenClaw sandbox backend is unavailable.");
+    throw new Error("ClawWorks sandbox backend is unavailable.");
   }
   return backend;
 }

@@ -14,7 +14,7 @@ import {
 // `@github/copilot-sdk/dist/types.d.ts:1036,1155` —
 // "custom instruction files (.github/copilot-instructions.md,
 // AGENTS.md, etc.) are always loaded from the working directory").
-// Filtering them out of the OpenClaw bootstrap injection avoids
+// Filtering them out of the ClawWorks bootstrap injection avoids
 // duplicating their content into `SessionConfig.systemMessage`, which
 // would otherwise inflate every prompt with the same text the SDK
 // already includes. Mirrors codex's CODEX_NATIVE_PROJECT_DOC_BASENAMES
@@ -41,7 +41,7 @@ export type CopilotWorkspaceBootstrapResult = {
 };
 
 /**
- * Loads OpenClaw workspace bootstrap files (IDENTITY.md, SOUL.md,
+ * Loads ClawWorks workspace bootstrap files (IDENTITY.md, SOUL.md,
  * HEARTBEAT.md, USER.md, TOOLS.md, BOOTSTRAP.md, MEMORY.md, ...) using
  * the shared core helper PI and codex both use, then renders them as a
  * single string suitable for `SessionConfig.systemMessage.content` on
@@ -190,7 +190,7 @@ export function renderCopilotWorkspaceBootstrapInstructions(
   }
   const hasSoulFile = files.some((file) => getCopilotContextFileBasename(file.path) === "soul.md");
   const lines: string[] = [
-    "OpenClaw loaded these user-editable workspace files. Treat them as project/user context. The Copilot SDK loads AGENTS.md natively from its instruction directories, so AGENTS.md is not repeated here.",
+    "ClawWorks loaded these user-editable workspace files. Treat them as project/user context. The Copilot SDK loads AGENTS.md natively from its instruction directories, so AGENTS.md is not repeated here.",
     "",
     "# Project Context",
     "",

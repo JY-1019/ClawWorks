@@ -82,7 +82,7 @@ describe("buildRealtimeVoiceInstructions", () => {
       agentRuntime: createAgentRuntime(workspaceDir),
     });
 
-    expect(instructions).toContain("OpenClaw agent voice context:");
+    expect(instructions).toContain("ClawWorks agent voice context:");
     expect(instructions).toContain("Consult behavior:");
     expect(instructions).toContain("Call openclaw_agent_consult before answering requests");
     expect(instructions).toContain("- Agent id: voice");

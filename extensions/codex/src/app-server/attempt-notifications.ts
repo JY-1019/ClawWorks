@@ -203,7 +203,7 @@ export function readNotificationItemId(notification: CodexServerNotification): s
   );
 }
 
-/** Detects completion for an OpenClaw dynamic tool result still awaited by Codex. */
+/** Detects completion for a ClawWorks dynamic tool result still awaited by Codex. */
 export function isPendingOpenClawDynamicToolCompletionNotification(
   notification: CodexServerNotification,
   pendingOpenClawDynamicToolCompletionIds: ReadonlySet<string>,

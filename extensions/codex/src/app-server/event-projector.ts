@@ -113,10 +113,10 @@ const CODEX_PROMPT_TOTAL_INPUT_KEYS = [
 const MAX_TOOL_OUTPUT_DELTA_MESSAGES_PER_ITEM = 20;
 const TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS = 12_000;
 const MISSING_TOOL_RESULT_ERROR =
-  "OpenClaw recorded a native Codex tool.call without a matching tool.result before the turn completed.";
+  "ClawWorks recorded a native Codex tool.call without a matching tool.result before the turn completed.";
 const GENERATED_IMAGE_MEDIA_SUBDIR = "tool-image-generation";
 const BYTES_PER_MB = 1024 * 1024;
-// Match OpenClaw's default image media cap for generated image tool outputs.
+// Match ClawWorks's default image media cap for generated image tool outputs.
 const DEFAULT_GENERATED_IMAGE_MAX_BYTES = 6 * BYTES_PER_MB;
 const TRANSCRIPT_PROGRESS_SUPPRESSED_TOOL_NAMES = new Set([
   "message",
@@ -352,7 +352,7 @@ export class CodexAppServerEventProjector {
       ? []
       : [attachCodexMirrorIdentity(buildCodexUserPromptMessage(this.params), `${turnId}:prompt`)];
     // Codex owns the canonical thread. These mirror records keep enough local
-    // context for OpenClaw history, search, and future harness switching.
+    // context for ClawWorks history, search, and future harness switching.
     if (reasoningText) {
       messagesSnapshot.push(
         attachCodexMirrorIdentity(
@@ -2359,7 +2359,7 @@ function shouldSuppressChannelProgressForItem(item: CodexThreadItem): boolean {
   if (shouldSynthesizeToolProgressForItem(item)) {
     return true;
   }
-  // Dynamic OpenClaw tool requests are emitted at the item/tool/call request
+  // Dynamic ClawWorks tool requests are emitted at the item/tool/call request
   // boundary in run-attempt.ts. Re-emitting item notifications to channels can
   // duplicate start/result progress when the app-server sends both signals.
   return item.type === "dynamicToolCall";

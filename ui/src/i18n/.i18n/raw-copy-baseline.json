@@ -41,7 +41,7 @@
       "kind": "html-text",
       "name": "text",
       "path": "ui/src/ui/app-render.ts",
-      "text": "OpenClaw"
+      "text": "ClawWorks"
     },
     {
       "count": 1,
@@ -468,7 +468,7 @@
       "kind": "html-text",
       "name": "text",
       "path": "ui/src/ui/components/dashboard-header.ts",
-      "text": "OpenClaw"
+      "text": "ClawWorks"
     },
     {
       "count": 1,
@@ -4017,7 +4017,7 @@
       "kind": "html-text",
       "name": "text",
       "path": "ui/src/ui/views/login-gate.ts",
-      "text": "OpenClaw"
+      "text": "ClawWorks"
     },
     {
       "count": 1,

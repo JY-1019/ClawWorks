@@ -39,7 +39,7 @@ export const FALLBACK_CODEX_MODELS = [
 ] satisfies CodexAppServerModel[];
 
 /**
- * Converts a Codex app-server model record into OpenClaw provider model config.
+ * Converts a Codex app-server model record into ClawWorks provider model config.
  */
 export function buildCodexModelDefinition(model: {
   id: string;

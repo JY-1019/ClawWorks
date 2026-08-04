@@ -2841,7 +2841,7 @@ describe("CodexAppServerEventProjector", () => {
     });
   });
 
-  it("records dynamic OpenClaw tool calls in mirrored transcript snapshots", async () => {
+  it("records dynamic ClawWorks tool calls in mirrored transcript snapshots", async () => {
     const projector = await createProjector();
 
     projector.recordDynamicToolCall({
@@ -3060,7 +3060,7 @@ describe("CodexAppServerEventProjector", () => {
       tool: "message",
       success: false,
       terminalType: "error",
-      contentItems: [{ type: "inputText", text: "Unknown OpenClaw tool: message" }],
+      contentItems: [{ type: "inputText", text: "Unknown ClawWorks tool: message" }],
     });
 
     const result = projector.buildResult(buildEmptyToolTelemetry());

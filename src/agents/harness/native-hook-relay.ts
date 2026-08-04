@@ -397,7 +397,7 @@ const nativeHookRelayProviderAdapters: Record<
               ? { behavior: "allow" }
               : {
                   behavior: "deny",
-                  message: message?.trim() || "Denied by OpenClaw",
+                  message: message?.trim() || "Denied by ClawWorks",
                 },
         },
       })}\n`,
@@ -725,7 +725,7 @@ async function resolveNativeHookRelayPreToolUseApproval(
       handled: true,
       outcome: "denied",
       reason:
-        "OpenClaw tool policy rewrote Codex app-server approval params; refusing original request.",
+        "ClawWorks tool policy rewrote Codex app-server approval params; refusing original request.",
     };
   }
   return {
@@ -918,7 +918,7 @@ function isNativeHookRelayBridgePidDead(pid: number): boolean {
 
 function registerNativeHookRelayBridge(registration: ActiveNativeHookRelayRegistration): void {
   // Prune actually stale bridge files from prior gateway processes. The bridge
-  // directory is scoped by OS user (uid) and is shared across all OpenClaw
+  // directory is scoped by OS user (uid) and is shared across all ClawWorks
   // gateways/profiles run by that user, so a record with a non-current PID is
   // NOT automatically stale — it can legitimately belong to another live
   // gateway under the same uid. Only prune records whose owning PID is dead
@@ -1430,7 +1430,7 @@ async function runNativeHookRelayPreToolUse(params: {
     // Codex app-server may continue with the original params when updatedInput
     // is unsupported, so rewrites must fail closed here.
     return params.adapter.renderPreToolUseBlockResponse(
-      "OpenClaw tool policy rewrote Codex app-server approval params; refusing original request.",
+      "ClawWorks tool policy rewrote Codex app-server approval params; refusing original request.",
     );
   }
   return params.adapter.renderNoopResponse(params.invocation.event);
@@ -2165,7 +2165,7 @@ function resolveOpenClawCliExecutable(): string {
       return resolved;
     }
   }
-  throw new Error("Cannot resolve OpenClaw CLI executable path for native hook relay");
+  throw new Error("Cannot resolve ClawWorks CLI executable path for native hook relay");
 }
 
 function normalizeAllowedEvents(

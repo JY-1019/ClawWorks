@@ -1,5 +1,5 @@
 /**
- * Policy promotion for Codex app-server runs that can safely use OpenClaw tool
+ * Policy promotion for Codex app-server runs that can safely use ClawWorks tool
  * approvals.
  */
 import {
@@ -11,7 +11,7 @@ import {
 
 /**
  * Promotes implicit `never` approval policy to `untrusted` only when runtime
- * requirements allow OpenClaw to handle tool approvals.
+ * requirements allow ClawWorks to handle tool approvals.
  */
 export function resolveCodexAppServerForOpenClawToolPolicy(params: {
   appServer: CodexAppServerRuntimeOptions;

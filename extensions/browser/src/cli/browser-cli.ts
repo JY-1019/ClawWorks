@@ -248,7 +248,7 @@ function registerLazyBrowserCommands(
 export function registerBrowserCli(program: Command, argv: string[] = process.argv) {
   const browser = program
     .command("browser")
-    .description("Manage OpenClaw's dedicated browser (Chrome/Chromium)")
+    .description("Manage the ClawWorks dedicated browser (Chrome/Chromium)")
     .option("--browser-profile <name>", "Browser profile name (default from config)")
     .option("--json", "Output machine-readable JSON", false)
     .addHelpText(

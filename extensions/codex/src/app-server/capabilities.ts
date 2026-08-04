@@ -3,7 +3,7 @@
  */
 import { CodexAppServerRpcError } from "./client.js";
 
-/** Known app-server methods used by OpenClaw control surfaces. */
+/** Known app-server methods used by ClawWorks control surfaces. */
 export const CODEX_CONTROL_METHODS = {
   account: "account/read",
   compact: "thread/compact/start",

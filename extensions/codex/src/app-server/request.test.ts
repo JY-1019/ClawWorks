@@ -29,7 +29,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
         sessionKey: "sandboxed-session",
       }),
     ).rejects.toThrow(
-      "Codex-native app-server method `command/exec` is unavailable because OpenClaw sandboxing is active for this session.",
+      "Codex-native app-server method `command/exec` is unavailable because ClawWorks sandboxing is active for this session.",
     );
 
     expect(sharedClientMocks.getSharedCodexAppServerClient).not.toHaveBeenCalled();
@@ -45,7 +45,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
           sessionKey: "node-session",
         }),
       ).rejects.toThrow(
-        `Codex-native app-server method \`${method}\` is unavailable because OpenClaw exec host=node is active for this session.`,
+        `Codex-native app-server method \`${method}\` is unavailable because ClawWorks exec host=node is active for this session.`,
       );
     }
 
@@ -76,7 +76,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
         config: { tools: { exec: { host: "node", node: "worker-1" } } },
       }),
     ).rejects.toThrow(
-      "Codex-native app-server method `command/exec` is unavailable because OpenClaw exec host=node is active for this session.",
+      "Codex-native app-server method `command/exec` is unavailable because ClawWorks exec host=node is active for this session.",
     );
 
     expect(sharedClientMocks.getSharedCodexAppServerClient).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
         config: { tools: { exec: { host: "node", node: "worker-1" } } },
       }),
     ).rejects.toThrow(
-      "Codex-native app-server method `config/mcpServer/reload` is unavailable because OpenClaw exec host=node is active for this session.",
+      "Codex-native app-server method `config/mcpServer/reload` is unavailable because ClawWorks exec host=node is active for this session.",
     );
 
     expect(sharedClientMocks.getSharedCodexAppServerClient).not.toHaveBeenCalled();
@@ -187,7 +187,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
         sessionKey: "node-session",
       }),
     ).rejects.toThrow(
-      "Codex-native app-server method `thread/start` is unavailable because OpenClaw exec host=node is active for this session.",
+      "Codex-native app-server method `thread/start` is unavailable because ClawWorks exec host=node is active for this session.",
     );
 
     expect(sharedClientMocks.getSharedCodexAppServerClient).not.toHaveBeenCalled();

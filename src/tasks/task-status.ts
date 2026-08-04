@@ -1,6 +1,7 @@
 // Builds task status summaries and formatted status text for user-facing surfaces.
 import { sanitizeUserFacingText } from "../agents/embedded-agent-helpers/sanitize-user-facing-text.js";
 import {
+  INTERNAL_CONTEXT_INLINE_HEADER,
   INTERNAL_RUNTIME_CONTEXT_BEGIN,
   INTERNAL_RUNTIME_CONTEXT_END,
 } from "../agents/internal-runtime-context.js";
@@ -48,18 +49,39 @@ function truncateTaskStatusText(value: string, maxChars: number): string {
   return `${truncateUtf16Safe(trimmed, Math.max(0, maxChars - 1)).trimEnd()}…`;
 }
 
+// Both spellings: the header was renamed with the product, and completion text
+// stored before that still carries the old one.
+const INLINE_INTERNAL_CONTEXT_HEADERS = [
+  INTERNAL_CONTEXT_INLINE_HEADER,
+  "OpenClaw runtime context (internal):",
+];
+
+// Earliest position, not list order: a summary can hold a legacy block ahead of
+// a current one, and slicing at the later index would leave the earlier private
+// context visible.
+function findInlineInternalContextHeader(value: string): number {
+  let earliest = -1;
+  for (const header of INLINE_INTERNAL_CONTEXT_HEADERS) {
+    const index = value.indexOf(header);
+    if (index !== -1 && (earliest === -1 || index < earliest)) {
+      earliest = index;
+    }
+  }
+  return earliest;
+}
+
 function stripInlineLeakedInternalContext(value: string): string {
   // Completion text can accidentally include hidden runtime context; strip it before status output.
   const beginIndex = value.indexOf(INTERNAL_RUNTIME_CONTEXT_BEGIN);
   if (
     beginIndex !== -1 &&
     (value.includes(INTERNAL_RUNTIME_CONTEXT_END) ||
-      value.includes("OpenClaw runtime context (internal):") ||
+      findInlineInternalContextHeader(value) !== -1 ||
       value.includes("[Internal task completion event]"))
   ) {
     return value.slice(0, beginIndex);
   }
-  const legacyHeaderIndex = value.indexOf("OpenClaw runtime context (internal):");
+  const legacyHeaderIndex = findInlineInternalContextHeader(value);
   if (
     legacyHeaderIndex !== -1 &&
     (value.includes("Keep internal details private.") ||

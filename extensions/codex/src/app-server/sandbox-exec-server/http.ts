@@ -1,6 +1,6 @@
 /**
  * Implements sandboxed HTTP requests for Codex native tools by routing network
- * access through the active OpenClaw sandbox backend.
+ * access through the active ClawWorks sandbox backend.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
@@ -118,7 +118,7 @@ async function runStreamingSandboxHttpRequest(
   });
   const [command, ...args] = execSpec.argv;
   if (!command) {
-    throw new Error("OpenClaw sandbox HTTP exec spec did not provide a command.");
+    throw new Error("ClawWorks sandbox HTTP exec spec did not provide a command.");
   }
 
   const child = spawn(command, args, {

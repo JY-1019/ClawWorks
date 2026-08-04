@@ -1879,7 +1879,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     expect(state.deliverAgentCommandResultMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not treat backend CLI session id as OpenClaw session identity", async () => {
+  it("does not treat backend CLI session id as ClawWorks session identity", async () => {
     setupSingleAttemptFallback();
     setupSessionTouchStore();
     const result = makeSuccessResult("openai", "gpt-5.4") as ReturnType<

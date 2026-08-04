@@ -1,5 +1,5 @@
 /**
- * Prompt-surface helpers for OpenClaw tool guidance.
+ * Prompt-surface helpers for ClawWorks tool guidance.
  *
  * Maps runtime/session surfaces to the fallback tool text and workflow hints that belong in prompts.
  */
@@ -15,14 +15,14 @@ export function buildOpenClawToolFallbackText(params: {
 }): string {
   if (isOpenClawMainPromptSurface(params.surface)) {
     return [
-      "OpenClaw lists the standard tools above. This runtime enables:",
+      "ClawWorks lists the standard tools above. This runtime enables:",
       "- grep: search file contents for patterns",
       "- find: find files by glob pattern",
       "- ls: list directory contents",
       "- apply_patch: apply multi-file patches",
       `- ${params.execToolName}: run shell commands (supports background via yieldMs/background)`,
       `- ${params.processToolName}: manage background exec sessions`,
-      "- browser: control OpenClaw's dedicated browser",
+      "- browser: control ClawWorks's dedicated browser",
       "- canvas: present/eval/snapshot the Canvas",
       "- nodes: list/describe/notify/camera/screen on paired nodes",
       "- cron: manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
@@ -36,10 +36,10 @@ export function buildOpenClawToolFallbackText(params: {
     ].join("\n");
   }
 
-  return "No OpenClaw tool list is injected for this runtime prompt surface. Use only tools exposed directly by the active backend.";
+  return "No ClawWorks tool list is injected for this runtime prompt surface. Use only tools exposed directly by the active backend.";
 }
 
-/** Returns whether the main OpenClaw prompt should include workflow hints around the tool list. */
+/** Returns whether the main ClawWorks prompt should include workflow hints around the tool list. */
 export function shouldRenderOpenClawToolWorkflowHints(params: {
   surface: AgentPromptSurfaceKind;
   hasToolList: boolean;

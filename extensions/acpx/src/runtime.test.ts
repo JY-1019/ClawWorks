@@ -192,7 +192,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
     );
   });
 
-  it("adds the OpenClaw session key to the managed OpenClaw tools MCP bridge", () => {
+  it("adds the ClawWorks session key to the managed OpenClaw tools MCP bridge", () => {
     const baseStore: TestSessionStore = {
       load: vi.fn(async () => undefined),
       save: vi.fn(async () => {}),

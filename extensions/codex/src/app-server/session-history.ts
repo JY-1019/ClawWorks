@@ -1,5 +1,5 @@
 /**
- * Reads OpenClaw session history for Codex transcript mirroring and sanitizes
+ * Reads ClawWorks session history for Codex transcript mirroring and sanitizes
  * image payloads before replaying messages into the app-server projector.
  */
 import fs from "node:fs/promises";
