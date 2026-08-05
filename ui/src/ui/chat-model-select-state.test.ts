@@ -58,8 +58,8 @@ describe("chat-model-select-state", () => {
     const resolved = resolveChatModelSelectState(state);
     expect(resolved.currentOverride).toBe("openai/gpt-5-mini");
     expect(resolved.options).toEqual([
-      { value: "openai/gpt-5", label: "GPT-5" },
-      { value: "openai/gpt-5-mini", label: "GPT-5 Mini" },
+      { value: "openai/gpt-5", label: "GPT-5", provider: "openai" },
+      { value: "openai/gpt-5-mini", label: "GPT-5 Mini", provider: "openai" },
     ]);
   });
 
@@ -86,8 +86,8 @@ describe("chat-model-select-state", () => {
     const resolved = resolveChatModelSelectState(state);
     expect(resolved.currentOverride).toBe("openai/gpt-5-mini");
     expect(resolved.options).toEqual([
-      { value: "openai/gpt-5-mini", label: "gpt-5-mini · openai" },
-      { value: "openai/gpt-5", label: "gpt-5 · openai" },
+      { value: "openai/gpt-5-mini", label: "gpt-5-mini · openai", provider: "openai" },
+      { value: "openai/gpt-5", label: "gpt-5 · openai", provider: "openai" },
     ]);
   });
 
@@ -103,8 +103,8 @@ describe("chat-model-select-state", () => {
     const resolved = resolveChatModelSelectState(state);
     expect(resolved.currentOverride).toBe("openai/gpt-5-mini");
     expect(resolved.options).toEqual([
-      { value: "openai/gpt-5", label: "GPT-5" },
-      { value: "openai/gpt-5-mini", label: "GPT-5 Mini" },
+      { value: "openai/gpt-5", label: "GPT-5", provider: "openai" },
+      { value: "openai/gpt-5-mini", label: "GPT-5 Mini", provider: "openai" },
     ]);
   });
 
@@ -131,6 +131,7 @@ describe("chat-model-select-state", () => {
       {
         value: "nvidia/moonshotai/kimi-k2.5",
         label: "Kimi K2.5 (NVIDIA)",
+        provider: "nvidia",
       },
     ]);
   });
@@ -164,10 +165,12 @@ describe("chat-model-select-state", () => {
       {
         value: "anthropic/claude-3-7-sonnet",
         label: "Claude Sonnet · anthropic",
+        provider: "anthropic",
       },
       {
         value: "openrouter/claude-3-7-sonnet",
         label: "Claude Sonnet · openrouter",
+        provider: "openrouter",
       },
     ]);
   });
@@ -203,10 +206,12 @@ describe("chat-model-select-state", () => {
       {
         value: "anthropic/claude-3-7-sonnet",
         label: "Claude Sonnet · claude-3-7-sonnet · anthropic",
+        provider: "anthropic",
       },
       {
         value: "anthropic/claude-3-7-sonnet-thinking",
         label: "Claude Sonnet · claude-3-7-sonnet-thinking · anthropic",
+        provider: "anthropic",
       },
     ]);
   });

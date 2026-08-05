@@ -18,7 +18,27 @@ type ChatModelSelectStateInput = Pick<
 export type ChatModelSelectOption = {
   value: string;
   label: string;
+  /** Provider the option belongs to; the picker groups by it. */
+  provider: string;
 };
+
+/**
+ * The provider half of a qualified `provider/model` value.
+ *
+ * Split on the FIRST separator only: a model id may contain slashes of its own
+ * (`groq/openai/gpt-oss-120b` is provider `groq`), so splitting anywhere else
+ * would invent a provider the catalog never had. A bare value carries no
+ * provider and lands in the fallback group rather than one named "".
+ */
+const FALLBACK_PROVIDER_GROUP = "other";
+
+function resolveOptionProvider(value: string): string {
+  const separator = value.indexOf("/");
+  if (separator <= 0) {
+    return FALLBACK_PROVIDER_GROUP;
+  }
+  return value.slice(0, separator).trim() || FALLBACK_PROVIDER_GROUP;
+}
 
 export type ChatModelSelectState = {
   currentOverride: string;
@@ -63,10 +83,12 @@ function buildChatModelOptions(
   defaultModel: string,
 ): ChatModelSelectOption[] {
   const seen = new Set<string>();
-  const options: ChatModelSelectOption[] = [];
+  // The shared helper owns trimming and dedupe and yields {value,label}; the
+  // provider is attached after so both stay in sync without forking it.
+  const flat: { value: string; label: string }[] = [];
 
   const addOption = (value: string, label?: string) => {
-    pushUniqueTrimmedSelectOption(options, seen, value, (trimmed) => label ?? trimmed);
+    pushUniqueTrimmedSelectOption(flat, seen, value, (trimmed) => label ?? trimmed);
   };
 
   for (const entry of catalog) {
@@ -83,7 +105,11 @@ function buildChatModelOptions(
   if (defaultModel) {
     addOption(defaultModel, formatCatalogChatModelDisplayFromLookup(defaultModel, displayLookup));
   }
-  return options;
+  return flat.map((option) => ({
+    value: option.value,
+    label: option.label,
+    provider: resolveOptionProvider(option.value),
+  }));
 }
 
 export function resolveChatModelSelectState(

@@ -2230,7 +2230,9 @@
 }
 
 .chat-controls__inline-select-menu--combined {
-  width: max(100%, min(320px, calc(100vw - 32px)));
+  /* Two panes now (provider rail + models), so it needs more room than the
+     single list it replaced; still clamped to the viewport on narrow screens. */
+  width: max(100%, min(440px, calc(100vw - 32px)));
   max-height: none;
   overflow: visible;
 }
@@ -2255,6 +2257,82 @@
 .chat-controls__combined-model {
   position: relative;
   display: block;
+}
+
+/* Provider rail beside the model list: pick a provider on the left, its models
+   show on the right. Only one group is ever visible (see chat-model-provider-menu). */
+.chat-controls__model-browser {
+  display: grid;
+  grid-template-columns: minmax(96px, 34%) 1fr;
+  gap: 6px;
+  align-items: start;
+  min-height: 0;
+}
+
+.chat-controls__provider-list {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  max-height: min(376px, calc(100vh - 164px));
+  overflow-y: auto;
+  border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  padding-right: 6px;
+}
+
+.chat-controls__provider-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-controls__provider-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-controls__provider-option:hover:not(:disabled),
+.chat-controls__provider-option:focus-visible {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.chat-controls__provider-option[aria-pressed="true"] {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  font-weight: 600;
+}
+
+.chat-controls__provider-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat-controls__provider-models {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  max-height: min(376px, calc(100vh - 164px));
+  overflow-y: auto;
+  padding-right: 2px;
+  min-width: 0;
+}
+
+.chat-controls__provider-model-group {
+  display: grid;
+  gap: 2px;
+}
+
+.chat-controls__provider-model-group[hidden] {
+  display: none;
 }
 
 .chat-controls__combined-model-arrow svg {
