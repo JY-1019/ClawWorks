@@ -1,6 +1,6 @@
 # OpenClaw Design System
 
-OpenClaw's visual language is a **dark-first, glass-surface system** built around a deep charcoal base (`#0e1015`), a punchy signature red accent (`#ff5c5c`), and layered frosted-glass surfaces that create depth without solid panels. Motion is crisp and purposeful — fast micro-interactions (100ms) with spring-loaded expansions. All interactive elements meet WCAG 2.1 AA contrast requirements on dark backgrounds.
+OpenClaw's visual language is a **dark-first, glass-surface system** built around a deep charcoal base (`#0e1015`), a punchy signature blue accent (`#5b8cff`), and layered frosted-glass surfaces that create depth without solid panels. Motion is crisp and purposeful — fast micro-interactions (100ms) with spring-loaded expansions. All interactive elements meet WCAG 2.1 AA contrast requirements on dark backgrounds.
 
 ## Contents
 
@@ -15,6 +15,6 @@ OpenClaw's visual language is a **dark-first, glass-surface system** built aroun
 
 1. **Glass, not solid** — Surfaces use `backdrop-filter` blur + semi-transparent backgrounds. No flat opaque panels in the main chrome.
 2. **Depth through layering** — The background scale (`--bg`, `--bg-accent`, `--bg-elevated`, `--bg-hover`, `--bg-muted`) communicates hierarchy without heavy borders.
-3. **Accent with restraint** — Signature red (`--accent: #ff5c5c`) for primary actions only; teal (`--accent-2`) for secondary/status.
+3. **Accent with restraint** — Signature blue (`--accent: #5b8cff`) for primary actions only; teal (`--accent-2`) for secondary/status.
 4. **Motion serves meaning** — Animations telegraph state changes; they never play for decoration alone.
 5. **Accessible by default** — Every component ships with focus-visible styles, correct ARIA roles, and ≥4.5:1 contrast on text.

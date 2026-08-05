@@ -35,16 +35,16 @@ All tokens are defined in `ui/src/styles/base.css` under `:root` (dark mode defa
 | `--muted`        | `#838387`  | ~5.0:1 ✅          | Placeholder, metadata                                |
 | `--muted-strong` | `#75757d`  | ~4.2:1             | Secondary text, captions; avoid for normal body text |
 
-## Accent (Primary — Red)
+## Accent (Primary — Blue)
 
-| Token             | Value                 | Use                                            | Don't                                    |
-| ----------------- | --------------------- | ---------------------------------------------- | ---------------------------------------- |
-| `--accent`        | `#ff5c5c`             | Primary CTA, send button, active tab indicator | Don't use for large filled backgrounds   |
-| `--accent-hover`  | `#ff7070`             | Hover state of accent elements                 | —                                        |
-| `--accent-muted`  | `#ff5c5c`             | Same as accent (aliased)                       | —                                        |
-| `--accent-subtle` | `rgba(255,92,92,0.1)` | Badge backgrounds, tinted fills                | Not for text on dark bg (fails contrast) |
-| `--accent-glow`   | `rgba(255,92,92,0.2)` | Focus rings, glow effects                      | Not as background                        |
-| `--primary`       | `#ff5c5c`             | Component library `primary` alias              | —                                        |
+| Token             | Value                  | Use                                            | Don't                                    |
+| ----------------- | ---------------------- | ---------------------------------------------- | ---------------------------------------- |
+| `--accent`        | `#5b8cff`              | Primary CTA, send button, active tab indicator | Don't use for large filled backgrounds   |
+| `--accent-hover`  | `#7ba6ff`              | Hover state of accent elements                 | —                                        |
+| `--accent-muted`  | `#5b8cff`              | Same as accent (aliased)                       | —                                        |
+| `--accent-subtle` | `rgba(91,140,255,0.1)` | Badge backgrounds, tinted fills                | Not for text on dark bg (fails contrast) |
+| `--accent-glow`   | `rgba(91,140,255,0.2)` | Focus rings, glow effects                      | Not as background                        |
+| `--primary`       | `#5b8cff`              | Component library `primary` alias              | —                                        |
 
 ## Accent 2 (Teal)
 
@@ -61,7 +61,7 @@ All tokens are defined in `ui/src/styles/base.css` under `:root` (dark mode defa
 | `--ok`          | `#22c55e`  | `#15803d`   | ~8.4:1 ✅          | Success states, token meter low               |
 | `--warn`        | `#f59e0b`  | `#d97706`   | ~8.9:1 ✅          | Warnings, degraded states                     |
 | `--danger`      | `#ef4444`  | `#dc2626`   | ~5.1:1 ✅          | Errors, destructive actions, token meter high |
-| `--info`        | `#3b82f6`  | `#2563eb`   | ~5.2:1 ✅          | Informational, token meter mid                |
+| `--info`        | `#38bdf8`  | `#0369a1`   | ~8.9:1 ✅          | Informational, token meter mid                |
 | `--destructive` | `#ef4444`  | —           | ~5.1:1 ✅          | Destructive action labels                     |
 
 ## Border
@@ -76,7 +76,7 @@ All tokens are defined in `ui/src/styles/base.css` under `:root` (dark mode defa
 
 | Token          | Value                                                                             | Use                            |
 | -------------- | --------------------------------------------------------------------------------- | ------------------------------ |
-| `--ring`       | `#ff5c5c`                                                                         | Focus ring colour              |
+| `--ring`       | `#5b8cff`                                                                         | Focus ring colour              |
 | `--focus-ring` | `0 0 0 2px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 80%, transparent)` | Standard focus ring box-shadow |
 | `--focus-glow` | `0 0 0 2px var(--bg), 0 0 0 3px var(--ring), 0 0 16px var(--accent-glow)`         | Elevated interactive elements  |
 
