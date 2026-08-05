@@ -31,20 +31,32 @@ trees:
     version: 1.0.0
     name: Support desk (runnable example)
     description: >-
-      Answer an inbound support request from a handbook, or hand it to a human.
-      Example work-map whose tool scopes, declared skill, and knowledge
-      foundation all resolve on a stock install.
+      Settle a customer support case from the handbook: refunds, returns,
+      delivery complaints, and when to escalate. Covers both voices the desk
+      hears it in — the customer's own message, and a support agent asking how
+      to handle one — because the work is identical either way: the handbook
+      decides, or a human does. Example work-map whose tool scopes, declared
+      skill, and knowledge foundation all resolve on a stock install.
     match:
       # A model judges whether a request belongs here, so the name, description,
       # and step titles are what earn it one. `triggers` is the hard gate on
       # which run classes may bind at all — user-initiated requests only, so an
       # imported example can never capture heartbeat or cron traffic.
+      #
+      # The description names BOTH voices on purpose. Phrased only as "answer an
+      # inbound request", the router correctly refused an agent asking "customer
+      # wants a refund 40 days out, what do I do?" — a question about the same
+      # handbook rule — and dropped it to the permissive default. Since keywords
+      # retired, this text IS the routing signal, so it has to describe the cases
+      # the desk owns rather than the grammar they arrive in. It stays pinned to
+      # the support domain: broadening it further is how an unrelated request
+      # gets locked into these tool scopes.
       triggers: [user]
       priority: 10
     root:
       id: desk
-      title: Handle an inbound support request
-      description: Classify the request, answer it from the handbook, or escalate.
+      title: Handle a customer support case
+      description: Classify the case, answer it from the handbook, or escalate.
       ontology:
         entities:
           - { id: request, description: An inbound message from a customer }
