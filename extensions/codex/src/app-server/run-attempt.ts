@@ -32,6 +32,7 @@ import {
   resolveFastModeForElapsed,
   setActiveEmbeddedRun,
   supportsModelTools,
+  enterpriseRunAdmitsHostedTool,
   resolveRunWithheldSkillEnvKeys,
   runAgentCleanupStep,
   type FastModeAutoProgressState,
@@ -834,7 +835,12 @@ export async function runCodexAppServerAttempt(
       persistentWebSearchAllowed = allowed;
     },
     onWebSearchPolicyResolved: (allowed) => {
-      webSearchAllowed = allowed;
+      // Hosted web search runs on the model host, so no PreToolUse hook ever judges
+      // it and the per-call gate cannot deny it (see enterpriseRunAdmitsHostedTool).
+      // A governed run that never granted the tool has to be refused it here or the
+      // work-map's scope means nothing on this backend. Transient by design: the
+      // bound work-map varies per run, unlike the config-level persistent policy.
+      webSearchAllowed = allowed && enterpriseRunAdmitsHostedTool(params.runId, "web_search");
     },
   });
   const registeredTools = await buildDynamicTools({

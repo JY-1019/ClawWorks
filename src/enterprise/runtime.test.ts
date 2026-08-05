@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { enterpriseRunBoundableMcpServers, enterpriseRunGrantedSkills } from "./active-runs.js";
+import {
+  enterpriseRunAdmitsHostedTool,
+  enterpriseRunBoundableMcpServers,
+  enterpriseRunGrantedSkills,
+} from "./active-runs.js";
 import {
   clearEnterpriseActiveRunsForTest,
   enterpriseRunTracksSteps,
@@ -1434,5 +1438,55 @@ describe("enterpriseRunBoundableMcpServers", () => {
     expect([
       ...(enterpriseRunBoundableMcpServers("run-plugin-granted", ["bundled"]) ?? []),
     ]).toEqual(["bundled"]);
+  });
+});
+
+describe("enterpriseRunAdmitsHostedTool", () => {
+  it("admits the tool when no governed run owns the id", () => {
+    expect(enterpriseRunAdmitsHostedTool(undefined, "web_search")).toBe(true);
+    expect(enterpriseRunAdmitsHostedTool("run-missing", "web_search")).toBe(true);
+  });
+
+  it("admits the tool when the work-map narrows nothing", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-hosted-open" }));
+
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-open", "web_search")).toBe(true);
+  });
+
+  it("withholds the tool from a root allow-list that omits it", () => {
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-hosted-scoped", allowedTools: ["knowledge_search", "message"] }),
+    );
+
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-scoped", "web_search")).toBe(false);
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-scoped", "knowledge_search")).toBe(true);
+  });
+
+  it("withholds a denied tool even when the root allows it", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-hosted-denied",
+        allowedTools: ["web_search"],
+        deniedTools: ["web_search"],
+      }),
+    );
+
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-denied", "web_search")).toBe(false);
+  });
+
+  it("withholds the tool from an explicit work-map that never grants it", () => {
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-hosted-explicit", capabilityGrants: "explicit" }),
+    );
+
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-explicit", "web_search")).toBe(false);
+  });
+
+  it("leaves observe mode alone; withholding is physical, not a recorded decision", () => {
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-hosted-observe", mode: "observe", allowedTools: ["message"] }),
+    );
+
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-observe", "web_search")).toBe(true);
   });
 });

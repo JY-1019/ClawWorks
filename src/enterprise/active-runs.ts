@@ -273,6 +273,50 @@ export function enterpriseRunGrantedSkills(runId?: string): readonly string[] | 
   return run.plan.grantedSkills ?? [];
 }
 
+/**
+ * May this run use a tool its harness never dispatches?
+ *
+ * Codex's `web_search` is HOSTED: `create_web_search_tool` emits a
+ * `ToolSpec::WebSearch` the model host executes
+ * (../codex/codex-rs/core/src/tools/hosted_spec.rs:14-45), and the registry holds no
+ * handler for it, so the call never reaches the dispatch that fires PreToolUse hooks
+ * (run_pre_tool_use_hooks, ../codex/codex-rs/core/src/tools/registry.rs:580-582). The
+ * per-call gate therefore cannot see it at all — not even on a backend that relays
+ * hooks — so the launch-time decision is the only enforcement point there is, the
+ * same reasoning enterpriseRunBoundableMcpServers applies to a plugin's servers.
+ *
+ * True means "do not withhold": the run is unmediated, observing, or bound to a
+ * work-map that does not narrow the tool away.
+ */
+export function enterpriseRunAdmitsHostedTool(
+  runId: string | undefined,
+  toolName: string,
+): boolean {
+  const run = runId ? getEnterpriseActiveRun(runId) : undefined;
+  // Observe mode watches and records; withholding a tool is physical rather than a
+  // recorded decision, so it belongs to enforce mode alone (same split as MCP).
+  if (!run || run.plan.mode !== "enforce") {
+    return true;
+  }
+  // Any planned step's denial counts. The tool is granted once, before the thread
+  // starts, and nothing can withdraw it when the run advances — so a rule from a
+  // branch this run may still enter has to be honored up front.
+  const denied = run.plan.nodes.flatMap((node) => node.ontology.deniedTools ?? []);
+  if (denied.length > 0 && !isToolAllowedByPolicyName(toolName, { deny: [...denied] })) {
+    return false;
+  }
+  // The ROOT's allow-list is the scope a native run spends its whole life in: those
+  // runtimes never advance past it, so a grant written on a leaf they cannot reach
+  // must not admit the tool.
+  const rootAllowed = run.plan.nodes[0]?.ontology.allowedTools ?? [];
+  if (rootAllowed.length > 0) {
+    return isToolAllowedByPolicyName(toolName, { allow: [...rootAllowed] });
+  }
+  // Silence means "not narrowed", unless the work-map grants explicitly — there
+  // nothing is reachable until some step names it.
+  return run.plan.capabilityGrants !== "explicit";
+}
+
 type McpCeiling = {
   denied: readonly string[];
   blocking: readonly GovernancePolicy[];

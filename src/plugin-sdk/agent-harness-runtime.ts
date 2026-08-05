@@ -35,6 +35,9 @@ export {
   resolveRunWithheldSkillEnvKeys,
   type RunSkillScopeSnapshot,
 } from "../agents/enterprise-skill-scope.js";
+// A governed run's ceiling for tools the harness does not dispatch. Hosted tools
+// never reach a PreToolUse hook, so the harness has to ask before it enables one.
+export { enterpriseRunAdmitsHostedTool } from "../enterprise/active-runs.js";
 export {
   isDeliveredMessageToolOnlySourceReplyResult,
   isDeliveredMessagingToolResult,

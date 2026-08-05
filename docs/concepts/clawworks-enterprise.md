@@ -568,6 +568,30 @@ Servers a plugin provides are not attached this way. They arrive with that
 plugin's tool surface and stay scoped by `allowedTools` like the rest of it, and
 so does ClawWorks's own loopback MCP server.
 
+### Hosted tools
+
+A native harness can also offer tools it never dispatches itself. Codex's
+`web_search` is one: the model host runs it and returns the result, so the call
+reaches no local tool handler and fires no `PreToolUse` hook. The per-call gate
+therefore cannot see it — not even on a backend that relays hooks — and the only
+enforcement point is the decision to enable it at all, taken before the thread
+starts.
+
+ClawWorks takes that decision from the same ceiling the MCP withholding uses: the
+root's `allowedTools` (a grant on a leaf a native run can never reach does not
+count), any planned step's `deniedTools`, and, under
+[explicit grants](#capability-grants), the absence of a grant. So a work-map whose
+root allows `[knowledge_search, message]` turns Codex's hosted web search off for
+that run, and one that narrows nothing leaves it exactly as configured. Observe
+mode changes nothing here either — withholding a tool is physical rather than
+recorded.
+
+The practical consequence is worth stating plainly: **enterprise mode alone does
+not restrict tools.** Until an imported work-map governs the run, every request
+binds the guidance-free default tree (`clawworks.assist`), which scopes nothing —
+so the assistant may still search the web, exactly as it would outside enterprise
+mode. Import a work-map to change that.
+
 ## Governance policies
 
 Declare policies under `enterprise.governance.policies`. A policy applies only

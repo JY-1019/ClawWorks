@@ -965,6 +965,21 @@ async function main(): Promise<number> {
         resolveRunSkillGrant({ runId: "golden-not-a-run" }),
         null,
       );
+      // The same question for a tool the harness never dispatches. Codex's
+      // web_search is hosted (the model host runs it), so no PreToolUse hook can
+      // reach it and the per-call gate above never sees the call — the launch
+      // decision is the only place the work-map's scope can still apply.
+      const { enterpriseRunAdmitsHostedTool } = await import("../src/enterprise/active-runs.js");
+      expectEqual(
+        "a hosted tool no step grants is withheld before the harness starts",
+        enterpriseRunAdmitsHostedTool(explicitRunId, "web_search"),
+        false,
+      );
+      expectEqual(
+        "and nothing is withheld from a run no work-map governs",
+        enterpriseRunAdmitsHostedTool("golden-not-a-run", "web_search"),
+        true,
+      );
       endEnterpriseRun({ runId: explicitRunId, status: "completed" });
     }
   }
