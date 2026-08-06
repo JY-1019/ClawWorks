@@ -62,6 +62,14 @@ const CORE_TOOL_SECTION_ORDER: Array<{ id: string; label: string }> = [
   // store-mutating tool into it would grant ontology writes on upgrade to
   // operators who never opted in.
   { id: "enterprise-write", label: "Enterprise (write)" },
+  // Its own section, and therefore its own `group:workflow`, for the mirror of the
+  // reason above: `group:enterprise` has always meant the ontology/knowledge READ
+  // tools, and a deployment that denies that group to switch those off would
+  // otherwise also remove the run's step-advance control — leaving every
+  // multi-step work-map stuck on its first step. Generic policy filtering runs
+  // before the governance exemption, so the group assignment is the only place
+  // this can be prevented.
+  { id: "workflow", label: "Workflow" },
 ];
 
 const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
@@ -272,6 +280,21 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     description: "List agents",
     sectionId: "agents",
     profiles: [],
+    includeInOpenClawGroup: true,
+  },
+  {
+    // Run MACHINERY, not a capability: it walks a bound work-map from one step to
+    // the next, and a run that cannot call it is stranded on its opening step with
+    // every later step's tools, knowledge and MCP servers permanently unreachable.
+    // So it joins every profile and `group:openclaw` — a profile or allowlist that
+    // withholds it does not narrow what the run may do, it breaks how the run
+    // executes at all — and it sits in its OWN section so an existing
+    // `deny: ["group:enterprise"]` cannot take it away with the read tools.
+    id: "complete_step",
+    label: "complete_step",
+    description: "Finish the current workflow step and advance the run",
+    sectionId: "workflow",
+    profiles: ["minimal", "coding", "messaging"],
     includeInOpenClawGroup: true,
   },
   {

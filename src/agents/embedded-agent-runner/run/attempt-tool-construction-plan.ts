@@ -22,6 +22,7 @@ const SHELL_CODING_TOOL_FACTORY_NAMES = new Set(["apply_patch", "exec", "process
 const OPENCLAW_TOOL_FACTORY_NAMES = new Set([
   "agents_list",
   "canvas",
+  "complete_step",
   "compute_function",
   "cron",
   "gateway",

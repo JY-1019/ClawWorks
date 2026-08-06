@@ -23,6 +23,7 @@ import type {
   WorkflowTreeDefinition,
   WorkflowTreeTrigger,
 } from "./types.js";
+import { WORKFLOW_STEP_ADVANCE_TOOL } from "./workflow-control.js";
 
 const REQUEST_SUMMARY_MAX_CHARS = 300;
 const DIGEST_MAX_HINT_LINES = 8;
@@ -99,6 +100,11 @@ export function collectWorkflowTreeCandidates(params: {
  * Flatten the subtree depth-first. When `keep` is given, only those nodes are
  * planned — the route. `keep` always contains a selected node's ancestors, so a
  * skipped node can never have a kept descendant and pruning its branch is safe.
+ *
+ * Depth-first is also the run's EXECUTION order, and deliberately so: the planner
+ * picks WHICH leaves the run visits, the tree owns the order it visits them in.
+ * Honoring a planner-chosen order instead was tried and reverted — it let the
+ * model-facing digest (tree order) disagree with enforcement (planner order).
  */
 function flattenPlanNodes(
   root: WorkflowNodeDefinition,
@@ -133,7 +139,7 @@ const MODEL_TEXT_MAX_CHARS = 300;
  * UI, so it gets the same redaction as the request summary — a rationale that
  * quotes the prompt back would otherwise smuggle a secret into the trace.
  */
-function summarizeModelText(text: string): string {
+export function summarizeModelText(text: string): string {
   const redacted = redactSecrets(text).replace(/\s+/g, " ").trim();
   if (redacted.length <= MODEL_TEXT_MAX_CHARS) {
     return redacted;
@@ -210,6 +216,14 @@ export function buildEnterpriseRunPlan(params: {
       ? params.route.nodeIds
       : undefined;
   const nodes = flattenPlanNodes(tree.root, routeNodeIds);
+  // Where the cursor starts. A step-tracking plan opens ON its first step rather
+  // than on the root: advancing is a tool call now (complete_step), not a
+  // property of one runtime's loop shape, so every mediated runtime can walk the
+  // route and none of them needs the root as a holding scope. A plan with no
+  // steps to track keeps the root, which is the only scope it will ever have.
+  const stepIds = leafNodeIds(nodes);
+  const firstNodeId = nodes[0].nodeId;
+  const activeNodeId = nodesTrackSteps(nodes) ? (stepIds[0] ?? firstNodeId) : firstNodeId;
   const route: EnterpriseRoutePlan | undefined = params.route
     ? {
         // Route ids are safe: they were resolved against the tree, so they can
@@ -241,11 +255,7 @@ export function buildEnterpriseRunPlan(params: {
     requestSummary: summarizeRequestText(params.requestText),
     nodes,
     ...(route ? { route } : {}),
-    // Runs start at the subtree root, the general scope every mediated runtime
-    // enforces. Only runtimes that install the step-loop hook (embedded) enter
-    // the first leaf and advance through the leaf steps; CLI/ACP stay on the
-    // root scope rather than freezing on an arbitrary leaf they can't advance.
-    activeNodeId: nodes[0].nodeId,
+    activeNodeId,
     ...(mcpGoverned
       ? {
           mcpGoverned: true,
@@ -328,11 +338,15 @@ export function resolvePlanNodePath(plan: EnterpriseRunPlan, nodeId: string): En
  * nodes only provide inherited scope, so the cursor visits leaves (concrete
  * work). A childless root is itself the single leaf/step.
  */
-export function enterpriseStepSequence(plan: EnterpriseRunPlan): string[] {
+function leafNodeIds(nodes: readonly EnterprisePlanNode[]): string[] {
   const parentIds = new Set(
-    plan.nodes.map((node) => node.parentId).filter((id): id is string => id !== null),
+    nodes.map((node) => node.parentId).filter((id): id is string => id !== null),
   );
-  return plan.nodes.filter((node) => !parentIds.has(node.nodeId)).map((node) => node.nodeId);
+  return nodes.filter((node) => !parentIds.has(node.nodeId)).map((node) => node.nodeId);
+}
+
+export function enterpriseStepSequence(plan: EnterpriseRunPlan): string[] {
+  return leafNodeIds(plan.nodes);
 }
 
 /** True when an ontology carries model-facing guidance (digest is non-empty). */
@@ -369,19 +383,31 @@ export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
 
 /**
  * Whether a run should advance and trace per-node steps. Only governed trees
- * qualify: the root must have sub-steps (a leaf distinct from the root that the
- * hook enters and enforces — true whenever the plan has more than the root
- * node) and some node must carry ontology guidance or opt into auditing.
+ * qualify: the root must have sub-steps (a leaf distinct from the root the
+ * cursor enters and enforces — true whenever the plan has more than the root
+ * node) and some node must carry guidance or opt into auditing.
  * Guidance-free built-in runs stay step-quiet so the stock path adds no per-run
  * trace writes (slice 1).
+ *
+ * `description` counts. It is the field the GUI's add-child flow writes and the
+ * one an operator reaches for first, so omitting it left a hand-authored node
+ * unable to make its own tree step-tracking — the declaration was accepted and
+ * then silently never entered.
  */
-export function planTracksSteps(plan: EnterpriseRunPlan): boolean {
-  if (plan.nodes.length <= 1) {
+function nodesTrackSteps(nodes: readonly EnterprisePlanNode[]): boolean {
+  if (nodes.length <= 1) {
     return false;
   }
-  return plan.nodes.some(
-    (node) => ontologyHasGuidance(node.ontology) || node.ontology.audit === true,
+  return nodes.some(
+    (node) =>
+      ontologyHasGuidance(node.ontology) ||
+      node.ontology.audit === true ||
+      Boolean(node.description),
   );
+}
+
+export function planTracksSteps(plan: EnterpriseRunPlan): boolean {
+  return nodesTrackSteps(plan.nodes);
 }
 
 /*
@@ -546,11 +572,29 @@ export function buildEnterprisePromptSection(
    * carrying them.
    */
   skillInstructions: readonly ResolvedSkillInstructions[] = [],
+  /**
+   * Whether the RUN advances steps. Passed in rather than derived, because a
+   * node-scoped governance policy can make a guidance-free tree step-tracking and
+   * the plan alone cannot see the policies. It must agree with the predicate that
+   * decides tool exposure (enterpriseRunTracksSteps), or the model is told to
+   * call a tool it was never given — or given one it was never told about.
+   */
+  tracksSteps: boolean = planTracksSteps(plan),
 ): string {
   // A governed work-map always says so, even when the route it took pruned away
   // every attachment: deny-by-default still applies to the tools the model can
   // see, and a silent rule costs it a turn discovering the denial.
-  if (plan.mcpGoverned !== true && !plan.nodes.some((node) => ontologyHasGuidance(node.ontology))) {
+  //
+  // A step-tracking run always says so too, whatever its nodes declare. Without
+  // this a description-only tree, or one tracked solely by a node-scoped policy,
+  // would render nothing — and since advancing is now a tool call, a model that
+  // is never told about the tool leaves the run on step 1 forever, with every
+  // later step's scope and policies out of reach.
+  if (
+    !tracksSteps &&
+    plan.mcpGoverned !== true &&
+    !plan.nodes.some((node) => ontologyHasGuidance(node.ontology))
+  ) {
     return "";
   }
   const lines: string[] = [
@@ -599,12 +643,41 @@ export function buildEnterprisePromptSection(
           "This workflow grants capabilities explicitly: each step names the tools, skills, MCP servers, and knowledge sources it is meant to use. This run records what falls outside that instead of blocking it, except for knowledge, which stays scoped to what each step names.",
     );
   }
+  // Only the leaves are executed; interior nodes lend their scope to the steps
+  // beneath them. The model needs to tell the two apart to know what it is being
+  // asked to do, and it needs the node ID because that is the name complete_step
+  // takes and the name every denial, trace event and operator screen uses. One
+  // vocabulary across prompt, cursor and UI — see enterpriseStepSequence.
+  const stepOrdinals = new Map(
+    enterpriseStepSequence(plan).map((nodeId, index) => [nodeId, index + 1] as const),
+  );
+  if (tracksSteps) {
+    // Observe mode records what falls outside a step's scope instead of blocking
+    // it, so promising a denial there would contradict the mode line above and
+    // steer the model away from calls observe deliberately permits. What is true
+    // in BOTH modes is that the run stays on this step until the tool is called.
+    const laterStepScope =
+      plan.mode === "enforce"
+        ? "anything granted to a later step stays denied until you reach it"
+        : "a later step's scope only applies once you reach it";
+    lines.push(
+      `This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step 1. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,
+    );
+  }
   lines.push("Steps:");
   // Render every step: governance advances into and enforces each one, so a
   // later step must not have its rules omitted (only per-category hint lists are
   // bounded). Trees are operator-authored, so total size stays reasonable.
   for (const node of plan.nodes) {
-    lines.push(`${node.seq}. ${node.title}${node.description ? ` — ${node.description}` : ""}`);
+    const ordinal = stepOrdinals.get(node.nodeId);
+    // Scope containers are labelled too, so a node with no marker reads as
+    // deliberate rather than as a rendering gap.
+    const marker = ordinal
+      ? ` [step ${ordinal} of ${stepOrdinals.size} · id: ${node.nodeId}]`
+      : " [scope only]";
+    lines.push(
+      `${node.seq}. ${node.title}${node.description ? ` — ${node.description}` : ""}${marker}`,
+    );
     appendOntologyGuidance(lines, node.ontology, "   ");
   }
   // The instructions themselves, once, after the steps that name them. Kept out

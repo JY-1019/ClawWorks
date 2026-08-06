@@ -149,8 +149,9 @@ describe("buildEnterpriseRunPlan", () => {
     ]);
     expect(plan.nodes.map((node) => node.seq)).toEqual([0, 1, 2]);
     expect(plan.nodes[1].parentId).toBe("refunds");
-    // Runs start on the root; the embedded step hook enters the first leaf.
-    expect(plan.activeNodeId).toBe("refunds");
+    // A step-tracking plan opens ON its first step: the cursor moves by tool call
+    // now, so no runtime needs the root as a holding scope.
+    expect(plan.activeNodeId).toBe("refunds.verify");
     expect(plan.createdAt).toBe(1000);
   });
 
@@ -213,7 +214,8 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     // every ancestor's ontology down the path, so dropping it would drop the
     // tool ceiling it declares.
     expect(plan.nodes[0].ontology.deniedTools).toEqual(["exec"]);
-    expect(plan.activeNodeId).toBe("refunds");
+    // The cursor opens on the first step OF THE ROUTE, not the tree's first leaf.
+    expect(plan.activeNodeId).toBe("refunds.payout.issue");
     expect(plan.route).toMatchObject({
       routes: ["refunds.payout"],
       source: "planner",
@@ -295,6 +297,84 @@ describe("buildEnterprisePromptSection", () => {
       matchedBy: "only-candidate",
     });
     expect(buildEnterprisePromptSection(plan)).toBe("");
+  });
+
+  it("tells a step-tracking run how to advance even when no node carries guidance", () => {
+    // A tree tracked only by a node-scoped governance policy carries no ontology
+    // guidance at all, so the digest used to come back empty. Since advancing is
+    // now a tool call, an empty digest means the model is never told the tool
+    // exists — and the run sits on step 1 forever with the very policy that made
+    // it tracked permanently out of reach.
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-policy-tracked",
+      requestText: "go",
+      mode: "enforce",
+      tree: {
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.bare",
+        version: "1.0.0",
+        name: "Bare",
+        match: { triggers: ["user"] },
+        root: {
+          id: "bare",
+          title: "Bare",
+          children: [
+            { id: "bare.one", title: "One" },
+            { id: "bare.two", title: "Two" },
+          ],
+        },
+      },
+      matchedBy: "planner",
+    });
+    // Guidance-free: without the caller's answer this plan renders nothing.
+    expect(buildEnterprisePromptSection(plan)).toBe("");
+    const section = buildEnterprisePromptSection(plan, [], true);
+    expect(section).toContain("complete_step");
+    expect(section).toContain("[step 1 of 2 · id: bare.one]");
+  });
+
+  it("words advancement for observe mode without promising a denial", () => {
+    // Observe records out-of-scope calls instead of blocking them, so promising
+    // later-step denials would contradict the mode line and steer the model off
+    // calls observe deliberately permits.
+    const tree = {
+      schema: "clawworks.workflow-tree" as const,
+      schemaVersion: 1 as const,
+      id: "acme.obs",
+      version: "1.0.0",
+      name: "Obs",
+      match: { triggers: ["user" as const] },
+      root: {
+        id: "obs",
+        title: "Obs",
+        children: [
+          { id: "obs.one", title: "One", ontology: { allowedTools: ["message"] } },
+          { id: "obs.two", title: "Two", ontology: { allowedTools: ["read"] } },
+        ],
+      },
+    };
+    const observe = buildEnterprisePromptSection(
+      buildEnterpriseRunPlan({
+        runId: "run-obs",
+        requestText: "go",
+        mode: "observe",
+        tree,
+        matchedBy: "planner",
+      }),
+    );
+    expect(observe).toContain("only applies once you reach it");
+    expect(observe).not.toContain("stays denied");
+    const enforce = buildEnterprisePromptSection(
+      buildEnterpriseRunPlan({
+        runId: "run-enf",
+        requestText: "go",
+        mode: "enforce",
+        tree,
+        matchedBy: "planner",
+      }),
+    );
+    expect(enforce).toContain("stays denied until you reach it");
   });
 
   it("renders a step's declared skills and says what to do with them", () => {

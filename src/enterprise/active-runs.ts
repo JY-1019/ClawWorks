@@ -53,18 +53,13 @@ export type EnterpriseActiveRun = {
    */
   treeRequiredProperties?: Map<string, Set<string>>;
   /**
-   * Set once this run claims a step for a turn, which only the embedded step loop
-   * does. Absent means the run never advances past the root, and an MCP
-   * attachment on a leaf must still count — see attachmentScope in governance.
+   * Set once the run has finished its LAST step. Advancement is monotonic, so
+   * this is the only state the cursor position cannot express on its own: the
+   * cursor stays on the final step after completing it (dropping to the root
+   * would widen the scope the run ends under), and without this flag a repeated
+   * complete_step would re-emit `node.completed` for a step already closed.
    */
-  tracksSteps?: boolean;
-  /**
-   * Provider turns that have actually executed for this execution. The active
-   * leaf is `leaves[min(stepTurnsExecuted, last)]`, so it only advances once a
-   * turn really runs — a preflight-failed turn is never counted and the retry
-   * redoes that step. Absent means zero (fixtures/first turn).
-   */
-  stepTurnsExecuted?: number;
+  routeCompleted?: boolean;
 };
 
 // Symbol-keyed global so duplicated dist chunks share one registry
@@ -305,22 +300,140 @@ export function enterpriseRunAdmitsHostedTool(
   if (denied.length > 0 && !isToolAllowedByPolicyName(toolName, { deny: [...denied] })) {
     return false;
   }
-  // The ROOT's allow-list is the scope a native run spends its whole life in: those
-  // runtimes never advance past it, so a grant written on a leaf they cannot reach
-  // must not admit the tool.
-  const rootAllowed = run.plan.nodes[0]?.ontology.allowedTools ?? [];
-  if (rootAllowed.length > 0) {
-    return isToolAllowedByPolicyName(toolName, { allow: [...rootAllowed] });
+  // EVERY step the run can stand on has to admit it, not just the root.
+  //
+  // The root used to be the whole answer because native runs never left it. They
+  // walk the route now (complete_step), while a hosted tool is still granted once
+  // before the thread starts and can never be withdrawn — so a tool the root
+  // allows but the first leaf narrows away would otherwise stay callable from
+  // that leaf, with no per-call gate able to catch it.
+  //
+  // Conservative on purpose: one step forbidding it withholds it for the run,
+  // even on steps that grant it. That is strictly the safe direction, and the
+  // only honest one for a tool the harness executes itself.
+  // A blocking POLICY reaching this tool counts too. Codex runs a hosted tool
+  // outside registry dispatch, so no PreToolUse gate fires for it once the run
+  // advances onto the step the policy targets — the launch decision is the only
+  // place the policy can still be honored. require_approval blocks as well: a
+  // hosted call has no channel to ask on, so an approval that never runs is a
+  // call that was never approved (the same rule the MCP ceiling applies).
+  const blocking = resolveMcpCeiling(run).blocking;
+  if (blocking.some((policy) => policyReachesTool(policy, toolName, run.plan.nodes))) {
+    return false;
   }
-  // Silence means "not narrowed", unless the work-map grants explicitly — there
-  // nothing is reachable until some step names it.
-  return run.plan.capabilityGrants !== "explicit";
+  const executablePaths = executableNodePaths(run.plan.nodes);
+  const grantsExplicitly = run.plan.capabilityGrants === "explicit";
+  return executablePaths.every((path) => pathAdmitsTool(path, toolName, grantsExplicitly));
+}
+
+/**
+ * Does a blocking policy cover this plain (non-MCP) tool?
+ *
+ * Mirrors policyReachesMcpServer, because the reasoning is identical: selectors
+ * are CONJUNCTIVE and must all hold on one real call. An action-scoped policy is
+ * not "about actions instead of tools" — an action whose `tools` globs cover this
+ * tool makes the policy govern exactly this call, and a hosted tool has no later
+ * gate that could catch it.
+ */
+function policyReachesTool(
+  policy: GovernancePolicy,
+  toolName: string,
+  nodes: readonly EnterprisePlanNode[],
+): boolean {
+  if (policy.knowledge?.length) {
+    // A knowledge selector cannot match a tool call, and selectors are
+    // conjunctive, so such a policy never gates one.
+    return false;
+  }
+  const toolPatterns = policy.tools ?? [];
+  const actionSelectors = policy.actions ?? [];
+  if (toolPatterns.length === 0 && actionSelectors.length === 0) {
+    // Selector-less policies target runs, not calls.
+    return false;
+  }
+  if (actionSelectors.length === 0) {
+    return selectorMatches(toolName, toolPatterns);
+  }
+  // Every selector has to hold on ONE reachable root→node path: the node selector,
+  // the action, and (when present) the policy's own tool pattern. Scanning them
+  // independently would withhold a tool for a combination no real call produces.
+  return nodes.some((node) => {
+    const path = rootPathTo(nodes, node);
+    if (!path.some((step) => selectorMatches(step.nodeId, policy.nodes))) {
+      return false;
+    }
+    return path.some((step) =>
+      (step.ontology.actions ?? [])
+        .filter((action) => selectorMatches(action.id, actionSelectors))
+        // An action with no `tools` covers every tool, this one included.
+        .some(
+          (action) =>
+            (action.tools ?? ["*"]).some((actionTool) => selectorMatches(toolName, [actionTool])) &&
+            (toolPatterns.length === 0 || selectorMatches(toolName, toolPatterns)),
+        ),
+    );
+  });
+}
+
+/**
+ * The narrowing lists on each executable path, kept PER PATH.
+ *
+ * Grouping matters: "this path names nothing" is itself the answer under explicit
+ * grants, and a flat list of every branch's grants cannot express it.
+ */
+function executablePathAllowLists(nodes: readonly EnterprisePlanNode[]): string[][][] {
+  return executableNodePaths(nodes).map((path) =>
+    path
+      .map((node) => [...(node.ontology.allowedTools ?? [])])
+      .filter((allowed) => allowed.length > 0),
+  );
+}
+
+/** Root→leaf path for every step the run can actually stand on. */
+function executableNodePaths(nodes: readonly EnterprisePlanNode[]): EnterprisePlanNode[][] {
+  const parentIds = new Set(
+    nodes.map((node) => node.parentId).filter((id): id is string => id !== null),
+  );
+  const leaves = nodes.filter((node) => !parentIds.has(node.nodeId));
+  return leaves.map((leaf) => rootPathTo(nodes, leaf));
+}
+
+/**
+ * Does one root→leaf path admit the tool? Mirrors the per-call scope gate: every
+ * level that narrows must admit it, and under explicit grants some level must
+ * also have named it.
+ */
+function pathAdmitsTool(
+  path: readonly EnterprisePlanNode[],
+  toolName: string,
+  grantsExplicitly: boolean,
+): boolean {
+  for (const node of path) {
+    const allowed = node.ontology.allowedTools ?? [];
+    if (allowed.length > 0 && !isToolAllowedByPolicyName(toolName, { allow: [...allowed] })) {
+      return false;
+    }
+  }
+  if (!grantsExplicitly) {
+    return true;
+  }
+  return path.some((node) => {
+    const allowed = node.ontology.allowedTools ?? [];
+    return allowed.length > 0 && isToolAllowedByPolicyName(toolName, { allow: [...allowed] });
+  });
 }
 
 type McpCeiling = {
   denied: readonly string[];
   blocking: readonly GovernancePolicy[];
-  rootAllowed: readonly string[];
+  /**
+   * Every non-empty `allowedTools` list the run could ever be judged against —
+   * one per narrowing level across every executable root→leaf path, not just the
+   * root's. A hookless backend receives the server once and cannot withdraw it
+   * when the cursor advances, so a list on ANY reachable step is a constraint the
+   * launch decision has to honor up front.
+   */
+  pathAllowLists: readonly (readonly (readonly string[])[])[];
   nodes: readonly EnterprisePlanNode[];
 };
 
@@ -339,10 +452,11 @@ function resolveMcpCeiling(run: EnterpriseActiveRun): McpCeiling {
         policyTargetsTree(policy, run.plan.treeId) &&
         plannedNodeIds.some((nodeId) => selectorMatches(nodeId, policy.nodes)),
     ),
-    // The ROOT's allow-list is the scope a native run spends its whole life in
-    // (those runtimes never advance), and on a CLI with no PreToolUse relay this
-    // filter is the ONLY enforcement before the subprocess connects.
-    rootAllowed: run.plan.nodes[0]?.ontology.allowedTools ?? [],
+    // Every reachable step's list, because native runs DO advance now
+    // (complete_step) while the server is handed over once, before the subprocess
+    // connects — on a CLI with no PreToolUse relay that hand-over is the only
+    // enforcement there will ever be.
+    pathAllowLists: executablePathAllowLists(run.plan.nodes),
     nodes: run.plan.nodes,
   };
 }
@@ -375,10 +489,20 @@ function ceilingAdmitsMcpServer(
   if (ceiling.blocking.some((policy) => policyReachesMcpServer(policy, server, ceiling.nodes))) {
     return false;
   }
-  if (ceiling.rootAllowed.length === 0) {
+  if (ceiling.pathAllowLists.length === 0) {
     return !requireGrant;
   }
-  return allowListGrantsWholeMcpServer(ceiling.rootAllowed, server, siblings);
+  // EVERY executable path must admit the server, and each path is judged WHOLE.
+  // Flattening the lists across paths loses the case that matters most under
+  // explicit grants: a sibling path that names nothing grants nothing, so reading
+  // one branch's grant as the run's would hand a hookless CLI a server the silent
+  // branch must never reach.
+  return ceiling.pathAllowLists.every((lists) => {
+    if (lists.length === 0) {
+      return !requireGrant;
+    }
+    return lists.every((allowed) => allowListGrantsWholeMcpServer(allowed, server, siblings));
+  });
 }
 
 /**

@@ -9,8 +9,7 @@ import {
 import {
   evaluateEnterpriseToolCall,
   getEnterpriseActiveRun,
-  recordEnterpriseTurnExecuted,
-  setEnterpriseStepForTurn,
+  completeEnterpriseStep,
 } from "./runtime.js";
 import {
   getEnterpriseRunRecord,
@@ -548,7 +547,104 @@ describe("enterprise step tracing", () => {
     }
   }
 
-  it("records the hook-driven step timeline (open + advance) in trace order", async () => {
+  it("opens on step 1 when only a node-scoped policy makes the run track steps", async () => {
+    const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
+    const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
+    // No guidance, no descriptions, no audit flag: the PLAN alone says "no steps",
+    // so the cursor would stay on the root while the digest tells the model it is
+    // on step 1. Calls would then be judged against the root instead of the leaf
+    // the policy targets, and the first complete_step would enter step 1 rather
+    // than finish it.
+    const imported = importWorkflowTreeContent({
+      content: JSON.stringify({
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.bare",
+        version: "1.0.0",
+        name: "Bare",
+        match: { triggers: ["user"] },
+        root: {
+          id: "bare",
+          title: "Bare",
+          children: [
+            { id: "bare.one", title: "One" },
+            { id: "bare.two", title: "Two" },
+          ],
+        },
+      }),
+      format: "json",
+    });
+    expect(imported.ok).toBe(true);
+    try {
+      const runId = nextRunId();
+      await beginEnterpriseRun({
+        runId,
+        prompt: "run the bare thing",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                { id: "deny.two.exec", effect: "deny", tools: ["exec"], nodes: ["bare.two"] },
+              ],
+            },
+          },
+        },
+        routePlanner: vi.fn(async () => ({
+          kind: "decided" as const,
+          treeId: "acme.bare",
+          routes: [],
+          rationale: "bare",
+        })),
+      });
+      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("bare.one");
+      endEnterpriseRun({ runId, status: "completed" });
+    } finally {
+      removeImportedWorkflowTree("acme.bare");
+      invalidateWorkflowTreeRegistry();
+    }
+  });
+
+  it("opens no step for a work-map that has none", async () => {
+    const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
+    const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
+    // A childless root IS its own single leaf as far as the step sequence is
+    // concerned, but the run tracks no steps and nothing can advance it — so
+    // entering it would leave every successful run of this work-map looking like
+    // an abandoned step, with an entered event no completion can ever answer.
+    const imported = importWorkflowTreeContent({
+      content: JSON.stringify({
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.single",
+        version: "1.0.0",
+        name: "Single",
+        match: { triggers: ["user"] },
+        root: { id: "single", title: "Do it", ontology: { allowedTools: ["message"] } },
+      }),
+      format: "json",
+    });
+    expect(imported.ok).toBe(true);
+    try {
+      const runId = nextRunId();
+      await beginEnterpriseRun({
+        runId,
+        prompt: "do the single thing",
+        routePlanner: vi.fn(async () => ({
+          kind: "decided" as const,
+          treeId: "acme.single",
+          routes: [],
+          rationale: "single",
+        })),
+      });
+      endEnterpriseRun({ runId, status: "completed" });
+      expect(latestEventKinds(runId)).not.toContain("node.entered");
+    } finally {
+      removeImportedWorkflowTree("acme.single");
+      invalidateWorkflowTreeRegistry();
+    }
+  });
+
+  it("records the step timeline (open + advance) in trace order", async () => {
     await withFlowTree(async () => {
       const runId = nextRunId();
       const mediation = await beginEnterpriseRun({
@@ -557,11 +653,8 @@ describe("enterprise step tracing", () => {
         routePlanner: flowPlanner(),
       });
       expect(mediation.kind).toBe("mediated");
-      // Simulate the embedded step-loop hook across two turns: enter the first
-      // leaf, record the turn, then advance to the next leaf.
-      setEnterpriseStepForTurn(runId);
-      recordEnterpriseTurnExecuted(runId);
-      setEnterpriseStepForTurn(runId);
+      // Mediation opens the timeline on step 1; the model walks the rest.
+      completeEnterpriseStep({ runId });
       endEnterpriseRun({ runId, status: "completed" });
 
       const record = getEnterpriseRunRecord(runId);
@@ -586,24 +679,21 @@ describe("enterprise step tracing", () => {
         prompt: "run the flowtest now",
         routePlanner: flowPlanner(),
       });
-      // Run-start snapshot points at the root scope.
-      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow");
-      setEnterpriseStepForTurn(runId);
+      // A step-tracking plan opens ON its first step, whatever runtime it runs on.
       expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.a");
-      recordEnterpriseTurnExecuted(runId);
-      setEnterpriseStepForTurn(runId);
-      // After advancement the persisted plan tracks the current leaf.
+      completeEnterpriseStep({ runId });
+      // After advancement the persisted plan tracks the current step.
       expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.b");
       endEnterpriseRun({ runId, status: "completed" });
       expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.b");
     });
   });
 
-  it("keeps mediation timeline-free for runtimes that never advance (CLI/ACP)", async () => {
+  it("leaves an unfinished step entered-but-uncompleted", async () => {
     await withFlowTree(async () => {
       const runId = nextRunId();
-      // No step-loop hook runs, so no node events should be emitted and the run
-      // stays on the root scope rather than claiming a leaf it never reached.
+      // A run that ends without completing its step is exactly how an abandoned
+      // or interrupted route must read: entered, never completed.
       await beginEnterpriseRun({
         runId,
         prompt: "run the flowtest now",
@@ -613,9 +703,8 @@ describe("enterprise step tracing", () => {
 
       const record = getEnterpriseRunRecord(runId);
       const kinds = listEnterpriseRunEvents(record?.executionId ?? "").map((event) => event.kind);
-      // route.selected comes from mediation; the absence of node.* is the point.
-      expect(kinds).toEqual(["run.started", "route.selected", "run.ended"]);
-      expect(record?.plan.activeNodeId).toBe("flow");
+      expect(kinds).toEqual(["run.started", "route.selected", "node.entered", "run.ended"]);
+      expect(record?.plan.activeNodeId).toBe("flow.a");
     });
   });
 });

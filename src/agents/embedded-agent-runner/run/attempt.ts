@@ -32,6 +32,8 @@ import {
 import { resolveContextEngineOwnerPluginId } from "../../../context-engine/registry.js";
 import { buildContextEngineRuntimeSettings } from "../../../context-engine/runtime-settings.js";
 import type { AssembleResult } from "../../../context-engine/types.js";
+import { enterpriseRunTracksSteps } from "../../../enterprise/runtime.js";
+import { WORKFLOW_STEP_ADVANCE_TOOL } from "../../../enterprise/workflow-control.js";
 import { diagnosticErrorCategory } from "../../../infra/diagnostic-error-metadata.js";
 import { emitTrustedDiagnosticEvent } from "../../../infra/diagnostic-events.js";
 import { resolveDiagnosticModelContentCapturePolicy } from "../../../infra/diagnostic-llm-content.js";
@@ -270,7 +272,6 @@ import {
 } from "../compaction-successor-transcript.js";
 import { runContextEngineMaintenance } from "../context-engine-maintenance.js";
 import { applyFinalEffectiveToolPolicy } from "../effective-tool-policy.js";
-import { installEnterpriseStepLoopHook } from "../enterprise-step-loop.js";
 import { buildEmbeddedExtensionFactories } from "../extensions.js";
 import {
   applyExtraParamsToAgent,
@@ -1378,6 +1379,22 @@ export async function runEmbeddedAttempt(
     prepStages.mark("core-plugin-tools");
     emitCorePluginToolStageSummary("core-plugin-tools", corePluginToolStages.snapshot());
     const bootstrapHasFileAccess = toolsEnabled && toolsRaw.some((tool) => tool.name === "read");
+    // Checked HERE, against the final tool surface, because that is the only place
+    // the answer is knowable: an allowlist can arrive from `tools.allow`,
+    // `tools.byProvider`, the agent, its provider, the group, the sandbox, a
+    // subagent, an inherited policy or runtime `toolsAllow`, and they intersect.
+    // A step-tracking run whose route-advance tool did not survive that
+    // intersection is told by its own digest that the tool is the only way
+    // forward, and will sit on step 1 for the whole run with no error anywhere.
+    // Re-adding a tool the operator excluded would be worse than saying so.
+    if (toolsEnabled && enterpriseRunTracksSteps(params.runId)) {
+      const canAdvance = toolsRaw.some((tool) => tool.name === WORKFLOW_STEP_ADVANCE_TOOL);
+      if (!canAdvance) {
+        log.warn(
+          `[${sessionLabel}] enterprise: this run is governed by a work-map with steps, but "${WORKFLOW_STEP_ADVANCE_TOOL}" was filtered out by an allowlist — the run cannot advance past its first step. Add "${WORKFLOW_STEP_ADVANCE_TOOL}" (or "group:openclaw") to the allowlist that applies.`,
+        );
+      }
+    }
     const bootstrapWarn = makeBootstrapWarn({
       sessionLabel,
       workspaceDir: resolvedWorkspace,
@@ -2739,17 +2756,6 @@ export async function runEmbeddedAttempt(
       removeToolResultContextGuard = () => {
         removeHistoryImagePruneContextTransform();
         removeLoopContextGuard?.();
-      };
-      // Advance the enterprise workflow step once per turn (no-op unless this
-      // run is bound to a governed workflow tree).
-      const removeEnterpriseStepLoopHook = installEnterpriseStepLoopHook({
-        agent: activeSession.agent,
-        runId: params.runId,
-      });
-      const removeContextGuardsBeforeEnterpriseStep = removeToolResultContextGuard;
-      removeToolResultContextGuard = () => {
-        removeEnterpriseStepLoopHook();
-        removeContextGuardsBeforeEnterpriseStep?.();
       };
       const cacheTrace = createCacheTrace({
         cfg: params.config,

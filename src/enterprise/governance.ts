@@ -24,6 +24,7 @@ import type {
   GovernancePolicy,
   OntologyAction,
 } from "./types.js";
+import { isWorkflowControlTool } from "./workflow-control.js";
 
 /** Governance policies declared in config, in declaration order. */
 export function resolveGovernancePolicies(config?: OpenClawConfig): GovernancePolicy[] {
@@ -537,7 +538,40 @@ export function evaluateToolCallGovernance(params: {
    * contradict what those runtimes were already handed, which is plan-wide.
    */
   attachmentScope?: "path" | "plan";
+  /**
+   * This run walks steps, so the core step-advance tool was built for it. Also the
+   * proof that a call by that name is OURS rather than a plugin's: the tool only
+   * exists on a step-tracking run.
+   */
+  tracksSteps?: boolean;
 }): GovernanceDecision {
+  // Advancing the run is not a capability a work-map grants — it is how the
+  // work-map gets executed at all, so it is decided BEFORE both lanes below.
+  // Scoping it would force an operator to name complete_step on every step just
+  // to let the run walk its own route; a policy reaching it (`tools: ["*"]` with
+  // effect deny, say) would strand the run on step 1 with every later step's
+  // scope and every later policy permanently unreachable — including the very
+  // policy that made the run step-tracking. There is no legitimate "refuse to
+  // advance": a work-map that wants no steps declares a single leaf.
+  // Gated on the run actually walking steps, because that is what proves the CORE
+  // tool exists: `createOpenClawTools` only builds complete_step for a
+  // step-tracking run, so on any other run a PLUGIN tool may legitimately own that
+  // name — and exempting it would hand a plugin call a free pass through the
+  // work-map's allow-lists and even a catch-all deny.
+  if (
+    params.tracksSteps === true &&
+    isWorkflowControlTool({
+      toolName: params.toolName,
+      ...(params.mcpTool ? { mcpTool: params.mcpTool } : {}),
+    })
+  ) {
+    return {
+      effect: "allow",
+      policyId: null,
+      source: "default",
+      reason: "workflow step advancement is not a governed capability",
+    };
+  }
   const path = params.path ?? [params.node];
   // MCP first, and it decides how the tool scope below reads this call: an
   // attachment grants the server's tools, so asking "is it attached" before "is

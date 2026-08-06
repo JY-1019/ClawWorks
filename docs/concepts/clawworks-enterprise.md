@@ -306,10 +306,11 @@ each step's grants, so it does not spend turns discovering denials — but the
 enforcement is the per-call gate, not the prompt. A CLI backend with no pre-tool
 hook judges no call at all: there, skills and MCP servers are withheld physically
 (nothing is linked, nothing is launched), while `allowedTools` bounds only what
-ClawWorks hands over. And the runtimes that never advance past the root (the Claude
-CLI, Codex, ACP) are judged by the ROOT's grants for the whole run, so a work-map
-that grants only on its leaves gives them nothing — put the tools those runs need
-on the root, exactly as an MCP-attaching work-map does.
+ClawWorks hands over. And a run that never advances — because the model never
+called `complete_step`, or because the runtime receives no OpenClaw tools at all
+(ACP) — is judged by its FIRST step's grants merged with the root's for the whole
+run, so a work-map that holds its grants on later leaves gives such a run nothing.
+Put what every step needs on the root, exactly as an MCP-attaching work-map does.
 
 ### The typed object model
 
@@ -367,14 +368,25 @@ When a request starts an enterprise-mediated run:
    the prompt cache stable). ACP runs own their prompt channel and do not
    receive the digest, so `contextHints` and `expectedOutput` are not
    model-visible there.
-3. **Step advancement** moves the active node leaf by leaf as real turns
-   execute, so governance always scopes the current step.
+3. **Step advancement** moves the active node from one step to the next when the
+   model calls `complete_step`, so a step lasts as long as its work does instead
+   of expiring after one provider turn.
 4. **The tool-call gate** evaluates each tool call against the active node's
    ontology merged down the root-to-active path, then against config governance
    policies.
 
-Only the embedded agent runtime advances steps; CLI and ACP runs stay on the
-root scope as a safe backstop.
+A run opens on the first step of its route, not on the root. Because advancing is
+a tool call rather than a property of one runtime's loop, every runtime that
+receives OpenClaw tools can walk the route: the embedded runtime, the CLI
+loopback surface, and the Codex app-server. ACP runs own their own tool channel
+and receive none of ours, so they stay on the step they opened on for the whole
+run.
+
+`complete_step` is deliberately the only way forward. Advancement is monotonic
+and one step at a time, so the worst a confused model can do is finish a step
+early — which the trace records — and it can never reopen a step it has left. A
+step the run never finished stays `entered` with no matching `node.completed`,
+which is exactly how an abandoned or interrupted route reads in the trace.
 
 ## Operating on the ontology
 
@@ -495,11 +507,11 @@ A bundle exported from a work-map records the server names it attaches
 configuration, so the bundle carries the name and the recipient registers the
 server itself.
 
-Put those globs on the ROOT as well when the tree narrows tools there: a native
-runtime never advances past the root, so that list is what its calls are judged
-against — and on a CLI with no pre-tool hook it also decides whether the server is
-handed over at all (a server the root's list cannot admit is withheld, not merely
-denied later). A tree that narrows nothing needs none of this; the attachment is
+Put those globs on the ROOT as well when the tree narrows tools there: the root
+sits on every step's path, so its list bounds every call the run makes wherever it
+has advanced to — and on a CLI with no pre-tool hook it also decides whether the
+server is handed over at all (a server the root's list cannot admit is withheld,
+not merely denied later). A tree that narrows nothing needs none of this; the attachment is
 the whole rule there.
 
 A `deniedTools` entry may be written with either the configured server name or the
@@ -539,12 +551,13 @@ process is up. For those, ClawWorks withholds the servers **no step in the bound
 work-map attaches** — they are never written into the subprocess config or the
 Codex thread patch. Two consequences follow, and both are deliberate:
 
-- Those runtimes never advance workflow steps, so they stay on the root for the
-  whole run. Attachments are therefore read across every step the run PLANNED —
-  not the whole definition: a branch the route left out is not going to run, and
-  handing over its server would let the selected branch call it with no per-step
-  gate to stop it. Per-step enforcement is exact on the embedded
-  runtime, where every tool call passes the gate.
+- What is handed over is decided once, across every step the run PLANNED — not
+  the whole definition: a branch the route left out is not going to run, and
+  handing over its server would let the selected branch call it. That launch-time
+  ceiling is all a CLI backend with no pre-tool hook ever gets. Where a gate does
+  exist — the embedded runtime, and Codex through its hook relay — each call is
+  still narrowed to the step the run has actually reached, so a server attached to
+  a later step stays denied until `complete_step` gets there.
 - Withholding removes what ClawWorks would have injected. A server the operator
   declared in the harness's own configuration is a layer ClawWorks does not own —
   Codex, for instance, composes `mcp_servers` by key across its config layers and

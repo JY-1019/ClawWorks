@@ -65,12 +65,8 @@ async function main(): Promise<number> {
     await import("../src/enterprise/tree-registry.js");
   const { beginEnterpriseRun, endEnterpriseRun } =
     await import("../src/enterprise/run-mediation.js");
-  const {
-    evaluateEnterpriseToolCall,
-    getEnterpriseActiveRun,
-    setEnterpriseStepForTurn,
-    recordEnterpriseTurnExecuted,
-  } = await import("../src/enterprise/runtime.js");
+  const { evaluateEnterpriseToolCall, getEnterpriseActiveRun, completeEnterpriseStep } =
+    await import("../src/enterprise/runtime.js");
   const { searchOntologyObjects } = await import("../src/enterprise/object-store.sqlite.js");
   const {
     createComputeFunctionTool,
@@ -113,7 +109,6 @@ async function main(): Promise<number> {
         rationale: "reads",
       }),
     });
-    setEnterpriseStepForTurn(runId);
 
     const search = await createSearchObjectsTool({ runId }).execute("g1", {
       entity: "order",
@@ -225,7 +220,7 @@ async function main(): Promise<number> {
     );
 
     // ---- 4. The tool gate follows the ACTIVE step, inheriting the root denial.
-    setEnterpriseStepForTurn(runId); // enters the first routed leaf: golden.triage
+    // Mediation already opened the run on its first routed leaf: golden.triage.
     // "blocked" alone would stay green if inheritance regressed, because the leaf
     // excludes exec through its own allowedTools too. The reason names the step
     // that decided, so assert it is the ROOT.
@@ -247,8 +242,7 @@ async function main(): Promise<number> {
     );
 
     // ---- 5. Advancing the step moves the scope with it.
-    recordEnterpriseTurnExecuted(runId);
-    setEnterpriseStepForTurn(runId); // advances to golden.resolve
+    completeEnterpriseStep({ runId }); // advances to golden.resolve
     expectEqual(
       "after advancing, the next step's tool is allowed",
       evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" })?.blocked ?? false,
@@ -392,7 +386,6 @@ async function main(): Promise<number> {
         rationale: "skills",
       }),
     });
-    setEnterpriseStepForTurn(runId);
     const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
     record(
       "a declared skill reaches the model digest",
@@ -466,7 +459,6 @@ async function main(): Promise<number> {
         : "the body did not survive frontmatter stripping",
     );
     // Containment: naming a skill must not hand the step a tool it lacks.
-    setEnterpriseStepForTurn(inlinedId);
     expectEqual(
       "inlining instructions does not widen the step's tool scope",
       evaluateEnterpriseToolCall({ runId: inlinedId, toolName: "read" })?.blocked ?? false,
@@ -567,7 +559,6 @@ async function main(): Promise<number> {
           rationale: "knowledge",
         }),
       });
-      setEnterpriseStepForTurn(runId);
       const knowledge = createKnowledgeSearchTool({ runId });
 
       const hit = await knowledge.execute("k1", { query: "refund limit approval" });
@@ -605,14 +596,11 @@ async function main(): Promise<number> {
           rationale: "escalate",
         }),
       });
-      setEnterpriseStepForTurn(escalateRunId);
       // Walk to the escalation leaf. A planner route names the branch but does not
       // move the run into it: the active leaf advances with executed turns, so
       // without these the assertions below would judge the FIRST leaf instead.
-      recordEnterpriseTurnExecuted(escalateRunId);
-      setEnterpriseStepForTurn(escalateRunId);
-      recordEnterpriseTurnExecuted(escalateRunId);
-      setEnterpriseStepForTurn(escalateRunId);
+      completeEnterpriseStep({ runId: escalateRunId });
+      completeEnterpriseStep({ runId: escalateRunId });
       expectEqual(
         "a step that drops knowledge_search cannot retrieve at all",
         evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "knowledge_search" })
@@ -654,7 +642,6 @@ async function main(): Promise<number> {
           rationale: "escalate",
         }),
       });
-      setEnterpriseStepForTurn(mcpRunId);
       // Name the step this asserts against: if a route ever narrows this tree to
       // the escalation leaf, the check below would silently start testing the step
       // that DOES attach the server and pass for the wrong reason.
@@ -677,10 +664,8 @@ async function main(): Promise<number> {
         true,
       );
       // Walk to desk.escalate, the one step the example attaches the server to.
-      recordEnterpriseTurnExecuted(mcpRunId);
-      setEnterpriseStepForTurn(mcpRunId);
-      recordEnterpriseTurnExecuted(mcpRunId);
-      setEnterpriseStepForTurn(mcpRunId);
+      completeEnterpriseStep({ runId: mcpRunId });
+      completeEnterpriseStep({ runId: mcpRunId });
       expectEqual(
         "the step that attaches an MCP server may call it",
         evaluateEnterpriseToolCall({
@@ -792,7 +777,6 @@ async function main(): Promise<number> {
           rationale: "example",
         }),
       });
-      setEnterpriseStepForTurn(exampleRunId);
       const examplePlan = getEnterpriseActiveRun(exampleRunId)?.plan;
       expectEqual(
         "the example run grants capabilities explicitly",
@@ -921,7 +905,6 @@ async function main(): Promise<number> {
           rationale: "explicit",
         }),
       });
-      setEnterpriseStepForTurn(explicitRunId);
       expectEqual(
         "a tool the root grants is callable from a step that grants none of its own",
         evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "message" })?.blocked ?? false,

@@ -83,6 +83,38 @@ describe("Tool Search", () => {
     expect(resolved.mode).toBe("directory");
   });
 
+  it("keeps the workflow step-advance tool direct instead of cataloging it", () => {
+    // Behind the catalog wrapper this tool breaks twice over: governance would
+    // judge the WRAPPER's name, so a work-map narrowing that does not list the
+    // wrapper strands the run on step 1 forever, and the wrapper is what gets
+    // scheduled, discarding the tool's sequential execution mode.
+    testing.setToolSearchCodeModeSupportedForTest(false);
+    try {
+      const config = { tools: { toolSearch: true } } as never;
+      const compacted = applyToolSearchCatalog({
+        tools: [
+          fakeTool(TOOL_SEARCH_CODE_MODE_TOOL_NAME, "code mode"),
+          fakeTool(TOOL_SEARCH_RAW_TOOL_NAME, "search"),
+          fakeTool(TOOL_DESCRIBE_RAW_TOOL_NAME, "describe"),
+          fakeTool(TOOL_CALL_RAW_TOOL_NAME, "call"),
+          pluginTool("complete_step", "Finish the current workflow step"),
+          pluginTool("fake_catalogued", "An ordinary tool that may be cataloged"),
+        ],
+        config,
+        sessionId: "session-workflow-control",
+      });
+
+      const visible = compacted.tools.map((tool) => tool.name);
+      expect(visible).toContain("complete_step");
+      // The sibling proves compaction really ran, so the assertion above is not
+      // passing simply because nothing was cataloged at all.
+      expect(visible).not.toContain("fake_catalogued");
+      expect(compacted.catalogToolCount).toBe(1);
+    } finally {
+      testing.setToolSearchCodeModeSupportedForTest(undefined);
+    }
+  });
+
   it("falls back to structured controls when code mode is unsupported", () => {
     testing.setToolSearchCodeModeSupportedForTest(false);
     try {

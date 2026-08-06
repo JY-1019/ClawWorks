@@ -45,6 +45,9 @@ describe("tool-catalog", () => {
       "subagents",
       "session_status",
       "cron",
+      // Run machinery, not a capability: a profile that filtered it out would
+      // strand every governed work-map on its opening step.
+      "complete_step",
       "get_goal",
       "create_goal",
       "update_goal",
@@ -66,9 +69,13 @@ describe("tool-catalog", () => {
       "sessions_send",
       "session_status",
       "message",
+      "complete_step",
       "bundle-mcp",
     ]);
-    expect(requirePolicyAllow("minimal")).toEqual(["session_status"]);
+    // complete_step joins every profile: it is inert without a bound work-map
+    // (the factory only builds it for a step-tracking run), and a profile that
+    // withheld it would break how a governed run executes rather than narrow it.
+    expect(requirePolicyAllow("minimal")).toEqual(["session_status", "complete_step"]);
   });
 
   it("full profile uses wildcard to grant all tools (#76507)", () => {

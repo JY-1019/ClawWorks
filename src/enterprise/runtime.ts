@@ -13,6 +13,7 @@ import {
   findPlanNode,
   planTracksSteps,
   resolvePlanNodePath,
+  summarizeModelText,
 } from "./plan.js";
 import type {
   EnterpriseMode,
@@ -39,12 +40,17 @@ export function resolveEnterpriseMode(config?: OpenClawConfig): EnterpriseMode {
   return config?.enterprise?.mode ?? "enforce";
 }
 
-/** Whether a mediated run advances/traces per-node steps (governed trees only). */
-export function enterpriseRunTracksSteps(runId: string): boolean {
-  const run = activeRuns().get(runId);
-  if (!run) {
-    return false;
-  }
+/**
+ * Whether a mediated run advances/traces per-node steps (governed trees only).
+ *
+ * A property of the PLAN, not of the runtime executing it. Advancement used to
+ * be a turn counter owned by the embedded loop, which left CLI, Codex and ACP
+ * runs pinned to the root for their whole life while still being handed the
+ * leaves' tools — advertised but unreachable. The cursor moves on a tool call
+ * now (see completeEnterpriseStep), so any runtime that can call a tool can walk
+ * the route, and one answer serves every one of them.
+ */
+function runTracksSteps(run: EnterpriseActiveRun): boolean {
   if (planTracksSteps(run.plan)) {
     return true;
   }
@@ -59,65 +65,137 @@ export function enterpriseRunTracksSteps(runId: string): boolean {
   );
 }
 
-/**
- * Point the active node at the step for the current turn, called by the step
- * hook at the start of every provider turn (the `transformContext` seam). The
- * step is `leaves[min(stepTurnsExecuted, last)]`, so it tracks turns that have
- * actually executed (see recordEnterpriseTurnExecuted): a fresh turn projects
- * the executed count onto the active leaf, emitting node transitions. Because
- * the counter only moves after a turn completes, a preflight-failed turn's
- * retry redoes the same step (never skips), while a run resumed after real
- * progress lands on the next step. The cursor is clamped at the final leaf and
- * the root is a scope container, so leaving it opens the timeline (entered) with
- * no `completed`.
- */
-export function setEnterpriseStepForTurn(runId: string): void {
+export function enterpriseRunTracksSteps(runId: string): boolean {
   const run = activeRuns().get(runId);
+  return run ? runTracksSteps(run) : false;
+}
+
+/** The step the run stands on, for the model and for operator-facing surfaces. */
+export type EnterpriseStepRef = { nodeId: string; title: string; ordinal: number; total: number };
+
+/**
+ * Outcome of asking the run to finish its current step. Closed so callers cannot
+ * confuse "there was nothing to advance" with "advanced onto the last step".
+ */
+export type EnterpriseStepAdvance =
+  | { kind: "unmediated" }
+  | { kind: "no-steps" }
+  | { kind: "wrong-step"; active: EnterpriseStepRef }
+  | { kind: "already-complete"; completed: EnterpriseStepRef }
+  | { kind: "advanced"; completed: EnterpriseStepRef | null; next: EnterpriseStepRef }
+  | { kind: "route-complete"; completed: EnterpriseStepRef };
+
+function stepRef(run: EnterpriseActiveRun, nodeId: string): EnterpriseStepRef | null {
+  const node = findPlanNode(run.plan, nodeId);
+  if (!node) {
+    return null;
+  }
+  const steps = enterpriseStepSequence(run.plan);
+  const index = steps.indexOf(nodeId);
+  return {
+    nodeId: node.nodeId,
+    title: node.title,
+    // Interior nodes are not steps; report them as ordinal 0 rather than -1 so a
+    // rendered "step 0 of N" reads as "not on a step yet".
+    ordinal: index + 1,
+    total: steps.length,
+  };
+}
+
+/**
+ * Finish the current step and move onto the next one.
+ *
+ * This is the ONLY thing that advances a run, and it is driven by the model
+ * (complete_step) rather than by a turn count. A turn count could not express
+ * the thing that actually matters — whether the step's work is done — so a node
+ * needing five turns was abandoned after one and the remaining four executed
+ * under the NEXT node's tools, knowledge and ontology.
+ *
+ * Advancement is monotonic and one step at a time: the cursor can never go
+ * backwards and never skips a step, so the worst a confused model can do is
+ * finish early, which the trace records. `expectedNodeId` lets the caller assert
+ * which step it believes it is finishing, so a model that has lost track is told
+ * where the run actually stands instead of silently advancing the wrong one.
+ */
+export function completeEnterpriseStep(params: {
+  runId: string;
+  expectedNodeId?: string;
+  summary?: string;
+}): EnterpriseStepAdvance {
+  const run = activeRuns().get(params.runId);
   if (!run) {
-    return;
+    return { kind: "unmediated" };
   }
-  // Claiming a step is what makes the active path meaningful. Only the embedded
-  // loop does it; CLI/Codex/ACP runs stay on the root for their whole life, so the
-  // gate reads their attachments plan-wide instead of denying every leaf grant.
-  run.tracksSteps = true;
-  const leaves = enterpriseStepSequence(run.plan);
-  const targetId = leaves[Math.min(run.stepTurnsExecuted ?? 0, leaves.length - 1)];
-  if (!targetId || run.plan.activeNodeId === targetId) {
-    return;
+  if (!runTracksSteps(run)) {
+    return { kind: "no-steps" };
   }
-  const from = findPlanNode(run.plan, run.plan.activeNodeId);
-  const to = findPlanNode(run.plan, targetId);
-  if (!to) {
-    return;
+  const steps = enterpriseStepSequence(run.plan);
+  const activeId = run.plan.activeNodeId;
+  const active = stepRef(run, activeId);
+  if (!active) {
+    return { kind: "no-steps" };
   }
-  run.plan.activeNodeId = to.nodeId;
-  if (from && leaves.includes(from.nodeId)) {
+  if (params.expectedNodeId && params.expectedNodeId !== activeId) {
+    return { kind: "wrong-step", active };
+  }
+  const activeIndex = steps.indexOf(activeId);
+  // Mediation puts every tracking run's cursor on step 1, so an interior node
+  // here means a plan built outside it (a test fixture, or a row restored from an
+  // older shape). Enter step 1 rather than refuse: completing nothing is correct,
+  // since a scope container did no work.
+  const nextId = activeIndex < 0 ? steps[0] : steps[activeIndex + 1];
+  const completed = activeIndex < 0 ? null : active;
+  const summary = params.summary ? summarizeModelText(params.summary) : "";
+  if (completed) {
+    if (run.routeCompleted) {
+      return { kind: "already-complete", completed };
+    }
     run.sink?.({
       kind: "node.completed",
-      nodeId: from.nodeId,
-      payload: { seq: from.seq, title: from.title },
+      nodeId: completed.nodeId,
+      payload: {
+        seq: findPlanNode(run.plan, completed.nodeId)?.seq ?? 0,
+        title: completed.title,
+        // What the step actually produced, in the model's words. The trace
+        // otherwise records only that a step ended, never what it did — and this
+        // is the only per-node account of the work that survives the run.
+        //
+        // Redacted and bounded HERE, at the persistence boundary, exactly like the
+        // route rationale: this is model text that can quote a credential straight
+        // out of the prompt or a tool result, and it is written to
+        // enterprise_run_events and rendered by both the Control UI and
+        // `openclaw enterprise runs show`.
+        ...(summary ? { summary } : {}),
+      },
     });
   }
+  if (!nextId) {
+    // Last step. Leave the cursor where it is: dropping back to the root would
+    // widen the scope the run finishes under, and there is nowhere forward.
+    run.routeCompleted = true;
+    return { kind: "route-complete", completed: completed ?? active };
+  }
+  const to = findPlanNode(run.plan, nextId);
+  if (!to) {
+    return { kind: "route-complete", completed: completed ?? active };
+  }
+  run.plan.activeNodeId = to.nodeId;
   run.sink?.({
     kind: "node.entered",
     nodeId: to.nodeId,
     payload: { seq: to.seq, title: to.title },
   });
+  const next = stepRef(run, to.nodeId);
+  return { kind: "advanced", completed, next: next ?? { ...active, nodeId: to.nodeId } };
 }
 
-/**
- * Count one executed provider turn, called by the step hook from the loop's
- * `prepareNextTurn` seam. That fires only after a turn's `turn_end` — i.e. after
- * the model actually responded — so a preflight failure (which ends the attempt
- * before its response) never counts, and the next attempt's first turn re-runs
- * the same step instead of skipping it. Firing once after the final turn is
- * harmless: no later `setEnterpriseStepForTurn` projects the bumped count.
- */
-export function recordEnterpriseTurnExecuted(runId: string): void {
+/** The step the run currently stands on, or null when it tracks no steps. */
+export function enterpriseRunActiveStep(runId: string): EnterpriseStepRef | null {
   const run = activeRuns().get(runId);
-  if (run) {
-    run.stepTurnsExecuted = (run.stepTurnsExecuted ?? 0) + 1;
+  if (!run || !runTracksSteps(run)) {
+    return null;
   }
+  return stepRef(run, run.plan.activeNodeId);
 }
 
 export type EnterpriseToolCallVerdict = {
@@ -304,7 +382,12 @@ export function evaluateEnterpriseToolCall(params: {
       path,
       ...(params.mcpTool ? { mcpTool: params.mcpTool } : {}),
       ...(run.mcpServers ? { mcpServers: run.mcpServers } : {}),
-      ...(run.tracksSteps ? {} : { attachmentScope: "plan" as const }),
+      // A run with no steps to walk never leaves its opening scope, so a leaf's
+      // attachment could never be reached from the active path — read them
+      // plan-wide there instead of denying every grant the work-map declared.
+      // The same answer also tells governance whether the core step-advance tool
+      // exists for this run, which is what makes a call by that name provably ours.
+      ...(runTracksSteps(run) ? { tracksSteps: true } : { attachmentScope: "plan" as const }),
       ...(params.actionId !== undefined ? { actionId: params.actionId } : {}),
       ...(toolCarriesOntologyAction(params.toolName) ? { carriesAction: true } : {}),
     });

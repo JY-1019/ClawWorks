@@ -10,7 +10,7 @@ import { selectApplicableRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { runHasRetrievableKnowledgeFoundations } from "../enterprise/knowledge.js";
 import { runDeclaresOntology } from "../enterprise/ontology-runtime.js";
-import { runAllowsOntologyWrites } from "../enterprise/runtime.js";
+import { enterpriseRunTracksSteps, runAllowsOntologyWrites } from "../enterprise/runtime.js";
 import { callGateway } from "../gateway/call.js";
 import { isEmbeddedMode } from "../infra/embedded-mode.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
@@ -80,6 +80,7 @@ import { createTtsTool } from "./tools/tts-tool.js";
 import { createUpdatePlanTool } from "./tools/update-plan-tool.js";
 import { createVideoGenerateTool } from "./tools/video-generate-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+import { createCompleteStepTool } from "./tools/workflow-step-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 type OpenClawToolsDeps = {
@@ -258,6 +259,16 @@ export function createOpenClawTools(
   const exposeOntologyWriteTool = stableOntologyExposure
     ? true
     : perRunOntologyRunId !== undefined && runAllowsOntologyWrites(perRunOntologyRunId);
+  // Walking the route is not an ontology feature: a work-map that only scopes
+  // tools still has steps to advance through, so this gets its own gate rather
+  // than riding the object-graph one. Read from the PLAN like the tools above, so
+  // the model-visible list stays fixed for the run even as the cursor moves.
+  const perRunStepRunId =
+    options?.runId && enterpriseRunTracksSteps(options.runId) ? options.runId : undefined;
+  const exposeCompleteStepTool = stableOntologyExposure || perRunStepRunId !== undefined;
+  const stepCallRunId = stableOntologyExposure
+    ? (options?.ontologyRunId ?? "")
+    : (perRunStepRunId ?? "");
   const runtimeSnapshot = getActiveSecretsRuntimeConfigSnapshot();
   const availabilityConfig = selectApplicableRuntimeConfig({
     inputConfig: resolvedConfig,
@@ -540,6 +551,7 @@ export function createOpenClawTools(
         ]
       : []),
     ...(exposeOntologyWriteTool ? [createInvokeActionTool({ runId: ontologyCallRunId })] : []),
+    ...(exposeCompleteStepTool ? [createCompleteStepTool({ runId: stepCallRunId })] : []),
     createGetGoalTool({
       agentSessionKey: options?.agentSessionKey,
       runSessionKey: options?.runSessionKey,

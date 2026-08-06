@@ -1258,6 +1258,96 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
     expect(decision.effect).toBe("allow");
   });
 
+  it("never withholds the run's own step-advance tool", () => {
+    // complete_step is how the run walks its route, not a capability the work-map
+    // hands out. If explicit grants could withhold it, an operator who granted
+    // anything else would strand the run on step 1 — with every later step's
+    // grants unreachable for the rest of the run. Denials are exempt too: a
+    // work-map that wants no steps declares a single leaf instead.
+    const { plan, path } = grantingPlan(["memory_search"]);
+    path[0].ontology = { allowedTools: ["memory_search"], deniedTools: ["complete_step"] };
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "complete_step",
+      policies: [],
+      path,
+      tracksSteps: true,
+    });
+    expect(decision.effect).toBe("allow");
+  });
+
+  it("does not exempt the name on a run that walks no steps", () => {
+    // The core tool is only built for a step-tracking run, so on any other run a
+    // PLUGIN may legitimately own that name — and exempting it would hand a plugin
+    // call a free pass through the work-map.
+    const { plan, path } = grantingPlan(["memory_search"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "complete_step",
+      policies: [],
+      path,
+    });
+    expect(decision.effect).toBe("deny");
+  });
+
+  it("refuses every namespaced spelling of the control tool", () => {
+    // Both legitimate paths deliver the BARE name: the loopback handler gates by
+    // registered name, and the Codex app-server registers this tool directly. A
+    // namespaced spelling can therefore only be another server's tool that happens
+    // to share the name — and a Codex-owned `openclaw` server arrives under
+    // exactly this form with nothing to tell it apart, so exempting it would be a
+    // free pass through every allow-list, denial and policy.
+    const { plan, path } = grantingPlan(["memory_search"]);
+    for (const toolName of [
+      "mcp__openclaw__complete_step",
+      "openclaw__complete_step",
+      "mcp__vendor__complete_step",
+    ]) {
+      const decision = evaluateToolCallGovernance({
+        plan,
+        node: path[1],
+        toolName,
+        policies: [],
+        path,
+        tracksSteps: true,
+      });
+      expect(decision.effect, toolName).toBe("deny");
+    }
+  });
+
+  it("does not exempt a bare name that arrives with an MCP registration", () => {
+    // Our in-process tool carries no MCP registration; anything that does is a
+    // server's tool that merely shares the name.
+    const { plan, path } = grantingPlan(["memory_search"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "complete_step",
+      policies: [],
+      path,
+      mcpTool: { serverName: "vendor", safeServerName: "vendor", toolName: "complete_step" },
+      tracksSteps: true,
+    });
+    expect(decision.effect).toBe("deny");
+  });
+
+  it("keeps advancing possible when a policy would otherwise deny every tool", () => {
+    // A catch-all deny policy reaching the control call would strand the run on
+    // step 1 — including the very policy that made the run step-tracking.
+    const { plan, path } = grantingPlan(["memory_search"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "complete_step",
+      policies: [{ id: "deny.all", effect: "deny", tools: ["*"] }],
+      path,
+      tracksSteps: true,
+    });
+    expect(decision.effect).toBe("allow");
+  });
+
   it("denies a tool no step on the path names, pointing at the active step", () => {
     // A path that only DENIES has narrowed nothing in, so this is the ungranted
     // case rather than a scope violation — and the denial names the step an

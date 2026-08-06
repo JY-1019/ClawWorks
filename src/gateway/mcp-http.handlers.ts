@@ -2,6 +2,7 @@
 // Implements initialize, tools/list, tools/call, and notification handling.
 import crypto from "node:crypto";
 import { runBeforeToolCallHook, type HookContext } from "../agents/agent-tools.before-tool-call.js";
+import { enterpriseRunTracksSteps } from "../enterprise/runtime.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   MCP_LOOPBACK_SERVER_NAME,
@@ -38,6 +39,33 @@ function normalizeToolCallContent(result: unknown): McpTextContent[] {
       text: typeof result === "string" ? result : JSON.stringify(result),
     },
   ];
+}
+
+/**
+ * In-flight loopback call chain per governed run. Keyed by runId, and dropped as
+ * soon as a run's last call settles so finished runs cannot accumulate.
+ */
+const loopbackRunChains = new Map<string, Promise<void>>();
+
+/** Run `execute` after every earlier call for this run has settled. */
+async function serializeLoopbackRunCall<T>(runId: string, execute: () => Promise<T>): Promise<T> {
+  const previous = loopbackRunChains.get(runId) ?? Promise.resolve();
+  // Both arms run `execute`: a previous call that FAILED still finished, and
+  // must not cancel the calls queued behind it.
+  const settled = previous.then(execute, execute);
+  const tail = settled.then(
+    () => {},
+    () => {},
+  );
+  loopbackRunChains.set(runId, tail);
+  void tail.then(() => {
+    // Only the last queued call clears the entry; an earlier one finishing would
+    // otherwise release the chain while its successors are still waiting on it.
+    if (loopbackRunChains.get(runId) === tail) {
+      loopbackRunChains.delete(runId);
+    }
+  });
+  return await settled;
 }
 
 /** Handles one MCP loopback JSON-RPC message and returns a response or notification null. */
@@ -105,6 +133,21 @@ export async function handleMcpJsonRpc(params: {
       }
       const toolCallId = `mcp-${crypto.randomUUID()}`;
       let executedToolArgs = toolArgs;
+      // A governed run's loopback calls execute in arrival order.
+      //
+      // complete_step moves the run's active step, while the ontology and
+      // knowledge tools resolve their scope when they EXECUTE. MCP carries no
+      // execution-order hint — buildMcpToolSchema projects name, description and
+      // input schema, and there is no field for more — and a CLI client issues
+      // `tools/call` concurrently. So a sibling emitted for the previous step
+      // could resolve its scope after the cursor moved and run under the NEXT
+      // step's ontology, which is exactly the boundary this layer exists to hold.
+      // Only step-tracking runs pay for it, and the loopback is a callback
+      // surface rather than a throughput path.
+      const serializeRunId =
+        params.hookContext?.runId && enterpriseRunTracksSteps(params.hookContext.runId)
+          ? params.hookContext.runId
+          : undefined;
       const reportToolCallResult = (result: unknown, isError: boolean) => {
         try {
           params.onToolCallResult?.({
@@ -117,42 +160,63 @@ export async function handleMcpJsonRpc(params: {
           // Observability callbacks must never alter the tool result returned to the MCP client.
         }
       };
-      try {
-        // Gateway before-tool hooks still run for loopback MCP calls so policy
-        // and audit behavior matches native tool calls from normal chat runs.
-        const hookResult = await runBeforeToolCallHook({
-          toolName,
-          params: toolArgs,
-          toolCallId,
-          ctx: params.hookContext,
-          signal: params.signal,
-        });
-        if (hookResult.blocked) {
+      const runToolCall = async (): Promise<object> => {
+        try {
+          // Gateway before-tool hooks still run for loopback MCP calls so policy
+          // and audit behavior matches native tool calls from normal chat runs.
+          const hookResult = await runBeforeToolCallHook({
+            toolName,
+            params: toolArgs,
+            toolCallId,
+            ctx: params.hookContext,
+            signal: params.signal,
+          });
+          if (hookResult.blocked) {
+            return jsonRpcResult(id, {
+              content: [{ type: "text", text: hookResult.reason }],
+              isError: true,
+            });
+          }
+          executedToolArgs = hookResult.params as Record<string, unknown>;
+          try {
+            params.onToolCallPrepared?.({ toolName, args: executedToolArgs });
+          } catch {
+            // Observability callbacks must never alter the tool result returned to the MCP client.
+          }
+          const result = await tool.execute(toolCallId, hookResult.params, params.signal);
+          reportToolCallResult(result, false);
           return jsonRpcResult(id, {
-            content: [{ type: "text", text: hookResult.reason }],
+            content: normalizeToolCallContent(result),
+            isError: false,
+          });
+        } catch (error) {
+          reportToolCallResult(error, true);
+          const message = formatErrorMessage(error);
+          return jsonRpcResult(id, {
+            content: [{ type: "text", text: message || "tool execution failed" }],
             isError: true,
           });
         }
-        executedToolArgs = hookResult.params as Record<string, unknown>;
-        try {
-          params.onToolCallPrepared?.({ toolName, args: executedToolArgs });
-        } catch {
-          // Observability callbacks must never alter the tool result returned to the MCP client.
-        }
-        const result = await tool.execute(toolCallId, hookResult.params, params.signal);
-        reportToolCallResult(result, false);
-        return jsonRpcResult(id, {
-          content: normalizeToolCallContent(result),
-          isError: false,
-        });
-      } catch (error) {
-        reportToolCallResult(error, true);
-        const message = formatErrorMessage(error);
-        return jsonRpcResult(id, {
-          content: [{ type: "text", text: message || "tool execution failed" }],
-          isError: true,
-        });
-      }
+      };
+      // Authorization and execution are serialized TOGETHER: gating one call
+      // while another is mid-execution is what keeps "the active step decided
+      // this call" true.
+      //
+      // The abort check belongs INSIDE the queued callback, not before queuing: a
+      // request can disconnect while it waits its turn, and complete_step never
+      // inspects the signal — so without this a cancelled call would still advance
+      // the workflow and append completion events once the queue reached it.
+      return serializeRunId
+        ? await serializeLoopbackRunCall(serializeRunId, async () => {
+            if (params.signal?.aborted) {
+              return jsonRpcResult(id, {
+                content: [{ type: "text", text: "tool call cancelled" }],
+                isError: true,
+              });
+            }
+            return await runToolCall();
+          })
+        : await runToolCall();
     }
     default:
       return jsonRpcError(id, -32601, `Method not found: ${method}`);

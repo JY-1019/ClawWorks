@@ -24,8 +24,11 @@ import {
   buildEnterpriseRunPlan,
   classifyWorkflowTrigger,
   collectWorkflowTreeCandidates,
+  enterpriseStepSequence,
+  findPlanNode,
 } from "./plan.js";
 import {
+  enterpriseRunTracksSteps,
   registerEnterpriseActiveRun,
   resolveEnterpriseMcpServers,
   resolveEnterpriseMode,
@@ -61,6 +64,14 @@ type MediatedRunState = EnterpriseActiveRun & {
    * the SAME prompt instead of re-reading (or silently dropping) them.
    */
   skillInstructions?: readonly ResolvedSkillInstructions[];
+  /**
+   * Whether this RUN walks steps, held for the same reason as the instructions
+   * above. A tree tracked only by a node-scoped policy cannot be recognized from
+   * the plan alone, so a nested begin that re-derived it would rebuild the digest
+   * without the advancement instructions — while the tool stays exposed and
+   * required.
+   */
+  tracksSteps?: boolean;
 };
 
 // Active executions only, keyed by runId (the gate looks runs up by the
@@ -145,7 +156,11 @@ async function beginEnterpriseRunInternal(
     return {
       kind: "mediated",
       plan: existing.plan,
-      promptSection: buildEnterprisePromptSection(existing.plan, existing.skillInstructions),
+      promptSection: buildEnterprisePromptSection(
+        existing.plan,
+        existing.skillInstructions,
+        existing.tracksSteps,
+      ),
     };
   }
 
@@ -382,15 +397,53 @@ async function beginEnterpriseRunInternal(
 
   mediatedRuns.set(params.runId, run);
   registerEnterpriseActiveRun(run);
-  // The node.entered/completed step timeline is owned by the embedded step-loop
-  // hook (the only runtime that advances), so mediation stays timeline-free.
-  // CLI/ACP runs never advance and therefore never claim leaf steps they
-  // skipped; the sink still re-persists the plan whenever a step is entered.
+  // Open the step timeline on the step the plan starts on. The rest of the
+  // timeline is written by complete_step as the model walks the route, but the
+  // FIRST step is entered by mediation itself — nothing else ever transitions
+  // into it, so without this a run that finished one step would trace a
+  // `node.completed` for a step it never appeared to enter.
+  // Read AFTER registration, and read once: this single answer decides whether the
+  // timeline opens, whether the digest tells the model about complete_step, and
+  // (through the same predicate) whether the tool is exposed at all. Deriving it
+  // separately per surface is how the model ends up told to call a tool it does
+  // not have.
+  const tracksSteps = enterpriseRunTracksSteps(params.runId);
+  const steps = enterpriseStepSequence(plan);
+  // Put the cursor on step 1 whenever the RUN tracks steps. buildEnterpriseRunPlan
+  // can only see the plan, so a tree tracked solely by a node-scoped policy — no
+  // guidance, no descriptions, no audit flag — is left on the root there while the
+  // digest built below tells the model it starts on step 1. That gap is not
+  // cosmetic: calls made on the first step would be judged against the ROOT rather
+  // than the leaf the policy targets, and the first complete_step would merely
+  // enter step 1 instead of finishing it.
+  if (tracksSteps && steps.length > 0 && !steps.includes(plan.activeNodeId)) {
+    plan.activeNodeId = steps[0];
+  }
+  // A run that tracks no steps must NOT open one. `enterpriseStepSequence` calls a
+  // childless root its own single leaf, so a one-node work-map would otherwise be
+  // entered here and never completed — nothing can advance it — and every
+  // successful single-node run would read as an abandoned step in the trace.
+  const openingStep =
+    tracksSteps && steps.includes(plan.activeNodeId)
+      ? findPlanNode(plan, plan.activeNodeId)
+      : undefined;
+  if (openingStep) {
+    // Through the SINK, not appendEvent: the sink is what re-persists the plan on
+    // a node.entered, and the run-start snapshot above was written before the
+    // cursor was placed. Appending the event directly would leave the stored plan
+    // pointing at the root while the live one stands on step 1.
+    run.sink?.({
+      kind: "node.entered",
+      nodeId: openingStep.nodeId,
+      payload: { seq: openingStep.seq, title: openingStep.title },
+    });
+  }
   run.skillInstructions = skillInstructions;
+  run.tracksSteps = tracksSteps;
   return {
     kind: "mediated",
     plan,
-    promptSection: buildEnterprisePromptSection(plan, skillInstructions),
+    promptSection: buildEnterprisePromptSection(plan, skillInstructions, tracksSteps),
   };
 }
 
@@ -406,9 +459,10 @@ export function endEnterpriseRun(params: {
   }
   mediatedRuns.delete(params.runId);
   unregisterEnterpriseActiveRun(params.runId);
-  // The final step stays "entered" without an explicit node.completed; run.ended
-  // carries the terminal status that closes the run (the step-loop hook owns the
-  // per-step completed transitions it can actually observe).
+  // A step the model never finished stays "entered" without a node.completed:
+  // run.ended carries the terminal status that closes the run. That asymmetry is
+  // the signal — an entered-but-uncompleted step is exactly how an abandoned or
+  // interrupted route reads in the trace.
   persistTrace(() => {
     appendEvent(run, "run.ended", null, {
       status: params.status,

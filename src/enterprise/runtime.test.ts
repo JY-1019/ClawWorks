@@ -10,13 +10,13 @@ import {
   evaluateEnterpriseToolCall,
   getEnterpriseActiveRun,
   getSessionActiveRunId,
+  completeEnterpriseStep,
+  enterpriseRunActiveStep,
   recordEnterpriseApprovalResolution,
-  recordEnterpriseTurnExecuted,
   enterpriseRunAttachedMcpServers,
   registerEnterpriseActiveRun,
   resolveEnterpriseMcpServers,
   resolveEnterpriseMode,
-  setEnterpriseStepForTurn,
   unregisterEnterpriseActiveRun,
   type EnterpriseActiveRun,
 } from "./runtime.js";
@@ -359,8 +359,9 @@ function makeGovernedRun(
       leaf("support.triage", 1, "Triage"),
       leaf("support.resolve", 2, "Resolve"),
     ],
-    // Runs start on the root; the step hook enters the first leaf on turn one.
-    activeNodeId: opts.activeNodeId ?? "support",
+    // A step-tracking plan opens ON its first step, as buildEnterpriseRunPlan
+    // does; the override exercises the root cursor a policy-only run gets.
+    activeNodeId: opts.activeNodeId ?? "support.triage",
     mode: "enforce",
     createdAt: 0,
   };
@@ -410,61 +411,120 @@ describe("enterpriseRunTracksSteps", () => {
 });
 
 describe("enterprise step cursor", () => {
-  it("tracks executed turns: enter the first leaf, then advance as turns complete", () => {
+  it("advances one step per completion, tracing completed then entered", () => {
     const events: SinkEvent[] = [];
     registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
 
-    setEnterpriseStepForTurn("run-steps");
-    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
-    recordEnterpriseTurnExecuted("run-steps");
-    setEnterpriseStepForTurn("run-steps");
+    expect(enterpriseRunActiveStep("run-steps")).toMatchObject({
+      nodeId: "support.triage",
+      ordinal: 1,
+      total: 2,
+    });
+    const advance = completeEnterpriseStep({ runId: "run-steps", summary: "classified" });
+    expect(advance).toMatchObject({
+      kind: "advanced",
+      completed: { nodeId: "support.triage" },
+      next: { nodeId: "support.resolve", ordinal: 2, total: 2 },
+    });
     expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.resolve");
-
     expect(events.map((event) => `${event.kind}:${event.nodeId}`)).toEqual([
-      "node.entered:support.triage",
       "node.completed:support.triage",
       "node.entered:support.resolve",
     ]);
-    expect(events[0].payload).toMatchObject({ seq: 1, title: "Triage" });
+    // The model's account of the step is what makes the trace a record of the
+    // WORK rather than only of the transition.
+    expect(events[0].payload).toMatchObject({ seq: 1, title: "Triage", summary: "classified" });
   });
 
-  it("redoes the same step on a preflight-failed turn's retry (never skips)", () => {
-    const events: SinkEvent[] = [];
-    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
-    // Turn one enters the first leaf, then fails before a response — no executed
-    // turn is recorded.
-    setEnterpriseStepForTurn("run-steps");
-    events.length = 0;
-    // The retry's first turn must land on the same leaf, not skip to the next.
-    setEnterpriseStepForTurn("run-steps");
+  it("stays on a step until it is completed, however many turns that takes", () => {
+    registerEnterpriseActiveRun(makeGovernedRun());
+    // Nothing but a completion moves the cursor: this is the whole point of the
+    // tool-driven cursor over the turn counter it replaced.
     expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
+    expect(enterpriseRunActiveStep("run-steps")?.nodeId).toBe("support.triage");
+  });
+
+  it("reports the route complete on the last step and leaves the cursor there", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(
+      makeGovernedRun((event) => events.push(event), { activeNodeId: "support.resolve" }),
+    );
+    expect(completeEnterpriseStep({ runId: "run-steps" })).toMatchObject({
+      kind: "route-complete",
+      completed: { nodeId: "support.resolve" },
+    });
+    // Dropping back to the root would widen the scope the run finishes under.
+    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.resolve");
+    expect(events.filter((event) => event.kind === "node.entered")).toHaveLength(0);
+  });
+
+  it("does not re-close a route that is already complete", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(
+      makeGovernedRun((event) => events.push(event), { activeNodeId: "support.resolve" }),
+    );
+    completeEnterpriseStep({ runId: "run-steps" });
+    events.length = 0;
+    expect(completeEnterpriseStep({ runId: "run-steps" })).toMatchObject({
+      kind: "already-complete",
+    });
     expect(events).toHaveLength(0);
   });
 
-  it("advances a run resumed after real progress (executed turn recorded)", () => {
+  it("refuses to advance when the caller names a step the run is not on", () => {
     registerEnterpriseActiveRun(makeGovernedRun());
-    setEnterpriseStepForTurn("run-steps"); // turn one → first leaf
-    recordEnterpriseTurnExecuted("run-steps"); // turn one executed
-    // A fresh attempt resumes; its first turn advances to the next step.
-    setEnterpriseStepForTurn("run-steps");
-    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.resolve");
+    const advance = completeEnterpriseStep({
+      runId: "run-steps",
+      expectedNodeId: "support.resolve",
+    });
+    expect(advance).toMatchObject({
+      kind: "wrong-step",
+      active: { nodeId: "support.triage", ordinal: 1 },
+    });
+    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
   });
 
-  it("saturates at the final step instead of running off the end", () => {
+  it("enters the first step from a root cursor without completing the container", () => {
+    const events: SinkEvent[] = [];
+    // A policy-only tracking run opens on the root, which is a scope container
+    // and did no work — so the first advance enters step 1 and completes nothing.
+    const run = makeGovernedRun((event) => events.push(event), { activeNodeId: "support" });
+    registerEnterpriseActiveRun(run);
+    expect(completeEnterpriseStep({ runId: "run-steps" })).toMatchObject({
+      kind: "advanced",
+      completed: null,
+      next: { nodeId: "support.triage" },
+    });
+    expect(events.map((event) => event.kind)).toEqual(["node.entered"]);
+  });
+
+  it("redacts a model-authored step summary before it reaches the trace", () => {
     const events: SinkEvent[] = [];
     registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
-    for (let turn = 0; turn < 5; turn += 1) {
-      setEnterpriseStepForTurn("run-steps");
-      recordEnterpriseTurnExecuted("run-steps");
-    }
-    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.resolve");
-    // Only two real transitions happen (triage, resolve); the rest clamp.
-    expect(events.filter((event) => event.kind === "node.entered")).toHaveLength(2);
+    // The summary is model text that can quote a credential straight out of the
+    // prompt or a tool result, and it is persisted and rendered to operators.
+    completeEnterpriseStep({
+      runId: "run-steps",
+      summary: "used key sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL to call it",
+    });
+    const summary = events[0]?.payload.summary;
+    expect(typeof summary).toBe("string");
+    expect(summary).not.toContain("sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL");
   });
 
-  it("is a no-op for unknown runs", () => {
-    expect(() => setEnterpriseStepForTurn("nope")).not.toThrow();
-    expect(() => recordEnterpriseTurnExecuted("nope")).not.toThrow();
+  it("bounds a step summary so the trace cannot become a transcript sink", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    completeEnterpriseStep({ runId: "run-steps", summary: "x".repeat(5000) });
+    const summary = events[0]?.payload.summary;
+    expect(typeof summary === "string" ? summary.length : -1).toBeLessThanOrEqual(300);
+  });
+
+  it("refuses runs it cannot advance instead of throwing", () => {
+    expect(completeEnterpriseStep({ runId: "nope" })).toEqual({ kind: "unmediated" });
+    registerEnterpriseActiveRun(makeRun({ runId: "run-1" }));
+    expect(completeEnterpriseStep({ runId: "run-1" })).toEqual({ kind: "no-steps" });
+    expect(enterpriseRunActiveStep("run-1")).toBeNull();
   });
 
   it("scopes the gate to the active leaf's ancestor path", () => {
@@ -1426,6 +1486,22 @@ describe("enterpriseRunBoundableMcpServers", () => {
     ]).toEqual([]);
   });
 
+  it("withholds a plugin's server when a reachable step narrows tools", () => {
+    // The root granting it whole is no longer the whole answer: the run walks the
+    // route now, and a hookless backend cannot withdraw a server once connected —
+    // so a step that narrows tools away is a step the run can reach with the
+    // server already in hand.
+    const run = makeGovernedRun();
+    run.plan.runId = "run-plugin-leaf";
+    run.plan.nodes[0].ontology = { allowedTools: ["bundled__*", "mcp__bundled__*"] };
+    run.plan.nodes[1].ontology = { allowedTools: ["message"] };
+    registerEnterpriseActiveRun(run);
+
+    expect([...(enterpriseRunBoundableMcpServers("run-plugin-leaf", ["bundled"]) ?? [])]).toEqual(
+      [],
+    );
+  });
+
   it("admits a plugin's server an explicit root grants whole", () => {
     registerEnterpriseActiveRun(
       makeRun({
@@ -1451,6 +1527,81 @@ describe("enterpriseRunAdmitsHostedTool", () => {
     registerEnterpriseActiveRun(makeRun({ runId: "run-hosted-open" }));
 
     expect(enterpriseRunAdmitsHostedTool("run-hosted-open", "web_search")).toBe(true);
+  });
+
+  it("withholds a tool any reachable step narrows away, even when the root allows it", () => {
+    // The root used to be the whole answer because native runs never left it.
+    // They walk the route now, while a hosted tool is granted once before the
+    // thread starts and can never be withdrawn — and Codex executes it itself, so
+    // no per-call gate can catch it later. A permissive root plus one restrictive
+    // step must therefore withhold it for the whole run.
+    const run = makeGovernedRun();
+    run.plan.runId = "run-hosted-leaf";
+    run.plan.nodes[0].ontology = {}; // root narrows nothing
+    run.plan.nodes[1].ontology = { allowedTools: ["message"] }; // first step does
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-leaf", "web_search")).toBe(false);
+    // A tool that survives EVERY reachable path is still admitted: the ceiling is
+    // conservative, not blanket.
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-leaf", "message")).toBe(true);
+  });
+
+  it("withholds a hosted tool a policy denies on a reachable step", () => {
+    // Codex runs a hosted tool outside registry dispatch, so once the run
+    // advances onto the step this policy targets there is no PreToolUse gate left
+    // to honor it — the launch decision is the last chance.
+    const run = makeGovernedRun();
+    run.plan.runId = "run-hosted-policy";
+    // Clear the ontology narrowing so the POLICY is the only thing that can
+    // withhold the tool; otherwise the allow-list would decide and the test
+    // would pass without exercising the policy path at all.
+    for (const node of run.plan.nodes) {
+      node.ontology = {};
+    }
+    run.policies = [
+      { id: "deny.search", effect: "deny", tools: ["web_search"], nodes: ["support.resolve"] },
+    ];
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-policy", "web_search")).toBe(false);
+  });
+
+  it("withholds a hosted tool an action-scoped policy reaches through its tool globs", () => {
+    // An action-scoped policy is not "about actions instead of tools": an action
+    // whose `tools` globs cover this tool makes the policy govern exactly this
+    // call. Reading actions-only policies as irrelevant let them be bypassed by
+    // the one tool class that has no later gate.
+    const run = makeGovernedRun();
+    run.plan.runId = "run-hosted-action-tools";
+    for (const node of run.plan.nodes) {
+      node.ontology = {};
+    }
+    run.plan.nodes[1].ontology = {
+      actions: [{ id: "research", description: "Look things up", tools: ["web_search"] }],
+    };
+    run.policies = [{ id: "deny.research", effect: "deny", actions: ["research"] }];
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-action-tools", "web_search")).toBe(false);
+  });
+
+  it("keeps a hosted tool when the only policy is about actions, not tools", () => {
+    const run = makeGovernedRun();
+    run.plan.runId = "run-hosted-actions";
+    for (const node of run.plan.nodes) {
+      node.ontology = {};
+    }
+    run.policies = [{ id: "deny.refund", effect: "deny", actions: ["issue-refund"] }];
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-actions", "web_search")).toBe(true);
+  });
+
+  it("admits a tool every reachable step allows", () => {
+    const run = makeGovernedRun();
+    run.plan.runId = "run-hosted-all";
+    run.plan.nodes[0].ontology = { allowedTools: ["web_search", "message"] };
+    run.plan.nodes[1].ontology = { allowedTools: ["web_search"] };
+    run.plan.nodes[2].ontology = { allowedTools: ["web_search"] };
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunAdmitsHostedTool("run-hosted-all", "web_search")).toBe(true);
   });
 
   it("withholds the tool from a root allow-list that omits it", () => {
