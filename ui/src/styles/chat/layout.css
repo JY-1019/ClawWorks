@@ -2318,7 +2318,7 @@
 
 .chat-controls__provider-models {
   display: grid;
-  gap: 2px;
+  grid-template-columns: 1fr;
   align-content: start;
   max-height: min(376px, calc(100vh - 164px));
   overflow-y: auto;
@@ -2326,13 +2326,22 @@
   min-width: 0;
 }
 
+/* Every provider's group occupies the SAME grid cell, so the pane is as tall as
+   the largest provider's list and keeps that height when the rail switches.
+   This menu is anchored by its bottom edge (opens upward), so a height change
+   would slide the whole list vertically — out from under the pointer that
+   caused it, which makes options impossible to click while moving across the
+   rail. Hidden groups keep their box and only stop painting/hit-testing. */
 .chat-controls__provider-model-group {
+  grid-area: 1 / 1;
   display: grid;
   gap: 2px;
+  align-content: start;
 }
 
 .chat-controls__provider-model-group[hidden] {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .chat-controls__combined-model-arrow svg {
