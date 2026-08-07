@@ -110,7 +110,7 @@ describe("evaluateEnterpriseToolCall", () => {
     expect(evaluateEnterpriseToolCall({ toolName: "exec" })).toBeUndefined();
   });
 
-  it("blocks denied tools in enforce mode and records the decision", () => {
+  it("gates an out-of-scope tool behind approval in enforce mode and records it", () => {
     const events: Array<Record<string, unknown>> = [];
     registerEnterpriseActiveRun(
       makeRun({
@@ -125,20 +125,19 @@ describe("evaluateEnterpriseToolCall", () => {
       toolName: "exec",
       toolCallId: "call-1",
     });
-    expect(verdict?.blocked).toBe(true);
-    expect(verdict?.decision.effect).toBe("deny");
+    // An allow-list omission asks a human rather than failing the call outright;
+    // nothing runs until that approval resolves, and it fails closed if nobody
+    // answers.
+    expect(verdict?.blocked).toBe(false);
+    expect(verdict?.requiresApproval).toBe(true);
+    expect(verdict?.decision.effect).toBe("require_approval");
     expect(verdict?.nodeId).toBe("support");
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      subject: "tool_call",
-      toolName: "exec",
-      toolCallId: "call-1",
-      effect: "deny",
-      enforced: true,
-    });
+    // Approval-gated calls are recorded once the human decision resolves, so the
+    // gate itself writes nothing here.
+    expect(events).toHaveLength(0);
   });
 
-  it("records but does not block denials in observe mode", () => {
+  it("records but does not gate out-of-scope calls in observe mode", () => {
     const events: Array<Record<string, unknown>> = [];
     registerEnterpriseActiveRun(
       makeRun({
@@ -151,8 +150,9 @@ describe("evaluateEnterpriseToolCall", () => {
     );
     const verdict = evaluateEnterpriseToolCall({ runId: "run-1", toolName: "exec" });
     expect(verdict?.blocked).toBe(false);
-    expect(verdict?.decision.effect).toBe("deny");
-    expect(events[0]).toMatchObject({ effect: "deny", enforced: false });
+    expect(verdict?.requiresApproval).toBe(false);
+    expect(verdict?.decision.effect).toBe("require_approval");
+    expect(events[0]).toMatchObject({ effect: "require_approval", enforced: false });
   });
 
   it("allows in-scope tools without tracing default allows", () => {
@@ -530,10 +530,11 @@ describe("enterprise step cursor", () => {
   it("scopes the gate to the active leaf's ancestor path", () => {
     registerEnterpriseActiveRun(makeGovernedRun(undefined, { activeNodeId: "support.triage" }));
     // On the first leaf: the root allows only memory_search/message, so an
-    // out-of-scope tool is denied under the leaf's inherited path.
+    // out-of-scope tool is gated under the leaf's INHERITED path — and the reason
+    // names the ancestor that narrowed it, not the leaf standing on it.
     const verdict = evaluateEnterpriseToolCall({ runId: "run-steps", toolName: "exec" });
     expect(verdict?.nodeId).toBe("support.triage");
-    expect(verdict?.blocked).toBe(true);
+    expect(verdict?.requiresApproval).toBe(true);
     expect(verdict?.decision.reason).toContain('workflow step "support"');
   });
 

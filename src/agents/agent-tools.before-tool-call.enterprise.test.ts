@@ -108,6 +108,28 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
     }
   });
 
+  it("refuses an out-of-scope tool outright when nobody can answer an approval", async () => {
+    // A native PreToolUse hook is synchronous and the harness kills it after a few
+    // seconds, while a plugin approval waits far longer. Raising a prompt there
+    // stalls the call, refuses it anyway, and can record a late "approved" for a
+    // call the harness already rejected. Refuse immediately instead — and do NOT
+    // reach the approval RPC at all.
+    registerRun({ runId: "ent-run-no-channel", allowedTools: ["memory_search"] });
+    const outcome = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      toolCallId: "call-no-channel",
+      ctx: { runId: "ent-run-no-channel" },
+      approvalUnavailable: true,
+    });
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.deniedReason).toBe("enterprise-governance");
+      expect(outcome.reason).toContain("cannot wait for a human decision");
+    }
+    expect(mockCallGatewayTool).not.toHaveBeenCalled();
+  });
+
   it("blocks an MCP tool from a server no step attached", async () => {
     // The wrapper that every materialized MCP tool goes through supplies the
     // server; the name alone could never say which server this belongs to.

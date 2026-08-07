@@ -1396,6 +1396,10 @@ async function runNativeHookRelayPreToolUse(params: {
     params: toolInput,
     ...(params.invocation.toolUseId ? { toolCallId: params.invocation.toolUseId } : {}),
     ...(approvalMode === "report" ? { approvalMode: "defer" } : {}),
+    // Synchronous hook: the harness kills it long before a human could answer, so
+    // an enterprise scope approval raised here must refuse rather than stall. A
+    // deferrable payload (report mode) is exempt — that one CAN outlive the hook.
+    ...(approvalMode === "report" ? {} : { approvalUnavailable: true }),
     signal: params.registration.signal,
     ctx: {
       ...(params.registration.agentId ? { agentId: params.registration.agentId } : {}),

@@ -326,7 +326,7 @@ describe("beginEnterpriseRun", () => {
     const mediation = await beginEnterpriseRun({
       runId,
       prompt: "hello",
-      config: { enterprise: denyPolicies } as OpenClawConfig,
+      config: { enterprise: denyPolicies },
       routePlanner: planner,
     });
     // The policy denies the run, so the request text must never reach a provider
@@ -355,7 +355,7 @@ describe("beginEnterpriseRun", () => {
             ],
           },
         },
-      } as OpenClawConfig,
+      },
       routePlanner: planner,
     });
     expect(mediation.kind).toBe("mediated");

@@ -44,7 +44,9 @@ describe("evaluateToolCallGovernance", () => {
   it("denies tools outside the ontology allowlist", () => {
     const { plan, node } = planWith({ ontology: { allowedTools: ["memory_search"] } });
     const decision = evaluateToolCallGovernance({ plan, node, toolName: "exec", policies: [] });
-    expect(decision.effect).toBe("deny");
+    // An allow-list that does not mention the tool is an OMISSION, not a decision,
+    // so it asks a human rather than failing the call outright.
+    expect(decision.effect).toBe("require_approval");
     expect(decision.source).toBe("ontology");
     expect(decision.reason).toContain('"exec"');
     expect(decision.reason).toContain('"support"');
@@ -1136,7 +1138,7 @@ describe("evaluateToolCallGovernance path scope", () => {
       policies: [],
       path,
     });
-    expect(decision.effect).toBe("deny");
+    expect(decision.effect).toBe("require_approval");
     expect(decision.source).toBe("ontology");
     expect(decision.reason).toContain('"ops"');
   });
@@ -1289,7 +1291,7 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       policies: [],
       path,
     });
-    expect(decision.effect).toBe("deny");
+    expect(decision.effect).toBe("require_approval");
   });
 
   it("refuses every namespaced spelling of the control tool", () => {
@@ -1313,7 +1315,7 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
         path,
         tracksSteps: true,
       });
-      expect(decision.effect, toolName).toBe("deny");
+      expect(decision.effect, toolName).toBe("require_approval");
     }
   });
 
@@ -1330,7 +1332,7 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       mcpTool: { serverName: "vendor", safeServerName: "vendor", toolName: "complete_step" },
       tracksSteps: true,
     });
-    expect(decision.effect).toBe("deny");
+    expect(decision.effect).toBe("require_approval");
   });
 
   it("keeps advancing possible when a policy would otherwise deny every tool", () => {
@@ -1353,15 +1355,17 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
     // case rather than a scope violation — and the denial names the step an
     // operator would attach the tool to.
     const { plan, path } = grantingPlan();
-    path[0].ontology = { deniedTools: ["exec"] };
+    path[0].ontology = { deniedTools: ["write"] };
+    // Deliberately NOT a core-floor tool: the floor answers first, so proving the
+    // ungranted path needs a capability the floor does not cover.
     const decision = evaluateToolCallGovernance({
       plan,
       node: path[1],
-      toolName: "memory_search",
+      toolName: "exec",
       policies: [],
       path,
     });
-    expect(decision.effect).toBe("deny");
+    expect(decision.effect).toBe("require_approval");
     expect(decision.source).toBe("ontology");
     expect(decision.reason).toContain('"ops.step"');
     expect(decision.reason).toContain("ontology.allowedTools");
@@ -1376,15 +1380,161 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       policies: [],
       path,
     });
-    expect(decision.effect).toBe("deny");
+    expect(decision.effect).toBe("require_approval");
     // The step that narrowed it away, not the active one: that is where the list
     // an operator has to widen lives.
     expect(decision.reason).toContain('"ops"');
     expect(decision.reason).toContain("outside the ontology tool scope");
   });
 
-  it("denies every tool when no step on the path grants anything", () => {
+  it("asks about every non-floor tool when no step on the path grants anything", () => {
     const { plan, path } = grantingPlan();
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "exec",
+      policies: [],
+      path,
+    });
+    expect(decision.effect).toBe("require_approval");
+    expect(decision.reason).toContain("grants capabilities explicitly");
+  });
+
+  it("lets a descendant's denial beat an ancestor's omission", () => {
+    // The root's allow-list omits `exec` (an omission, normally approvable) while
+    // the ACTIVE leaf denies it outright. Returning on the first allow-list miss
+    // would never reach the leaf, and the caller would offer Allow-once for a call
+    // the active step explicitly refused.
+    const { plan, path } = grantingPlan(["message"]);
+    path[1].ontology = { deniedTools: ["exec"] };
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "exec",
+      policies: [],
+      path,
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.reason).toContain("ontology.deniedTools");
+  });
+
+  it("lets a deny policy beat an approvable omission", () => {
+    // Precedence is deny > require_approval. A hard deny an operator configured
+    // must not become a prompt a human can wave through just because the step's
+    // scope happened to omit the tool too.
+    const { plan, path } = grantingPlan(["message"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "exec",
+      policies: [{ id: "deny.exec", effect: "deny", tools: ["exec"] }],
+      path,
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.source).toBe("policy");
+  });
+
+  it("prefers a policy's own approval settings over the ontology's", () => {
+    // Both ask for approval; the operator's carries their severity and timeout.
+    const { plan, path } = grantingPlan(["message"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "exec",
+      policies: [{ id: "ask.exec", effect: "require_approval", tools: ["exec"] }],
+      path,
+    });
+    expect(decision.effect).toBe("require_approval");
+    expect(decision.source).toBe("policy");
+  });
+
+  it("never lets a policy relax an omission to allow-on-timeout", () => {
+    // A call the step's scope never covered is fail-closed by contract. A policy
+    // that would let an UNANSWERED prompt through would execute it with no human
+    // having seen it, which is exactly the guarantee the approval path exists to
+    // make. Strictest wins: keep the operator's prompt, drop their allow.
+    const { plan, path } = grantingPlan(["message"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "exec",
+      policies: [
+        {
+          id: "ask.exec",
+          effect: "require_approval",
+          tools: ["exec"],
+          approval: { timeoutBehavior: "allow", severity: "info" },
+        },
+      ],
+      path,
+    });
+    expect(decision.effect).toBe("require_approval");
+    expect(decision.approval?.timeoutBehavior).toBe("deny");
+    // The operator's own severity survives; only the unsafe half is overridden.
+    expect(decision.approval?.severity).toBe("info");
+    // And the OMISSION fact survives the policy decision. Without it a caller that
+    // must fail closed (a synchronous native hook) would read `source: "policy"`
+    // and wait on a prompt nobody can answer in time.
+    expect(decision.ontologyOmission).toBe(true);
+  });
+
+  it("keeps a policy's allow-on-timeout when the step's scope covers the tool", () => {
+    // Nothing to fail closed about here: the step grants the tool, and the policy
+    // is the only reason a human is asked at all.
+    const { plan, path } = grantingPlan(["exec"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "exec",
+      policies: [
+        {
+          id: "ask.exec",
+          effect: "require_approval",
+          tools: ["exec"],
+          approval: { timeoutBehavior: "allow" },
+        },
+      ],
+      path,
+    });
+    expect(decision.effect).toBe("require_approval");
+    expect(decision.approval?.timeoutBehavior).toBe("allow");
+    // Nothing was omitted here, so this is purely the operator's own prompt.
+    expect(decision.ontologyOmission).toBeUndefined();
+  });
+
+  it("keeps the reply-and-read floor available under explicit grants", () => {
+    // Deny-by-default is about the ENTERPRISE capabilities an operator assigns,
+    // not about whether the agent can answer or look at anything. Without this a
+    // step granted one knowledge source could read the handbook and then be unable
+    // to reply — a restriction nobody chose, just what silence happened to mean.
+    const { plan, path } = grantingPlan(["knowledge_search"]);
+    for (const toolName of ["message", "read", "memory_search"]) {
+      const decision = evaluateToolCallGovernance({
+        plan,
+        node: path[1],
+        toolName,
+        policies: [],
+        path,
+      });
+      expect(decision.effect, toolName).toBe("allow");
+    }
+    // Execution and writes are NOT on the floor: those are exactly what an
+    // explicit work-map exists to control. `session_status` is off it too — it
+    // reads state but also UPDATES model overrides and visibility, so it is a
+    // capability rather than a courtesy.
+    for (const toolName of ["exec", "write", "edit", "session_status"]) {
+      expect(
+        evaluateToolCallGovernance({ plan, node: path[1], toolName, policies: [], path }).effect,
+        toolName,
+      ).not.toBe("allow");
+    }
+  });
+
+  it("lets an operator take a floor tool back with deniedTools", () => {
+    // The floor stops silence from removing the basics; it does not overrule a
+    // decision an operator wrote by hand.
+    const { plan, path } = grantingPlan(["knowledge_search"]);
+    path[1].ontology = { deniedTools: ["message"] };
     const decision = evaluateToolCallGovernance({
       plan,
       node: path[1],
@@ -1393,7 +1543,7 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       path,
     });
     expect(decision.effect).toBe("deny");
-    expect(decision.reason).toContain("grants capabilities explicitly");
+    expect(decision.reason).toContain("ontology.deniedTools");
   });
 
   it("leaves a work-map without the switch allowing an unscoped path", () => {
@@ -1420,8 +1570,10 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       policies: [],
       path,
     });
+    // An operator's deniedTools entry is a DECISION: still a hard block, and it
+    // says so rather than reporting a scope omission.
     expect(decision.effect).toBe("deny");
-    expect(decision.reason).toContain("outside the ontology tool scope");
+    expect(decision.reason).toContain("ontology.deniedTools");
   });
 
   it("lets an MCP attachment grant its tools without allowedTools naming them", () => {

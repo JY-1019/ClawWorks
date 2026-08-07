@@ -216,8 +216,8 @@ export const id: TranslationMap = {
         "Katalog alat yang dikonfigurasi, dikelompokkan sesuai cara runtime mengelompokkannya. Alat plugin terdaftar begitu dideklarasikan, bahkan sebelum konfigurasinya terselesaikan, dan alat channel serta MCP hanya ada dalam sesi aktif, jadi ini adalah apa yang dapat dikonfigurasi, bukan apa yang sedang aktif saat ini.",
       attachHint:
         "Ini adalah katalog. Untuk mengizinkan sebuah langkah memanggilnya, buka Worktree, pilih langkah tersebut, dan tambahkan di bawah Step bindings.",
-      attachHintGranted:
-        "Work-map ini memberikan tools secara eksplisit. Sebuah langkah hanya dapat memanggil tools yang tercantum di dalamnya, atau yang tercantum di langkah di atasnya. Semua tools lain dalam katalog ini ditolak.",
+      attachHintGrantedGated:
+        "Peta kerja ini memberikan alat secara eksplisit. Sebuah langkah dimaksudkan untuk menggunakan alat yang tercantum di dalamnya, atau yang tercantum di langkah di atasnya. Alat lainnya akan memunculkan persetujuan satu kali alih-alih langsung dijalankan, dan akan ditolak jika tidak ada yang merespons. Membalas dan membaca (message, read, memory_search) tetap tersedia di setiap langkah kecuali jika langkah tersebut menolaknya atau kebijakan tata kelola melarangnya.",
       empty: "Tidak ada alat yang tersedia di gateway ini.",
       toolCount: "{count} alat",
       optionalBadge: "opsional",
@@ -289,10 +289,10 @@ export const id: TranslationMap = {
     entryDraft: {
       add: "Tambah",
       none: "Belum ada yang dideklarasikan.",
-      scopeNarrowing:
-        "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin dan hanya alat yang tercantum yang tetap tersedia.",
-      scopeUngranted:
-        "Work-map ini memberikan alat secara eksplisit. Langkah ini tidak dapat mengakses alat apa pun sampai satu alat dicantumkan di sini atau pada langkah di atasnya.",
+      scopeNarrowingApproval:
+        "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin. Alat yang terdaftar berjalan bebas dan yang lainnya memerlukan persetujuan satu kali.",
+      scopeUngrantedGated:
+        "Peta kerja ini memberikan alat secara eksplisit. Hingga suatu alat tercantum di sini atau di langkah di atasnya, penggunaannya memerlukan persetujuan satu kali — kecuali membalas dan membaca (message, read, memory_search), yang tetap tersedia kecuali jika langkah tersebut menolaknya atau kebijakan tata kelola melarangnya.",
       knowledgeNarrowing:
         "Langkah ini belum memiliki daftar izin pengetahuan, sehingga dapat mengkueri setiap fondasi yang terdaftar. Menambahkan entri pertama akan membatasinya hanya pada fondasi yang tercantum.",
       knowledgeUngranted:
@@ -300,8 +300,8 @@ export const id: TranslationMap = {
       skillNameInvalid:
         "Gunakan nama skill: huruf kecil, angka, dan tanda hubung tunggal, maksimal 64 karakter.",
       foundationIdInvalid: "Gunakan id fondasi: segmen huruf kecil bertitik, contoh acme.runbooks.",
-      ancestorGate:
-        "Langkah induk ({nodeIds}) memiliki allowlist sendiri untuk ini. Governance memeriksa setiap langkah dari root, jadi entri yang ditambahkan di sini tetap ditolak kecuali langkah-langkah tersebut juga mengizinkannya.",
+      ancestorGateApproval:
+        "Langkah induk ({nodeIds}) memiliki daftar izin sendiri untuk ini. Governance memeriksa setiap langkah dari root, jadi entri yang ditambahkan di sini hanya berjalan tanpa bertanya jika langkah-langkah tersebut juga mengizinkannya; jika tidak, diperlukan persetujuan satu kali. Tambahkan juga ke langkah-langkah tersebut, atau gunakan Denied tools untuk menolaknya secara langsung.",
       empty: "Masukkan nilai terlebih dahulu.",
       duplicate: "Entri tersebut sudah dideklarasikan pada langkah ini.",
       nodeMissing: "Langkah tersebut sudah tidak ada di tree; muat ulang dan coba lagi.",
@@ -388,8 +388,12 @@ export const id: TranslationMap = {
     capabilityGrants: {
       explicit: "Pemberian eksplisit",
       inherited: "Cakupan yang diwarisi",
-      explicitHint:
-        "Setiap langkah hanya dapat mengakses tools, skills, MCP server, dan knowledge foundations yang tercantum pada langkah tersebut atau langkah di atasnya. Langkah yang tidak mencantumkan apa pun tidak dapat mengakses apa pun.",
+      explicitHintGated:
+        "Setiap langkah dimaksudkan untuk menggunakan alat, Skills, server MCP, dan fondasi pengetahuan yang tercantum di dalamnya atau di langkah di atasnya. Skills, server MCP, dan fondasi pengetahuan yang tidak tercantum di suatu langkah akan ditahan sepenuhnya. ALAT yang tidak tercantum akan memunculkan persetujuan satu kali, dan membalas serta membaca (message, read, memory_search) tetap tersedia kecuali jika langkah atau kebijakan tata kelola melarangnya.",
+      explicitHintNotEnforcing:
+        "Work-map ini memberikan kapabilitas secara eksplisit, tetapi mode enterprise tidak diterapkan. Pemberian akses tool, skill, dan MCP dicatat tetapi tidak diterapkan. Pemberian akses knowledge tetap membatasi cakupan pengambilan di setiap mode.",
+      explicitHintOff:
+        "Peta kerja ini memberikan kapabilitas secara eksplisit, tetapi mediasi enterprise tidak aktif, sehingga tidak ada pemberian yang berlaku. Pemberian di bawah ini tersimpan dan akan berlaku setelah mediasi diaktifkan.",
       inheritedHint:
         "Daftar pada suatu langkah mempersempit apa yang diizinkan oleh langkah induknya; langkah yang cabangnya tidak mencantumkan apa pun dapat menggunakan tool atau skill apa pun.",
       turnOn: "Berikan secara eksplisit",

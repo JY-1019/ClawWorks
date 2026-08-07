@@ -250,7 +250,7 @@ async function main(): Promise<number> {
     );
     expectEqual(
       "after advancing, the previous step's tool is closed",
-      evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.blocked ?? false,
+      evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.requiresApproval ?? false,
       true,
     );
     // ---- 5b. The declared action executes through the PRODUCTION tool and
@@ -461,7 +461,7 @@ async function main(): Promise<number> {
     // Containment: naming a skill must not hand the step a tool it lacks.
     expectEqual(
       "inlining instructions does not widen the step's tool scope",
-      evaluateEnterpriseToolCall({ runId: inlinedId, toolName: "read" })?.blocked ?? false,
+      evaluateEnterpriseToolCall({ runId: inlinedId, toolName: "read" })?.requiresApproval ?? false,
       true,
     );
     endEnterpriseRun({ runId: inlinedId, status: "completed" });
@@ -604,7 +604,7 @@ async function main(): Promise<number> {
       expectEqual(
         "a step that drops knowledge_search cannot retrieve at all",
         evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "knowledge_search" })
-          ?.blocked ?? false,
+          ?.requiresApproval ?? false,
         true,
       );
       expectEqual(
@@ -628,7 +628,7 @@ async function main(): Promise<number> {
           mcp: {
             servers: { "acme-tracker": { command: "npx" }, "other-tracker": { command: "npx" } },
           },
-        } as never,
+        },
         // Names the tree, like every other run here: two trees are imported, and
         // without a planner this would bind whichever one wins the fallback.
         // The `routes` are inert for THIS fixture and deliberately so: selection
@@ -769,7 +769,7 @@ async function main(): Promise<number> {
       await beginEnterpriseRun({
         runId: exampleRunId,
         prompt: "check the handbook",
-        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } } as never,
+        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } },
         routePlanner: async () => ({
           kind: "decided",
           treeId: EXPLICIT_BUNDLE_TREE_ID,
@@ -793,14 +793,26 @@ async function main(): Promise<number> {
           ?.blocked ?? false,
         false,
       );
+      // Both halves of what the floor means, on the one step that exercises it.
+      // The read-only phase DENIES message explicitly, and a denial overrules the
+      // floor — leaving it out of the allow-list would only have made it
+      // approvable, which is the distinction the example exists to teach.
       expectEqual(
-        "but not reply, which only its root and a later step grant",
-        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "message" })?.blocked ?? false,
-        true,
+        "the read-only step's explicit denial overrules the core floor",
+        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "message" })?.decision.effect ??
+          "none",
+        "deny",
       );
       expectEqual(
-        "a tool the example never grants is denied",
-        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "exec" })?.blocked ?? false,
+        "but the floor still covers reading there, unlisted and undenied",
+        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "memory_search" })?.decision
+          .effect ?? "none",
+        "allow",
+      );
+      expectEqual(
+        "a tool the example never grants still cannot just run",
+        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "exec" })?.requiresApproval ??
+          false,
         true,
       );
       // SKILLS: exactly what the steps attach, nothing else.
@@ -897,7 +909,7 @@ async function main(): Promise<number> {
         runId: explicitRunId,
         prompt: "handle this",
         // Registered but never attached: the point of the check below.
-        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } } as never,
+        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } },
         routePlanner: async () => ({
           kind: "decided",
           treeId: EXPLICIT_TREE_ID,
@@ -911,8 +923,8 @@ async function main(): Promise<number> {
         false,
       );
       expectEqual(
-        "a tool no step grants is denied even though no list excludes it",
-        evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "memory_search" })?.blocked ??
+        "a tool no step grants cannot just run, even though no list excludes it",
+        evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "exec" })?.requiresApproval ??
           false,
         true,
       );
@@ -1010,7 +1022,7 @@ async function main(): Promise<number> {
       await beginEnterpriseRun({
         runId: orderRunId,
         prompt: "file it",
-        config: { mcp: { servers: { "my server": { command: "npx" } } } } as never,
+        config: { mcp: { servers: { "my server": { command: "npx" } } } },
         routePlanner: async () => ({
           kind: "decided",
           treeId: ORDER_TREE_ID,

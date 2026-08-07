@@ -635,7 +635,7 @@ export function buildEnterprisePromptSection(
   if (plan.capabilityGrants === "explicit") {
     lines.push(
       plan.mode === "enforce"
-        ? "This workflow grants capabilities explicitly: on each step you may use only the tools, skills, MCP servers, and knowledge sources listed on it or on a step above it. Anything not listed is denied, and a step that lists no tools has none."
+        ? "This workflow grants capabilities explicitly: each step lists the tools, skills, MCP servers, and knowledge sources it is meant to use, on it or on a step above it. A skill, MCP server or knowledge source a step does not list is simply not available to it — do not wait on one. An unlisted TOOL is usually different: calling it asks a human to approve that one call, so prefer what the step lists and expect a wait if you go outside it. Two exceptions are refused outright rather than asked about — an ontology action from a step that does not opt into writes, and an MCP server no step on your path attached. Replying and reading (message, read, memory_search) stay available unless a step's Denied tools line names them or a governance policy denies them; a step that lists no tools still has those."
         : // Observe records decisions without blocking, so the deny-by-default
           // half is not in force. A step's own knowledge list still scopes
           // retrieval here, as it does in every mode — promising otherwise would
@@ -658,7 +658,7 @@ export function buildEnterprisePromptSection(
     // in BOTH modes is that the run stays on this step until the tool is called.
     const laterStepScope =
       plan.mode === "enforce"
-        ? "anything granted to a later step stays denied until you reach it"
+        ? "a tool granted only on a later step is not yours yet — calling an ordinary one before you get there asks a human to approve that single call, while the two exceptions above stay refused"
         : "a later step's scope only applies once you reach it";
     lines.push(
       `This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step 1. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,

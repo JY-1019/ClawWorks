@@ -572,10 +572,12 @@ describe("enterprise capability grants (browser)", () => {
     expect(container.textContent ?? "").not.toContain("grants tools explicitly");
   });
 
-  it("tells a step with no tools that it is ungranted, not unrestricted", () => {
-    // The inherited default warns that the first entry NARROWS the step; under
-    // explicit grants the step reaches nothing until something is listed, so the
-    // narrowing wording would state the opposite.
+  it("tells a step with no tools that using one needs approval, not that it is unrestricted", () => {
+    // The inherited default warns that the first entry NARROWS the step. Under
+    // explicit grants the opposite is true: nothing is granted until something is
+    // listed, and reaching outside that raises a one-off approval rather than
+    // running. The operator must not be shown a stricter boundary than the runtime
+    // enforces, nor a looser one.
     const container = renderInto(
       createProps({
         section: "worktree",
@@ -585,7 +587,7 @@ describe("enterprise capability grants (browser)", () => {
       }),
     );
     const text = container.textContent ?? "";
-    expect(text).toContain("reaches no tool until one is listed");
+    expect(text).toContain("needs a one-off approval");
     expect(text).not.toContain("it allows every tool except any it denies");
   });
 

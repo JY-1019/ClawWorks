@@ -328,7 +328,7 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
         ${adder.constrainingAncestors?.length
           ? html`<div class="callout">
-              ${t("enterprise.entryDraft.ancestorGate", {
+              ${t("enterprise.entryDraft.ancestorGateApproval", {
                 nodeIds: adder.constrainingAncestors.join(", "),
               })}
             </div>`
@@ -491,7 +491,7 @@ function renderBindingPicker(
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
         ${adder.constrainingAncestors?.length
           ? html`<div class="callout">
-              ${t("enterprise.entryDraft.ancestorGate", {
+              ${t("enterprise.entryDraft.ancestorGateApproval", {
                 nodeIds: adder.constrainingAncestors.join(", "),
               })}
             </div>`
@@ -889,7 +889,7 @@ function renderEnterpriseTools(props: EnterpriseProps): TemplateResult {
       ${renderCatalogAgentScope(props.catalogAgentId)}${renderCatalogUsageScope(props)}
       <div class="muted" style="margin-top: 8px;">
         ${workMapGrantsExplicitly(props)
-          ? t("enterprise.toolsTab.attachHintGranted")
+          ? t("enterprise.toolsTab.attachHintGrantedGated")
           : t("enterprise.toolsTab.attachHint")}
       </div>
       ${props.toolGroups.length === 0
@@ -1964,18 +1964,33 @@ function renderCapabilityGrants(
   tree: EnterpriseTreeDetail,
   props: EnterpriseProps,
 ): TemplateResult {
-  const explicit = tree.capabilityGrants === "explicit";
+  // Two different questions, and conflating them inverts the toggle. What the
+  // work-map is CONFIGURED as drives the chip and the button: fold the mode in
+  // here and an explicit map viewed in observe reads "Inherited scopes" with a
+  // "Grant explicitly" button that removes the grant an operator was trying to
+  // add. What the run currently ENFORCES drives only the hint, because the
+  // approval wording is an enforce-mode claim — observe records without gating
+  // and `off` governs nothing.
+  const configuredExplicit = tree.capabilityGrants === "explicit";
+  const enforcingExplicit = configuredExplicit && props.enterpriseMode === "enforce";
   return html`
     <div class="row" style="justify-content: space-between; gap: 8px; margin-top: 8px;">
       <div class="muted">
-        <span class="chip ${explicit ? "chip-ok" : ""}">
-          ${explicit
+        <span class="chip ${configuredExplicit ? "chip-ok" : ""}">
+          ${configuredExplicit
             ? t("enterprise.capabilityGrants.explicit")
             : t("enterprise.capabilityGrants.inherited")}
         </span>
-        ${explicit
-          ? t("enterprise.capabilityGrants.explicitHint")
-          : t("enterprise.capabilityGrants.inheritedHint")}
+        ${enforcingExplicit
+          ? t("enterprise.capabilityGrants.explicitHintGated")
+          : configuredExplicit
+            ? // `off` bypasses mediation entirely, so neither "recorded" nor
+              // "knowledge still scopes retrieval" is true there — observe is the
+              // only non-enforcing mode where those hold.
+              props.enterpriseMode === "off"
+              ? t("enterprise.capabilityGrants.explicitHintOff")
+              : t("enterprise.capabilityGrants.explicitHintNotEnforcing")
+            : t("enterprise.capabilityGrants.inheritedHint")}
       </div>
       ${props.canEdit
         ? html`<button
@@ -1984,7 +1999,7 @@ function renderCapabilityGrants(
             ?disabled=${props.treeSaving}
             @click=${props.onToggleCapabilityGrants}
           >
-            ${explicit
+            ${configuredExplicit
               ? t("enterprise.capabilityGrants.turnOff")
               : t("enterprise.capabilityGrants.turnOn")}
           </button>`
@@ -2125,8 +2140,8 @@ function nodeBindingAdders(
       scopeWarning:
         allowedTools.length === 0
           ? workMapGrantsExplicitly(props)
-            ? t("enterprise.entryDraft.scopeUngranted")
-            : t("enterprise.entryDraft.scopeNarrowing")
+            ? t("enterprise.entryDraft.scopeUngrantedGated")
+            : t("enterprise.entryDraft.scopeNarrowingApproval")
           : null,
       constrainingAncestors: constrainingAncestorIds(props, node.id, "allowedTools"),
     },

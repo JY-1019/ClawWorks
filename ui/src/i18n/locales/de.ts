@@ -221,8 +221,8 @@ export const de: TranslationMap = {
         "Der konfigurierte Tool-Katalog, gruppiert wie die Laufzeitumgebung sie gruppiert. Ein Plugin-Tool wird aufgelistet, sobald es deklariert ist, auch bevor seine Konfiguration aufgelöst wird. Channel- und MCP-Tools existieren nur innerhalb einer aktiven Sitzung – daher zeigt dies, was konfiguriert werden kann, und nicht, was gerade aktiv ist.",
       attachHint:
         "Dies ist der Katalog. Um einem Schritt ein Tool zuzuweisen, öffnen Sie den Worktree, wählen Sie den Schritt aus und fügen Sie es unter Schrittbindungen hinzu.",
-      attachHintGranted:
-        "Diese Work-Map gewährt Tools explizit. Ein Schritt kann nur die Tools aufrufen, die er selbst auflistet, oder die, die ein übergeordneter Schritt auflistet. Jedes andere Tool in diesem Katalog wird abgelehnt.",
+      attachHintGrantedGated:
+        "Diese Arbeitsübersicht vergibt Tools explizit. Ein Schritt soll die Tools verwenden, die er auflistet, oder die, die ein übergeordneter Schritt auflistet. Alles andere löst eine einmalige Genehmigung aus, anstatt ausgeführt zu werden, und wird abgelehnt, wenn niemand antwortet. Antworten und Lesen (message, read, memory_search) bleiben in jedem Schritt verfügbar, es sei denn, ein Schritt oder eine Governance-Richtlinie verweigert sie.",
       empty: "Auf diesem Gateway sind keine Tools verfügbar.",
       toolCount: "{count} Tool(s)",
       optionalBadge: "optional",
@@ -297,10 +297,10 @@ export const de: TranslationMap = {
     entryDraft: {
       add: "Hinzufügen",
       none: "Noch keine Einträge vorhanden.",
-      scopeNarrowing:
-        "Dieser Schritt hat noch keine Tool-Erlaubnisliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Sobald der erste Eintrag hinzugefügt wird, wird er zu einer Erlaubnisliste und nur die aufgeführten Tools bleiben verfügbar.",
-      scopeUngranted:
-        "Diese Work-Map gewährt Tools explizit. Der Schritt erreicht kein Tool, bis eines hier oder in einem darüberliegenden Schritt aufgeführt ist.",
+      scopeNarrowingApproval:
+        "Dieser Schritt hat noch keine Tool-Positivliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Durch Hinzufügen des ersten Eintrags wird eine Positivliste erstellt. Die aufgelisteten Tools werden frei ausgeführt, alles andere erfordert eine einmalige Genehmigung.",
+      scopeUngrantedGated:
+        "Diese Arbeitsübersicht vergibt Tools explizit. Solange ein Tool nicht hier oder in einem übergeordneten Schritt aufgelistet ist, erfordert seine Verwendung eine einmalige Genehmigung — mit Ausnahme von Antworten und Lesen (message, read, memory_search), die verfügbar bleiben, es sei denn, ein Schritt oder eine Governance-Richtlinie verweigert sie.",
       knowledgeNarrowing:
         "Dieser Schritt hat noch keine Wissens-Allowlist, daher kann er jede registrierte Foundation abfragen. Der erste Eintrag beschränkt ihn auf die aufgeführten Foundations.",
       knowledgeUngranted:
@@ -309,8 +309,8 @@ export const de: TranslationMap = {
         "Verwenden Sie einen Skill-Namen: Kleinbuchstaben, Ziffern und einzelne Bindestriche, maximal 64 Zeichen.",
       foundationIdInvalid:
         "Verwenden Sie eine Foundation-ID: kleingeschriebene, durch Punkte getrennte Segmente, zum Beispiel acme.runbooks.",
-      ancestorGate:
-        "Übergeordnete Schritte ({nodeIds}) haben eigene Zulassungslisten dafür. Die Governance prüft jeden Schritt vom Ursprung aus, sodass ein hier hinzugefügter Eintrag weiterhin abgelehnt wird, wenn diese Schritte ihn nicht ebenfalls zulassen.",
+      ancestorGateApproval:
+        "Übergeordnete Schritte ({nodeIds}) haben dafür ihre eigene Erlaubnisliste. Die Governance prüft jeden Schritt ab dem Stammknoten, sodass ein hier hinzugefügter Eintrag nur ohne Nachfrage ausgeführt wird, wenn diese Schritte ihn ebenfalls erlauben; andernfalls ist eine einmalige Genehmigung erforderlich. Fügen Sie ihn auch zu diesen Schritten hinzu oder verwenden Sie abgelehnte Tools, um ihn direkt zu verweigern.",
       empty: "Geben Sie zuerst einen Wert ein.",
       duplicate: "Dieser Eintrag ist für diesen Schritt bereits vorhanden.",
       nodeMissing:
@@ -401,8 +401,12 @@ export const de: TranslationMap = {
     capabilityGrants: {
       explicit: "Explizite Berechtigungen",
       inherited: "Geerbte Bereiche",
-      explicitHint:
-        "Jeder Schritt erreicht nur die Tools, Skills, MCP-Server und Wissensgrundlagen, die er oder ein übergeordneter Schritt auflistet. Ein Schritt, der keine auflistet, erreicht keine.",
+      explicitHintGated:
+        "Jeder Schritt soll die Tools, Skills, MCP-Server und Wissensgrundlagen verwenden, die er oder ein übergeordneter Schritt auflistet. Skills, MCP-Server und Wissensgrundlagen, die ein Schritt nicht auflistet, werden vollständig zurückgehalten. Ein nicht aufgelistetes Tool löst stattdessen eine einmalige Genehmigung aus, und Antworten und Lesen (message, read, memory_search) bleiben verfügbar, es sei denn, ein Schritt oder eine Governance-Richtlinie verweigert sie.",
+      explicitHintNotEnforcing:
+        "Diese Work-Map gewährt Berechtigungen explizit, aber der Enterprise-Modus erzwingt diese nicht. Tool-, Skill- und MCP-Berechtigungen werden aufgezeichnet, aber nicht angewendet. Wissensberechtigungen schränken den Abruf in jedem Modus ein.",
+      explicitHintOff:
+        "Diese Work-Map gewährt Fähigkeiten explizit, aber die Unternehmensvermittlung ist nicht aktiv, sodass keine Gewährung gilt. Die unten aufgeführten Gewährungen sind gespeichert und treten in Kraft, sobald die Vermittlung aktiviert wird.",
       inheritedHint:
         "Die Listen eines Schritts schränken ein, was seine übergeordneten Elemente erlaubt haben; ein Schritt, dessen Zweig nichts auflistet, kann jedes Tool oder jede Skill verwenden.",
       turnOn: "Explizit gewähren",

@@ -1074,6 +1074,17 @@ type RunBeforeToolCallHookArgs = {
    * tool-name grammar rejects.
    */
   mcpTool?: { serverName: string; safeServerName: string; toolName: string };
+  /**
+   * The caller is answering a synchronous deadline it cannot extend — a native
+   * PreToolUse hook, which the harness kills after a few seconds
+   * (DEFAULT_RELAY_TIMEOUT_MS is 5s; plugin approvals default to 120s, and Codex
+   * enforces its own hook timeout in codex-rs/hooks/src/engine/command_runner.rs).
+   * No human answers in that window, so an approval raised here is a hang followed
+   * by a refusal — and a late answer would be recorded as an approval for a call
+   * the harness already rejected. Enterprise scope approvals fall back to a
+   * refusal instead; see applyEnterpriseApproval.
+   */
+  approvalUnavailable?: boolean;
 };
 
 export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Promise<HookOutcome> {
@@ -1191,6 +1202,25 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
     };
   }
 
+  // BEFORE the chain, not after: a trusted policy or plugin hook can open its own
+  // approval, and on a caller that cannot wait that request blocks past the
+  // harness's deadline exactly like ours would. Refusing here means no approval of
+  // any kind is opened for a call the step's scope never covered.
+  const unapprovable = refuseUnapprovableEnterpriseScope({
+    args,
+    toolName,
+    verdict: enterpriseVerdict,
+    finalParams: params,
+    // The action is the SUBJECT of an invoke_action refusal. Without it the trail
+    // says only that invoke_action was refused, which tells an operator nothing
+    // about which of a step's actions was attempted — and every other approval
+    // path already records it.
+    ...(invokedActionId !== undefined ? { actionId: invokedActionId } : {}),
+  });
+  if (unapprovable) {
+    return unapprovable;
+  }
+
   // Run the trusted-policy / plugin-hook / final-approval chain first, then
   // apply the enterprise approval (if any) as the LAST gate. Placing it last
   // means a deferred enterprise approval never skips the chain, and it honors
@@ -1279,6 +1309,55 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
 }
 
 /**
+ * Refuse an out-of-scope call outright when nobody can answer an approval.
+ *
+ * A synchronous native PreToolUse hook is killed by the harness after a few
+ * seconds, while a plugin approval waits far longer — so a prompt raised there
+ * stalls the call, is refused on timeout anyway, and can record a late "approved"
+ * for a call the harness already rejected. Refusing immediately keeps the same
+ * boundary without the stall or the false audit entry.
+ *
+ * Scoped to ONTOLOGY-sourced approvals: an operator-configured require_approval
+ * policy predates this path and was chosen deliberately, so it keeps its own
+ * behavior. Returns undefined when the call is approvable normally.
+ */
+function refuseUnapprovableEnterpriseScope(params: {
+  args: RunBeforeToolCallHookArgs;
+  toolName: string;
+  actionId?: string;
+  verdict: ReturnType<typeof evaluateEnterpriseToolCall>;
+  finalParams: unknown;
+}): Extract<HookOutcome, { blocked: true }> | undefined {
+  const { args, verdict } = params;
+  if (!args.approvalUnavailable || !verdict?.requiresApproval) {
+    return undefined;
+  }
+  // Keyed on the OMISSION, not on `source`: when a policy also matches the same
+  // call its decision is the one returned, so a source check would let exactly
+  // that combination open a 120s prompt on a 5s hook. An operator's standalone
+  // require_approval policy still keeps its own behavior — it carries no omission.
+  if (!verdict.decision.ontologyOmission) {
+    return undefined;
+  }
+  recordEnterpriseApprovalResolution({
+    runId: args.ctx?.runId ?? "",
+    verdict,
+    toolName: params.toolName,
+    ...(params.actionId !== undefined ? { actionId: params.actionId } : {}),
+    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+    outcome: "denied",
+    resolution: "no-approval-channel",
+  });
+  return {
+    blocked: true,
+    kind: "veto",
+    deniedReason: "enterprise-governance",
+    reason: `${verdict.decision.reason} This runtime cannot wait for a human decision, so the call was refused rather than approved.`,
+    params: params.finalParams,
+  };
+}
+
+/**
  * Enterprise require_approval gate, applied after the rest of the
  * before-tool-call chain so deferral is safe and budget-aware.
  */
@@ -1291,6 +1370,19 @@ async function applyEnterpriseApproval(params: {
   chainOutcome: Extract<HookOutcome, { blocked: false }>;
 }): Promise<HookOutcome> {
   const { args, toolName, actionId, verdict, chainOutcome } = params;
+  // Re-checked on the FINAL verdict: the chain can revise a call into an approval
+  // (a hook filling in an ontology action), and that revision must not slip past
+  // the no-channel refusal the pre-chain check already applied.
+  const unapprovable = refuseUnapprovableEnterpriseScope({
+    args,
+    toolName,
+    verdict,
+    finalParams: chainOutcome.params,
+    ...(actionId !== undefined ? { actionId } : {}),
+  });
+  if (unapprovable) {
+    return unapprovable;
+  }
   const approvalSettings = verdict.decision.approval;
   const timeoutBehavior = approvalSettings?.timeoutBehavior ?? "deny";
   const enterpriseRunId = args.ctx?.runId ?? "";

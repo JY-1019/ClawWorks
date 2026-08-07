@@ -217,8 +217,8 @@ export const fr: TranslationMap = {
         "Le catalogue d'outils configuré, regroupé comme le runtime les regroupe. Un outil de plugin est listé dès qu'il est déclaré, même avant que sa configuration ne soit résolue, et les outils de canal et MCP n'existent que dans une session active. Ceci représente donc ce qui peut être configuré plutôt que ce qui est actif en ce moment.",
       attachHint:
         "Ceci est le catalogue. Pour qu'une étape en appelle un, ouvrez Worktree, sélectionnez l'étape et ajoutez-le sous Liaisons de l'étape.",
-      attachHintGranted:
-        "Ce work-map accorde les outils explicitement. Une étape ne peut appeler que les outils qu'elle liste, ou ceux listés par une étape parente. Tout autre outil de ce catalogue est refusé.",
+      attachHintGrantedGated:
+        "Cette feuille de route accorde les outils explicitement. Une étape est censée utiliser les outils qu'elle liste, ou ceux listés par une étape parente. Tout autre outil déclenche une approbation ponctuelle au lieu de s'exécuter, et est refusé si personne ne répond. La réponse et la lecture (message, read, memory_search) restent disponibles à chaque étape, sauf si une étape ou une politique de gouvernance les refuse.",
       empty: "Aucun outil n'est disponible sur ce Gateway.",
       toolCount: "{count} outil(s)",
       optionalBadge: "optionnel",
@@ -290,10 +290,10 @@ export const fr: TranslationMap = {
     entryDraft: {
       add: "Ajouter",
       none: "Aucune déclaration pour le moment.",
-      scopeNarrowing:
-        "Cette étape n'a pas encore de liste d'outils autorisés, elle permet donc tous les outils sauf ceux qu'elle refuse. L'ajout de la première entrée la transforme en liste d'autorisation et seuls les outils listés restent disponibles.",
-      scopeUngranted:
-        "Cette carte de travail accorde les outils de manière explicite. L'étape n'a accès à aucun outil tant qu'un outil n'est pas listé ici ou dans une étape parente.",
+      scopeNarrowingApproval:
+        "Cette étape n'a pas encore de liste d'outils autorisés, elle permet donc tous les outils sauf ceux qu'elle refuse. L'ajout de la première entrée la transforme en liste d'autorisation. Les outils listés s'exécutent librement et tout le reste nécessite une approbation ponctuelle.",
+      scopeUngrantedGated:
+        "Cette feuille de route accorde les outils explicitement. Tant qu'un outil n'est pas listé ici ou sur une étape parente, son utilisation nécessite une approbation ponctuelle — à l'exception de la réponse et de la lecture (message, read, memory_search), qui restent disponibles sauf si une étape ou une politique de gouvernance les refuse.",
       knowledgeNarrowing:
         "Cette étape n'a pas encore de liste d'autorisation de connaissances, elle peut donc interroger toutes les fondations enregistrées. L'ajout de la première entrée la restreint aux fondations listées.",
       knowledgeUngranted:
@@ -302,8 +302,8 @@ export const fr: TranslationMap = {
         "Utilisez un nom de skill : lettres minuscules, chiffres et tirets simples, 64 caractères maximum.",
       foundationIdInvalid:
         "Utilisez un id de fondation : segments en minuscules séparés par des points, par exemple acme.runbooks.",
-      ancestorGate:
-        "Les étapes parentes ({nodeIds}) ont leur propre liste d'autorisation pour ceci. La gouvernance vérifie chaque étape depuis la racine, donc une entrée ajoutée ici sera refusée si ces étapes ne l'autorisent pas également.",
+      ancestorGateApproval:
+        "Les étapes parentes ({nodeIds}) ont leur propre liste d'autorisation pour ceci. La gouvernance vérifie chaque étape depuis la racine, donc une entrée ajoutée ici ne s'exécute sans demande que si ces étapes l'autorisent également ; sinon, une approbation ponctuelle est nécessaire. Ajoutez-la également à ces étapes, ou utilisez les outils refusés pour la rejeter complètement.",
       empty: "Saisissez d'abord une valeur.",
       duplicate: "Cette entrée est déjà déclarée sur cette étape.",
       nodeMissing: "Cette étape ne figure plus dans l'arborescence ; rechargez et réessayez.",
@@ -391,8 +391,12 @@ export const fr: TranslationMap = {
     capabilityGrants: {
       explicit: "Autorisations explicites",
       inherited: "Portées héritées",
-      explicitHint:
-        "Chaque étape n'accède qu'aux outils, Skills, serveurs MCP et bases de connaissances qu'elle ou une étape parente répertorie. Une étape qui n'en répertorie aucun n'accède à aucun.",
+      explicitHintGated:
+        "Chaque étape est censée utiliser les outils, Skills, serveurs MCP et bases de connaissances qu'elle ou une étape parente liste. Les Skills, serveurs MCP et bases de connaissances non listés par une étape sont refusés d'emblée. Un outil non listé déclenche une approbation ponctuelle, et la réponse et la lecture (message, read, memory_search) restent disponibles sauf si une étape ou une politique de gouvernance les refuse.",
+      explicitHintNotEnforcing:
+        "Cette carte de travail accorde des capacités explicitement, mais le mode entreprise n'est pas appliqué. Les autorisations d'outils, de Skills et de MCP sont enregistrées plutôt qu'appliquées. Les autorisations de connaissances délimitent toujours la recherche dans chaque mode.",
+      explicitHintOff:
+        "Cette carte de travail accorde des capacités explicitement, mais la médiation d'entreprise n'est pas active, donc aucun accord ne s'applique. Les accords ci-dessous sont enregistrés et prendront effet une fois la médiation activée.",
       inheritedHint:
         "Les listes d'une étape restreignent ce que ses ancêtres ont autorisé ; une étape dont la branche ne liste rien peut utiliser n'importe quel outil ou skill.",
       turnOn: "Accorder explicitement",

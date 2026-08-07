@@ -138,11 +138,49 @@ function actionSelectorMatches(
   return params.coveringActions.some((action) => matchesSelector(action.id, policy.actions));
 }
 
+/**
+ * OpenClaw's own tools that `capabilityGrants: "explicit"` never withholds.
+ *
+ * The deny-by-default contract is about the ENTERPRISE capabilities an operator
+ * assigns to a step — MCP servers, skills, knowledge foundations, ontology actions
+ * — not about whether the agent can speak or look at anything. Without a floor, a
+ * step granted one knowledge source could read the handbook and then be unable to
+ * reply, which is not a governance decision anyone made; it is what silence
+ * happened to mean.
+ *
+ * Deliberately reply-and-read only. `exec`, `write`, `edit` and `apply_patch` stay
+ * off it: those are the ones an operator writes an explicit work-map to control,
+ * and a floor that included them would make enforce mode unable to withhold shell
+ * or file writes per step. `session_status` is off it for the same reason — it
+ * reads state but also UPDATES it (model overrides, visibility, task status), so
+ * it is a capability rather than a courtesy.
+ *
+ * `message` is the one entry that is not purely read-only, and it is here on
+ * purpose: being able to answer is the whole reason the floor exists. Its
+ * non-send actions ride along, so a work-map that must gate those denies
+ * `message` explicitly — `deniedTools` and governance policies both overrule the
+ * floor.
+ *
+ * Named literals because this IS the contract — it is documented in
+ * docs/concepts/clawworks-enterprise.md and an operator reasons about it directly.
+ */
+const CORE_FLOOR_TOOLS: ReadonlySet<string> = new Set(["message", "read", "memory_search"]);
+
+function isCoreFloorTool(toolName: string): boolean {
+  return CORE_FLOOR_TOOLS.has(toolName.trim().toLowerCase());
+}
+
 /** Why a step's tool scope refused the call; shapes the denial an operator reads. */
 type OntologyScopeViolation = {
   node: EnterprisePlanNode;
-  /** `"scope"`: a step's own lists reject it. `"ungranted"`: no step ever named it. */
-  kind: "scope" | "ungranted";
+  /**
+   * `"denied"`: an operator's `deniedTools` names it — a decision, enforced hard.
+   * `"scope"`: a step's allow-list simply does not mention it.
+   * `"ungranted"`: under explicit grants, no step ever named it.
+   * The last two are omissions rather than decisions, so they ask a human instead
+   * of failing the call outright.
+   */
+  kind: "denied" | "scope" | "ungranted";
 };
 
 /**
@@ -174,6 +212,12 @@ function ontologyScopeViolation(params: {
   grantsExplicitly: boolean;
 }): OntologyScopeViolation | null {
   const { path, toolName, mcpAttached, ownership, call } = params;
+  // Under deny-by-default, silence must not take away the ability to answer or to
+  // look at anything. A work-map that grants one knowledge source would otherwise
+  // produce a step that can read the handbook and cannot reply — see
+  // CORE_FLOOR_TOOLS. Only for a non-MCP call: an MCP tool is a capability the
+  // deployment added, never one of OpenClaw's own.
+  const onCoreFloor = params.grantsExplicitly && !mcpAttached && isCoreFloorTool(toolName);
   // One MCP tool reaches this gate under two spellings — `<server>__<tool>` from
   // the embedded materializer and `mcp__<server>__<tool>` from a Claude-style
   // harness — and an operator writes ONE of them in deniedTools. Checking only
@@ -190,35 +234,50 @@ function ontologyScopeViolation(params: {
   // An operator writes the configured id in `deniedTools`, so both sides are
   // compared with punctuation folded to `_`. Globs survive (`*` is preserved), and
   // folding can only ever deny MORE — the safe direction for an explicit denial.
+  // PASS 1 — DENIALS, across the WHOLE path.
+  //
+  // A separate pass, and it has to be. An explicit `deniedTools` entry is a
+  // decision and outranks any omission, but a single loop that returned on the
+  // first allow-list miss would exit before reaching a DESCENDANT that denies —
+  // and the caller turns an omission into an approvable prompt, so that ordering
+  // would let a human Allow-once a call the active step explicitly denied.
   for (const node of path) {
-    const { ontology } = node;
-    const denyList = ontology.deniedTools?.length ? { deny: [...ontology.deniedTools] } : null;
-    const foldedDeny =
-      mcpAttached && denyList ? { deny: denyList.deny.map((entry) => foldNative(entry)) } : null;
-    const allowed = (identity: string): boolean =>
-      (!denyList || isToolAllowedByPolicyName(identity, denyList)) &&
-      (!foldedDeny || isToolAllowedByPolicyName(foldNative(identity), foldedDeny));
-    if (mcpAttached) {
-      const denied = denyList !== null && denyIdentities.some((identity) => !allowed(identity));
-      const reachedByRewrite =
-        denyList !== null &&
-        rewritten !== null &&
-        denyList.deny.some((entry) =>
-          rewrittenNameReachesCall(entry, rewritten.namespaces, rewritten.toolParts),
-        );
-      if (denied || reachedByRewrite) {
-        return { node, kind: "scope" };
-      }
+    const denyList = node.ontology.deniedTools?.length
+      ? { deny: [...node.ontology.deniedTools] }
+      : null;
+    if (!denyList) {
       continue;
     }
-    const scoped = Boolean(ontology.allowedTools?.length || ontology.deniedTools?.length);
-    if (
-      scoped &&
-      !isToolAllowedByPolicyName(toolName, {
-        ...(ontology.allowedTools ? { allow: [...ontology.allowedTools] } : {}),
-        ...denyList,
-      })
-    ) {
+    const foldedDeny = mcpAttached
+      ? { deny: denyList.deny.map((entry) => foldNative(entry)) }
+      : null;
+    const allowed = (identity: string): boolean =>
+      isToolAllowedByPolicyName(identity, denyList) &&
+      (!foldedDeny || isToolAllowedByPolicyName(foldNative(identity), foldedDeny));
+    const reachedByRewrite =
+      rewritten !== null &&
+      denyList.deny.some((entry) =>
+        rewrittenNameReachesCall(entry, rewritten.namespaces, rewritten.toolParts),
+      );
+    if (denyIdentities.some((identity) => !allowed(identity)) || reachedByRewrite) {
+      return { node, kind: "denied" };
+    }
+  }
+  if (mcpAttached) {
+    // The attachment IS the grant for that server's tools, so nothing below
+    // applies: only the explicit denials above can take one back.
+    return null;
+  }
+  if (onCoreFloor) {
+    // The floor answers the ALLOW half only, and pass 1 already gave an operator's
+    // denial its say. Nothing further can refuse a floor tool.
+    return null;
+  }
+  // PASS 2 — allow-list narrowing. A list that simply does not mention the tool is
+  // an omission a real request can outgrow, not a decision somebody made.
+  for (const node of path) {
+    const allow = node.ontology.allowedTools;
+    if (allow?.length && !isToolAllowedByPolicyName(toolName, { allow: [...allow] })) {
       return { node, kind: "scope" };
     }
   }
@@ -227,7 +286,7 @@ function ontologyScopeViolation(params: {
   // asks the one question the per-level gates cannot — did ANY level name it?
   // Skipped for an attached MCP call: the attachment is that grant, and requiring
   // the tool names too would make attaching in the UI insufficient.
-  if (params.grantsExplicitly && !mcpAttached) {
+  if (params.grantsExplicitly) {
     const granted = path.some((node) => {
       const allow = node.ontology.allowedTools;
       return (
@@ -624,21 +683,48 @@ export function evaluateToolCallGovernance(params: {
     call,
     grantsExplicitly: params.plan.capabilityGrants === "explicit",
   });
-  if (violation) {
+  if (violation?.kind === "denied") {
+    // An explicit `deniedTools` entry is an operator decision. Escalating it to a
+    // prompt would make writing one mean nothing.
     return {
       effect: "deny",
       policyId: null,
       source: "ontology",
-      // Two different fixes, so two different sentences: a scope violation means
-      // some step narrowed the tool away, while an ungranted call means nobody
-      // ever attached it — and an operator reading the first would look at the
-      // wrong step.
-      reason:
-        violation.kind === "ungranted"
-          ? `tool "${params.toolName}" is not granted to workflow step "${violation.node.nodeId}"; this work-map grants capabilities explicitly, so a step (or one of its ancestors) must name it in ontology.allowedTools`
-          : `tool "${params.toolName}" is outside the ontology tool scope of workflow step "${violation.node.nodeId}"`,
+      reason: `tool "${params.toolName}" is denied at workflow step "${violation.node.nodeId}" by ontology.deniedTools`,
     };
   }
+  const approvableOmission: GovernanceDecision | null = violation
+    ? {
+        // ASK rather than dead-end. A work-map cannot anticipate every tool a real
+        // request needs, and a silent refusal leaves the operator with a run that
+        // failed for reasons only the trace explains. Escalating to a human keeps
+        // the boundary — nothing runs unapproved — while making the boundary
+        // negotiable at the moment it actually binds.
+        //
+        // This is the SCOPE lane only. A `deny` an operator wrote in
+        // enterprise.governance.policies stays a hard block below: escalating that
+        // would make writing a deny rule mean nothing.
+        //
+        // Fails closed by construction: severity/timeout default to deny, and a run
+        // with no interactive channel (cron, headless) resolves the approval as a
+        // veto rather than passing it — see applyEnterpriseApproval.
+        effect: "require_approval",
+        approval: { severity: "warning", timeoutBehavior: "deny" },
+        policyId: null,
+        source: "ontology",
+        ontologyOmission: true,
+        // Two different fixes, so two different sentences: a scope violation means
+        // some step narrowed the tool away, while an ungranted call means nobody
+        // ever attached it — and an operator reading the first would look at the
+        // wrong step.
+        // Also the text a human reads on the approval prompt, so each says what to
+        // decide AND where the lasting fix belongs.
+        reason:
+          violation.kind === "ungranted"
+            ? `tool "${params.toolName}" is not granted to workflow step "${violation.node.nodeId}". This work-map grants capabilities explicitly, so allowing it here is a one-off; to grant it for good, name it in that step's ontology.allowedTools (or an ancestor's).`
+            : `tool "${params.toolName}" is outside the ontology tool scope of workflow step "${violation.node.nodeId}". Allowing it here is a one-off; to change it for good, widen that step's ontology.allowedTools.`,
+      }
+    : null;
 
   const coveringActions = actionsCoveringTool(path, call);
   const declaredActions = new Set(
@@ -662,6 +748,34 @@ export function evaluateToolCallGovernance(params: {
   const subject =
     params.actionId !== undefined ? `action "${params.actionId}"` : `tool "${params.toolName}"`;
   const decision = resolvePolicyDecision(matching, () => subject);
+  if (approvableOmission) {
+    // Policies are evaluated FIRST even though the ontology already refused, so
+    // the documented precedence (deny > require_approval) still holds: a hard deny
+    // an operator wrote must not become a prompt a human can wave through just
+    // because the step's scope happened to omit the tool too. A policy that itself
+    // asks for approval is preferred over ours, since it carries the operator's own
+    // severity and timeout. Anything weaker — allow, audit — does not widen an
+    // ontology scope, which is the first layer and has already spoken.
+    if (decision?.effect === "deny") {
+      return decision;
+    }
+    if (decision?.effect === "require_approval") {
+      // Keep the operator's prompt — their severity and timeout length — but never
+      // their allow-on-timeout. An ontology omission is fail-closed by contract, so
+      // a policy that would let an unanswered prompt through must not relax a call
+      // the step's scope never covered in the first place. Strictest wins.
+      return {
+        ...decision,
+        approval: { ...decision.approval, timeoutBehavior: "deny" },
+        // The scope never covered this call, and returning the POLICY's decision
+        // must not lose that: `source` now reads "policy", so a caller that has to
+        // fail closed where no human can answer would otherwise treat this as an
+        // operator's deliberate prompt and wait on it.
+        ontologyOmission: true,
+      };
+    }
+    return approvableOmission;
+  }
   if (decision) {
     return decision;
   }

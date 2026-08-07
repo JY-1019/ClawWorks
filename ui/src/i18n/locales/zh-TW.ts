@@ -211,8 +211,8 @@ export const zh_TW: TranslationMap = {
         "已設定的工具目錄，按執行階段的分組方式呈現。外掛工具在宣告後即會列出，即使其設定尚未解析；而頻道與 MCP 工具僅存在於即時工作階段中，因此此處顯示的是可設定的內容，而非目前正在運作的項目。",
       attachHint:
         "這是目錄。若要讓步驟呼叫其中的工具，請開啟 Worktree，選取步驟，然後在「Step bindings」下新增。",
-      attachHintGranted:
-        "此工作地圖明確授予工具權限。每個步驟只能呼叫其自身列出的工具，或其上層步驟列出的工具。目錄中的所有其他工具均被拒絕。",
+      attachHintGrantedGated:
+        "此工作地圖會明確授予工具。每個步驟應使用其列出的工具，或其上層步驟列出的工具。其他任何工具將觸發一次性核准請求而非直接執行，若無人回應則會被拒絕。回覆與讀取功能（message、read、memory_search）在每個步驟中皆可使用，除非某個步驟拒絕或治理政策禁止。",
       empty: "此 Gateway 上沒有可用的工具。",
       toolCount: "{count} 個工具",
       optionalBadge: "選用",
@@ -280,18 +280,18 @@ export const zh_TW: TranslationMap = {
     entryDraft: {
       add: "新增",
       none: "尚未宣告。",
-      scopeNarrowing:
-        "此步驟尚未設定工具允許清單，因此除了被拒絕的工具外，所有工具均可使用。新增第一個項目後，將轉為允許清單模式，僅列出的工具可供使用。",
-      scopeUngranted:
-        "此工作地圖明確授予工具。該步驟在此處或上方步驟列出工具之前，無法使用任何工具。",
+      scopeNarrowingApproval:
+        "此步驟尚未設定工具允許清單，因此除了被拒絕的工具外，允許使用所有工具。新增第一個項目後，將轉為允許清單模式。清單中的工具可自由執行，其他工具則需要逐次核准。",
+      scopeUngrantedGated:
+        "此工作地圖會明確授予工具。在工具被列於此處或上層步驟之前，使用該工具需要一次性核准——回覆與讀取功能（message、read、memory_search）除外，這些功能始終可用，除非某個步驟拒絕或治理政策禁止。",
       knowledgeNarrowing:
         "此步驟尚未設定知識允許清單，因此可以查詢所有已註冊的基礎知識庫。新增第一筆項目後，將僅限於清單中列出的基礎知識庫。",
       knowledgeUngranted:
         "此工作地圖明確授予知識。在此處或上方步驟中列出知識庫之前，該步驟不會查詢任何知識庫。",
       skillNameInvalid: "請使用有效的 Skill 名稱：僅限小寫字母、數字和單個連字號，最多 64 個字元。",
       foundationIdInvalid: "請使用基礎知識庫 ID：以點分隔的小寫字串，例如 acme.runbooks。",
-      ancestorGate:
-        "父層步驟 ({nodeIds}) 對此有各自的允許清單。治理機制會從根節點逐步檢查每個步驟，因此即使在此處新增項目，除非那些步驟也允許，否則仍會被拒絕。",
+      ancestorGateApproval:
+        "父級步驟（{nodeIds}）對此有自己的允許清單。治理會從根節點開始逐步檢查，因此在此處新增的條目只有在那些步驟也允許的情況下才會無需詢問即可執行；否則需要一次性核准。請同時將其新增至那些步驟，或使用拒絕工具直接拒絕。",
       empty: "請先輸入值。",
       duplicate: "該項目已在此步驟中宣告。",
       nodeMissing: "該步驟已不在樹狀結構中，請重新載入後再試。",
@@ -371,8 +371,12 @@ export const zh_TW: TranslationMap = {
     capabilityGrants: {
       explicit: "明確授權",
       inherited: "繼承的範圍",
-      explicitHint:
-        "每個步驟僅能存取其本身或上層步驟所列出的工具、Skills、MCP 伺服器和知識基礎。未列出任何項目的步驟將無法存取任何資源。",
+      explicitHintGated:
+        "每個步驟應使用其自身或上層步驟列出的工具、Skills、MCP 伺服器和知識基礎。未列出的 Skills、MCP 伺服器和知識基礎將被完全保留。未列出的工具則會觸發一次性核准請求，而回覆與讀取功能（message、read、memory_search）始終可用，除非某個步驟或治理政策禁止。",
+      explicitHintNotEnforcing:
+        "此工作地圖明確授予功能權限，但企業模式未啟用強制執行，因此工具、技能和 MCP 的授權僅被記錄而未實際套用。知識授權在任何模式下仍會限定檢索範圍。以下授權已儲存，待模式設定為強制執行後將完全生效。",
+      explicitHintOff:
+        "此工作地圖明確授予功能權限，但企業模式已關閉，因此其上的授權均不適用。以下授權已儲存，並將在模式設為觀察或強制執行時生效。",
       inheritedHint:
         "步驟的列表會縮小其上層所允許的範圍；未列出任何內容的分支步驟可使用任何工具或 Skills。",
       turnOn: "明確授權",

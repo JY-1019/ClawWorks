@@ -214,8 +214,8 @@ export const vi: TranslationMap = {
         "Danh mục công cụ đã cấu hình, được nhóm theo cách runtime phân nhóm. Một công cụ plugin được liệt kê ngay khi khai báo, ngay cả trước khi cấu hình của nó được giải quyết, và các công cụ channel và MCP chỉ tồn tại trong phiên hoạt động, vì vậy đây là những gì có thể được cấu hình chứ không phải những gì đang hoạt động ngay lúc này.",
       attachHint:
         "Đây là danh mục. Để cho phép một bước gọi công cụ, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
-      attachHintGranted:
-        "Work-map này cấp quyền công cụ một cách rõ ràng. Một bước chỉ có thể gọi các công cụ mà nó liệt kê, hoặc các công cụ mà bước phía trên nó liệt kê. Mọi công cụ khác trong danh mục này đều bị từ chối.",
+      attachHintGrantedGated:
+        "Bản đồ công việc này cấp công cụ một cách rõ ràng. Một bước được thiết kế để sử dụng các công cụ mà nó liệt kê, hoặc các công cụ được liệt kê ở bước phía trên. Bất kỳ công cụ nào khác sẽ yêu cầu phê duyệt một lần thay vì chạy, và sẽ bị từ chối nếu không ai phản hồi. Trả lời và đọc (message, read, memory_search) luôn khả dụng ở mọi bước trừ khi một bước từ chối chúng hoặc chính sách quản trị từ chối.",
       empty: "Không có công cụ nào khả dụng trên gateway này.",
       toolCount: "{count} công cụ",
       optionalBadge: "tùy chọn",
@@ -285,10 +285,10 @@ export const vi: TranslationMap = {
     entryDraft: {
       add: "Thêm",
       none: "Chưa có khai báo nào.",
-      scopeNarrowing:
-        "Bước này chưa có danh sách công cụ được phép, nên nó cho phép mọi công cụ trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển thành danh sách cho phép và chỉ các công cụ được liệt kê mới khả dụng.",
-      scopeUngranted:
-        "Bản đồ công việc này cấp công cụ một cách rõ ràng. Bước này không truy cập được công cụ nào cho đến khi một công cụ được liệt kê ở đây hoặc ở bước phía trên.",
+      scopeNarrowingApproval:
+        "Bước này chưa có danh sách công cụ cho phép, vì vậy nó cho phép mọi công cụ ngoại trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển nó thành danh sách cho phép. Các công cụ được liệt kê sẽ chạy tự do và bất kỳ công cụ nào khác cần được phê duyệt riêng lẻ.",
+      scopeUngrantedGated:
+        "Bản đồ công việc này cấp công cụ một cách rõ ràng. Cho đến khi một công cụ được liệt kê ở đây hoặc ở bước phía trên, việc sử dụng nó cần phê duyệt một lần — ngoại trừ trả lời và đọc (message, read, memory_search), vốn luôn khả dụng trừ khi một bước từ chối chúng hoặc chính sách quản trị từ chối.",
       knowledgeNarrowing:
         "Bước này chưa có danh sách cho phép kiến thức, vì vậy nó có thể truy vấn mọi foundation đã đăng ký. Thêm mục đầu tiên sẽ giới hạn nó chỉ trong các foundation được liệt kê.",
       knowledgeUngranted:
@@ -297,8 +297,8 @@ export const vi: TranslationMap = {
         "Sử dụng tên skill: chữ cái thường, chữ số và dấu gạch ngang đơn, tối đa 64 ký tự.",
       foundationIdInvalid:
         "Sử dụng ID foundation: các phân đoạn chữ thường phân cách bằng dấu chấm, ví dụ acme.runbooks.",
-      ancestorGate:
-        "Các bước cha ({nodeIds}) có danh sách cho phép riêng cho mục này. Governance kiểm tra từng bước từ gốc, vì vậy một mục được thêm ở đây vẫn bị từ chối trừ khi các bước đó cũng cho phép.",
+      ancestorGateApproval:
+        "Các bước cha ({nodeIds}) có danh sách cho phép riêng cho mục này. Governance kiểm tra từng bước từ gốc, vì vậy một mục được thêm ở đây chỉ chạy mà không cần hỏi nếu các bước đó cũng cho phép; nếu không, nó cần một lần phê duyệt riêng. Hãy thêm mục đó vào các bước đó, hoặc sử dụng Denied tools để từ chối hoàn toàn.",
       empty: "Nhập giá trị trước.",
       duplicate: "Mục đó đã được khai báo trên bước này.",
       nodeMissing: "Bước đó không còn trong cây; tải lại và thử lại.",
@@ -385,8 +385,12 @@ export const vi: TranslationMap = {
     capabilityGrants: {
       explicit: "Cấp quyền rõ ràng",
       inherited: "Phạm vi kế thừa",
-      explicitHint:
-        "Mỗi bước chỉ truy cập được các công cụ, skills, máy chủ MCP và nền tảng kiến thức mà nó hoặc một bước phía trên nó liệt kê. Bước nào không liệt kê gì thì không truy cập được gì.",
+      explicitHintGated:
+        "Mỗi bước được thiết kế để sử dụng các công cụ, Skills, máy chủ MCP và nền tảng kiến thức mà nó hoặc bước phía trên liệt kê. Skills, máy chủ MCP và nền tảng kiến thức mà một bước không liệt kê sẽ bị giữ lại hoàn toàn. Một công cụ không được liệt kê thay vào đó sẽ yêu cầu phê duyệt một lần, và trả lời và đọc (message, read, memory_search) luôn khả dụng trừ khi một bước hoặc chính sách quản trị từ chối chúng.",
+      explicitHintNotEnforcing:
+        "Work-map này cấp quyền năng lực một cách tường minh, nhưng chế độ enterprise không được thực thi. Các quyền cấp cho công cụ, skill và MCP được ghi nhận thay vì áp dụng. Các quyền cấp cho kiến thức vẫn giới hạn phạm vi truy xuất trong mọi chế độ.",
+      explicitHintOff:
+        "Bản đồ công việc này cấp quyền một cách rõ ràng, nhưng tính năng điều phối doanh nghiệp chưa được kích hoạt nên không có quyền nào được áp dụng. Các quyền bên dưới đã được lưu và sẽ có hiệu lực khi tính năng điều phối được bật.",
       inheritedHint:
         "Danh sách của một bước sẽ thu hẹp những gì các bước cha đã cho phép; một bước mà nhánh không liệt kê gì có thể sử dụng bất kỳ công cụ hoặc skill nào.",
       turnOn: "Cấp quyền rõ ràng",

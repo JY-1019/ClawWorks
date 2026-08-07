@@ -213,8 +213,8 @@ export const en: TranslationMap = {
         "The configured tool catalog, grouped the way the runtime groups them. A plugin tool is listed once declared, even before its config resolves, and channel and MCP tools only exist inside a live session, so this is what can be configured rather than what is live right now.",
       attachHint:
         "This is the catalog. To let a step call one, open Worktree, select the step, and add it under Step bindings.",
-      attachHintGranted:
-        "This work-map grants tools explicitly. A step can call only the tools it lists, or the ones a step above it lists. Every other tool in this catalog is denied.",
+      attachHintGrantedGated:
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists, or the ones a step above it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "No tools are available on this gateway.",
       toolCount: "{count} tool(s)",
       optionalBadge: "optional",
@@ -284,10 +284,10 @@ export const en: TranslationMap = {
     entryDraft: {
       add: "Add",
       none: "None declared yet.",
-      scopeNarrowing:
-        "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist and only the listed tools stay available.",
-      scopeUngranted:
-        "This work-map grants tools explicitly. The step reaches no tool until one is listed here or on a step above it.",
+      scopeNarrowingApproval:
+        "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist. The listed tools run freely and anything else needs a one-off approval.",
+      scopeUngrantedGated:
+        "This work-map grants tools explicitly. Until a tool is listed here or on a step above it, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "This step has no knowledge allowlist yet, so it can query every registered foundation. Adding the first entry restricts it to the listed foundations.",
       knowledgeUngranted:
@@ -296,8 +296,8 @@ export const en: TranslationMap = {
         "Use a skill name: lowercase letters, digits, and single hyphens, at most 64 characters.",
       foundationIdInvalid:
         "Use a foundation id: dotted lowercase segments, for example acme.runbooks.",
-      ancestorGate:
-        "Parent steps ({nodeIds}) have their own allowlist for this. Governance checks each step from the root, so an entry added here is still denied unless those steps allow it too.",
+      ancestorGateApproval:
+        "Parent steps ({nodeIds}) have their own allowlist for this. Governance checks each step from the root, so an entry added here only runs without asking if those steps allow it too; otherwise it needs a one-off approval. Add it to those steps as well, or use Denied tools to refuse it outright.",
       empty: "Enter a value first.",
       duplicate: "That entry is already declared on this step.",
       nodeMissing: "That step is no longer in the tree; reload and try again.",
@@ -380,8 +380,12 @@ export const en: TranslationMap = {
     capabilityGrants: {
       explicit: "Explicit grants",
       inherited: "Inherited scopes",
-      explicitHint:
-        "Each step reaches only the tools, skills, MCP servers, and knowledge foundations it or a step above it lists. A step that lists none reaches none.",
+      explicitHintGated:
+        "Each step is meant to use the tools, skills, MCP servers, and knowledge foundations it or a step above it lists. Skills, MCP servers and knowledge foundations a step does not list are withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or a governance policy denies them.",
+      explicitHintNotEnforcing:
+        "This work-map grants capabilities explicitly, but enterprise mode is not enforcing. Tool, skill and MCP grants are recorded rather than applied. Knowledge grants still scope retrieval in every mode.",
+      explicitHintOff:
+        "This work-map grants capabilities explicitly, but enterprise mediation is not active, so no grant applies. The grants below are saved and take effect once mediation is enabled.",
       inheritedHint:
         "A step's lists narrow what its ancestors allowed; a step whose branch lists nothing may use any tool or skill.",
       turnOn: "Grant explicitly",

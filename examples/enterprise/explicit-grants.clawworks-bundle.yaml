@@ -8,8 +8,14 @@
 # sets `capabilityGrants: explicit`, which flips all four families to
 # deny-by-default — a step reaches only what it, or a step above it, attaches:
 #
-#   tools                per-step `allowedTools`; a path that names nothing
-#                        reaches NO tool, `message` included
+#   tools                per-step `allowedTools`. Reaching outside the list is
+#                        not silently refused: it raises a one-off approval
+#                        naming the step, and fails closed if nobody answers.
+#                        `message`, `read` and `memory_search` stay available on
+#                        every step -- deny-by-default is about the capabilities
+#                        you assign, not about whether the agent can answer.
+#                        `deniedTools` and governance policies still refuse
+#                        outright, those three included.
 #   skills               per-step `skills`; the run's catalog is narrowed to
 #                        these, and the withheld ones' credentials are withheld
 #                        from subprocesses too
@@ -69,10 +75,14 @@ trees:
         - id: research.gather
           title: Gather what the handbook says
           ontology:
-            # Narrower than the root: this step reads, it does not reply. Under
-            # explicit grants the intersection still applies, so `message` is
-            # unreachable here even though the root grants it.
+            # Narrower than the root: this step reads, it does not reply. Leaving
+            # `message` out of the list is NOT enough to stop it — `message` is on
+            # the core floor, so an omission would only make it approvable. A
+            # phase that must genuinely not send has to deny it, which is the
+            # difference the floor makes: the allow-list is the approval-free set,
+            # `deniedTools` is the refusal.
             allowedTools: [knowledge_search]
+            deniedTools: [message]
             knowledgeFoundations: [acme.research-handbook]
             # The one skill this work-map grants. Every OTHER installed skill is
             # withheld from the run: not offered to the model, not materialized

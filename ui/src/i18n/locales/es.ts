@@ -215,8 +215,8 @@ export const es: TranslationMap = {
         "El catálogo de herramientas configurado, agrupado de la forma en que el runtime los agrupa. Una herramienta de plugin aparece en la lista una vez declarada, incluso antes de que su configuración se resuelva, y las herramientas de canal y MCP solo existen dentro de una sesión activa, por lo que esto es lo que se puede configurar en lugar de lo que está activo en este momento.",
       attachHint:
         "Este es el catálogo. Para permitir que un paso llame a una herramienta, abra Worktree, seleccione el paso y agréguela en Step bindings.",
-      attachHintGranted:
-        "Este mapa de trabajo otorga herramientas de forma explícita. Un paso solo puede llamar a las herramientas que lista, o a las que lista un paso superior. Cualquier otra herramienta en este catálogo se deniega.",
+      attachHintGrantedGated:
+        "Este mapa de trabajo otorga herramientas de forma explícita. Un paso debe usar las herramientas que lista, o las que lista un paso superior. Cualquier otra cosa genera una aprobación única en lugar de ejecutarse, y se rechaza si nadie responde. Responder y leer (message, read, memory_search) permanecen disponibles en cada paso a menos que un paso las deniegue o una política de gobernanza lo haga.",
       empty: "No hay herramientas disponibles en este Gateway.",
       toolCount: "{count} herramienta(s)",
       optionalBadge: "opcional",
@@ -287,10 +287,10 @@ export const es: TranslationMap = {
     entryDraft: {
       add: "Añadir",
       none: "Ninguno declarado aún.",
-      scopeNarrowing:
-        "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Al agregar la primera entrada, se convierte en una lista de permitidas y solo las herramientas listadas permanecen disponibles.",
-      scopeUngranted:
-        "Este mapa de trabajo otorga herramientas de forma explícita. El paso no tiene acceso a ninguna herramienta hasta que se incluya una aquí o en un paso superior.",
+      scopeNarrowingApproval:
+        "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Agregar la primera entrada la convierte en una lista de permitidas. Las herramientas listadas se ejecutan libremente y cualquier otra necesita una aprobación única.",
+      scopeUngrantedGated:
+        "Este mapa de trabajo otorga herramientas de forma explícita. Hasta que una herramienta se liste aquí o en un paso superior, su uso requiere una aprobación única — excepto responder y leer (message, read, memory_search), que permanecen disponibles a menos que un paso las deniegue o una política de gobernanza lo haga.",
       knowledgeNarrowing:
         "Este paso aún no tiene una lista de conocimientos permitidos, por lo que puede consultar todas las fundaciones registradas. Agregar la primera entrada lo restringe a las fundaciones enumeradas.",
       knowledgeUngranted:
@@ -299,8 +299,8 @@ export const es: TranslationMap = {
         "Use un nombre de skill: letras minúsculas, dígitos y guiones simples, máximo 64 caracteres.",
       foundationIdInvalid:
         "Use un id de fundación: segmentos en minúsculas separados por puntos, por ejemplo acme.runbooks.",
-      ancestorGate:
-        "Los pasos superiores ({nodeIds}) tienen su propia lista de permitidos para esto. Governance verifica cada paso desde la raíz, por lo que una entrada añadida aquí será denegada a menos que esos pasos también la permitan.",
+      ancestorGateApproval:
+        "Los pasos superiores ({nodeIds}) tienen su propia lista de permitidos para esto. Governance verifica cada paso desde la raíz, por lo que una entrada añadida aquí solo se ejecuta sin preguntar si esos pasos también la permiten; de lo contrario, necesita una aprobación puntual. Añádela también a esos pasos, o usa Denied tools para rechazarla directamente.",
       empty: "Introduce un valor primero.",
       duplicate: "Esa entrada ya está declarada en este paso.",
       nodeMissing: "Ese paso ya no está en el árbol; recarga e inténtalo de nuevo.",
@@ -388,8 +388,12 @@ export const es: TranslationMap = {
     capabilityGrants: {
       explicit: "Concesiones explícitas",
       inherited: "Ámbitos heredados",
-      explicitHint:
-        "Cada paso accede únicamente a las herramientas, Skills, servidores MCP y bases de conocimiento que él mismo o un paso superior enumere. Un paso que no enumere ninguno no accede a ninguno.",
+      explicitHintGated:
+        "Cada paso debe usar las herramientas, Skills, servidores MCP y bases de conocimiento que él o un paso superior lista. Las Skills, servidores MCP y bases de conocimiento que un paso no lista se retienen por completo. Una HERRAMIENTA no listada genera en su lugar una aprobación única, y responder y leer (message, read, memory_search) permanecen disponibles a menos que un paso o una política de gobernanza las deniegue.",
+      explicitHintNotEnforcing:
+        "Este mapa de trabajo otorga capacidades explícitamente, pero el modo enterprise no está aplicando restricciones. Las concesiones de herramientas, Skills y MCP se registran en lugar de aplicarse. Las concesiones de conocimiento siguen delimitando la recuperación en todos los modos.",
+      explicitHintOff:
+        "Este mapa de trabajo otorga capacidades de forma explícita, pero la mediación empresarial no está activa, por lo que ningún otorgamiento se aplica. Los otorgamientos a continuación están guardados y entrarán en vigor una vez que se habilite la mediación.",
       inheritedHint:
         "Las listas de un paso restringen lo que sus ancestros permitieron; un paso cuya rama no lista nada puede usar cualquier herramienta o skill.",
       turnOn: "Conceder explícitamente",

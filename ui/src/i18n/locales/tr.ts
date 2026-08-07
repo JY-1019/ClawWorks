@@ -217,8 +217,8 @@ export const tr: TranslationMap = {
         "Yapılandırılmış araç kataloğu, çalışma zamanının grupladığı şekilde gruplandırılmıştır. Bir plugin aracı, yapılandırması çözümlenmeden önce bile bildirildiğinde listelenir; kanal ve MCP araçları yalnızca canlı bir oturumda bulunur, bu nedenle burada gösterilen şu anda canlı olan değil, yapılandırılabilecek olanlardır.",
       attachHint:
         "Bu katalogdur. Bir adımın birini çağırmasına izin vermek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
-      attachHintGranted:
-        "Bu çalışma haritası araçları açıkça tanımlar. Bir adım yalnızca kendi listelediği veya üstündeki bir adımın listelediği araçları çağırabilir. Bu katalogdaki diğer tüm araçlar reddedilir.",
+      attachHintGrantedGated:
+        "Bu iş haritası araçları açıkça tanımlar. Bir adım, listelediği veya üstündeki bir adımın listelediği araçları kullanmalıdır. Bunların dışındaki her şey çalıştırılmak yerine tek seferlik onay gerektirir ve kimse yanıt vermezse reddedilir. Yanıtlama ve okuma (message, read, memory_search), bir adım veya yönetişim politikası tarafından engellenmedikçe her adımda kullanılabilir kalır.",
       empty: "Bu gateway üzerinde kullanılabilir araç yok.",
       toolCount: "{count} araç",
       optionalBadge: "isteğe bağlı",
@@ -288,10 +288,10 @@ export const tr: TranslationMap = {
     entryDraft: {
       add: "Ekle",
       none: "Henüz tanımlanmış bir şey yok.",
-      scopeNarrowing:
-        "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında tüm araçlara izin verir. İlk girişi eklemek bunu bir izin listesine dönüştürür ve yalnızca listelenen araçlar kullanılabilir kalır.",
-      scopeUngranted:
-        "Bu iş haritası araçları açıkça tanımlar. Adım, buraya veya üstündeki bir adıma bir araç eklenene kadar hiçbir araca erişemez.",
+      scopeNarrowingApproval:
+        "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında her araca izin verir. İlk girişin eklenmesi bunu bir izin listesine dönüştürür. Listelenen araçlar serbestçe çalışır ve diğer her şey tek seferlik bir onay gerektirir.",
+      scopeUngrantedGated:
+        "Bu iş haritası araçları açıkça tanımlar. Bir araç burada veya üstündeki bir adımda listelenmediği sürece kullanımı tek seferlik onay gerektirir — yanıtlama ve okuma (message, read, memory_search) hariç; bunlar bir adım veya yönetişim politikası tarafından engellenmedikçe kullanılabilir kalır.",
       knowledgeNarrowing:
         "Bu adımın henüz bir bilgi izin listesi yok, bu nedenle kayıtlı tüm temelleri sorgulayabilir. İlk girişi eklemek, sorgulamayı listelenen temellerle sınırlar.",
       knowledgeUngranted:
@@ -300,8 +300,8 @@ export const tr: TranslationMap = {
         "Bir skill adı kullanın: küçük harfler, rakamlar ve tek tireler, en fazla 64 karakter.",
       foundationIdInvalid:
         "Bir temel kimliği kullanın: noktalı küçük harf segmentleri, örneğin acme.runbooks.",
-      ancestorGate:
-        "Üst adımların ({nodeIds}) bunun için kendi izin listeleri var. Yönetişim her adımı kökten kontrol eder, bu nedenle buraya eklenen bir giriş, o adımlar da izin vermedikçe yine reddedilir.",
+      ancestorGateApproval:
+        "Üst adımların ({nodeIds}) bunun için kendi izin listeleri var. Governance her adımı kökten itibaren kontrol eder, bu nedenle buraya eklenen bir giriş yalnızca o adımlar da izin veriyorsa sormadan çalışır; aksi takdirde tek seferlik bir onay gerekir. Bunu o adımlara da ekleyin veya doğrudan reddetmek için Denied tools kullanın.",
       empty: "Önce bir değer girin.",
       duplicate: "Bu giriş zaten bu adımda tanımlanmış.",
       nodeMissing: "Bu adım artık ağaçta yok; yeniden yükleyip tekrar deneyin.",
@@ -386,8 +386,12 @@ export const tr: TranslationMap = {
     capabilityGrants: {
       explicit: "Açık izinler",
       inherited: "Devralınan kapsamlar",
-      explicitHint:
-        "Her adım yalnızca kendisinin veya üstündeki bir adımın listelediği araçlara, Skills'e, MCP sunucularına ve bilgi temellerine erişir. Hiçbirini listelemeyen bir adım hiçbirine erişemez.",
+      explicitHintGated:
+        "Her adım, kendisinin veya üstündeki bir adımın listelediği araçları, Skills'i, MCP sunucularını ve bilgi temellerini kullanmalıdır. Bir adımın listelemediği Skills, MCP sunucuları ve bilgi temelleri tamamen engellenir. Listelenmemiş bir ARAÇ ise tek seferlik onay gerektirir ve yanıtlama ile okuma (message, read, memory_search), bir adım veya yönetişim politikası tarafından engellenmedikçe kullanılabilir kalır.",
+      explicitHintNotEnforcing:
+        "Bu çalışma haritası yetkinlikleri açıkça tanımlar, ancak kurumsal mod zorunlu kılınmamaktadır. Tool, skill ve MCP yetkilendirmeleri uygulanmak yerine kaydedilir. Bilgi yetkilendirmeleri her modda erişim kapsamını belirlemeye devam eder.",
+      explicitHintOff:
+        "Bu çalışma haritası yetkinlikleri açıkça tanımlar, ancak kurumsal aracılık etkin olmadığından hiçbir yetki geçerli değildir. Aşağıdaki yetkiler kaydedilmiştir ve aracılık etkinleştirildiğinde geçerli olacaktır.",
       inheritedHint:
         "Bir adımın listeleri, üst öğelerinin izin verdiği kapsamı daraltır; dalında hiçbir şey listelenmemiş bir adım herhangi bir aracı veya beceriyi kullanabilir.",
       turnOn: "Açıkça ver",

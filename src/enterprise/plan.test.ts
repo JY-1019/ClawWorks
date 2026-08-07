@@ -374,7 +374,10 @@ describe("buildEnterprisePromptSection", () => {
         matchedBy: "planner",
       }),
     );
-    expect(enforce).toContain("stays denied until you reach it");
+    // Must agree with the gate: a later step's tool is approvable, not refused —
+    // telling the model it is denied would stop it ever asking.
+    expect(enforce).toContain("asks a human to approve that single call");
+    expect(enforce).not.toContain("stays denied");
   });
 
   it("renders a step's declared skills and says what to do with them", () => {
@@ -629,7 +632,17 @@ describe("buildEnterprisePromptSection", () => {
     expect(plan.mcpAttachments).toEqual([]);
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain("grants capabilities explicitly");
-    expect(section).toContain("a step that lists no tools has none");
+    // The digest must match what the gate actually does: an omission asks a human
+    // rather than being refused, and the reply-and-read floor always holds. Telling
+    // the model otherwise steers it away from calls the run would have allowed.
+    expect(section).toContain("asks a human to approve that one call");
+    // Scoped to TOOLS: a skill, MCP server or knowledge source a step omits is
+    // simply unavailable, and telling the model to expect an approval for one
+    // would have it wait on something that can never arrive.
+    expect(section).toContain("do not wait on one");
+    expect(section).toContain("a step that lists no tools still has those");
+    // The floor is not unconditional: a step can still deny one by name.
+    expect(section).toContain("unless a step's Denied tools line names them");
   });
 
   it("tells an observing run that nothing is blocked", () => {

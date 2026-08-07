@@ -216,8 +216,8 @@ export const it: TranslationMap = {
         "Il catalogo strumenti configurato, raggruppato come li raggruppa il runtime. Uno strumento plugin viene elencato non appena dichiarato, anche prima che la sua configurazione venga risolta, mentre gli strumenti channel e MCP esistono solo all'interno di una sessione attiva, quindi questo rappresenta ciò che può essere configurato anziché ciò che è attivo in questo momento.",
       attachHint:
         "Questo è il catalogo. Per consentire a uno step di chiamarne uno, apri Worktree, seleziona lo step e aggiungilo in Step bindings.",
-      attachHintGranted:
-        "Questa work-map concede gli strumenti in modo esplicito. Uno step può chiamare solo gli strumenti che elenca, o quelli elencati da uno step superiore. Tutti gli altri strumenti in questo catalogo sono negati.",
+      attachHintGrantedGated:
+        "Questa mappa di lavoro concede gli strumenti in modo esplicito. Ogni passaggio è progettato per utilizzare gli strumenti elencati al suo interno o quelli elencati in un passaggio superiore. Qualsiasi altro strumento richiede un'approvazione una tantum anziché essere eseguito, e viene rifiutato se nessuno risponde. Rispondere e leggere (message, read, memory_search) restano disponibili in ogni passaggio, a meno che un passaggio li neghi o lo faccia una policy di governance.",
       empty: "Nessuno strumento disponibile su questo Gateway.",
       toolCount: "{count} strumento/i",
       optionalBadge: "opzionale",
@@ -289,10 +289,10 @@ export const it: TranslationMap = {
     entryDraft: {
       add: "Aggiungi",
       none: "Nessuno dichiarato finora.",
-      scopeNarrowing:
-        "Questo passaggio non ha ancora una lista di strumenti consentiti, quindi permette tutti gli strumenti tranne quelli negati. Aggiungendo la prima voce, si trasforma in una lista consentiti e solo gli strumenti elencati restano disponibili.",
-      scopeUngranted:
-        "Questa mappa di lavoro concede gli strumenti in modo esplicito. Il passaggio non raggiunge alcuno strumento finché uno non viene elencato qui o in un passaggio superiore.",
+      scopeNarrowingApproval:
+        "Questo passaggio non ha ancora una lista di strumenti consentiti, quindi permette tutti gli strumenti tranne quelli negati. Aggiungere la prima voce lo trasforma in una lista di strumenti consentiti. Gli strumenti elencati vengono eseguiti liberamente e qualsiasi altro richiede un'approvazione una tantum.",
+      scopeUngrantedGated:
+        "Questa mappa di lavoro concede gli strumenti in modo esplicito. Finché uno strumento non è elencato qui o in un passaggio superiore, il suo utilizzo richiede un'approvazione una tantum — ad eccezione di rispondere e leggere (message, read, memory_search), che restano disponibili a meno che un passaggio li neghi o lo faccia una policy di governance.",
       knowledgeNarrowing:
         "Questo step non ha ancora una allowlist di conoscenze, quindi può interrogare ogni foundation registrata. Aggiungendo la prima voce, verrà limitato alle foundation elencate.",
       knowledgeUngranted:
@@ -301,8 +301,8 @@ export const it: TranslationMap = {
         "Usa un nome di skill: lettere minuscole, cifre e trattini singoli, massimo 64 caratteri.",
       foundationIdInvalid:
         "Usa un id di foundation: segmenti minuscoli separati da punti, ad esempio acme.runbooks.",
-      ancestorGate:
-        "I passaggi padre ({nodeIds}) hanno una propria allowlist per questo. La governance controlla ogni passaggio dalla radice, quindi una voce aggiunta qui viene comunque negata a meno che anche quei passaggi non la consentano.",
+      ancestorGateApproval:
+        "I passaggi padre ({nodeIds}) hanno la propria lista di autorizzazione per questo. La governance controlla ogni passaggio dalla radice, quindi una voce aggiunta qui viene eseguita senza chiedere solo se anche quei passaggi la consentono; altrimenti è necessaria un'approvazione una tantum. Aggiungila anche a quei passaggi oppure usa gli strumenti negati per rifiutarla completamente.",
       empty: "Inserisci prima un valore.",
       duplicate: "Quella voce è già dichiarata in questo step.",
       nodeMissing: "Quello step non è più presente nell'albero; ricarica e riprova.",
@@ -390,8 +390,12 @@ export const it: TranslationMap = {
     capabilityGrants: {
       explicit: "Concessioni esplicite",
       inherited: "Ambiti ereditati",
-      explicitHint:
-        "Ogni passaggio accede solo agli strumenti, alle Skills, ai server MCP e alle basi di conoscenza che esso o un passaggio superiore elenca. Un passaggio che non ne elenca nessuno non accede a nessuno.",
+      explicitHintGated:
+        "Ogni passaggio è progettato per utilizzare gli strumenti, le Skills, i server MCP e le basi di conoscenza elencati al suo interno o in un passaggio superiore. Le Skills, i server MCP e le basi di conoscenza non elencati in un passaggio vengono trattenuti del tutto. Uno STRUMENTO non elencato richiede invece un'approvazione una tantum, e rispondere e leggere (message, read, memory_search) restano disponibili a meno che un passaggio o una policy di governance li neghi.",
+      explicitHintNotEnforcing:
+        "Questa work-map concede capacità in modo esplicito, ma la modalità enterprise non è in applicazione. Le concessioni di strumenti, Skills e MCP vengono registrate anziché applicate. Le concessioni di conoscenza continuano a delimitare il recupero in ogni modalità.",
+      explicitHintOff:
+        "Questa mappa di lavoro concede capacità in modo esplicito, ma la mediazione enterprise non è attiva, quindi nessuna concessione viene applicata. Le concessioni seguenti sono salvate e avranno effetto una volta abilitata la mediazione.",
       inheritedHint:
         "Le liste di uno step restringono ciò che i suoi predecessori hanno consentito; uno step il cui ramo non elenca nulla può utilizzare qualsiasi strumento o skill.",
       turnOn: "Concedi esplicitamente",

@@ -217,8 +217,8 @@ export const pl: TranslationMap = {
         "Skonfigurowany katalog narzędzi, pogrupowany tak, jak grupuje je środowisko uruchomieniowe. Narzędzie wtyczki jest wyświetlane od momentu zadeklarowania, nawet zanim jego konfiguracja zostanie rozwiązana, a narzędzia kanałów i MCP istnieją tylko w aktywnej sesji, więc jest to widok tego, co można skonfigurować, a nie tego, co jest aktualnie aktywne.",
       attachHint:
         "To jest katalog. Aby umożliwić krokowi wywołanie narzędzia, otwórz Worktree, wybierz krok i dodaj je w sekcji Powiązania kroku.",
-      attachHintGranted:
-        "Ta mapa pracy przyznaje narzędzia jawnie. Krok może wywoływać tylko narzędzia, które wymienia, lub te wymienione przez krok nadrzędny. Wszystkie inne narzędzia w tym katalogu są zabronione.",
+      attachHintGrantedGated:
+        "Ta mapa pracy przyznaje narzędzia jawnie. Krok powinien używać narzędzi, które wymienia, lub tych wymienionych w kroku nadrzędnym. Wszystko inne wymaga jednorazowej zgody zamiast uruchomienia i zostaje odrzucone, jeśli nikt nie odpowie. Odpowiadanie i odczytywanie (message, read, memory_search) pozostają dostępne w każdym kroku, chyba że krok je odbiera lub polityka zarządzania to robi.",
       empty: "Brak dostępnych narzędzi na tym Gateway.",
       toolCount: "{count} narzędzi(e)",
       optionalBadge: "opcjonalne",
@@ -290,10 +290,10 @@ export const pl: TranslationMap = {
     entryDraft: {
       add: "Dodaj",
       none: "Brak zadeklarowanych.",
-      scopeNarrowing:
-        "Ten krok nie ma jeszcze listy dozwolonych narzędzi, więc zezwala na wszystkie narzędzia z wyjątkiem tych, które są jawnie zabronione. Dodanie pierwszego wpisu przekształca go w listę dozwolonych i tylko wymienione narzędzia pozostają dostępne.",
-      scopeUngranted:
-        "Ta mapa pracy przyznaje narzędzia jawnie. Krok nie ma dostępu do żadnego narzędzia, dopóki nie zostanie ono wymienione tutaj lub w kroku nadrzędnym.",
+      scopeNarrowingApproval:
+        "Ten krok nie ma jeszcze listy dozwolonych narzędzi, więc zezwala na każde narzędzie z wyjątkiem tych, które są odrzucone. Dodanie pierwszego wpisu zamienia go w listę dozwolonych. Wymienione narzędzia działają swobodnie, a wszystko inne wymaga jednorazowego zatwierdzenia.",
+      scopeUngrantedGated:
+        "Ta mapa pracy przyznaje narzędzia jawnie. Dopóki narzędzie nie zostanie wymienione tutaj lub w kroku nadrzędnym, jego użycie wymaga jednorazowej zgody — z wyjątkiem odpowiadania i odczytywania (message, read, memory_search), które pozostają dostępne, chyba że krok je odbiera lub polityka zarządzania to robi.",
       knowledgeNarrowing:
         "Ten krok nie ma jeszcze listy dozwolonych źródeł wiedzy, więc może odpytywać każdą zarejestrowaną podstawę. Dodanie pierwszego wpisu ogranicza go do wymienionych podstaw.",
       knowledgeUngranted:
@@ -302,8 +302,8 @@ export const pl: TranslationMap = {
         "Użyj nazwy umiejętności: małe litery, cyfry i pojedyncze myślniki, maksymalnie 64 znaki.",
       foundationIdInvalid:
         "Użyj ID podstawy: małe litery oddzielone kropkami, na przykład acme.runbooks.",
-      ancestorGate:
-        "Kroki nadrzędne ({nodeIds}) mają własną listę dozwolonych. Governance sprawdza każdy krok od korzenia, więc wpis dodany tutaj nadal zostanie odrzucony, jeśli te kroki go nie dopuszczą.",
+      ancestorGateApproval:
+        "Kroki nadrzędne ({nodeIds}) mają własną listę dozwolonych dla tego elementu. Governance sprawdza każdy krok od korzenia, więc wpis dodany tutaj uruchomi się bez pytania tylko wtedy, gdy te kroki również na to pozwalają; w przeciwnym razie wymagane jest jednorazowe zatwierdzenie. Dodaj go również do tych kroków lub użyj Denied tools, aby całkowicie go odrzucić.",
       empty: "Najpierw wprowadź wartość.",
       duplicate: "Ten wpis jest już zadeklarowany w tym kroku.",
       nodeMissing: "Ten krok nie znajduje się już w drzewie; odśwież i spróbuj ponownie.",
@@ -387,8 +387,12 @@ export const pl: TranslationMap = {
     capabilityGrants: {
       explicit: "Jawne przyznania",
       inherited: "Dziedziczone zakresy",
-      explicitHint:
-        "Każdy krok ma dostęp tylko do narzędzi, Skills, serwerów MCP i baz wiedzy, które są wymienione w nim lub w kroku nadrzędnym. Krok, który nie wymienia żadnych, nie ma dostępu do żadnych.",
+      explicitHintGated:
+        "Każdy krok powinien używać narzędzi, Skills, serwerów MCP i podstaw wiedzy, które wymienia on sam lub krok nadrzędny. Skills, serwery MCP i podstawy wiedzy, których krok nie wymienia, są całkowicie wstrzymane. Niewymienione NARZĘDZIE zamiast tego wymaga jednorazowej zgody, a odpowiadanie i odczytywanie (message, read, memory_search) pozostają dostępne, chyba że krok lub polityka zarządzania je odbiera.",
+      explicitHintNotEnforcing:
+        "Ta mapa pracy przyznaje uprawnienia jawnie, ale tryb enterprise nie jest wymuszany. Przyznane narzędzia, Skills i MCP są rejestrowane, a nie stosowane. Przyznany dostęp do wiedzy nadal ogranicza wyszukiwanie w każdym trybie.",
+      explicitHintOff:
+        "Ta mapa pracy przyznaje uprawnienia jawnie, ale mediacja korporacyjna nie jest aktywna, więc żadne przyznanie nie obowiązuje. Poniższe przyznania są zapisane i zaczną obowiązywać po włączeniu mediacji.",
       inheritedHint:
         "Listy kroku zawężają to, co dozwolili jego przodkowie; krok, którego gałąź nie zawiera żadnych pozycji, może używać dowolnego narzędzia lub umiejętności.",
       turnOn: "Przyznaj jawnie",

@@ -107,13 +107,14 @@ rather than at run time.
 The instructions come with the run. At run start the declared skills' `SKILL.md`
 bodies are read once and appended to the step digest under "Skill instructions
 for the steps above", so the model already has the know-how when it reaches the
-step: a step whose `allowedTools` withholds `read` gets the instructions all the
+step: a step whose scope refuses `read` gets the instructions all the
 same, on embedded and CLI-backed runs alike. (ACP is the exception; see below.)
 
 What is inlined is the `SKILL.md` itself, without a path — mediation runs before
 a sandboxed run materializes its own copies, so a location rendered here would be
 one that run cannot use. A skill that delegates detail to support files next to
-it (`references/…`, `scripts/…`) therefore needs both `read` in the step's scope
+it (`references/…`, `scripts/…`) therefore needs `read` reachable on the step (it
+is on the core floor, so only a `deniedTools` entry or a policy takes it away)
 and the skill's own entry in the normal skills catalog, which is where its
 location comes from. For a governed step, keep the detail it depends on in the
 `SKILL.md`.
@@ -194,11 +195,14 @@ declares but no install provides is listed too, marked "not installed".
 
 Each node carries executable metadata in its `ontology`:
 
-- `allowedTools` / `deniedTools`: tool name globs. Empty or omitted allows all;
-  deny wins over allow. Each node on the root-to-active path is an independent
-  gate, so a leaf inherits every ancestor's scope. Under
-  [explicit capability grants](#capability-grants) an omitted list allows
-  nothing instead.
+- `allowedTools` / `deniedTools`: tool name globs. `allowedTools` is what a step
+  may call **without asking**; a tool no list on the root-to-active path names
+  raises a one-off human approval instead of running, and is refused if nobody
+  answers. `deniedTools` is the hard refusal, and deny wins over allow. Each node
+  on the root-to-active path is an independent gate, so a leaf inherits every
+  ancestor's scope. Under
+  [explicit capability grants](#capability-grants) an omitted list grants nothing
+  approval-free, apart from the reply-and-read floor described there.
 - `knowledgeFoundations`: knowledge foundation ids the step may query. Empty or
   omitted allows every configured foundation, except under
   [explicit capability grants](#capability-grants), where the list IS the grant.
@@ -236,13 +240,35 @@ capabilityGrants: explicit
 
 With `capabilityGrants: explicit`, **tools, skills, MCP servers, and knowledge
 foundations are all deny-by-default**: a step reaches only what it or a step above
-it attaches.
+it attaches. Skills, MCP servers and knowledge foundations are withheld outright.
+Tools work slightly differently, and the difference matters when you are reasoning
+about the boundary — read on.
 
-- **Tools**: a call has to be named by some `allowedTools` list on the
-  root-to-step path. A path that lists nothing calls nothing — including
-  `message`, so a work-map that grants explicitly has to say what its steps may
-  do. The lists still narrow as they nest (a leaf cannot widen past its root),
-  and `deniedTools` still wins.
+- **Tools**: `allowedTools` controls what a step may call **without asking**. A
+  call no list on the root-to-step path names is not refused outright: it raises a
+  one-off human approval, and runs only if someone allows it. So the list is the
+  approval-free set, not a wall.
+
+  **`deniedTools` is the wall.** That, and a `deny` governance policy, are what
+  refuse a call outright — on any step of the path, and on the floor tools below
+  too. If a step must never touch something, deny it; do not rely on leaving it
+  out. The lists still narrow as they nest (a leaf cannot widen its root's
+  approval-free set).
+
+  An unanswered approval always refuses. A policy that would otherwise allow on
+  timeout cannot relax a call the step's scope never covered.
+
+  Three of OpenClaw's own tools are the exception and stay available:
+  `message`, `read` and `memory_search`. Deny-by-default is
+  about the enterprise capabilities an operator assigns — MCP servers, skills,
+  knowledge foundations, ontology actions — not about whether the agent can
+  answer or look at anything. Without that floor a step granted one knowledge
+  source could read the handbook and then be unable to reply, which is not a
+  restriction anyone chose; it is what silence happened to mean. `exec`, `write`
+  and `edit` are deliberately NOT on the floor: those are what an explicit
+  work-map exists to control. An operator can still take a floor tool back with
+  `deniedTools`, which the floor never overrules.
+
 - **Skills**: the run's skill catalog is narrowed to the skills its steps
   declare. A skill no step attaches is not offered to the model, not materialized
   for a CLI harness, and its `skills.entries.<name>` credentials are not injected
@@ -374,6 +400,63 @@ When a request starts an enterprise-mediated run:
 4. **The tool-call gate** evaluates each tool call against the active node's
    ontology merged down the root-to-active path, then against config governance
    policies.
+
+A tool call the step's scope does not cover **asks rather than fails**. A work-map
+cannot anticipate every tool a real request needs, and a silent refusal leaves an
+operator with a run that failed for reasons only the trace explains — so an
+omission (an `allowedTools` list that does not mention the tool, or nothing
+granting it under explicit grants) raises an _Allow once / Deny_ approval naming
+the step and where the lasting fix belongs. Nothing runs unapproved, and it fails
+closed: the approval times out to deny, and a run with no interactive channel —
+cron, headless — resolves it as a refusal rather than passing it.
+
+Two things stay hard blocks, because both are decisions somebody made rather than
+omissions: an entry in a step's `deniedTools`, and a `deny` policy in
+`enterprise.governance.policies`. Escalating those to a prompt would make writing
+one mean nothing. A denial also wins wherever it appears on the path, including on
+a step _below_ the one whose list omitted the tool.
+
+Two more cases cannot reach the prompt at all, because the decision is taken before
+any tool call exists:
+
+- **Codex hosted tools.** `web_search` on a Codex app-server run is granted once,
+  before the thread starts, and Codex executes it itself outside registry dispatch,
+  so no per-call gate ever sees it. If any step the run can reach omits it, it is
+  withheld for the whole run rather than prompted for. Grant it on every reachable
+  step, or expect it to be absent.
+- **Ontology writes.** `invoke_action` needs an explicit opt-in on the active path
+  (the tool named in `allowedTools`, or `group:enterprise-write`). A step without
+  that opt-in is refused outright rather than prompted, because the tool is exposed
+  plan-wide for prompt-cache stability and the opt-in is the only thing separating a
+  step that may write from one that merely sees the action declared.
+- **MCP servers on a native backend.** A CLI or Codex subprocess receives its MCP
+  servers once, at launch, and nothing can hand one over later — so a server no
+  reachable step attaches is never written into that subprocess's config at all.
+  There is no tool call to approve, because the tool was never offered. See
+  "MCP servers" below for what that ceiling reads.
+
+One known rough edge on the Codex app-server, worth knowing before you read a
+trace: with the default `searchable` dynamic-tool mode, Codex reports a ClawWorks
+tool to its PreToolUse hook under a FLATTENED name (namespace and tool
+concatenated, `flat_tool_name` in `codex-rs/core/src/tools/mod.rs`), and the same
+call is then governed again under its real name when the tool actually runs. The
+flattened spelling matches no rule an operator wrote, so a tool the work-map DOES
+grant reads as out of scope. That hook is also synchronous and short-lived, so the
+approval path cannot run there: the call is refused outright rather than prompted,
+and it never reaches the gate that would have judged it under its real name.
+`complete_step` is registered directly for exactly this reason and is unaffected.
+
+Moving the grant to the root does NOT help: the flattened name is `openclawread`,
+not `read`, so a root list naming `read` still does not admit it. The working
+route is to turn the flattening off — set the Codex plugin's
+`codexDynamicToolsLoading` to `"direct"`, which registers every ClawWorks tool
+under its real name so governance judges what an operator actually wrote.
+
+Even then the hook stays synchronous, so on Codex a scope omission is REFUSED
+rather than prompted: the approval would outlive the harness deadline. Grant a
+Codex work-map what its steps need rather than relying on the approval path. The
+durable fix for both is for the harness to declare the names it governs itself,
+so the relay stops judging a call the wrapped tool will judge again.
 
 A run opens on the first step of its route, not on the root. Because advancing is
 a tool call rather than a property of one runtime's loop, every runtime that

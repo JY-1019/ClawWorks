@@ -179,7 +179,13 @@ export type OntologyBinding = {
    * Tool name globs allowed for this node. Empty/omitted = allow all (repo
    * tool-policy semantics), except under `capabilityGrants: "explicit"`, where
    * this list IS the grant: a call needs one node on the root→step path to name
-   * it, and a path that names nothing reaches no tool.
+   * it.
+   *
+   * A list that simply does not mention a tool is an OMISSION, not a refusal: the
+   * call raises a one-off human approval rather than failing, and fails closed if
+   * nobody answers. `deniedTools` is how a step refuses outright, and a governance
+   * policy can refuse too. So this list says what a step is MEANT to use; it is not
+   * by itself a guarantee that nothing else can ever run.
    */
   allowedTools?: string[];
   /** Tool name globs denied for this node. Deny wins over allow. */
@@ -398,6 +404,16 @@ export type GovernanceDecision = {
   reason: string;
   /** Approval settings carried from a require_approval policy. */
   approval?: GovernanceApprovalSettings;
+  /**
+   * The active step's tool scope did not cover this call, so the approval exists
+   * because of an OMISSION rather than because an operator asked to be asked.
+   *
+   * Carried separately from `source` because a policy can also match the same
+   * call, and then the policy's decision is the one returned — losing the fact
+   * that the scope never covered it. Callers that must fail closed where no human
+   * can answer (a synchronous native hook) need that fact, not the source.
+   */
+  ontologyOmission?: true;
 };
 
 /** Flattened plan node with its resolved ontology. */

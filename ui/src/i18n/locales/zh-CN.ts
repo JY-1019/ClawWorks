@@ -210,8 +210,8 @@ export const zh_CN: TranslationMap = {
         "已配置的工具目录，按运行时的分组方式排列。插件工具在声明后即会列出（即使其配置尚未解析），而频道工具和 MCP 工具仅存在于活跃会话中，因此这里展示的是可配置的内容，而非当前实时运行的内容。",
       attachHint:
         "这是工具目录。要让某个步骤调用工具，请打开工作树，选择该步骤，然后在步骤绑定下添加。",
-      attachHintGranted:
-        "此工作地图显式授予工具。每个步骤只能调用其自身列出的工具，或其上级步骤列出的工具。目录中的所有其他工具均被拒绝。",
+      attachHintGrantedGated:
+        "此工作地图显式授予工具。每个步骤应使用其自身或上级步骤中列出的工具。使用其他工具将触发一次性审批而非直接运行，若无人响应则会被拒绝。回复和读取工具（message、read、memory_search）在每个步骤中始终可用，除非某个步骤或治理策略明确拒绝。",
       empty: "此 Gateway 上没有可用的工具。",
       toolCount: "{count} 个工具",
       optionalBadge: "可选",
@@ -279,18 +279,18 @@ export const zh_CN: TranslationMap = {
     entryDraft: {
       add: "添加",
       none: "尚未声明。",
-      scopeNarrowing:
-        "此步骤尚未设置工具允许列表，因此除被拒绝的工具外，所有工具均可使用。添加第一个条目后将转为允许列表模式，仅列出的工具可用。",
-      scopeUngranted:
-        "此工作地图需要显式授予工具权限。在此处或上级步骤中列出工具之前，该步骤无法访问任何工具。",
+      scopeNarrowingApproval:
+        "此步骤尚未设置工具白名单，因此除被拒绝的工具外，允许使用所有工具。添加第一个条目后，它将变为白名单模式。列出的工具可自由运行，其他工具则需要逐次审批。",
+      scopeUngrantedGated:
+        "此工作地图显式授予工具。在工具被列入此处或上级步骤之前，使用该工具需要一次性审批——回复和读取工具（message、read、memory_search）除外，它们始终可用，除非某个步骤或治理策略明确拒绝。",
       knowledgeNarrowing:
         "此步骤尚未设置知识允许列表，因此可以查询所有已注册的知识基础。添加第一个条目后，将仅限于列出的知识基础。",
       knowledgeUngranted:
         "此工作地图明确授予知识。在此处或其上方的步骤中列出知识库之前，该步骤不会查询任何知识库。",
       skillNameInvalid: "请使用有效的 Skill 名称：仅限小写字母、数字和单个连字符，最多 64 个字符。",
       foundationIdInvalid: "请使用知识基础 ID：小写点分段格式，例如 acme.runbooks。",
-      ancestorGate:
-        "父级步骤（{nodeIds}）对此有各自的允许列表。治理机制会从根节点逐步检查每个步骤，因此即使在此处添加了条目，除非那些步骤也允许，否则仍会被拒绝。",
+      ancestorGateApproval:
+        "父级步骤（{nodeIds}）对此有各自的允许列表。治理会从根节点逐步检查每个步骤，因此此处添加的条目只有在那些步骤也允许的情况下才会无需确认直接运行；否则需要一次性审批。请同时将其添加到那些步骤中，或使用拒绝工具直接拒绝。",
       empty: "请先输入一个值。",
       duplicate: "该条目已在此步骤中声明。",
       nodeMissing: "该步骤已不在树中，请重新加载后重试。",
@@ -370,8 +370,12 @@ export const zh_CN: TranslationMap = {
     capabilityGrants: {
       explicit: "显式授权",
       inherited: "继承的范围",
-      explicitHint:
-        "每个步骤仅能访问其自身或上级步骤中列出的工具、Skills、MCP 服务器和知识库。未列出任何内容的步骤将无法访问任何资源。",
+      explicitHintGated:
+        "每个步骤应使用其自身或上级步骤中列出的工具、Skills、MCP 服务器和知识基础。未列出的 Skills、MCP 服务器和知识基础将被完全禁止。未列出的工具将触发一次性审批，回复和读取工具（message、read、memory_search）始终可用，除非某个步骤或治理策略明确拒绝。",
+      explicitHintNotEnforcing:
+        "此工作地图显式授予了能力，但企业模式未处于强制执行状态，因此工具、Skill 和 MCP 授权仅被记录而未被应用。知识授权在所有模式下仍会限定检索范围。以下授权已保存，并将在模式设置为强制执行后完全生效。",
+      explicitHintOff:
+        "此工作地图显式授予功能权限，但企业模式已关闭，因此其中的授权均不生效。以下授权已保存，将在模式设置为观察或强制执行时生效。",
       inheritedHint:
         "步骤的列表会缩小其上级所允许的范围；分支中未列出任何内容的步骤可以使用任何工具或 Skills。",
       turnOn: "显式授权",

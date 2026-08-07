@@ -219,8 +219,8 @@ export const nl: TranslationMap = {
         "De geconfigureerde toolcatalogus, gegroepeerd zoals de runtime ze groepeert. Een plugin-tool wordt vermeld zodra deze is gedeclareerd, zelfs voordat de configuratie is opgelost, en channel- en MCP-tools bestaan alleen binnen een actieve sessie. Dit toont dus wat geconfigureerd kan worden in plaats van wat op dit moment actief is.",
       attachHint:
         "Dit is de catalogus. Om een stap een tool te laten aanroepen, open Worktree, selecteer de stap en voeg deze toe onder Stapkoppelingen.",
-      attachHintGranted:
-        "Deze work-map verleent tools expliciet. Een stap kan alleen de tools aanroepen die het vermeldt, of de tools die een bovenliggende stap vermeldt. Alle andere tools in deze catalogus worden geweigerd.",
+      attachHintGrantedGated:
+        "Deze werkkaart kent tools expliciet toe. Een stap is bedoeld om de tools te gebruiken die erin vermeld staan, of die in een bovenliggende stap vermeld staan. Al het andere vraagt een eenmalige goedkeuring in plaats van te worden uitgevoerd, en wordt geweigerd als niemand reageert. Beantwoorden en lezen (message, read, memory_search) blijven beschikbaar bij elke stap, tenzij een stap ze weigert of een governancebeleid dat doet.",
       empty: "Er zijn geen tools beschikbaar op deze Gateway.",
       toolCount: "{count} tool(s)",
       optionalBadge: "optioneel",
@@ -291,10 +291,10 @@ export const nl: TranslationMap = {
     entryDraft: {
       add: "Toevoegen",
       none: "Nog geen opgegeven.",
-      scopeNarrowing:
-        "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Zodra u de eerste vermelding toevoegt, wordt het een allowlist en blijven alleen de vermelde tools beschikbaar.",
-      scopeUngranted:
-        "Deze werkkaart kent tools expliciet toe. De stap bereikt geen tool totdat er een wordt vermeld hier of bij een bovenliggende stap.",
+      scopeNarrowingApproval:
+        "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Het toevoegen van de eerste vermelding maakt er een allowlist van. De vermelde tools draaien vrij en al het andere vereist eenmalige goedkeuring.",
+      scopeUngrantedGated:
+        "Deze werkkaart kent tools expliciet toe. Totdat een tool hier of in een bovenliggende stap vermeld staat, is er een eenmalige goedkeuring nodig om het te gebruiken — behalve beantwoorden en lezen (message, read, memory_search), die beschikbaar blijven tenzij een stap ze weigert of een governancebeleid dat doet.",
       knowledgeNarrowing:
         "Deze stap heeft nog geen kennislijst, dus kan elke geregistreerde foundation worden bevraagd. Door de eerste vermelding toe te voegen, wordt het beperkt tot de vermelde foundations.",
       knowledgeUngranted:
@@ -303,8 +303,8 @@ export const nl: TranslationMap = {
         "Gebruik een skillnaam: kleine letters, cijfers en enkele koppeltekens, maximaal 64 tekens.",
       foundationIdInvalid:
         "Gebruik een foundation-id: kleine letters gescheiden door punten, bijvoorbeeld acme.runbooks.",
-      ancestorGate:
-        "Bovenliggende stappen ({nodeIds}) hebben hun eigen allowlist hiervoor. Governance controleert elke stap vanaf de root, dus een vermelding die hier wordt toegevoegd wordt alsnog geweigerd tenzij die stappen het ook toestaan.",
+      ancestorGateApproval:
+        "Bovenliggende stappen ({nodeIds}) hebben hun eigen allowlist hiervoor. Governance controleert elke stap vanaf de root, dus een vermelding die hier wordt toegevoegd, wordt alleen zonder bevestiging uitgevoerd als die stappen het ook toestaan; anders is een eenmalige goedkeuring nodig. Voeg het ook toe aan die stappen, of gebruik Denied tools om het volledig te weigeren.",
       empty: "Voer eerst een waarde in.",
       duplicate: "Die vermelding is al opgegeven voor deze stap.",
       nodeMissing: "Die stap bevindt zich niet meer in de boom; herlaad en probeer het opnieuw.",
@@ -392,8 +392,12 @@ export const nl: TranslationMap = {
     capabilityGrants: {
       explicit: "Expliciete toekenningen",
       inherited: "Overgenomen scopes",
-      explicitHint:
-        "Elke stap heeft alleen toegang tot de tools, Skills, MCP-servers en kennisbronnen die in die stap of een bovenliggende stap zijn vermeld. Een stap zonder vermeldingen heeft nergens toegang toe.",
+      explicitHintGated:
+        "Elke stap is bedoeld om de tools, Skills, MCP-servers en kennisfundamenten te gebruiken die erin of in een bovenliggende stap vermeld staan. Skills, MCP-servers en kennisfundamenten die een stap niet vermeldt, worden volledig ingehouden. Een niet-vermelde TOOL vraagt in plaats daarvan een eenmalige goedkeuring, en beantwoorden en lezen (message, read, memory_search) blijven beschikbaar tenzij een stap of een governancebeleid ze weigert.",
+      explicitHintNotEnforcing:
+        "Deze werkkaart kent mogelijkheden expliciet toe, maar de enterprise-modus wordt niet afgedwongen. Tool-, skill- en MCP-toekenningen worden vastgelegd in plaats van toegepast. Kennistoekenningen beperken het ophalen nog steeds in elke modus.",
+      explicitHintOff:
+        "Deze werkkaart kent mogelijkheden expliciet toe, maar enterprise-mediatie is niet actief, waardoor er geen toekenning van toepassing is. De onderstaande toekenningen zijn opgeslagen en worden van kracht zodra mediatie is ingeschakeld.",
       inheritedHint:
         "De lijsten van een stap beperken wat de bovenliggende stappen hebben toegestaan; een stap waarvan de vertakking niets vermeldt, mag elke tool of skill gebruiken.",
       turnOn: "Expliciet toekennen",
