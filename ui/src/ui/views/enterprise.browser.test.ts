@@ -140,6 +140,11 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     onSubmitAddNode: () => undefined,
     bindingPicker: null,
     onOpenBindingPicker: () => undefined,
+    onRemoveBinding: () => undefined,
+    guidanceDraft: null,
+    onGuidanceDraft: () => undefined,
+    onSaveGuidance: () => undefined,
+    onCancelGuidance: () => undefined,
     onBindingPickerQuery: () => undefined,
     onBindingPickerCustom: () => undefined,
     onToggleBindingPickerValue: () => undefined,
@@ -820,7 +825,10 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(text).toContain("Skills");
     expect(text).toContain("Knowledge");
     expect(text).toContain("MCP servers");
-    expect(container.querySelectorAll(".binding-group").length).toBe(4);
+    // Denials are a binding kind too, and the only one no later grant can undo,
+    // so it gets a row rather than forcing an operator into the raw editor.
+    expect(text).toContain("Denied tools");
+    expect(container.querySelectorAll(".binding-group").length).toBe(5);
     expect(container.querySelector(".binding-group input")).toBeNull();
     // Structural edits live in their own block, not as a fifth binding.
     expect(container.querySelector(".node-structure")).not.toBeNull();

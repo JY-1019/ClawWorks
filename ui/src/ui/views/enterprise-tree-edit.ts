@@ -114,7 +114,7 @@ export function isValidSkillName(name: string): boolean {
 
 export type AddNodeOntologyEntryResult =
   | { ok: true; definition: EditableTreeDefinition }
-  | { ok: false; reason: "node-not-found" | "duplicate-entry" };
+  | { ok: false; reason: "node-not-found" | "duplicate-entry" | "entry-not-found" };
 
 /**
  * Return a NEW definition with `entry` appended to `node.ontology[field]` on the
@@ -142,6 +142,73 @@ export function addNodeOntologyEntry(
     return { ok: false, reason: "duplicate-entry" };
   }
   node.ontology = { ...ontology, [field]: [...current, entry] };
+  return { ok: true, definition: next };
+}
+
+/**
+ * Detach one entry from a step's binding.
+ *
+ * The mirror of `addNodeOntologyEntry`, and it has to exist: a governance
+ * surface where grants can only ever be ADDED forces an operator into the raw
+ * editor to take one back, which is exactly the edit you least want done by
+ * hand-editing YAML.
+ *
+ * Removing the last entry drops the key entirely rather than leaving `[]`, since
+ * those mean different things — an omitted `allowedTools` inherits the path's
+ * scope, while an empty one grants nothing.
+ *
+ * `mcpServers` is the exception and must keep its empty array: the runtime reads
+ * PRESENCE, not length (`treeDeclaresMcpAttachment` in src/enterprise/plan.ts),
+ * so an absent property marks a tree written before the field existed and leaves
+ * every registered server callable. Dropping the last attachment would silently
+ * un-govern the whole work-map — the opposite of what the operator asked for.
+ */
+export function removeNodeOntologyEntry(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  field: NodeOntologyListField,
+  entry: string,
+): AddNodeOntologyEntryResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  // Same narrowing as the add: touch one list, pass every other key through.
+  const ontology = (node.ontology ?? {}) as Record<string, unknown>;
+  const current = Array.isArray(ontology[field]) ? (ontology[field] as unknown[]) : [];
+  if (!current.some((value) => value === entry)) {
+    return { ok: false, reason: "entry-not-found" };
+  }
+  const remaining = current.filter((value) => value !== entry);
+  const { [field]: _dropped, ...rest } = ontology;
+  const keepEmptyMarker = field === "mcpServers";
+  node.ontology = remaining.length > 0 || keepEmptyMarker ? { ...rest, [field]: remaining } : rest;
+  return { ok: true, definition: next };
+}
+
+/**
+ * Set (or clear) a step's role prompt.
+ *
+ * Blank clears the key rather than storing an empty string: `guidance` is
+ * optional, and an empty one would render an empty instruction line into the
+ * step digest. Same immutable contract as the entry splicers — a failed set
+ * leaves the caller's definition untouched, and every other field passes through.
+ */
+export function setNodeGuidance(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  guidance: string,
+): AddNodeOntologyEntryResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const ontology = (node.ontology ?? {}) as Record<string, unknown>;
+  const trimmed = guidance.trim();
+  const { guidance: _dropped, ...rest } = ontology;
+  node.ontology = trimmed ? { ...rest, guidance: trimmed } : rest;
   return { ok: true, definition: next };
 }
 

@@ -106,6 +106,16 @@ export type EnterpriseProps = {
   // through enterprise.trees.import.
   bindingPicker: EnterpriseBindingPicker | null;
   onOpenBindingPicker: (nodeId: string, field: NodeOntologyListField) => void;
+  /**
+   * Detach one entry. Separate from the picker: the picker collects a selection,
+   * while this is already a specific entry on a specific step.
+   */
+  onRemoveBinding: (nodeId: string, field: NodeOntologyListField, entry: string) => void;
+  /** In-progress role-prompt edit, or null when nothing is being edited. */
+  guidanceDraft: { treeId: string; nodeId: string; text: string } | null;
+  onGuidanceDraft: (nodeId: string, text: string) => void;
+  onSaveGuidance: (nodeId: string) => void;
+  onCancelGuidance: () => void;
   onBindingPickerQuery: (query: string) => void;
   onBindingPickerCustom: (value: string) => void;
   onToggleBindingPickerValue: (value: string) => void;
@@ -215,12 +225,19 @@ type BindingOption = { value: string; description?: string };
  */
 const CUSTOM_PLACEHOLDER: Partial<Record<NodeOntologyListField, string>> = {
   allowedTools: "group:enterprise",
+  // Same matcher as the allow-list, so the same shape of example.
+  deniedTools: "bash",
   skills: "refund-policy",
   knowledgeFoundations: "acme.runbooks",
 };
 
+/** Both tool lists draw from the tool catalog; everything else names an id. */
+function isToolBackedField(field: NodeOntologyListField): boolean {
+  return field === "allowedTools" || field === "deniedTools";
+}
+
 function customEntryLabel(field: NodeOntologyListField): string {
-  return field === "allowedTools"
+  return isToolBackedField(field)
     ? t("enterprise.picker.customToolLabel")
     : t("enterprise.picker.customNameLabel");
 }
@@ -295,6 +312,7 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
           ? html`<button
               type="button"
               class="btn"
+              ?disabled=${props.treeSaving}
               @click=${() => props.onOpenBindingPicker(nodeId, field)}
             >
               ${t("enterprise.entryDraft.add")}
@@ -310,6 +328,17 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
                 return html`<span class="chip"
                   ><code>${value}</code>${note
                     ? html`<span class="chip chip-warn">${note}</span>`
+                    : nothing}${props.canEdit
+                    ? html`<button
+                        type="button"
+                        class="chip-remove"
+                        title=${t("enterprise.entryDraft.removeTitle", { entry: value })}
+                        aria-label=${t("enterprise.entryDraft.removeTitle", { entry: value })}
+                        ?disabled=${props.treeSaving}
+                        @click=${() => props.onRemoveBinding(nodeId, field, value)}
+                      >
+                        ×
+                      </button>`
                     : nothing}</span
                 >`;
               })}
@@ -394,7 +423,7 @@ function renderBindingPicker(
   const configBacked = adder.field === "mcpServers";
   const catalogError = configBacked
     ? null
-    : adder.field === "allowedTools"
+    : isToolBackedField(adder.field)
       ? props.catalogErrors.tools
       : adder.field === "skills"
         ? props.catalogErrors.skills
@@ -624,6 +653,35 @@ function inheritedKnowledgeFoundations(props: EnterpriseProps, nodeId: string): 
     current = node.parentId;
   }
   return inherited ?? [];
+}
+
+/**
+ * Denials an ancestor step declared, which apply here too.
+ *
+ * Shown for the same reason as inherited MCP attachments, but it matters more:
+ * a denial cannot be taken back further down the path, so a step whose own list
+ * is empty can still be unable to call a tool. Without this the operator would
+ * see "no denials" on a step that is in fact denied.
+ */
+function inheritedDeniedTools(props: EnterpriseProps, nodeId: string): string[] {
+  const nodes = props.treeDetail?.nodes;
+  if (!nodes) {
+    return [];
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const inherited = new Set<string>();
+  let current = byId.get(nodeId)?.parentId ?? null;
+  while (current) {
+    const node = byId.get(current);
+    if (!node) {
+      break;
+    }
+    for (const tool of node.ontology.deniedTools ?? []) {
+      inherited.add(tool);
+    }
+    current = node.parentId;
+  }
+  return [...inherited].toSorted((a, b) => a.localeCompare(b));
 }
 
 function inheritedMcpServers(props: EnterpriseProps, nodeId: string): string[] {
@@ -2077,7 +2135,7 @@ function renderNodeInspector(
             ></openclaw-ontology-graph>
             ${renderNodeObjects(objectEntities, props)}
           `}
-      ${renderNodeBindings(adders, props)}
+      ${renderNodeGuidance(node, props)} ${renderNodeBindings(adders, props)}
       <!-- Adding a CHILD STEP is structural: it changes the workflow shape, not
         what this step may call. Kept in its own block, behind a rule, so it is
         not read as a fourth kind of binding. -->
@@ -2144,6 +2202,40 @@ function nodeBindingAdders(
             : t("enterprise.entryDraft.scopeNarrowingApproval")
           : null,
       constrainingAncestors: constrainingAncestorIds(props, node.id, "allowedTools"),
+    },
+    {
+      nodeId: node.id,
+      field: "deniedTools",
+      values: ontology.deniedTools ?? [],
+      title: t("enterprise.bindings.deniedTools"),
+      // Same catalog as the allow-list: a denial names a tool, and an operator
+      // reaching for one is picking from what exists, not inventing a name.
+      options: toolBindingOptions(props),
+      // Inverted from every other row here: an empty denial list is the normal,
+      // permissive state, so this never warns about the list being empty. It
+      // explains what an ENTRY does instead, and says so before the first one is
+      // added — a denial reaches every step below and no later grant takes it
+      // back, which is exactly what an operator wants to know at the picker.
+      //
+      // Mode-qualified, like the capability-grant chip: outside enforce a denial
+      // is recorded, not applied, and claiming a live boundary would be worse
+      // than saying nothing.
+      scopeWarning:
+        props.enterpriseMode === "enforce"
+          ? t("enterprise.bindings.deniedToolsWins")
+          : props.enterpriseMode === "observe"
+            ? t("enterprise.bindings.deniedToolsObserving")
+            : // `off` is not "recorded but not applied": mediation is bypassed
+              // entirely, so there is no decision and no audit trail to point at.
+              t("enterprise.bindings.deniedToolsOff"),
+      inheritedValues: inheritedDeniedTools(props, node.id),
+      // Deliberately ancestor-only. Denials ARE collected definition-wide for the
+      // launch-time MCP ceiling (src/enterprise/plan.ts), but whether a given
+      // entry reaches a given server is decided by `denialReachesMcpServer`
+      // (src/enterprise/active-runs.ts) — namespaces, `mcp__` spellings,
+      // collision aliases, glob policy. Reproducing that here would duplicate
+      // governance policy in the UI and drift from it; listing every off-path
+      // denial without it would claim restrictions that do not exist.
     },
     {
       nodeId: node.id,
@@ -2229,6 +2321,76 @@ function nodeBindingAdders(
  * binding with different rules, and an operator scanning for "what can this step
  * call" should not have to parse where one ends and the next begins.
  */
+/**
+ * How this step should behave, in the operator's words.
+ *
+ * Rendered into the step digest as advisory instruction — tool scope and
+ * governance still enforce, and if they conflict, enforcement wins. That is why
+ * it gets its own block above the bindings rather than sitting among them:
+ * everything below GRANTS something, this only tells the model what the step is
+ * for.
+ *
+ * Draft-then-save, not per-keystroke: every write is a whole-tree import and a
+ * new revision, so saving on each character would bury the version history and
+ * race itself.
+ */
+function renderNodeGuidance(
+  node: EnterpriseTreeNode,
+  props: EnterpriseProps,
+): TemplateResult | typeof nothing {
+  const saved = node.ontology.guidance ?? "";
+  // Both ids: node ids repeat across trees (roots especially), so a draft from
+  // another work-map would otherwise appear under this step.
+  const draft =
+    props.guidanceDraft?.nodeId === node.id && props.guidanceDraft.treeId === props.treeDetail?.id
+      ? props.guidanceDraft
+      : null;
+  if (!props.canEdit) {
+    // A read-only operator still needs to see what the step was told to do.
+    return saved
+      ? html`<div class="card-title" style="margin-top: 16px;">
+            ${t("enterprise.guidanceEditor.title")}
+          </div>
+          <div class="muted" style="margin-top: 4px; white-space: pre-wrap;">${saved}</div>`
+      : nothing;
+  }
+  const value = draft ? draft.text : saved;
+  const dirty = value !== saved;
+  return html`
+    <div class="card-title" style="margin-top: 16px;">${t("enterprise.guidanceEditor.title")}</div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.guidanceEditor.guidanceNote")}</div>
+    <textarea
+      class="input"
+      style="margin-top: 8px; min-height: 96px; width: 100%;"
+      rows="4"
+      .value=${value}
+      aria-label=${t("enterprise.guidanceEditor.fieldLabel", { nodeId: node.id })}
+      placeholder=${t("enterprise.guidanceEditor.placeholder")}
+      ?disabled=${props.treeSaving}
+      @input=${(event: Event) =>
+        props.onGuidanceDraft(node.id, (event.target as HTMLTextAreaElement).value)}
+    ></textarea>
+    <div class="row" style="margin-top: 6px; gap: 8px;">
+      <button
+        type="button"
+        class="btn"
+        ?disabled=${!dirty || props.treeSaving}
+        @click=${() => props.onSaveGuidance(node.id)}
+      >
+        ${t("enterprise.guidanceEditor.save")}
+      </button>
+      <button
+        type="button"
+        class="btn"
+        ?disabled=${!dirty || props.treeSaving}
+        @click=${() => props.onCancelGuidance()}
+      >
+        ${t("enterprise.guidanceEditor.revert")}
+      </button>
+    </div>
+  `;
+}
+
 function renderNodeBindings(
   adders: readonly OntologyEntryAdder[],
   props: EnterpriseProps,

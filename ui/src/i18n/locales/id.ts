@@ -288,6 +288,7 @@ export const id: TranslationMap = {
       "Tambahkan sub-langkah di bawah langkah ini. Ini mengubah bentuk peta kerja, bukan apa yang boleh dipanggil langkah ini.",
     entryDraft: {
       add: "Tambah",
+      removeTitle: "Lepaskan {entry} dari langkah ini",
       none: "Belum ada yang dideklarasikan.",
       scopeNarrowingApproval:
         "Langkah ini belum memiliki daftar izin alat, sehingga mengizinkan semua alat kecuali yang ditolak. Menambahkan entri pertama akan mengubahnya menjadi daftar izin. Alat yang terdaftar berjalan bebas dan yang lainnya memerlukan persetujuan satu kali.",
@@ -333,6 +334,15 @@ export const id: TranslationMap = {
       treeUnavailable:
         "Work-map yang dipilih tidak dapat dimuat, sehingga penggunaan langkah tidak ditampilkan: {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt peran",
+      guidanceNote:
+        "Tujuan langkah ini, dengan kata-kata Anda sendiri. Ini dirender ke dalam ringkasan langkah sebagai instruksi dan tidak pernah memberikan izin apa pun — sebuah langkah tetap tidak dapat memanggil tool yang tidak ada dalam cakupannya, bagaimanapun prompt tersebut dirumuskan.",
+      fieldLabel: "Prompt peran untuk langkah {nodeId}",
+      placeholder: "mis. Konfirmasi identitas pemohon sebelum menyebutkan angka apa pun.",
+      save: "Simpan prompt peran",
+      revert: "Kembalikan",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -341,6 +351,12 @@ export const id: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Pengetahuan — ontology.knowledgeFoundations",
       mcp: "Server MCP — ontology.mcpServers",
+      deniedTools: "Alat yang ditolak — ontology.deniedTools",
+      deniedToolsWins:
+        "Penolakan selalu menang. Berlaku untuk langkah ini dan semua yang ada di bawahnya, dan tidak ada grant di cabang berikutnya yang dapat membatalkannya.",
+      deniedToolsNotEnforcing:
+        "Penolakan dicatat tetapi tidak diterapkan selama mediasi enterprise tidak dalam mode penegakan. Setelah ditegakkan, penolakan berlaku untuk langkah ini dan semua yang ada di bawahnya, dan tidak ada pemberian izin lebih jauh di cabang tersebut yang dapat membatalkannya.",
+      deniedElsewhere: "Juga ditolak oleh cabang lain dari work-map ini:",
       skillNotInstalled: "tidak terinstal",
       foundationNotRegistered: "tidak terdaftar",
       mcpNotRegistered: "tidak terdaftar di mcp.servers",

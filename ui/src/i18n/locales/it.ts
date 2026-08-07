@@ -288,6 +288,7 @@ export const it: TranslationMap = {
       "Aggiungi un sotto-passaggio sotto questo. Questo modifica la forma della mappa di lavoro, non cosa può chiamare questo passaggio.",
     entryDraft: {
       add: "Aggiungi",
+      removeTitle: "Scollega {entry} da questo passaggio",
       none: "Nessuno dichiarato finora.",
       scopeNarrowingApproval:
         "Questo passaggio non ha ancora una lista di strumenti consentiti, quindi permette tutti gli strumenti tranne quelli negati. Aggiungere la prima voce lo trasforma in una lista di strumenti consentiti. Gli strumenti elencati vengono eseguiti liberamente e qualsiasi altro richiede un'approvazione una tantum.",
@@ -336,6 +337,15 @@ export const it: TranslationMap = {
       treeUnavailable:
         "Non è stato possibile caricare la mappa di lavoro selezionata, quindi non viene mostrato alcun utilizzo degli step: {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt di ruolo",
+      guidanceNote:
+        "A cosa serve questo passaggio, con parole tue. Viene inserito nel riepilogo del passaggio come istruzione e non concede nulla — un passaggio non può comunque chiamare uno strumento che il suo ambito non prevede, indipendentemente da come è formulato il prompt.",
+      fieldLabel: "Prompt del ruolo per il passaggio {nodeId}",
+      placeholder: "es. Confermare l'identità del richiedente prima di citare qualsiasi importo.",
+      save: "Salva prompt di ruolo",
+      revert: "Ripristina",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "Cosa questo step può chiamare, le competenze che dichiara e cosa può recuperare.",
@@ -343,6 +353,13 @@ export const it: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Conoscenze — ontology.knowledgeFoundations",
       mcp: "Server MCP — ontology.mcpServers",
+      deniedTools: "Strumenti negati — ontology.deniedTools",
+      deniedToolsWins:
+        "Un diniego prevale sempre. Si applica a questo passaggio e a tutto ciò che ne deriva, e nessuna concessione più in basso nel ramo può revocarlo.",
+      deniedToolsObserving:
+        "La mediazione enterprise è in modalità osservazione, quindi i rifiuti vengono registrati ma non applicati. Quando sarà in modalità applicazione, un rifiuto si applicherà a questo passaggio e a tutto ciò che si trova al suo interno, e nessuna concessione più in basso nel ramo potrà annullarlo.",
+      deniedToolsOff:
+        "La mediazione enterprise è disattivata, quindi i rifiuti non vengono né applicati né registrati. Attiva la mediazione perché questo abbia effetto o appaia nella traccia di esecuzione.",
       skillNotInstalled: "non installata",
       foundationNotRegistered: "non registrata",
       mcpNotRegistered: "non registrato in mcp.servers",

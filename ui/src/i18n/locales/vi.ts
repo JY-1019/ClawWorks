@@ -284,6 +284,7 @@ export const vi: TranslationMap = {
       "Thêm một bước con bên dưới bước này. Điều này thay đổi hình dạng của sơ đồ công việc, không phải những gì bước này có thể gọi.",
     entryDraft: {
       add: "Thêm",
+      removeTitle: "Tách {entry} khỏi bước này",
       none: "Chưa có khai báo nào.",
       scopeNarrowingApproval:
         "Bước này chưa có danh sách công cụ cho phép, vì vậy nó cho phép mọi công cụ ngoại trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển nó thành danh sách cho phép. Các công cụ được liệt kê sẽ chạy tự do và bất kỳ công cụ nào khác cần được phê duyệt riêng lẻ.",
@@ -330,6 +331,15 @@ export const vi: TranslationMap = {
       treeUnavailable:
         "Không thể tải work-map đã chọn, do đó không có thông tin sử dụng bước nào được hiển thị: {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt vai trò",
+      guidanceNote:
+        "Mục đích của bước này, theo cách diễn đạt của bạn. Nội dung này được đưa vào tóm tắt bước dưới dạng hướng dẫn và không bao giờ cấp bất kỳ quyền nào — một bước vẫn không thể gọi công cụ mà phạm vi của nó không cho phép, bất kể prompt được viết như thế nào.",
+      fieldLabel: "Prompt vai trò cho bước {nodeId}",
+      placeholder: "ví dụ: Xác nhận danh tính người yêu cầu trước khi trích dẫn bất kỳ con số nào.",
+      save: "Lưu prompt vai trò",
+      revert: "Hoàn tác",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -338,6 +348,12 @@ export const vi: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Kiến thức — ontology.knowledgeFoundations",
       mcp: "Máy chủ MCP — ontology.mcpServers",
+      deniedTools: "Công cụ bị từ chối — ontology.deniedTools",
+      deniedToolsWins:
+        "Từ chối luôn được ưu tiên. Nó áp dụng cho bước này và mọi thứ bên dưới, và không có quyền cấp nào ở sâu hơn trong nhánh có thể thu hồi nó.",
+      deniedToolsNotEnforcing:
+        "Các từ chối được ghi nhận nhưng không được áp dụng khi enterprise mediation không ở chế độ thực thi. Khi bắt đầu thực thi, từ chối sẽ áp dụng cho bước này và mọi thứ bên dưới nó, và không có cấp phép nào ở nhánh phía dưới có thể thu hồi lại.",
+      deniedElsewhere: "Cũng bị từ chối bởi một nhánh khác của work-map này:",
       skillNotInstalled: "chưa cài đặt",
       foundationNotRegistered: "chưa đăng ký",
       mcpNotRegistered: "chưa được đăng ký trong mcp.servers",

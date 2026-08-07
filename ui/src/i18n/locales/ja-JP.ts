@@ -290,6 +290,7 @@ export const ja_JP: TranslationMap = {
       "このステップの下にサブステップを追加します。これはワークマップの構造を変更するもので、このステップが呼び出せるものは変わりません。",
     entryDraft: {
       add: "追加",
+      removeTitle: "このステップから {entry} を切り離す",
       none: "まだ宣言されていません。",
       scopeNarrowingApproval:
         "このステップにはまだツール許可リストがないため、拒否されたツール以外のすべてのツールが許可されます。最初のエントリを追加すると、許可リストに切り替わります。リストに含まれるツールは自由に実行でき、それ以外のツールには都度承認が必要です。",
@@ -336,6 +337,15 @@ export const ja_JP: TranslationMap = {
       treeUnavailable:
         "選択されたワークマップを読み込めなかったため、ステップの使用状況は表示されません: {message}。",
     },
+    guidanceEditor: {
+      title: "ロールプロンプト",
+      guidanceNote:
+        "このステップの目的を自分の言葉で記述します。これはステップダイジェストに指示として反映されますが、何も許可しません — プロンプトの文言に関わらず、スコープで許可されていないツールをステップが呼び出すことはできません。",
+      fieldLabel: "ステップ {nodeId} のロールプロンプト",
+      placeholder: "例: 金額を提示する前に請求者の本人確認を行ってください。",
+      save: "ロールプロンプトを保存",
+      revert: "元に戻す",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "このステップが呼び出せるもの、宣言するノウハウ、取得できるもの。",
@@ -343,6 +353,13 @@ export const ja_JP: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "ナレッジ — ontology.knowledgeFoundations",
       mcp: "MCP サーバー — ontology.mcpServers",
+      deniedTools: "拒否されたツール — ontology.deniedTools",
+      deniedToolsWins:
+        "拒否は常に優先されます。このステップとその配下すべてに適用され、ブランチの下位にある権限付与で取り消すことはできません。",
+      deniedToolsObserving:
+        "エンタープライズメディエーションは監視中のため、拒否は記録されますが適用されません。強制モードになると、拒否はこのステップとその配下のすべてに適用され、ブランチのさらに下位での許可によって取り消すことはできません。",
+      deniedToolsOff:
+        "エンタープライズメディエーションはオフのため、拒否は適用も記録もされません。これを有効にするか実行トレースに表示するには、メディエーションをオンにしてください。",
       skillNotInstalled: "未インストール",
       foundationNotRegistered: "未登録",
       mcpNotRegistered: "mcp.servers に未登録",

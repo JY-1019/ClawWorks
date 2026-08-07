@@ -284,6 +284,7 @@ export const ko: TranslationMap = {
       "이 단계 아래에 하위 단계를 추가합니다. 이는 이 단계에서 호출할 수 있는 항목이 아니라 작업 맵의 구조를 변경합니다.",
     entryDraft: {
       add: "추가",
+      removeTitle: "이 단계에서 {entry} 분리",
       none: "아직 선언된 항목이 없습니다.",
       scopeNarrowingApproval:
         "이 단계에는 아직 도구 허용 목록이 없으므로 거부된 도구를 제외한 모든 도구를 허용합니다. 첫 번째 항목을 추가하면 허용 목록으로 전환됩니다. 나열된 도구는 자유롭게 실행되며, 그 외의 도구는 일회성 승인이 필요합니다.",
@@ -329,6 +330,15 @@ export const ko: TranslationMap = {
       treeUnavailable:
         "선택한 작업 맵을 불러올 수 없어 단계 사용량이 표시되지 않습니다: {message}.",
     },
+    guidanceEditor: {
+      title: "역할 프롬프트",
+      guidanceNote:
+        "이 단계의 목적을 자신의 말로 설명합니다. 단계 다이제스트에 지침으로 렌더링되며 어떤 권한도 부여하지 않습니다 — 프롬프트가 어떻게 작성되더라도 범위에서 제외된 도구는 호출할 수 없습니다.",
+      fieldLabel: "단계 {nodeId}의 역할 프롬프트",
+      placeholder: "예: 금액을 안내하기 전에 청구인의 신원을 확인하세요.",
+      save: "역할 프롬프트 저장",
+      revert: "되돌리기",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "이 단계가 호출할 수 있는 항목, 선언하는 노하우, 검색할 수 있는 항목입니다.",
@@ -336,6 +346,13 @@ export const ko: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "지식 — ontology.knowledgeFoundations",
       mcp: "MCP 서버 — ontology.mcpServers",
+      deniedTools: "거부된 도구 — ontology.deniedTools",
+      deniedToolsWins:
+        "거부는 항상 우선합니다. 이 단계와 그 하위 모든 항목에 적용되며, 하위 브랜치의 어떤 권한 부여도 이를 되돌릴 수 없습니다.",
+      deniedToolsObserving:
+        "엔터프라이즈 중재가 관찰 모드이므로 거부가 기록되지만 적용되지는 않습니다. 적용 모드가 되면 이 단계와 그 하위 항목 모두에 거부가 적용되며, 하위 브랜치의 어떤 허용도 이를 되돌릴 수 없습니다.",
+      deniedToolsOff:
+        "엔터프라이즈 중재가 꺼져 있으므로 거부가 적용되거나 기록되지 않습니다. 이 설정이 적용되거나 실행 추적에 표시되려면 중재를 켜세요.",
       skillNotInstalled: "설치되지 않음",
       foundationNotRegistered: "등록되지 않음",
       mcpNotRegistered: "mcp.servers에 등록되지 않음",

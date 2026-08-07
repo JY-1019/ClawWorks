@@ -296,6 +296,7 @@ export const de: TranslationMap = {
       "Fügen Sie einen Unterschritt unter diesem hinzu. Dies ändert die Struktur der Arbeitskarte, nicht was dieser Schritt aufrufen darf.",
     entryDraft: {
       add: "Hinzufügen",
+      removeTitle: "{entry} von diesem Schritt lösen",
       none: "Noch keine Einträge vorhanden.",
       scopeNarrowingApproval:
         "Dieser Schritt hat noch keine Tool-Positivliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Durch Hinzufügen des ersten Eintrags wird eine Positivliste erstellt. Die aufgelisteten Tools werden frei ausgeführt, alles andere erfordert eine einmalige Genehmigung.",
@@ -345,6 +346,15 @@ export const de: TranslationMap = {
       treeUnavailable:
         "Die ausgewählte Work-Map konnte nicht geladen werden, daher wird keine Schrittnutzung angezeigt: {message}.",
     },
+    guidanceEditor: {
+      title: "Rollenprompt",
+      guidanceNote:
+        "Wofür dieser Schritt gedacht ist, in Ihren eigenen Worten. Es wird als Anweisung in die Schrittzusammenfassung eingefügt und gewährt niemals etwas — ein Schritt kann weiterhin kein Tool aufrufen, das sein Geltungsbereich vorenthält, unabhängig davon, wie der Prompt formuliert ist.",
+      fieldLabel: "Rollen-Prompt für Schritt {nodeId}",
+      placeholder: "z. B. Identität des Antragstellers bestätigen, bevor Beträge genannt werden.",
+      save: "Rollenprompt speichern",
+      revert: "Zurücksetzen",
+    },
     bindings: {
       title: "Schrittbindungen",
       subtitle:
@@ -353,6 +363,13 @@ export const de: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Wissen — ontology.knowledgeFoundations",
       mcp: "MCP-Server — ontology.mcpServers",
+      deniedTools: "Verweigerte Tools — ontology.deniedTools",
+      deniedToolsWins:
+        "Eine Verweigerung hat immer Vorrang. Sie gilt für diesen Schritt und alles darunter, und keine Berechtigung weiter unten im Zweig kann sie aufheben.",
+      deniedToolsObserving:
+        "Die Enterprise-Mediation beobachtet, daher werden Ablehnungen aufgezeichnet, aber nicht angewendet. Sobald sie durchgesetzt wird, gilt eine Ablehnung für diesen Schritt und alles darunter, und keine Freigabe weiter unten im Zweig kann sie rückgängig machen.",
+      deniedToolsOff:
+        "Die Enterprise-Mediation ist deaktiviert, daher werden Ablehnungen weder angewendet noch aufgezeichnet. Aktivieren Sie die Mediation, damit dies wirksam wird oder im Run-Trace erscheint.",
       skillNotInstalled: "nicht installiert",
       foundationNotRegistered: "nicht registriert",
       mcpNotRegistered: "nicht in mcp.servers registriert",

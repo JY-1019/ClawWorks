@@ -71,6 +71,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeVersionsLoading: false,
     enterpriseNodeDraft: null,
     enterpriseBindingPicker: null,
+    enterpriseGuidanceDraft: null,
     enterpriseMcpDraft: null,
     enterpriseCatalogPhase: "unloaded",
     enterpriseCatalogErrors: { tools: null, skills: null, foundations: null },

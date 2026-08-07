@@ -289,6 +289,7 @@ export const fr: TranslationMap = {
       "Ajoutez une sous-étape sous celle-ci. Cela modifie la forme de la carte de travail, pas ce que cette étape peut appeler.",
     entryDraft: {
       add: "Ajouter",
+      removeTitle: "Détacher {entry} de cette étape",
       none: "Aucune déclaration pour le moment.",
       scopeNarrowingApproval:
         "Cette étape n'a pas encore de liste d'outils autorisés, elle permet donc tous les outils sauf ceux qu'elle refuse. L'ajout de la première entrée la transforme en liste d'autorisation. Les outils listés s'exécutent librement et tout le reste nécessite une approbation ponctuelle.",
@@ -336,6 +337,15 @@ export const fr: TranslationMap = {
       treeUnavailable:
         "L'arborescence sélectionnée n'a pas pu être chargée, aucune utilisation des étapes n'est affichée : {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt de rôle",
+      guidanceNote:
+        "À quoi sert cette étape, dans vos propres mots. Ce texte est intégré au résumé de l'étape en tant qu'instruction et n'accorde aucune permission — une étape ne peut toujours pas appeler un outil que son scope lui refuse, quelle que soit la formulation du prompt.",
+      fieldLabel: "Prompt de rôle pour l'étape {nodeId}",
+      placeholder: "ex. Confirmer l'identité du demandeur avant de citer un montant.",
+      save: "Enregistrer le prompt de rôle",
+      revert: "Rétablir",
+    },
     bindings: {
       title: "Liaisons de l'étape",
       subtitle:
@@ -344,6 +354,13 @@ export const fr: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Connaissances — ontology.knowledgeFoundations",
       mcp: "Serveurs MCP — ontology.mcpServers",
+      deniedTools: "Outils refusés — ontology.deniedTools",
+      deniedToolsWins:
+        "Un refus l'emporte toujours. Il s'applique à cette étape et à tout ce qui se trouve en dessous, et aucune autorisation plus bas dans la branche ne peut l'annuler.",
+      deniedToolsObserving:
+        "La médiation entreprise est en observation, les refus sont donc enregistrés mais non appliqués. Lorsqu'elle sera appliquée, un refus s'appliquera à cette étape et à tout ce qui se trouve en dessous, et aucune autorisation plus bas dans la branche ne pourra l'annuler.",
+      deniedToolsOff:
+        "La médiation entreprise est désactivée, les refus ne sont donc ni appliqués ni enregistrés. Activez la médiation pour que cela prenne effet ou apparaisse dans la trace d'exécution.",
       skillNotInstalled: "non installé",
       foundationNotRegistered: "non enregistré",
       mcpNotRegistered: "non enregistré dans mcp.servers",

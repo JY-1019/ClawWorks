@@ -290,6 +290,7 @@ export const nl: TranslationMap = {
       "Voeg een substap toe onder deze stap. Dit wijzigt de vorm van de werkkaart, niet wat deze stap mag aanroepen.",
     entryDraft: {
       add: "Toevoegen",
+      removeTitle: "{entry} loskoppelen van deze stap",
       none: "Nog geen opgegeven.",
       scopeNarrowingApproval:
         "Deze stap heeft nog geen tool-allowlist, dus alle tools zijn toegestaan behalve expliciet geweigerde. Het toevoegen van de eerste vermelding maakt er een allowlist van. De vermelde tools draaien vrij en al het andere vereist eenmalige goedkeuring.",
@@ -338,6 +339,15 @@ export const nl: TranslationMap = {
       treeUnavailable:
         "De geselecteerde werkkaart kon niet worden geladen, dus er wordt geen stapgebruik weergegeven: {message}.",
     },
+    guidanceEditor: {
+      title: "Rolprompt",
+      guidanceNote:
+        "Waar deze stap voor dient, in uw eigen woorden. Dit wordt als instructie in de stapsamenvatting opgenomen en verleent nooit rechten — een stap kan nog steeds geen tool aanroepen die buiten zijn bereik valt, ongeacht hoe de prompt is geformuleerd.",
+      fieldLabel: "Rolprompt voor stap {nodeId}",
+      placeholder: "bijv. Bevestig de identiteit van de aanvrager voordat u een bedrag noemt.",
+      save: "Rolprompt opslaan",
+      revert: "Ongedaan maken",
+    },
     bindings: {
       title: "Stapkoppelingen",
       subtitle: "Wat deze stap mag aanroepen, de kennis die het declareert en wat het mag ophalen.",
@@ -345,6 +355,12 @@ export const nl: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Kennis — ontology.knowledgeFoundations",
       mcp: "MCP-servers — ontology.mcpServers",
+      deniedTools: "Geweigerde tools — ontology.deniedTools",
+      deniedToolsWins:
+        "Een weigering wint altijd. Ze geldt voor deze stap en alles eronder, en geen toekenning verderop in de vertakking kan ze ongedaan maken.",
+      deniedToolsNotEnforcing:
+        "Weigeringen worden geregistreerd maar niet toegepast zolang enterprise-bemiddeling niet afdwingt. Zodra deze afdwingt, geldt een weigering voor deze stap en alles eronder, en geen toekenning verderop in de vertakking kan dit ongedaan maken.",
+      deniedElsewhere: "Ook geweigerd door een andere vertakking van deze werkkaart:",
       skillNotInstalled: "niet geïnstalleerd",
       foundationNotRegistered: "niet geregistreerd",
       mcpNotRegistered: "niet geregistreerd in mcp.servers",

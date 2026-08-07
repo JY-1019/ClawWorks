@@ -5,6 +5,8 @@ import {
   type EditableTreeDefinition,
   insertChildNode,
   newNodeIdIssue,
+  removeNodeOntologyEntry,
+  setNodeGuidance,
 } from "./enterprise-tree-edit.ts";
 
 function definition(): EditableTreeDefinition {
@@ -156,5 +158,178 @@ describe("addNodeOntologyEntry", () => {
       ok: false,
       reason: "node-not-found",
     });
+  });
+});
+
+describe("removeNodeOntologyEntry", () => {
+  function withTools(): EditableTreeDefinition {
+    const seeded = addNodeOntologyEntry(definition(), "support.triage", "allowedTools", "read");
+    if (!seeded.ok) {
+      throw new Error("seed failed");
+    }
+    const second = addNodeOntologyEntry(
+      seeded.definition,
+      "support.triage",
+      "allowedTools",
+      "bash",
+    );
+    if (!second.ok) {
+      throw new Error("seed failed");
+    }
+    return second.definition;
+  }
+
+  it("detaches one entry and leaves the rest", () => {
+    const result = removeNodeOntologyEntry(withTools(), "support.triage", "allowedTools", "read");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const node = result.definition.root.children?.[0];
+    expect((node?.ontology as { allowedTools?: string[] })?.allowedTools).toEqual(["bash"]);
+  });
+
+  // An omitted list inherits the path's scope; an empty one grants nothing. They
+  // are different states, so removing the last entry must not leave `[]` behind.
+  it("drops the key entirely when the last entry goes", () => {
+    const one = addNodeOntologyEntry(definition(), "support.triage", "allowedTools", "read");
+    if (!one.ok) {
+      throw new Error("seed failed");
+    }
+    const result = removeNodeOntologyEntry(
+      one.definition,
+      "support.triage",
+      "allowedTools",
+      "read",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const ontology = result.definition.root.children?.[0]?.ontology as
+      | Record<string, unknown>
+      | undefined;
+    expect(ontology && "allowedTools" in ontology).toBe(false);
+  });
+
+  it("leaves unrelated bindings on the same node untouched", () => {
+    const seeded = addNodeOntologyEntry(withTools(), "support.triage", "skills", "refund-policy");
+    if (!seeded.ok) {
+      throw new Error("seed failed");
+    }
+    const result = removeNodeOntologyEntry(
+      seeded.definition,
+      "support.triage",
+      "allowedTools",
+      "read",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const ontology = result.definition.root.children?.[0]?.ontology as {
+      allowedTools?: string[];
+      skills?: string[];
+    };
+    expect(ontology.skills).toEqual(["refund-policy"]);
+    expect(ontology.allowedTools).toEqual(["bash"]);
+  });
+
+  // treeDeclaresMcpAttachment (src/enterprise/plan.ts) reads PRESENCE, not length:
+  // an absent property means "written before the field existed" and leaves every
+  // registered server callable, so dropping the last attachment must not remove
+  // the key or the whole work-map silently stops governing MCP.
+  it("keeps an empty mcpServers marker when the last attachment goes", () => {
+    const seeded = addNodeOntologyEntry(definition(), "support.triage", "mcpServers", "github");
+    if (!seeded.ok) {
+      throw new Error("seed failed");
+    }
+    const result = removeNodeOntologyEntry(
+      seeded.definition,
+      "support.triage",
+      "mcpServers",
+      "github",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const ontology = result.definition.root.children?.[0]?.ontology as { mcpServers?: string[] };
+    expect(ontology.mcpServers).toEqual([]);
+  });
+
+  it("reports a missing node and a missing entry distinctly", () => {
+    expect(removeNodeOntologyEntry(withTools(), "nope", "allowedTools", "read")).toMatchObject({
+      ok: false,
+      reason: "node-not-found",
+    });
+    expect(
+      removeNodeOntologyEntry(withTools(), "support.triage", "allowedTools", "never-added"),
+    ).toMatchObject({ ok: false, reason: "entry-not-found" });
+  });
+
+  it("does not mutate the definition it was given", () => {
+    const original = withTools();
+    const snapshot = structuredClone(original);
+    removeNodeOntologyEntry(original, "support.triage", "allowedTools", "read");
+    expect(original).toEqual(snapshot);
+  });
+});
+
+describe("setNodeGuidance", () => {
+  it("sets the role prompt on a node that has no ontology yet", () => {
+    const result = setNodeGuidance(definition(), "support.triage", "  Confirm identity first.  ");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const ontology = result.definition.root.children?.[0]?.ontology as { guidance?: string };
+    // Trimmed: trailing whitespace would land verbatim in the step digest.
+    expect(ontology.guidance).toBe("Confirm identity first.");
+  });
+
+  // `guidance` is optional and an empty one would render an empty instruction
+  // line, so blank means "remove", not "set to empty".
+  it("clears the key when the prompt is blank", () => {
+    const set = setNodeGuidance(definition(), "support.triage", "something");
+    if (!set.ok) {
+      throw new Error("seed failed");
+    }
+    const cleared = setNodeGuidance(set.definition, "support.triage", "   ");
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) {
+      return;
+    }
+    const ontology = cleared.definition.root.children?.[0]?.ontology as Record<string, unknown>;
+    expect("guidance" in ontology).toBe(false);
+  });
+
+  it("leaves the node's other bindings untouched", () => {
+    const seeded = addNodeOntologyEntry(definition(), "support.triage", "allowedTools", "read");
+    if (!seeded.ok) {
+      throw new Error("seed failed");
+    }
+    const result = setNodeGuidance(seeded.definition, "support.triage", "Be careful.");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const ontology = result.definition.root.children?.[0]?.ontology as {
+      guidance?: string;
+      allowedTools?: string[];
+    };
+    expect(ontology.allowedTools).toEqual(["read"]);
+    expect(ontology.guidance).toBe("Be careful.");
+  });
+
+  it("reports a missing node and does not mutate the input", () => {
+    const original = definition();
+    const snapshot = structuredClone(original);
+    expect(setNodeGuidance(original, "nope", "text")).toMatchObject({
+      ok: false,
+      reason: "node-not-found",
+    });
+    setNodeGuidance(original, "support.triage", "text");
+    expect(original).toEqual(snapshot);
   });
 });

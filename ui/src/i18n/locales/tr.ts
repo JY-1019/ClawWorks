@@ -287,6 +287,7 @@ export const tr: TranslationMap = {
       "Bu adımın altına bir alt adım ekleyin. Bu, iş haritasının yapısını değiştirir; bu adımın neyi çağırabileceğini değil.",
     entryDraft: {
       add: "Ekle",
+      removeTitle: "{entry} öğesini bu adımdan ayır",
       none: "Henüz tanımlanmış bir şey yok.",
       scopeNarrowingApproval:
         "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında her araca izin verir. İlk girişin eklenmesi bunu bir izin listesine dönüştürür. Listelenen araçlar serbestçe çalışır ve diğer her şey tek seferlik bir onay gerektirir.",
@@ -333,6 +334,15 @@ export const tr: TranslationMap = {
       treeUnavailable:
         "Seçilen çalışma haritası yüklenemedi, bu nedenle adım kullanımı gösterilmiyor: {message}.",
     },
+    guidanceEditor: {
+      title: "Rol istemi",
+      guidanceNote:
+        "Bu adımın ne için olduğunu kendi kelimelerinizle açıklayın. Adım özetine talimat olarak işlenir ve hiçbir zaman yetki vermez — bir adım, kapsamının kısıtladığı bir aracı, istem nasıl ifade edilmiş olursa olsun çağıramaz.",
+      fieldLabel: "{nodeId} adımı için rol istemi",
+      placeholder: "ör. Herhangi bir rakam vermeden önce başvuru sahibinin kimliğini doğrulayın.",
+      save: "Rol istemini kaydet",
+      revert: "Geri al",
+    },
     bindings: {
       title: "Adım bağlamaları",
       subtitle: "Bu adımın çağırabileceği, bildirdiği uzmanlık ve alabileceği bilgiler.",
@@ -340,6 +350,13 @@ export const tr: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Bilgi — ontology.knowledgeFoundations",
       mcp: "MCP sunucuları — ontology.mcpServers",
+      deniedTools: "Reddedilen araçlar — ontology.deniedTools",
+      deniedToolsWins:
+        "Reddetme her zaman önceliklidir. Bu adıma ve altındaki her şeye uygulanır; dalın alt kısımlarındaki hiçbir yetki bunu geri alamaz.",
+      deniedToolsObserving:
+        "Kurumsal aracılık gözlem modunda, bu nedenle redler kaydedilir ancak uygulanmaz. Zorlama moduna geçtiğinde, red bu adıma ve altındaki her şeye uygulanır ve dalın daha aşağısındaki hiçbir izin bunu geri alamaz.",
+      deniedToolsOff:
+        "Kurumsal aracılık kapalı, bu nedenle redler ne uygulanır ne de kaydedilir. Bunun geçerli olması veya çalıştırma izlemesinde görünmesi için aracılığı açın.",
       skillNotInstalled: "yüklü değil",
       foundationNotRegistered: "kayıtlı değil",
       mcpNotRegistered: "mcp.servers içinde kayıtlı değil",

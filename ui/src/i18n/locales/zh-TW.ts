@@ -279,6 +279,7 @@ export const zh_TW: TranslationMap = {
       "在此步驟下新增子步驟。這會改變工作地圖的結構，而非此步驟可呼叫的內容。",
     entryDraft: {
       add: "新增",
+      removeTitle: "從此步驟分離 {entry}",
       none: "尚未宣告。",
       scopeNarrowingApproval:
         "此步驟尚未設定工具允許清單，因此除了被拒絕的工具外，允許使用所有工具。新增第一個項目後，將轉為允許清單模式。清單中的工具可自由執行，其他工具則需要逐次核准。",
@@ -319,6 +320,15 @@ export const zh_TW: TranslationMap = {
         "所選的工作地圖未能載入，因此以下步驟來自 Gateway 回傳的備用定義：{message}。在強制模式下，載入失敗的工作地圖在成功載入之前不會管控任何內容。",
       treeUnavailable: "無法載入所選的工作地圖，因此未顯示步驟使用情況：{message}。",
     },
+    guidanceEditor: {
+      title: "角色提示",
+      guidanceNote:
+        "用您自己的話描述此步驟的用途。此內容會作為指示呈現在步驟摘要中，且不會授予任何權限——無論提示如何措辭，步驟仍然無法呼叫其範圍未授權的工具。",
+      fieldLabel: "步驟 {nodeId} 的角色提示",
+      placeholder: "例如：在報出任何數字之前，先確認索賠人的身分。",
+      save: "儲存角色提示",
+      revert: "還原",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "此步驟可呼叫的工具、宣告的專業知識，以及可擷取的內容。",
@@ -326,6 +336,13 @@ export const zh_TW: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "知識 — ontology.knowledgeFoundations",
       mcp: "MCP 伺服器 — ontology.mcpServers",
+      deniedTools: "拒絕的工具 — ontology.deniedTools",
+      deniedToolsWins:
+        "拒絕規則始終優先。它適用於此步驟及其下所有內容，分支中更下層的任何授權都無法覆蓋它。",
+      deniedToolsObserving:
+        "企業調解正在觀察中，因此拒絕會被記錄但不會套用。一旦開始強制執行，拒絕將套用於此步驟及其下的所有內容，且分支中更下層的任何授權都無法撤銷該拒絕。",
+      deniedToolsOff:
+        "企業調解已關閉，因此拒絕既不會套用也不會記錄。請開啟調解功能以使其生效或顯示在執行追蹤中。",
       skillNotInstalled: "未安裝",
       foundationNotRegistered: "未註冊",
       mcpNotRegistered: "未在 mcp.servers 中註冊",

@@ -28,6 +28,8 @@ import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
   addNodeOntologyEntry,
+  removeNodeOntologyEntry,
+  setNodeGuidance,
   isValidEnterpriseId,
   isValidSkillName,
   type EditableTreeDefinition,
@@ -352,6 +354,14 @@ export type EnterpriseState = {
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
   enterpriseBindingPicker: EnterpriseBindingPicker | null;
+  /**
+   * Unsaved role-prompt edit for one step. Held outside the tree detail because
+   * that is a fetched snapshot the reload replaces; a draft has to survive it.
+   * Carries its treeId: node ids are only unique WITHIN a tree (roots collide
+   * constantly), so without it a draft from tree A would show under — and save
+   * into — the same-named step of tree B.
+   */
+  enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null;
   enterpriseMcpDraft: EnterpriseMcpDraft | null;
   // Catalogs of what a step can be bound TO: every tool the gateway exposes,
   // every installed skill, and every registered knowledge foundation. Read-only
@@ -636,6 +646,17 @@ let versionsRequestSeq = 0;
 // so a late response never writes stale content into the editor.
 let editSeedSeq = 0;
 
+/**
+ * Which whole-tree WRITE currently owns `enterpriseTreeSaving`.
+ *
+ * Deliberately not `editSeedSeq`: that advances for intents which are not writes
+ * (selecting another tree, opening Edit/New, restoring history, losing scope), so
+ * using it as the lock owner would leave the flag set with nobody left to clear
+ * it. Only an actual write takes a number here, so a superseded writer stays
+ * silent while the current one still releases.
+ */
+let treeSaveSeq = 0;
+
 /** Discard any in-progress edit + confirmation without touching the selection. */
 function resetTreeEditing(state: EnterpriseState) {
   // Invalidate any in-flight seed so it cannot re-enter edit mode after this.
@@ -683,6 +704,10 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
   state.enterpriseNodeDraft = null;
   // Same for a tool-grant / skill draft: it is bound to one node in one tree.
   state.enterpriseBindingPicker = null;
+  // ...and for the role prompt. Unsaved text must not survive a tree switch, a
+  // pruned node, or scope loss and then reappear under a same-named node
+  // elsewhere — or be silently overwritten by editing a different node.
+  state.enterpriseGuidanceDraft = null;
 }
 
 /**
@@ -1130,7 +1155,16 @@ export function cancelEnterpriseBindingPicker(state: EnterpriseState) {
 export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
   const picker = state.enterpriseBindingPicker;
   const tree = state.enterpriseTreeDetail;
-  if (!picker || picker.phase !== "idle" || !tree || picker.treeId !== tree.id) {
+  if (
+    !picker ||
+    picker.phase !== "idle" ||
+    !tree ||
+    picker.treeId !== tree.id ||
+    // Another whole-tree write holds the edit intent. Proceeding would claim it
+    // away and make THAT write return without importing or reporting — the
+    // operator's detach or role-prompt save would vanish silently.
+    state.enterpriseTreeSaving
+  ) {
     return;
   }
   const custom = picker.custom.trim();
@@ -1258,6 +1292,192 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
 }
 
 /**
+ * Detach one entry from a step's binding.
+ *
+ * Takes the same export→edit→import route as the capability toggle rather than
+ * adding a third write path: one whole-tree replace, one revision the version
+ * history can restore, and the same edit-intent guard so a concurrent editor
+ * save cannot be silently dropped by this one.
+ *
+ * No dialog. The picker needs one because it collects a selection; a removal is
+ * already a specific entry on a specific step, and the revision history is the
+ * undo. Widening a governance scope IS what this does, though, so it reports
+ * failures on the tree banner rather than failing quietly.
+ */
+/** Start or update the role-prompt draft for one step. */
+export function editEnterpriseNodeGuidance(state: EnterpriseState, nodeId: string, text: string) {
+  const treeId = state.enterpriseTreeDetail?.id;
+  if (!treeId) {
+    return;
+  }
+  state.enterpriseGuidanceDraft = { treeId, nodeId, text };
+}
+
+/** Discard the draft, reverting the field to whatever the tree has saved. */
+export function cancelEnterpriseNodeGuidance(state: EnterpriseState) {
+  state.enterpriseGuidanceDraft = null;
+}
+
+/**
+ * Save a step's role prompt.
+ *
+ * Same export→edit→import route as every other binding write, so it lands as one
+ * revision the version history can restore. Blank clears the key rather than
+ * writing an empty string: `guidance` is optional, and an empty one would put an
+ * empty instruction line in the step digest.
+ */
+export async function saveEnterpriseNodeGuidance(state: EnterpriseState, nodeId: string) {
+  const tree = state.enterpriseTreeDetail;
+  const draft = state.enterpriseGuidanceDraft;
+  if (
+    !tree ||
+    !draft ||
+    draft.nodeId !== nodeId ||
+    // The draft must belong to the tree on screen, or a same-named step in
+    // another tree would receive it.
+    draft.treeId !== tree.id ||
+    state.enterpriseTreeSaving
+  ) {
+    return;
+  }
+  const treeId = tree.id;
+  const text = draft.text.trim();
+  const editIntent = ++editSeedSeq;
+  const saveToken = ++treeSaveSeq;
+  state.enterpriseTreeSaving = true;
+  state.enterpriseTreeSaveError = null;
+  state.enterpriseTreeSaveIssues = null;
+  try {
+    const exported = await fetchExportContent(state, treeId, "json");
+    // The export awaited, so the operator may have moved on. A failure belongs to
+    // the tree it was read for; writing it now would blame whatever is on screen.
+    const stillOnThisTree = () =>
+      editIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
+    if (!exported.ok) {
+      if (!exported.scopeCleared && stillOnThisTree()) {
+        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      }
+      return;
+    }
+    const definition = parseTreeDefinition(exported.content);
+    if (!definition) {
+      if (stillOnThisTree()) {
+        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      }
+      return;
+    }
+    // A newer edit claimed the intent while the export was in flight; writing this
+    // whole-tree replace now would undo it.
+    if (editIntent !== editSeedSeq) {
+      return;
+    }
+    const result = setNodeGuidance(definition, nodeId, text);
+    if (!result.ok) {
+      // The step is gone, so someone else reshaped this tree; reload rather than
+      // report, the screen is simply behind.
+      await refreshAfterTreeWrite(state, treeId, treeId);
+      return;
+    }
+    const imported = await importTreeDefinition(state, result.definition);
+    if (imported.status !== "saved") {
+      // The operator navigated while this was in flight; its failure belongs to
+      // the tree it was written against, not to whatever is on screen now.
+      if (editIntent !== editSeedSeq || state.enterpriseSelectedTreeId !== treeId) {
+        return;
+      }
+      state.enterpriseTreeSaveError = importFailureText(imported);
+      return;
+    }
+    // The write landed. Release before the reloads: those are separate requests
+    // with no client-side timeout, and holding the lock would leave every
+    // role-prompt and detach control disabled over a save that already
+    // succeeded. Ownership-checked, because the flag is shared — once a newer
+    // write claims the intent, clearing it here would unlock THAT write.
+    if (saveToken === treeSaveSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+    await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
+  } finally {
+    // Same ownership check: a superseded call must not release a newer one's lock.
+    if (saveToken === treeSaveSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+  }
+}
+
+export async function removeEnterpriseBinding(
+  state: EnterpriseState,
+  params: { nodeId: string; field: NodeOntologyListField; entry: string },
+) {
+  const tree = state.enterpriseTreeDetail;
+  if (!tree || state.enterpriseTreeSaving) {
+    return;
+  }
+  const treeId = tree.id;
+  const editIntent = ++editSeedSeq;
+  const saveToken = ++treeSaveSeq;
+  state.enterpriseTreeSaving = true;
+  state.enterpriseTreeSaveError = null;
+  state.enterpriseTreeSaveIssues = null;
+  try {
+    const exported = await fetchExportContent(state, treeId, "json");
+    // The export awaited, so the operator may have moved on. A failure belongs to
+    // the tree it was read for; writing it now would blame whatever is on screen.
+    const stillOnThisTree = () =>
+      editIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
+    if (!exported.ok) {
+      if (!exported.scopeCleared && stillOnThisTree()) {
+        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      }
+      return;
+    }
+    const definition = parseTreeDefinition(exported.content);
+    if (!definition) {
+      if (stillOnThisTree()) {
+        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      }
+      return;
+    }
+    // A newer edit claimed the intent while the export was in flight; writing this
+    // whole-tree replace now would undo it.
+    if (editIntent !== editSeedSeq) {
+      return;
+    }
+    const result = removeNodeOntologyEntry(definition, params.nodeId, params.field, params.entry);
+    if (!result.ok) {
+      // The node or the entry is gone, so someone else already changed this tree.
+      // Reload rather than report: the screen is simply behind.
+      await refreshAfterTreeWrite(state, treeId, treeId);
+      return;
+    }
+    const imported = await importTreeDefinition(state, result.definition);
+    if (imported.status !== "saved") {
+      // The operator navigated while this was in flight; its failure belongs to
+      // the tree it was written against, not to whatever is on screen now.
+      if (editIntent !== editSeedSeq || state.enterpriseSelectedTreeId !== treeId) {
+        return;
+      }
+      state.enterpriseTreeSaveError = importFailureText(imported);
+      return;
+    }
+    // The write landed. Release before the reloads: those are separate requests
+    // with no client-side timeout, and holding the lock would leave every
+    // role-prompt and detach control disabled over a save that already
+    // succeeded. Ownership-checked, because the flag is shared — once a newer
+    // write claims the intent, clearing it here would unlock THAT write.
+    if (saveToken === treeSaveSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+    await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
+  } finally {
+    // Same ownership check: a superseded call must not release a newer one's lock.
+    if (saveToken === treeSaveSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+  }
+}
+
+/**
  * Turn the selected work-map's explicit capability grants on or off.
  *
  * The flag lives on the DEFINITION, so this takes the same export→edit→import
@@ -1277,20 +1497,27 @@ export async function toggleEnterpriseCapabilityGrants(state: EnterpriseState) {
   const treeId = tree.id;
   const next = tree.capabilityGrants === "explicit" ? undefined : "explicit";
   const editIntent = ++editSeedSeq;
+  const saveToken = ++treeSaveSeq;
   state.enterpriseTreeSaving = true;
   state.enterpriseTreeSaveError = null;
   state.enterpriseTreeSaveIssues = null;
   try {
     const exported = await fetchExportContent(state, treeId, "json");
+    // The export awaited, so the operator may have moved on. A failure belongs to
+    // the tree it was read for; writing it now would blame whatever is on screen.
+    const stillOnThisTree = () =>
+      editIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
     if (!exported.ok) {
-      if (!exported.scopeCleared) {
+      if (!exported.scopeCleared && stillOnThisTree()) {
         state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
       }
       return;
     }
     const definition = parseTreeDefinition(exported.content);
     if (!definition) {
-      state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      if (stillOnThisTree()) {
+        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+      }
       return;
     }
     // A newer edit claimed the intent while the export was in flight; writing this
@@ -1310,7 +1537,10 @@ export async function toggleEnterpriseCapabilityGrants(state: EnterpriseState) {
     }
     await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
   } finally {
-    state.enterpriseTreeSaving = false;
+    // Same ownership check: a superseded call must not release a newer one's lock.
+    if (saveToken === treeSaveSeq) {
+      state.enterpriseTreeSaving = false;
+    }
   }
 }
 

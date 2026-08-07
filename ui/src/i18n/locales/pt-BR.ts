@@ -286,6 +286,7 @@ export const pt_BR: TranslationMap = {
       "Adicione uma subetapa abaixo desta. Isso altera a forma do mapa de trabalho, não o que esta etapa pode chamar.",
     entryDraft: {
       add: "Adicionar",
+      removeTitle: "Desvincular {entry} desta etapa",
       none: "Nenhum declarado ainda.",
       scopeNarrowingApproval:
         "Esta etapa ainda não tem uma lista de ferramentas permitidas, então permite todas as ferramentas, exceto as negadas. Adicionar a primeira entrada a transforma em uma lista de permissões. As ferramentas listadas são executadas livremente e qualquer outra precisa de uma aprovação avulsa.",
@@ -332,6 +333,15 @@ export const pt_BR: TranslationMap = {
       treeUnavailable:
         "O work-map selecionado não pôde ser carregado, portanto nenhum uso de etapa é exibido: {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt de papel",
+      guidanceNote:
+        "Para que serve esta etapa, nas suas próprias palavras. É renderizado no resumo da etapa como instrução e nunca concede nada — uma etapa ainda não pode chamar uma ferramenta que seu escopo restringe, independentemente de como o prompt é formulado.",
+      fieldLabel: "Prompt de função para a etapa {nodeId}",
+      placeholder: "ex.: Confirme a identidade do requerente antes de citar qualquer valor.",
+      save: "Salvar prompt de papel",
+      revert: "Reverter",
+    },
     bindings: {
       title: "Vinculações do passo",
       subtitle: "O que este passo pode chamar, as habilidades que declara e o que pode recuperar.",
@@ -339,6 +349,13 @@ export const pt_BR: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Conhecimento — ontology.knowledgeFoundations",
       mcp: "Servidores MCP — ontology.mcpServers",
+      deniedTools: "Ferramentas negadas — ontology.deniedTools",
+      deniedToolsWins:
+        "Uma negação sempre prevalece. Ela se aplica a esta etapa e a tudo abaixo dela, e nenhuma concessão mais adiante no ramo pode revertê-la.",
+      deniedToolsObserving:
+        "A mediação corporativa está em modo de observação, então as negações são registradas, mas não aplicadas. Quando estiver em modo de aplicação, uma negação se aplicará a esta etapa e a tudo abaixo dela, e nenhuma concessão mais adiante no ramo poderá revertê-la.",
+      deniedToolsOff:
+        "A mediação corporativa está desativada, então as negações não são aplicadas nem registradas. Ative a mediação para que isso tenha efeito ou apareça no rastreamento de execução.",
       skillNotInstalled: "não instalada",
       foundationNotRegistered: "não registrada",
       mcpNotRegistered: "não registrado em mcp.servers",

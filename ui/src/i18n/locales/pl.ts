@@ -289,6 +289,7 @@ export const pl: TranslationMap = {
       "Dodaj podkrok pod tym krokiem. Zmienia to kształt mapy pracy, a nie to, co ten krok może wywoływać.",
     entryDraft: {
       add: "Dodaj",
+      removeTitle: "Odłącz {entry} od tego kroku",
       none: "Brak zadeklarowanych.",
       scopeNarrowingApproval:
         "Ten krok nie ma jeszcze listy dozwolonych narzędzi, więc zezwala na każde narzędzie z wyjątkiem tych, które są odrzucone. Dodanie pierwszego wpisu zamienia go w listę dozwolonych. Wymienione narzędzia działają swobodnie, a wszystko inne wymaga jednorazowego zatwierdzenia.",
@@ -334,6 +335,15 @@ export const pl: TranslationMap = {
       treeUnavailable:
         "Nie udało się załadować wybranej mapy pracy, dlatego nie jest wyświetlane użycie kroków: {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt roli",
+      guidanceNote:
+        "Do czego służy ten krok, opisany własnymi słowami. Jest renderowany w podsumowaniu kroku jako instrukcja i nigdy nie przyznaje żadnych uprawnień — krok nadal nie może wywołać narzędzia, którego jego zakres nie udostępnia, niezależnie od sformułowania promptu.",
+      fieldLabel: "Prompt roli dla kroku {nodeId}",
+      placeholder: "np. Potwierdź tożsamość wnioskodawcy przed podaniem jakiejkolwiek kwoty.",
+      save: "Zapisz prompt roli",
+      revert: "Przywróć",
+    },
     bindings: {
       title: "Powiązania kroku",
       subtitle: "Co ten krok może wywoływać, jakie kompetencje deklaruje i co może pobierać.",
@@ -341,6 +351,12 @@ export const pl: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Wiedza — ontology.knowledgeFoundations",
       mcp: "Serwery MCP — ontology.mcpServers",
+      deniedTools: "Zabronione narzędzia — ontology.deniedTools",
+      deniedToolsWins:
+        "Odmowa zawsze wygrywa. Dotyczy tego kroku i wszystkiego poniżej — żadne uprawnienie dalej w gałęzi nie może jej cofnąć.",
+      deniedToolsNotEnforcing:
+        "Odmowy są rejestrowane, ale nie są stosowane, gdy mediacja enterprise nie jest wymuszana. Po włączeniu wymuszania odmowa dotyczy tego kroku i wszystkiego pod nim — żadne nadanie uprawnień niżej w gałęzi nie może jej cofnąć.",
+      deniedElsewhere: "Odmówiono również przez inną gałąź tej mapy pracy:",
       skillNotInstalled: "niezainstalowany",
       foundationNotRegistered: "niezarejestrowany",
       mcpNotRegistered: "niezarejestrowany w mcp.servers",

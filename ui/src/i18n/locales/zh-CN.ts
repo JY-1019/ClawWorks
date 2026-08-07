@@ -278,6 +278,7 @@ export const zh_CN: TranslationMap = {
       "在此步骤下添加子步骤。这会改变工作流图的结构，而非此步骤可调用的内容。",
     entryDraft: {
       add: "添加",
+      removeTitle: "从此步骤中分离 {entry}",
       none: "尚未声明。",
       scopeNarrowingApproval:
         "此步骤尚未设置工具白名单，因此除被拒绝的工具外，允许使用所有工具。添加第一个条目后，它将变为白名单模式。列出的工具可自由运行，其他工具则需要逐次审批。",
@@ -318,6 +319,15 @@ export const zh_CN: TranslationMap = {
         "所选工作地图未能加载，因此以下步骤来自 Gateway 返回的备用定义：{message}。在强制模式下，加载失败的工作地图在成功加载之前不会生效。",
       treeUnavailable: "无法加载所选的工作地图，因此未显示步骤使用情况：{message}。",
     },
+    guidanceEditor: {
+      title: "角色提示",
+      guidanceNote:
+        "用您自己的话描述此步骤的用途。它会作为指令渲染到步骤摘要中，但不会授予任何权限——无论提示如何措辞，步骤仍然无法调用其作用域未授权的工具。",
+      fieldLabel: "步骤 {nodeId} 的角色提示",
+      placeholder: "例如：在报出任何数字之前，先确认索赔人的身份。",
+      save: "保存角色提示",
+      revert: "还原",
+    },
     bindings: {
       title: "步骤绑定",
       subtitle: "此步骤可调用的内容、声明的技能以及可检索的知识。",
@@ -325,6 +335,13 @@ export const zh_CN: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "知识 — ontology.knowledgeFoundations",
       mcp: "MCP 服务器 — ontology.mcpServers",
+      deniedTools: "拒绝的工具 — ontology.deniedTools",
+      deniedToolsWins:
+        "拒绝始终优先。它适用于此步骤及其下的所有内容，分支中更深层的授权无法将其撤销。",
+      deniedToolsObserving:
+        "企业管控处于观察模式，因此拒绝会被记录但不会生效。一旦切换为强制执行，拒绝将应用于此步骤及其下的所有内容，且分支下游的任何授权都无法撤销该拒绝。",
+      deniedToolsOff:
+        "企业管控已关闭，因此拒绝既不会生效也不会被记录。请开启管控以使其生效或显示在运行追踪中。",
       skillNotInstalled: "未安装",
       foundationNotRegistered: "未注册",
       mcpNotRegistered: "未在 mcp.servers 中注册",

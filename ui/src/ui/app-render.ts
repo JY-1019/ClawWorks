@@ -139,6 +139,10 @@ import {
   cancelEnterpriseMcpDraft,
   editEnterpriseMcpDraft,
   openEnterpriseBindingPicker,
+  cancelEnterpriseNodeGuidance,
+  editEnterpriseNodeGuidance,
+  removeEnterpriseBinding,
+  saveEnterpriseNodeGuidance,
   submitEnterpriseMcpDraft,
   setEnterpriseBindingPickerCustom,
   setEnterpriseBindingPickerQuery,
@@ -3032,6 +3036,14 @@ export function renderApp(state: AppViewState) {
                 bindingPicker: state.enterpriseBindingPicker,
                 onOpenBindingPicker: (nodeId, field) =>
                   openEnterpriseBindingPicker(state, nodeId, field),
+                // Same export→import write the picker uses, so a detach is one
+                // revision the version history can restore like any other.
+                onRemoveBinding: (nodeId, field, entry) =>
+                  void removeEnterpriseBinding(state, { nodeId, field, entry }),
+                guidanceDraft: state.enterpriseGuidanceDraft,
+                onGuidanceDraft: (nodeId, text) => editEnterpriseNodeGuidance(state, nodeId, text),
+                onSaveGuidance: (nodeId) => void saveEnterpriseNodeGuidance(state, nodeId),
+                onCancelGuidance: () => cancelEnterpriseNodeGuidance(state),
                 onBindingPickerQuery: (query) => setEnterpriseBindingPickerQuery(state, query),
                 onBindingPickerCustom: (value) => setEnterpriseBindingPickerCustom(state, value),
                 onToggleBindingPickerValue: (value) =>

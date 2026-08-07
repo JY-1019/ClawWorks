@@ -327,6 +327,7 @@ export type AppViewState = {
   enterpriseTreeVersionsLoading: boolean;
   enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null;
   enterpriseBindingPicker: import("./controllers/enterprise.js").EnterpriseBindingPicker | null;
+  enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null;
   enterpriseMcpDraft: import("./controllers/enterprise.js").EnterpriseMcpDraft | null;
   enterpriseCatalogPhase: import("./controllers/enterprise.js").EnterpriseCatalogPhase;
   enterpriseCatalogErrors: import("./controllers/enterprise.js").EnterpriseCatalogErrors;

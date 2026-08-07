@@ -283,6 +283,7 @@ export const en: TranslationMap = {
       "Add a sub-step under this one. This changes the shape of the work-map, not what this step may call.",
     entryDraft: {
       add: "Add",
+      removeTitle: "Detach {entry} from this step",
       none: "None declared yet.",
       scopeNarrowingApproval:
         "This step has no tool allowlist yet, so it allows every tool except any it denies. Adding the first entry turns it into an allowlist. The listed tools run freely and anything else needs a one-off approval.",
@@ -328,6 +329,17 @@ export const en: TranslationMap = {
       treeUnavailable:
         "The selected work-map could not be loaded, so no step usage is shown: {message}.",
     },
+    guidanceEditor: {
+      title: "Role prompt",
+      // Renamed from `subtitle` so the reworded English re-translates: the old
+      // text said a grant overrides the instruction, which reverses the contract.
+      guidanceNote:
+        "What this step is for, in your own words. It is rendered into the step digest as instruction and never grants anything — a step still cannot call a tool its scope withholds, however the prompt is worded.",
+      fieldLabel: "Role prompt for step {nodeId}",
+      placeholder: "e.g. Confirm the claimant's identity before quoting any figure.",
+      save: "Save role prompt",
+      revert: "Revert",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "What this step may call, the know-how it declares, and what it may retrieve.",
@@ -335,6 +347,13 @@ export const en: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Knowledge — ontology.knowledgeFoundations",
       mcp: "MCP servers — ontology.mcpServers",
+      deniedTools: "Denied tools — ontology.deniedTools",
+      deniedToolsWins:
+        "A denial always wins. It applies to this step and everything under it, and no grant further down the branch can take it back.",
+      deniedToolsObserving:
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to this step and everything under it, and no grant further down the branch can take it back.",
+      deniedToolsOff:
+        "Enterprise mediation is off, so denials are neither applied nor recorded. Turn mediation on for this to take effect or appear in the run trace.",
       skillNotInstalled: "not installed",
       foundationNotRegistered: "not retrievable by this work-map",
       mcpNotRegistered: "not registered in mcp.servers",

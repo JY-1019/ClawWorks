@@ -286,6 +286,7 @@ export const es: TranslationMap = {
       "Agrega un sub-paso debajo de este. Esto cambia la forma del mapa de trabajo, no lo que este paso puede llamar.",
     entryDraft: {
       add: "Añadir",
+      removeTitle: "Desvincular {entry} de este paso",
       none: "Ninguno declarado aún.",
       scopeNarrowingApproval:
         "Este paso aún no tiene una lista de herramientas permitidas, por lo que permite todas las herramientas excepto las que deniega. Agregar la primera entrada la convierte en una lista de permitidas. Las herramientas listadas se ejecutan libremente y cualquier otra necesita una aprobación única.",
@@ -333,6 +334,15 @@ export const es: TranslationMap = {
       treeUnavailable:
         "No se pudo cargar el mapa de trabajo seleccionado, por lo que no se muestra el uso de pasos: {message}.",
     },
+    guidanceEditor: {
+      title: "Prompt de rol",
+      guidanceNote:
+        "Para qué sirve este paso, en tus propias palabras. Se incluye en el resumen del paso como instrucción y nunca otorga nada: un paso aún no puede llamar a una herramienta que su alcance no permite, sin importar cómo se redacte el prompt.",
+      fieldLabel: "Prompt de rol para el paso {nodeId}",
+      placeholder: "p. ej., Confirmar la identidad del reclamante antes de citar cualquier cifra.",
+      save: "Guardar prompt de rol",
+      revert: "Revertir",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
@@ -341,6 +351,13 @@ export const es: TranslationMap = {
       skills: "Skills — ontology.skills",
       knowledge: "Conocimiento — ontology.knowledgeFoundations",
       mcp: "Servidores MCP — ontology.mcpServers",
+      deniedTools: "Herramientas denegadas — ontology.deniedTools",
+      deniedToolsWins:
+        "Una denegación siempre prevalece. Se aplica a este paso y a todo lo que está debajo, y ninguna concesión más abajo en la rama puede revertirla.",
+      deniedToolsObserving:
+        "La mediación empresarial está en modo observación, por lo que las denegaciones se registran pero no se aplican. Una vez que se aplique, una denegación afectará a este paso y a todo lo que esté debajo, y ninguna concesión más abajo en la rama podrá revertirla.",
+      deniedToolsOff:
+        "La mediación empresarial está desactivada, por lo que las denegaciones no se aplican ni se registran. Active la mediación para que esto surta efecto o aparezca en el rastreo de ejecución.",
       skillNotInstalled: "no instalado",
       foundationNotRegistered: "no registrada",
       mcpNotRegistered: "no registrado en mcp.servers",
