@@ -342,6 +342,10 @@ export const zh_TW: TranslationMap = {
       declaredSection: "由 {treeName} 宣告",
       otherSection: "其他已安裝的 Skills",
     },
+    step: {
+      progress: "第 {ordinal} 步，共 {total} 步：{title}",
+      routeComplete: "路線完成",
+    },
     runsTitle: "最近的執行",
     treesTitle: "工作流程樹",
     noRuns: "尚未記錄任何企業執行。",

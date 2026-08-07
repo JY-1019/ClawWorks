@@ -358,6 +358,10 @@ export const ru: TranslationMap = {
       declaredSection: "Объявлено в {treeName}",
       otherSection: "Другие установленные Skills",
     },
+    step: {
+      progress: "Шаг {ordinal} из {total}: {title}",
+      routeComplete: "Маршрут завершён",
+    },
     runsTitle: "Последние запуски",
     treesTitle: "Деревья процессов",
     noRuns: "Запуски Enterprise ещё не зарегистрированы.",

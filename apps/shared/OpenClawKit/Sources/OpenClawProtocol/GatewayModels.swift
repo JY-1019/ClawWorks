@@ -6583,18 +6583,26 @@ public struct EnterpriseRunSummary: Codable, Sendable {
 public struct EnterpriseRunsListParams: Codable, Sendable {
     public let limit: Int?
     public let sessionkey: String?
+    public let agentid: String?
+    public let chatvisibleonly: Bool?
 
     public init(
         limit: Int?,
-        sessionkey: String? = nil)
+        sessionkey: String? = nil,
+        agentid: String? = nil,
+        chatvisibleonly: Bool? = nil)
     {
         self.limit = limit
         self.sessionkey = sessionkey
+        self.agentid = agentid
+        self.chatvisibleonly = chatvisibleonly
     }
 
     private enum CodingKeys: String, CodingKey {
         case limit
         case sessionkey = "sessionKey"
+        case agentid = "agentId"
+        case chatvisibleonly = "chatVisibleOnly"
     }
 }
 
@@ -6687,6 +6695,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
     public let treehash: String?
     public let mode: String
     public let status: AnyCodable
+    public let locallyactive: Bool?
     public let matchedby: String
     public let requestsummary: String
     public let activenodeid: String
@@ -6709,6 +6718,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         treehash: String? = nil,
         mode: String,
         status: AnyCodable,
+        locallyactive: Bool? = nil,
         matchedby: String,
         requestsummary: String,
         activenodeid: String,
@@ -6730,6 +6740,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         self.treehash = treehash
         self.mode = mode
         self.status = status
+        self.locallyactive = locallyactive
         self.matchedby = matchedby
         self.requestsummary = requestsummary
         self.activenodeid = activenodeid
@@ -6753,6 +6764,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         case treehash = "treeHash"
         case mode
         case status
+        case locallyactive = "locallyActive"
         case matchedby = "matchedBy"
         case requestsummary = "requestSummary"
         case activenodeid = "activeNodeId"

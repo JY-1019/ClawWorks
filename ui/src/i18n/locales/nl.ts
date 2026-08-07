@@ -362,6 +362,10 @@ export const nl: TranslationMap = {
       declaredSection: "Gedeclareerd door {treeName}",
       otherSection: "Andere geïnstalleerde skills",
     },
+    step: {
+      progress: "Stap {ordinal} van {total}: {title}",
+      routeComplete: "Route voltooid",
+    },
     runsTitle: "Recente uitvoeringen",
     treesTitle: "Workflowbomen",
     noRuns: "Nog geen enterprise-uitvoeringen geregistreerd.",

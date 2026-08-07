@@ -347,6 +347,10 @@ export const ar: TranslationMap = {
       declaredSection: "مُعلن بواسطة {treeName}",
       otherSection: "Skills أخرى مُثبتة",
     },
+    step: {
+      progress: "الخطوة {ordinal} من {total}: {title}",
+      routeComplete: "اكتمل المسار",
+    },
     runsTitle: "عمليات التشغيل الأخيرة",
     treesTitle: "أشجار سير العمل",
     noRuns: "لم يتم تسجيل أي عمليات تشغيل بعد.",

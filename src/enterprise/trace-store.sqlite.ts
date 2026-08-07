@@ -12,6 +12,7 @@ import {
   getNodeSqliteKysely,
 } from "../infra/kysely-sync.js";
 import { normalizeSqliteNumber } from "../infra/sqlite-number.js";
+import { getProcessStartTime, isPidDefinitelyDead } from "../shared/pid-alive.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import {
   openOpenClawStateDatabase,
@@ -35,6 +36,8 @@ export type EnterpriseRunRecord = {
   executionId: string;
   runId: string;
   sessionKey: string | null;
+  /** The transcript this execution ran against; null for rows written before it existed. */
+  sessionId: string | null;
   agentId: string | null;
   treeId: string;
   treeVersion: string;
@@ -60,7 +63,10 @@ type EnterpriseRunRow = {
   execution_id: string;
   run_id: string;
   session_key: string | null;
+  session_id: string | null;
   agent_id: string | null;
+  chat_visible: number | null;
+  owner_token: string | null;
   tree_id: string;
   tree_version: string;
   mode: string;
@@ -116,6 +122,7 @@ function rowToRunRecord(row: EnterpriseRunRow): EnterpriseRunRecord {
     executionId: row.execution_id,
     runId: row.run_id,
     sessionKey: row.session_key,
+    sessionId: row.session_id,
     agentId: row.agent_id,
     treeId: row.tree_id,
     treeVersion: row.tree_version,
@@ -142,7 +149,11 @@ export function persistEnterpriseRunStart(
     executionId: string;
     plan: EnterpriseRunPlan;
     sessionKey?: string;
+    /** Names the transcript this execution ran against. */
+    sessionId?: string;
     agentId?: string;
+    /** `false` marks a run that must not surface in the session it borrowed. */
+    chatVisible?: boolean;
     now?: number;
   },
   options: EnterpriseTraceStoreOptions = {},
@@ -157,7 +168,14 @@ export function persistEnterpriseRunStart(
         execution_id: params.executionId,
         run_id: plan.runId,
         session_key: params.sessionKey ?? null,
+        session_id: params.sessionId ?? null,
         agent_id: params.agentId ?? null,
+        // Only written when hidden; NULL reads as visible, matching every row
+        // traced before internal runs were distinguished.
+        chat_visible: params.chatVisible === false ? 0 : null,
+        // Stamped so orphan cleanup can prove this row's owner is gone. The
+        // state DB is shared with `openclaw agent --local` runs.
+        owner_token: currentOwnerToken(),
         tree_id: plan.treeId,
         tree_version: plan.treeVersion,
         mode: plan.mode,
@@ -228,6 +246,183 @@ export function finalizeEnterpriseRun(
       stateDb
         .updateTable("enterprise_runs")
         .set({ status: params.status, updated_at: now, ended_at: now })
+        .where("execution_id", "=", params.executionId),
+    );
+  }, stateDatabaseOptions(options));
+}
+
+/**
+ * Close out runs left `running` by a process that is no longer here.
+ *
+ * Mediated runs live only in memory, so a row still marked `running` whose
+ * OWNING PROCESS is gone can never be finished by anyone: the audit screen would
+ * show a run that never ends, and a live surface would seed progress for a run
+ * that can never emit another event.
+ *
+ * Ownership is checked, not assumed. This database is shared — a gateway and an
+ * `openclaw agent --local` run write the same table — so sweeping every
+ * `running` row would terminate a legitimately live execution's trace.
+ *
+ * `aborted` is the honest status: the run did not fail on its own terms, it was
+ * interrupted. Returns how many rows were closed so startup can log it.
+ */
+export function abortOrphanedEnterpriseRuns(
+  params: { now?: number; isOwnerGone?: (token: string) => boolean } = {},
+  options: EnterpriseTraceStoreOptions = {},
+): number {
+  if (!enterpriseStateDatabaseExists(options)) {
+    return 0;
+  }
+  const now = params.now ?? Date.now();
+  const isOwnerGone = params.isOwnerGone ?? isOwnerTokenGone;
+  let closed = 0;
+  runOpenClawStateWriteTransaction((database) => {
+    const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
+    const running = executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .selectFrom("enterprise_runs")
+        .select(["execution_id", "owner_token"])
+        .where("status", "=", "running"),
+    ).rows as { execution_id: string; owner_token: string | null }[];
+    // Only rows whose owner is PROVABLY gone. A row with no recorded owner
+    // predates the column and is left alone: this database is shared, so guessing
+    // would terminate a live `openclaw agent --local` run's trace.
+    const orphaned = running.filter((row) => row.owner_token && isOwnerGone(row.owner_token));
+    if (orphaned.length === 0) {
+      return;
+    }
+    closed = orphaned.length;
+    const executionIds = orphaned.map((row) => row.execution_id);
+    const eventRows = executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .selectFrom("enterprise_run_events")
+        .select(["execution_id", "seq", "kind", "payload_json"])
+        .where("execution_id", "in", executionIds),
+    ).rows as { execution_id: string; seq: number; kind: string; payload_json: string }[];
+
+    // The run may already have ENDED: finalization appends `run.ended` and
+    // updates the summary in two writes, so a process that died between them
+    // leaves a terminal event above a `running` row. That run's own verdict
+    // stands — overwriting it with `aborted` would corrupt the audit trail and
+    // append a second, contradictory terminal event.
+    const nextSeq = new Map<string, number>();
+    const alreadyEnded = new Map<string, string>();
+    for (const row of eventRows) {
+      const seq = normalizeSqliteNumber(row.seq) ?? 0;
+      nextSeq.set(row.execution_id, Math.max(nextSeq.get(row.execution_id) ?? 0, seq + 1));
+      if (row.kind === "run.ended") {
+        alreadyEnded.set(row.execution_id, readEndedStatus(row.payload_json));
+      }
+    }
+
+    for (const executionId of executionIds) {
+      const endedStatus = alreadyEnded.get(executionId);
+      executeSqliteQuerySync(
+        database.db,
+        stateDb
+          .updateTable("enterprise_runs")
+          .set({ status: endedStatus ?? "aborted", updated_at: now, ended_at: now })
+          .where("execution_id", "=", executionId),
+      );
+      if (endedStatus) {
+        continue;
+      }
+      // Close the append-only trace too. `run.ended` is what normal finalization
+      // writes, and both `openclaw enterprise runs show` and the inspector render
+      // the event list — a summary that says `aborted` above an event list that
+      // never ends reads as a run still in flight.
+      executeSqliteQuerySync(
+        database.db,
+        stateDb.insertInto("enterprise_run_events").values({
+          execution_id: executionId,
+          seq: nextSeq.get(executionId) ?? 0,
+          node_id: null,
+          kind: "run.ended",
+          payload_json: JSON.stringify({
+            status: "aborted",
+            reason: "owning process is gone; closed during startup recovery",
+          }),
+          created_at: now,
+        }),
+      );
+    }
+  }, stateDatabaseOptions(options));
+  return closed;
+}
+
+/**
+ * The status a already-written `run.ended` event recorded.
+ *
+ * Falls back to `aborted` only when the payload cannot be read: a terminal event
+ * with an unreadable body still proves the run ended, just not how.
+ */
+function readEndedStatus(payloadJson: string): string {
+  try {
+    const payload = JSON.parse(payloadJson) as { status?: unknown };
+    return typeof payload.status === "string" && payload.status !== "running"
+      ? payload.status
+      : "aborted";
+  } catch {
+    return "aborted";
+  }
+}
+
+/** This process's incarnation: pid plus, where the OS exposes it, its start time. */
+function currentOwnerToken(): string {
+  return `${process.pid}:${getProcessStartTime(process.pid) ?? ""}`;
+}
+
+/**
+ * Whether the process that wrote `token` is provably gone.
+ *
+ * A bare pid is not enough. A container that restarts hands the new process the
+ * same pid (commonly 1), so the crashed run's owner would look alive forever;
+ * the recorded start time is what distinguishes the incarnations. Where the OS
+ * does not expose a start time (anything but Linux) this falls back to pid
+ * liveness, which errs toward leaving rows alone — the safe direction, since the
+ * cost of a wrong "gone" is ending a live execution's trace.
+ */
+function isOwnerTokenGone(token: string): boolean {
+  const [pidPart, startedPart = ""] = token.split(":");
+  const pid = Number(pidPart);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  if (isPidDefinitelyDead(pid)) {
+    return true;
+  }
+  // The pid is live, but it may be a different process wearing the same number.
+  const recordedStart = startedPart.trim();
+  if (!recordedStart) {
+    return false;
+  }
+  const currentStart = getProcessStartTime(pid);
+  return currentStart !== null && String(currentStart) !== recordedStart;
+}
+
+/**
+ * Follow a transcript rotation on the durable row.
+ *
+ * The in-memory run adopts the new id for live events; without this the trace
+ * would still name the pre-compaction transcript, which is exactly what
+ * `session_id` is documented to answer.
+ */
+export function updateEnterpriseRunSessionId(
+  params: { executionId: string; sessionId: string; now?: number },
+  options: EnterpriseTraceStoreOptions = {},
+): void {
+  if (!enterpriseStateDatabaseExists(options)) {
+    return;
+  }
+  runOpenClawStateWriteTransaction((database) => {
+    const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
+    executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .updateTable("enterprise_runs")
+        .set({ session_id: params.sessionId, updated_at: params.now ?? Date.now() })
         .where("execution_id", "=", params.executionId),
     );
   }, stateDatabaseOptions(options));
@@ -305,7 +500,7 @@ export function listEnterpriseRunExecutions(
 
 /** List recent execution traces, newest first. */
 export function listEnterpriseRunRecords(
-  params: { limit?: number; sessionKey?: string } = {},
+  params: { limit?: number; sessionKey?: string; agentId?: string; chatVisibleOnly?: boolean } = {},
   options: EnterpriseTraceStoreOptions = {},
 ): EnterpriseRunRecord[] {
   if (!enterpriseStateDatabaseExists(options)) {
@@ -324,6 +519,21 @@ export function listEnterpriseRunRecords(
     .orderBy("execution_id", "desc");
   if (params.sessionKey) {
     query = query.where("session_key", "=", params.sessionKey);
+  }
+  // Same reason as the session filter, and it is not redundant with it: every
+  // agent's store shares the canonical "global" session key, so without this a
+  // global thread's newest run can belong to a different agent entirely.
+  if (params.agentId) {
+    query = query.where("agent_id", "=", params.agentId);
+  }
+  // Chat asks only for runs an operator is watching. An internal run borrows a
+  // visible session for storage, so it matches the filters above and would
+  // otherwise be reconstructed into that thread's progress on reconnect. The
+  // audit screen does not pass this and still sees everything.
+  if (params.chatVisibleOnly) {
+    query = query.where((eb) =>
+      eb.or([eb("chat_visible", "is", null), eb("chat_visible", "!=", 0)]),
+    );
   }
   const rows = executeSqliteQuerySync(database.db, query.limit(limit)).rows as EnterpriseRunRow[];
   return rows.map(rowToRunRecord);

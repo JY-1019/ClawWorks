@@ -356,6 +356,10 @@ export const tr: TranslationMap = {
       declaredSection: "{treeName} tarafından tanımlanan",
       otherSection: "Diğer yüklü Skills",
     },
+    step: {
+      progress: "Adım {ordinal} / {total}: {title}",
+      routeComplete: "Rota tamamlandı",
+    },
     runsTitle: "Son çalıştırmalar",
     treesTitle: "İş akışı ağaçları",
     noRuns: "Henüz enterprise çalıştırması kaydedilmedi.",

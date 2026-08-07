@@ -12,6 +12,7 @@ import { writeSessionStoreForTest } from "../config/sessions/test-helpers.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
+import { resolveSessionOwnerAgentIdForKey } from "./session-store-key.js";
 import {
   canonicalizeSpawnedByForAgent,
   buildGatewaySessionRow,
@@ -901,6 +902,36 @@ describe("gateway session utils", () => {
     expect(resolveSessionStoreKey({ cfg, sessionKey: "agent:main:main" })).toBe("agent:ops:work");
     expect(resolveSessionStoreKey({ cfg, sessionKey: "agent:main:work" })).toBe("agent:ops:work");
     expect(resolveSessionStoreKey({ cfg, sessionKey: "MAIN" })).toBe("agent:ops:work");
+  });
+
+  test("resolveSessionOwnerAgentIdForKey follows the legacy main-alias remap", () => {
+    // Under global session scope the canonical key is shared by every agent, so
+    // enterprise run lookups need the owner. A client cannot work this out: the
+    // shipped `agent:main:main` alias belongs to whatever agent is configured
+    // default now, which is config the UI does not have.
+    const cfg = {
+      session: { mainKey: "work" },
+      agents: { list: [{ id: "ops", default: true }] },
+    } as OpenClawConfig;
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "agent:main:main" })).toBe("ops");
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "agent:main:work" })).toBe("ops");
+    // An explicitly chosen agent is NOT remapped: it names itself.
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "agent:research:global" })).toBe(
+      "research",
+    );
+    // Bare main aliases are supported callers too: resolveSessionStoreKey maps
+    // them to the default agent's main session, so the owner follows.
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "main" })).toBe("ops");
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "work" })).toBe("ops");
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "MAIN" })).toBe("ops");
+    // The literal shared keys stay ambiguous on purpose: every agent uses them,
+    // so only the caller's own selection can say whose runs it means.
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "global" })).toBeUndefined();
+    expect(resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "unknown" })).toBeUndefined();
+    // An unrelated opaque key names no owner either.
+    expect(
+      resolveSessionOwnerAgentIdForKey({ cfg, sessionKey: "discord:direct:u1" }),
+    ).toBeUndefined();
   });
 
   test("resolveSessionStoreKey preserves non-alias agent:main keys for deleted-agent checks", () => {

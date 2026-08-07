@@ -1,7 +1,9 @@
 import { onEnterpriseStepEvent } from "../enterprise/step-events.js";
+import { abortOrphanedEnterpriseRuns } from "../enterprise/trace-store.sqlite.js";
 // Gateway event subscription wiring for agent, heartbeat, transcript, and lifecycle broadcasts.
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionLifecycleEvent } from "../sessions/session-lifecycle-events.js";
 import { onInternalSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import type { ChatAbortControllerEntry, RestartRecoveryCandidate } from "./chat-abort.js";
@@ -13,6 +15,8 @@ import type {
 } from "./server-chat-state.js";
 
 /** Register gateway runtime event subscriptions and return unsubscribe handles. */
+const log = createSubsystemLogger("enterprise");
+
 export function startGatewayEventSubscriptions(params: {
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
   broadcastToConnIds: (
@@ -227,11 +231,34 @@ export function startGatewayEventSubscriptions(params: {
     params.broadcast("heartbeat", evt, { dropIfSlow: true });
   });
 
+  // Mediated runs live only in memory, so a `running` row whose owning process
+  // is gone can never be finished by anyone. Close those out before serving
+  // reads: otherwise the audit screen shows a run that never ends, and a live
+  // surface seeds progress for a run that can never emit another event. Rows
+  // owned by a live process (an `openclaw agent --local` run shares this
+  // database) are left alone.
+  // Fail open, like every other trace write: a locked or unwritable state DB
+  // must not stop the gateway from starting. Stale rows are a reporting nuisance
+  // that the next start can clean up; an unavailable gateway is not.
+  try {
+    const orphanedRuns = abortOrphanedEnterpriseRuns();
+    if (orphanedRuns > 0) {
+      log.info(`closed ${orphanedRuns} enterprise run(s) left running by a previous process`);
+    }
+  } catch (err) {
+    log.warn(
+      `enterprise orphaned-run cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   // Which step a governed run is on, as it moves. dropIfSlow like the other
   // progress feeds: a client too slow to keep up wants the CURRENT step, and
   // queueing stale positions behind it would show the wrong one.
   const enterpriseStepUnsub = onEnterpriseStepEvent((evt) => {
-    params.broadcast("enterprise.step", evt, { dropIfSlow: true });
+    // ...except the terminal one, which is never stale and is the ONLY close
+    // signal a client that does not own the run ever gets. Dropping it strands
+    // that client on the last step until it happens to reconcile.
+    params.broadcast("enterprise.step", evt, { dropIfSlow: evt.kind !== "ended" });
   });
 
   const transcriptUnsub = onInternalSessionTranscriptUpdate((evt) => {

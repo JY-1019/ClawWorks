@@ -70,6 +70,44 @@ function resolveParsedSessionStoreKey(
   return { agentId, sessionKey: `agent:${agentId}:${rest}` };
 }
 
+/**
+ * Which agent owns a requested session key, applying the same legacy-alias
+ * remapping `resolveSessionStoreKey` does.
+ *
+ * Needed where the canonical key alone cannot identify an owner: under
+ * `session.scope: "global"` every agent's store shares one key, so a caller
+ * filtering by that key must also say whose runs it means. Callers cannot work
+ * this out themselves — the answer depends on config (the configured default
+ * agent, the main-key alias), which is exactly what the remap consults.
+ */
+export function resolveSessionOwnerAgentIdForKey(params: {
+  cfg: OpenClawConfig;
+  sessionKey: string;
+}): string | undefined {
+  const raw = normalizeOptionalString(params.sessionKey) ?? "";
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = parseAgentSessionKey(raw);
+  if (parsed) {
+    return resolveParsedSessionStoreKey(params.cfg, raw, parsed).agentId;
+  }
+  const rawLower = normalizeLowercaseStringOrEmpty(raw);
+  // The literal keys name no agent. `global` in particular stays ambiguous on
+  // purpose: it is shared by every agent, so only the caller's own selection can
+  // say whose runs it means.
+  if (rawLower === "global" || rawLower === "unknown") {
+    return undefined;
+  }
+  // What is left is a bare main alias (`main`, or the configured main key),
+  // which resolveSessionStoreKey maps to the default agent's main session.
+  const mainKey = normalizeMainKey(params.cfg.session?.mainKey);
+  if (rawLower !== "main" && rawLower !== mainKey) {
+    return undefined;
+  }
+  return resolveDefaultStoreAgentId(params.cfg);
+}
+
 /** Resolve any incoming session key into the canonical key used in persisted session stores. */
 export function resolveSessionStoreKey(params: {
   cfg: OpenClawConfig;

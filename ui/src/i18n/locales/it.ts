@@ -360,6 +360,10 @@ export const it: TranslationMap = {
       declaredSection: "Dichiarate da {treeName}",
       otherSection: "Altre skills installate",
     },
+    step: {
+      progress: "Passaggio {ordinal} di {total}: {title}",
+      routeComplete: "Percorso completato",
+    },
     runsTitle: "Esecuzioni recenti",
     treesTitle: "Alberi di workflow",
     noRuns: "Nessuna esecuzione enterprise registrata.",

@@ -59,6 +59,7 @@ describe("beginEnterpriseRun", () => {
       prompt: "hello there",
       trigger: "user",
       sessionKey: "agent:main:test",
+      sessionId: "session-abc",
       agentId: "main",
     });
     expect(mediation.kind).toBe("mediated");
@@ -74,6 +75,9 @@ describe("beginEnterpriseRun", () => {
     expect(record?.status).toBe("running");
     expect(record?.treeId).toBe("clawworks.assist");
     expect(record?.sessionKey).toBe("agent:main:test");
+    // session_key names the agent lane; only session_id names the TRANSCRIPT, so
+    // this is the link that lets a step's trace point at the conversation it ran in.
+    expect(record?.sessionId).toBe("session-abc");
     expect(latestEventKinds(runId)).toEqual(["run.started"]);
   });
 
@@ -666,7 +670,55 @@ describe("enterprise step tracing", () => {
       // SINK rather than the advance site is what makes the first one visible.
       // Ordinal counts EXECUTABLE steps, not the plan's seq, which also counts
       // the scope container an operator never watches.
-      expect(seen).toEqual(["entered:flow.a:1/2", "completed:flow.a:1/2", "entered:flow.b:2/2"]);
+      // The terminal event always fires, including for a route left mid-step: it
+      // is the only close signal a client that does not own the run ever gets.
+      expect(seen).toEqual([
+        "entered:flow.a:1/2",
+        "completed:flow.a:1/2",
+        "entered:flow.b:2/2",
+        "ended:flow.b:2/2",
+      ]);
+    } finally {
+      unsub();
+      resetEnterpriseStepEventsForTest();
+    }
+  });
+
+  it("carries chat routing on a visible run and withholds it from an internal one", async () => {
+    const { onEnterpriseStepEvent, resetEnterpriseStepEventsForTest } =
+      await import("./step-events.js");
+    const routing: { sessionKey?: string; agentId?: string }[] = [];
+    const unsub = onEnterpriseStepEvent((evt) => {
+      routing.push({ sessionKey: evt.sessionKey, agentId: evt.agentId });
+    });
+    try {
+      await withFlowTree(async () => {
+        const visibleRunId = nextRunId();
+        await beginEnterpriseRun({
+          runId: visibleRunId,
+          prompt: "run the flowtest now",
+          sessionKey: "global",
+          agentId: "main",
+          routePlanner: flowPlanner(),
+        });
+        endEnterpriseRun({ runId: visibleRunId, status: "completed" });
+
+        const internalRunId = nextRunId();
+        await beginEnterpriseRun({
+          runId: internalRunId,
+          prompt: "run the flowtest now",
+          sessionKey: "global",
+          agentId: "main",
+          // Borrows the visible session for storage but is not on screen.
+          chatVisible: false,
+          routePlanner: flowPlanner(),
+        });
+        endEnterpriseRun({ runId: internalRunId, status: "completed" });
+      });
+
+      expect(routing[0]).toEqual({ sessionKey: "global", agentId: "main" });
+      // No routing at all, so no chat can match it and paint over the visible run.
+      expect(routing.at(-1)).toEqual({ sessionKey: undefined, agentId: undefined });
     } finally {
       unsub();
       resetEnterpriseStepEventsForTest();

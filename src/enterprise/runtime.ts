@@ -25,6 +25,7 @@ import type {
 // Re-exported so the registry's move stays invisible to every existing caller.
 export {
   clearEnterpriseActiveRunsForTest,
+  adoptEnterpriseActiveRunSessionId,
   enterpriseRunAttachedMcpServers,
   getEnterpriseActiveRun,
   getSessionActiveRunId,

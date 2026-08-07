@@ -359,6 +359,10 @@ export const uk: TranslationMap = {
       declaredSection: "Оголошено {treeName}",
       otherSection: "Інші встановлені навички",
     },
+    step: {
+      progress: "Крок {ordinal} з {total}: {title}",
+      routeComplete: "Маршрут завершено",
+    },
     runsTitle: "Останні запуски",
     treesTitle: "Дерева робочих процесів",
     noRuns: "Ще немає записаних запусків Enterprise.",

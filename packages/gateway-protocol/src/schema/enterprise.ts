@@ -440,6 +440,18 @@ export const EnterpriseRunsListParamsSchema = Type.Object(
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
     /** Only runs bound to this session (chat shows one thread's route). */
     sessionKey: Type.Optional(Type.String()),
+    /**
+     * Only runs owned by this agent. Needed alongside `sessionKey` because every
+     * agent's store shares the canonical "global" key, so that filter alone can
+     * return another agent's run.
+     */
+    agentId: Type.Optional(Type.String()),
+    /**
+     * Skip runs that borrowed a visible session but must not appear in it
+     * (`sessionEffects: "internal"`). Chat sets this; the audit screen does not,
+     * so inspection still sees every run.
+     */
+    chatVisibleOnly: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -531,6 +543,15 @@ export const EnterpriseRunDetailSchema = Type.Object(
     treeHash: Type.Optional(Type.String()),
     mode: Type.String(),
     status: EnterpriseRunStatusSchema,
+    /**
+     * Whether THIS gateway process is executing the run right now.
+     *
+     * Live step events are process-local, so a `running` row owned by another
+     * process (`openclaw agent --local`, a second gateway) can never deliver its
+     * later transitions here. A live surface must not present such a run as
+     * something it can follow.
+     */
+    locallyActive: Type.Optional(Type.Boolean()),
     matchedBy: Type.String(),
     requestSummary: Type.String(),
     activeNodeId: Type.String(),

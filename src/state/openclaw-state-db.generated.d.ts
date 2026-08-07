@@ -487,13 +487,16 @@ export interface EnterpriseRunEvents {
 
 export interface EnterpriseRuns {
   agent_id: string | null;
+  chat_visible: number | null;
   created_at: number;
   ended_at: number | null;
   execution_id: string;
   mode: string;
+  owner_token: string | null;
   plan_json: string;
   request_summary: string;
   run_id: string;
+  session_id: string | null;
   session_key: string | null;
   status: string;
   tree_id: string;

@@ -49,15 +49,31 @@ function normalizeMainKey(value: string | undefined | null): string {
 
 function readSessionDefaults(
   host: Pick<UiSessionDefaultsHost, "hello">,
-): { defaultAgentId?: string | null; mainKey?: string | null } | undefined {
+): { defaultAgentId?: string | null; mainKey?: string | null; scope?: string | null } | undefined {
   const snapshot = host.hello?.snapshot;
   if (!snapshot || typeof snapshot !== "object" || !("sessionDefaults" in snapshot)) {
     return undefined;
   }
   const defaults = snapshot.sessionDefaults;
   return defaults && typeof defaults === "object"
-    ? (defaults as { defaultAgentId?: string | null; mainKey?: string | null })
+    ? (defaults as {
+        defaultAgentId?: string | null;
+        mainKey?: string | null;
+        scope?: string | null;
+      })
     : undefined;
+}
+
+/**
+ * Whether this deployment runs `session.scope: "global"`.
+ *
+ * Decides what a main alias like `agent:research:main` MEANS: under global scope
+ * the gateway canonicalizes it to the shared `global` row (so the agent is the
+ * only thing distinguishing two agents' runs), while otherwise it canonicalizes
+ * to that agent's own main session and the key already identifies it.
+ */
+export function isUiGlobalSessionScope(host: Pick<UiSessionDefaultsHost, "hello">): boolean {
+  return normalizeLowercaseStringOrEmpty(readSessionDefaults(host)?.scope) === "global";
 }
 
 export function resolveUiConfiguredMainKey(

@@ -46,9 +46,9 @@ const DEFAULTED_OPTIONAL_INIT_PARAM_ENTRIES: readonly [string, readonly string[]
   // Added after these types shipped: without a default, each memberwise
   // initializer would gain a required argument and break existing Swift callers
   // even though the protocol changes themselves are additive.
-  ["EnterpriseRunsListParams", ["sessionKey"]],
+  ["EnterpriseRunsListParams", ["sessionKey", "agentId", "chatVisibleOnly"]],
   ["EnterpriseRunSummary", ["sessionKey"]],
-  ["EnterpriseRunDetail", ["route", "treeHash"]],
+  ["EnterpriseRunDetail", ["route", "treeHash", "locallyActive"]],
   ["EnterpriseTreeDetail", ["hash", "capabilityGrants"]],
   ["EnterpriseTreeOntology", ["guidance", "skills", "mcpServers"]],
   ["EnterpriseKnowledgeFoundationSummary", ["description", "ownerTreeIds"]],

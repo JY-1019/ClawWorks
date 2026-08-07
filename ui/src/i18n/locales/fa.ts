@@ -359,6 +359,10 @@ export const fa: TranslationMap = {
       declaredSection: "اعلام‌شده توسط {treeName}",
       otherSection: "سایر Skills نصب‌شده",
     },
+    step: {
+      progress: "مرحله {ordinal} از {total}: {title}",
+      routeComplete: "مسیر تکمیل شد",
+    },
     runsTitle: "اجراهای اخیر",
     treesTitle: "درخت‌های گردش کار",
     noRuns: "هنوز هیچ اجرای Enterprise ثبت نشده است.",

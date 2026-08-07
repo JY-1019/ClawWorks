@@ -27,6 +27,49 @@ export type EnterpriseChatControlsProps = {
   onSelect: (mode: EnterpriseMode) => void;
 };
 
+/**
+ * Live "step 2 of 4" for a governed run, in the control row.
+ *
+ * Deliberately NOT in the chat history: that list is `guard()`-ed on stable
+ * identity so a composer keystroke does not re-render it, and a value that
+ * changes mid-run does not belong behind that guard. The control row already
+ * re-renders on state change.
+ */
+export function renderEnterpriseStepProgress(
+  step: {
+    nodeId: string;
+    title: string;
+    ordinal: number;
+    total: number;
+    kind: "entered" | "completed";
+  } | null,
+): TemplateResult | typeof nothing {
+  // Only meaningful while the run is walking a route. A single-step route has
+  // nothing to report, and ordinal 0 means the cursor is not on a step yet.
+  if (!step || step.total <= 1 || step.ordinal < 1) {
+    return nothing;
+  }
+  const done = step.kind === "completed" && step.ordinal >= step.total;
+  // Announced politely: the text changes on its own as the run walks the route,
+  // so without a live status a screen-reader user is never told the step moved.
+  // Same shape the slash-menu and chat-thread announcements use.
+  return html`<span
+    class="chip ${done ? "chip-ok" : ""}"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    title=${step.nodeId}
+    data-testid="enterprise-step-progress"
+    >${done
+      ? t("enterprise.step.routeComplete")
+      : t("enterprise.step.progress", {
+          ordinal: String(step.ordinal),
+          total: String(step.total),
+          title: step.title,
+        })}</span
+  >`;
+}
+
 /** Inline selector in the chat control row, mirroring the model/thinking picker. */
 export function renderEnterpriseModeSelect(
   props: EnterpriseChatControlsProps,

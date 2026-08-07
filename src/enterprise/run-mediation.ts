@@ -17,6 +17,7 @@ import {
 } from "@openclaw/enterprise-planner";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { adoptEnterpriseActiveRunSessionId } from "./active-runs.js";
 import { evaluateRunStartGovernance, resolveGovernancePolicies } from "./governance.js";
 import { collectTreeRequiredProperties } from "./ontology-runtime.js";
 import {
@@ -46,6 +47,7 @@ import {
   finalizeEnterpriseRun,
   persistEnterpriseRunStart,
   updateEnterpriseRunPlan,
+  updateEnterpriseRunSessionId,
 } from "./trace-store.sqlite.js";
 import { getWorkflowTreeRegistrySnapshot } from "./tree-registry.js";
 import type {
@@ -73,6 +75,14 @@ type MediatedRunState = EnterpriseActiveRun & {
    * required.
    */
   tracksSteps?: boolean;
+  /**
+   * The conversation this run governs and the agent that owns it, held so live
+   * step events can name both. Persisted separately on the trace row; the event
+   * needs them in-process. The agent matters because every agent's store shares
+   * the canonical `global` session key.
+   */
+  sessionKey?: string;
+  agentId?: string;
 };
 
 // Active executions only, keyed by runId (the gate looks runs up by the
@@ -103,6 +113,12 @@ export type BeginEnterpriseRunParams = {
    */
   sessionId?: string;
   agentId?: string;
+  /**
+   * Whether an operator is watching this run in chat. `false` for internal runs
+   * that borrow a visible session for storage; their live step events then carry
+   * no chat routing, so a hidden run cannot paint over the visible one.
+   */
+  chatVisible?: boolean;
   config?: OpenClawConfig;
   /**
    * Picks the governing tree and the route through it. Omit to bind the trigger's
@@ -311,6 +327,12 @@ async function beginEnterpriseRunInternal(
     policies,
     mcpServers: resolveEnterpriseMcpServers(params.config),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+    // Chat routing for live step events, held only when a chat may show them.
+    // An internal run keeps its trace attribution (persisted separately) but
+    // publishes no routing, exactly as registerAgentRunContext omits its key.
+    ...(params.chatVisible !== false && params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    ...(params.chatVisible !== false && params.sessionId ? { sessionId: params.sessionId } : {}),
+    ...(params.chatVisible !== false && params.agentId ? { agentId: params.agentId } : {}),
     // Snapshot the tree's required-property shape from the definition this run
     // PLANNED against. Looking it up per tool call would drift: a re-import
     // mid-run invalidates the registry, and an in-flight write would start being
@@ -345,7 +367,14 @@ async function beginEnterpriseRunInternal(
       executionId: run.executionId,
       plan,
       ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      // The transcript link. Held only in the in-memory sessionId->runId index
+      // before this, so nothing durable could say which conversation a run's
+      // steps belonged to.
+      ...(params.sessionId ? { sessionId: params.sessionId } : {}),
       ...(params.agentId ? { agentId: params.agentId } : {}),
+      // Recorded so chat's own lookup can skip it; the session attribution above
+      // still stands for audit.
+      ...(params.chatVisible === false ? { chatVisible: false } : {}),
     });
   });
   persistTrace(() => {
@@ -481,6 +510,58 @@ export function endEnterpriseRun(params: {
   persistTrace(() => {
     finalizeEnterpriseRun({ executionId: run.executionId, status: params.status });
   });
+  // Tell live surfaces the run is over. Step transitions alone cannot: a route
+  // abandoned mid-step emits no closing transition, and a client that does not
+  // own the run has no other way to learn it stopped.
+  publishRunEndedEvent(run);
+}
+
+function publishRunEndedEvent(run: MediatedRunState): void {
+  try {
+    const steps = enterpriseStepSequence(run.plan);
+    emitEnterpriseStepEvent({
+      runId: run.plan.runId,
+      executionId: run.executionId,
+      ...(run.sessionKey ? { sessionKey: run.sessionKey } : {}),
+      ...(run.sessionId ? { sessionId: run.sessionId } : {}),
+      ...(run.agentId ? { agentId: run.agentId } : {}),
+      treeId: run.plan.treeId,
+      treeName: run.plan.treeName,
+      kind: "ended",
+      nodeId: run.plan.activeNodeId,
+      title: run.plan.treeName,
+      ordinal: steps.indexOf(run.plan.activeNodeId) + 1,
+      total: steps.length,
+    });
+  } catch (err) {
+    // Fail open, like every other publish here: losing one live update must not
+    // take down a run that has already finished its work.
+    log.warn(
+      `enterprise run ended event publish failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * Point a live run's trace at a rotated transcript (overflow/compaction).
+ *
+ * Both halves move together: the in-memory run, which live step events read, and
+ * the durable row, whose `session_id` is documented as the transcript the
+ * execution ran against. Updating only one would leave the trace naming a
+ * transcript that no longer exists.
+ */
+export function adoptEnterpriseRunTranscript(runId: string, sessionId: string): void {
+  adoptEnterpriseActiveRunSessionId(runId, sessionId, (run) => {
+    const execution = mediatedRuns.get(runId);
+    if (!execution) {
+      return;
+    }
+    persistTrace(() => {
+      updateEnterpriseRunSessionId({ executionId: execution.executionId, sessionId });
+    });
+    // Keep the mediated copy in step with the registry entry the callback saw.
+    execution.sessionId = run.sessionId;
+  });
 }
 
 /** Test-only: reset mediation state between cases (isolate:false lanes). */
@@ -509,6 +590,9 @@ function publishStepEvent(
     emitEnterpriseStepEvent({
       runId: run.plan.runId,
       executionId: run.executionId,
+      ...(run.sessionKey ? { sessionKey: run.sessionKey } : {}),
+      ...(run.sessionId ? { sessionId: run.sessionId } : {}),
+      ...(run.agentId ? { agentId: run.agentId } : {}),
       treeId: run.plan.treeId,
       treeName: run.plan.treeName,
       kind: event.kind === "node.completed" ? "completed" : "entered",

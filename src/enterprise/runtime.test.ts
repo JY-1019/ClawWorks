@@ -14,6 +14,7 @@ import {
   enterpriseRunActiveStep,
   recordEnterpriseApprovalResolution,
   enterpriseRunAttachedMcpServers,
+  adoptEnterpriseActiveRunSessionId,
   registerEnterpriseActiveRun,
   resolveEnterpriseMcpServers,
   resolveEnterpriseMode,
@@ -312,6 +313,34 @@ describe("session → active run index", () => {
   it("indexes nothing for a run with no session", () => {
     registerEnterpriseActiveRun(makeRun({ runId: "run-1" }));
     expect(getSessionActiveRunId("session-a")).toBeUndefined();
+  });
+
+  it("follows a transcript rotation, moving the run and its link", () => {
+    // Overflow/compaction rotates the transcript mid-run. The run holds a COPY
+    // of the id and publishes it on every live step event, so a stale copy makes
+    // the UI reject its own run's progress.
+    const run = makeRun({ runId: "run-1", sessionId: "session-a" });
+    registerEnterpriseActiveRun(run);
+    adoptEnterpriseActiveRunSessionId("run-1", "session-b");
+    expect(run.sessionId).toBe("session-b");
+    expect(getSessionActiveRunId("session-b")).toBe("run-1");
+    expect(getSessionActiveRunId("session-a")).toBeUndefined();
+  });
+
+  it("leaves the old link alone when a newer run already owns it", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-1", sessionId: "session-a" }));
+    registerEnterpriseActiveRun(makeRun({ runId: "run-2", sessionId: "session-a" }));
+    adoptEnterpriseActiveRunSessionId("run-1", "session-b");
+    expect(getSessionActiveRunId("session-a")).toBe("run-2");
+    expect(getSessionActiveRunId("session-b")).toBe("run-1");
+  });
+
+  it("ignores rotation for an unknown or unchanged run", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-1", sessionId: "session-a" }));
+    adoptEnterpriseActiveRunSessionId("missing", "session-b");
+    adoptEnterpriseActiveRunSessionId("run-1", "session-a");
+    expect(getSessionActiveRunId("session-a")).toBe("run-1");
+    expect(getSessionActiveRunId("session-b")).toBeUndefined();
   });
 
   it("keeps the successor's link when the prior run ends out of order", () => {

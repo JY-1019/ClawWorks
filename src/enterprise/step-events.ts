@@ -19,10 +19,38 @@ export type EnterpriseStepEventPayload = {
   runId: string;
   /** This begin→end cycle, matching the trace rows. */
   executionId: string;
+  /**
+   * Which conversation this run belongs to.
+   *
+   * The gateway broadcasts every step to every read-scoped client, so a client
+   * showing one conversation MUST be able to reject another's steps — a cron or
+   * subagent run would otherwise overwrite the progress on screen. Absent for a
+   * run with no session (a bare programmatic mediation), which no chat matches.
+   */
+  sessionKey?: string;
+  /**
+   * The transcript this run wrote to. `sessions.reset` rotates this UUID while
+   * KEEPING the session key, so without it a pre-reset run's progress is
+   * indistinguishable from the new conversation's and lingers in an empty chat.
+   */
+  sessionId?: string;
+  /**
+   * Which agent ran it. Required to disambiguate the canonical `global` session
+   * key, which every agent's store shares — without it one agent's global run
+   * matches another's on sessionKey alone.
+   */
+  agentId?: string;
   treeId: string;
   treeName: string;
-  /** `entered` opens a step; `completed` closes the one before it. */
-  kind: "entered" | "completed";
+  /**
+   * `entered` opens a step, `completed` closes it, `ended` closes the RUN.
+   *
+   * `ended` always fires, including for a route abandoned mid-step, so a live
+   * surface never has to infer that a run stopped. Without it a chip belonging
+   * to a run this client does not own (another tab, another channel) would sit
+   * on "Step 2 of 5" forever, since nothing else tells it the run is over.
+   */
+  kind: "entered" | "completed" | "ended";
   nodeId: string;
   title: string;
   /** 1-based position among the run's executable steps, and how many there are. */

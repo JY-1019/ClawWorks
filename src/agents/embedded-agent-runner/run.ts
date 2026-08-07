@@ -84,7 +84,11 @@ import {
   parseImageSizeError,
   pickFallbackThinkingLevel,
 } from "../embedded-agent-helpers.js";
-import { applyEnterpriseMediation, finishEnterpriseMediation } from "../enterprise-mediation.js";
+import {
+  adoptEnterpriseRunSessionId,
+  applyEnterpriseMediation,
+  finishEnterpriseMediation,
+} from "../enterprise-mediation.js";
 import { narrowRunSkillsSnapshot } from "../enterprise-skill-snapshot.js";
 import { isStrictAgenticExecutionContractActive } from "../execution-contract.js";
 import {
@@ -1706,6 +1710,9 @@ async function runEmbeddedAgentInternal(
           sessionId: activeSessionId,
           lifecycleGeneration,
         });
+        // A governed run publishes its transcript on every live step event, so
+        // it has to move too or the UI stops recognizing its own progress.
+        adoptEnterpriseRunSessionId(params.runId, activeSessionId);
       };
       let suppressNextUserMessagePersistence = params.suppressNextUserMessagePersistence ?? false;
       // The embedded agent owns JSONL persistence; this marker lets the outer retry avoid

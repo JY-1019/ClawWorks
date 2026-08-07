@@ -352,6 +352,10 @@ export const ko: TranslationMap = {
       declaredSection: "{treeName}에서 선언됨",
       otherSection: "기타 설치된 Skills",
     },
+    step: {
+      progress: "{total}단계 중 {ordinal}단계: {title}",
+      routeComplete: "경로 완료",
+    },
     runsTitle: "최근 실행",
     treesTitle: "워크플로 트리",
     noRuns: "아직 기록된 Enterprise 실행이 없습니다.",

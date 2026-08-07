@@ -706,6 +706,17 @@ function ensureAdditiveStateColumns(db: DatabaseSync): void {
   ensureColumn(db, "node_pairing_pending", "client_mode TEXT");
   ensureColumn(db, "node_pairing_paired", "client_id TEXT");
   ensureColumn(db, "node_pairing_paired", "client_mode TEXT");
+  // Added after enterprise_runs shipped: names the transcript a run's steps
+  // belong to. Additive, so an existing row simply has none.
+  ensureColumn(db, "enterprise_runs", "session_id TEXT");
+  // Added after enterprise_runs shipped: marks runs that must not surface in the
+  // chat they borrowed a session from. NULL on existing rows reads as visible,
+  // which is what every run traced before internal runs were distinguished was.
+  ensureColumn(db, "enterprise_runs", "chat_visible INTEGER");
+  // Added after enterprise_runs shipped: names the process incarnation that owns
+  // a run, so orphan cleanup can tell a dead owner from a live one sharing this
+  // database. NULL on existing rows means unknown ownership, treated as live.
+  ensureColumn(db, "enterprise_runs", "owner_token TEXT");
   ensureColumn(db, "cron_run_logs", "status TEXT");
   ensureColumn(db, "cron_run_logs", "error TEXT");
   ensureColumn(db, "cron_run_logs", "summary TEXT");

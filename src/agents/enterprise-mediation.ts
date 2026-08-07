@@ -7,9 +7,14 @@ import type { WorkflowPlanner } from "@openclaw/enterprise-planner";
  */
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { beginEnterpriseRun, endEnterpriseRun } from "../enterprise/run-mediation.js";
+import {
+  adoptEnterpriseRunTranscript,
+  beginEnterpriseRun,
+  endEnterpriseRun,
+} from "../enterprise/run-mediation.js";
 import { resolveEnterpriseMode } from "../enterprise/runtime.js";
 import type { EnterpriseRunStatus } from "../enterprise/types.js";
+import { getAgentRunContext } from "../infra/agent-events.js";
 import { hasGlobalHooks } from "../plugins/hook-runner-global.js";
 import { resolveEffectiveAgentSkillsLimits } from "../skills/discovery/agent-filter.js";
 import {
@@ -19,6 +24,30 @@ import {
 } from "../skills/limits-defaults.js";
 import { buildAgentRunTerminalOutcome } from "./agent-run-terminal-outcome.js";
 import type { EmbeddedAgentRunResult } from "./embedded-agent-runner/types.js";
+
+/**
+ * Whether this run may appear in the session it is bound to.
+ *
+ * Keyed on internal session effects ONLY — never on `isControlUiVisible`, which
+ * answers a different question (who gets live updates) and would, if it ever
+ * became false for another reason, permanently hide a legitimate run's route.
+ *
+ * The run context carries it for the embedded and CLI runners, whose context is
+ * registered before they mediate. ACP mediates EARLIER than that registration,
+ * so it passes the flag explicitly and wins here.
+ */
+function resolveChatVisible(params: EnterpriseMediatedRunParams): boolean {
+  if (params.chatVisible !== undefined) {
+    return params.chatVisible;
+  }
+  // A silent run writes nothing an operator sees in this session, yet it runs
+  // AGAINST the visible one (memory flush is the live example) — so its route
+  // would otherwise overwrite the actual turn's progress.
+  if (params.silentExpected) {
+    return false;
+  }
+  return getAgentRunContext(params.runId)?.sessionEffectsInternal !== true;
+}
 
 /** Structural param surface shared by the mediated runner entrypoints. */
 export type EnterpriseMediatedRunParams = {
@@ -31,6 +60,19 @@ export type EnterpriseMediatedRunParams = {
    * tool calls to this run from its own trusted sessionId. */
   sessionId?: string;
   agentId?: string;
+  /**
+   * Whether this run is one the operator is watching in chat. `false` for
+   * `sessionEffects: "internal"` runs, which reuse a visible session for storage
+   * but must not surface in it — the same reason registerAgentRunContext omits
+   * their sessionKey.
+   */
+  chatVisible?: boolean;
+  /**
+   * The run produces no visible output in its session (memory flush and other
+   * nested maintenance turns). Structural, so it arrives from the runner params
+   * without every caller opting in.
+   */
+  silentExpected?: boolean;
   config?: OpenClawConfig;
   extraSystemPrompt?: string;
   /** Internal one-shot model probe (raw model run). */
@@ -243,6 +285,7 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
     ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+    ...(resolveChatVisible(params) === false ? { chatVisible: false } : {}),
     ...(params.agentId ? { agentId: params.agentId } : {}),
     ...(config ? { config } : {}),
     ...(routePlanner ? { routePlanner } : {}),
@@ -352,3 +395,13 @@ function isAbortError(error: unknown): boolean {
 
 /** Test-only alias: the ref contract is what keeps a private run off a cloud default. */
 export { resolveRouteModelRef as resolveRouteModelRefForTest };
+
+/**
+ * Point this run's governed trace at a rotated transcript.
+ *
+ * Re-exported here so runners keep reaching the enterprise layer through this
+ * one adapter rather than importing its internals directly.
+ */
+export function adoptEnterpriseRunSessionId(runId: string, sessionId: string): void {
+  adoptEnterpriseRunTranscript(runId, sessionId);
+}

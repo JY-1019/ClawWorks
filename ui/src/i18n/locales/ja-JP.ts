@@ -360,6 +360,10 @@ export const ja_JP: TranslationMap = {
       declaredSection: "{treeName} で宣言済み",
       otherSection: "その他のインストール済み Skills",
     },
+    step: {
+      progress: "ステップ {ordinal}/{total}: {title}",
+      routeComplete: "ルート完了",
+    },
     runsTitle: "最近の実行",
     treesTitle: "ワークフローツリー",
     noRuns: "Enterpriseの実行記録はまだありません。",

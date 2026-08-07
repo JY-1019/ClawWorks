@@ -968,7 +968,7 @@ async function agentCommandInternal(
       registerAgentRunContext(
         runId,
         suppressVisibleSessionEffects
-          ? { isControlUiVisible: false, lifecycleGeneration }
+          ? { isControlUiVisible: false, sessionEffectsInternal: true, lifecycleGeneration }
           : {
               sessionKey,
               sessionId,
@@ -1007,6 +1007,12 @@ async function agentCommandInternal(
           runId,
           prompt: body,
           sessionKey,
+          // The transcript link, same as the embedded and CLI runners record.
+          // Without it every ACP run traces with no way back to its conversation.
+          sessionId,
+          // An internal run borrows this session for storage but is not on screen;
+          // its live steps must not paint over the visible run's progress.
+          chatVisible: !suppressVisibleSessionEffects,
           agentId: acpAgent,
           config: cfg,
           ...(normalizedSpawned.spawnedBy ? { spawnedBy: normalizedSpawned.spawnedBy } : {}),
@@ -1208,6 +1214,7 @@ async function agentCommandInternal(
         lifecycleGeneration,
         verboseLevel: resolvedVerboseLevel,
         isControlUiVisible: !suppressVisibleSessionEffects,
+        sessionEffectsInternal: suppressVisibleSessionEffects,
       });
     }
 

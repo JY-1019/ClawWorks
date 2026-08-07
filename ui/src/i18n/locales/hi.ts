@@ -351,6 +351,10 @@ export const hi: TranslationMap = {
       declaredSection: "{treeName} द्वारा घोषित",
       otherSection: "अन्य इंस्टॉल किए गए skills",
     },
+    step: {
+      progress: "चरण {ordinal} / {total}: {title}",
+      routeComplete: "रूट पूर्ण",
+    },
     runsTitle: "हाल के रन",
     treesTitle: "वर्कफ़्लो ट्री",
     noRuns: "अभी तक कोई enterprise रन रिकॉर्ड नहीं हुआ।",

@@ -111,6 +111,7 @@ import {
   loadEnterpriseChatMode,
   loadEnterpriseChatRoute,
   setEnterpriseChatMode,
+  type EnterpriseChatStep,
   type EnterpriseMode,
 } from "./controllers/enterprise-chat.ts";
 import {
@@ -140,7 +141,11 @@ import {
 } from "./dom-tooltips.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
-import { resolveAgentIdFromSessionKey } from "./session-key.ts";
+import {
+  isUiGlobalSessionKey,
+  resolveAgentIdFromSessionKey,
+  resolveUiSelectedGlobalAgentId,
+} from "./session-key.ts";
 import type { SidebarContent } from "./sidebar-content.ts";
 import { loadLocalUserIdentity, loadSettings, type UiSettings } from "./storage.ts";
 import { VALID_THEME_NAMES, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
@@ -278,7 +283,11 @@ export class OpenClawApp extends LitElement {
   @state() sessionKey = this.settings.sessionKey;
   chatSessionMessageSubscriptionKey: string | null = null;
   chatSessionMessageSubscriptionRequestedKey: string | null = null;
-  currentSessionId: string | null = null;
+  // Reactive: a transcript rotation (freshness policy at chat.send, compaction)
+  // has to reach `updated()` so the enterprise route can reconcile. As a plain
+  // field the change was invisible and a tab that rejected the run's opening
+  // step showed no progress until the next transition.
+  @state() currentSessionId: string | null = null;
   reconnectResumeSessionId: string | null = null;
   @state() chatLoading = false;
   @state() chatSending = false;
@@ -491,6 +500,7 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseChatModeError: string | null = null;
   @state() enterpriseChatRun: EnterpriseRunDetail | null = null;
   @state() enterpriseChatRunTree: EnterpriseTreeDetail | null = null;
+  @state() enterpriseChatStep: EnterpriseChatStep | null = null;
 
   setEnterpriseChatMode = async (mode: EnterpriseMode) => {
     await setEnterpriseChatMode(this, mode);
@@ -994,6 +1004,31 @@ export class OpenClawApp extends LitElement {
     super.disconnectedCallback();
   }
 
+  /**
+   * Which agent's runs the chat route belongs to.
+   *
+   * Needed wherever the key can canonicalize to the shared `global` store key —
+   * which is not only the literal `global`: under `session.scope: "global"` the
+   * agent picker sets aliases like `agent:research:main` that the gateway
+   * resolves to the same row. Dropping the agent there is exactly when another
+   * agent's newest global run could be attached to this chat. Same two branches
+   * globalAgentScopeMatches uses, for the same reason.
+   */
+  /** Last agent the route filter used, so a change to it can invalidate. */
+  private lastEnterpriseRouteAgentId: string | undefined;
+
+  private enterpriseChatRouteAgentId(): string | undefined {
+    if (isUiGlobalSessionKey(this.sessionKey)) {
+      return resolveUiSelectedGlobalAgentId(this) || undefined;
+    }
+    // Any other key is left to the gateway. Resolving an alias to its owner
+    // depends on config the UI does not have (configured default agent, main-key
+    // alias, the legacy `agent:main:main` remap), so guessing here is how a
+    // supported upgrade path loses its route entirely. enterprise.runs.list
+    // derives the owner itself when the key canonicalizes to the shared row.
+    return undefined;
+  }
+
   protected override updated(changed: Map<PropertyKey, unknown>) {
     handleUpdated(this as unknown as Parameters<typeof handleUpdated>[0], changed);
     refreshActiveFloatingTooltip(this);
@@ -1003,15 +1038,30 @@ export class OpenClawApp extends LitElement {
     if (changed.has("connected") && this.connected) {
       void loadEnterpriseChatMode(this);
       if (this.sessionKey) {
-        void loadEnterpriseChatRoute(this, this.sessionKey);
+        void loadEnterpriseChatRoute(this, this.sessionKey, this.enterpriseChatRouteAgentId());
       }
     }
     // A route belongs to one thread: switching sessions must not leave the
     // previous thread's route card sitting under the new conversation.
-    if (changed.has("sessionKey")) {
+    // A transcript rotation (freshness policy at chat.send, or compaction) is
+    // learned here, after the fact. A tab that did not start the run rejected its
+    // opening step against the old id, and nothing else would reload — so a long
+    // first step would show no progress at all. Reconciling on refresh recovers
+    // it from the run detail.
+    if (changed.has("currentSessionId") && this.connected && this.sessionKey) {
+      void loadEnterpriseChatRoute(this, this.sessionKey, this.enterpriseChatRouteAgentId());
+    }
+    // The global agent can change without the key changing (agent defaults land
+    // asynchronously, and the picker switches agents under the same `global`
+    // key), so the route filter would keep using a stale agent and leave another
+    // agent's route on screen.
+    const globalRouteAgentId = this.enterpriseChatRouteAgentId();
+    const globalRouteAgentChanged = globalRouteAgentId !== this.lastEnterpriseRouteAgentId;
+    this.lastEnterpriseRouteAgentId = globalRouteAgentId;
+    if (changed.has("sessionKey") || globalRouteAgentChanged) {
       clearEnterpriseChatRoute(this);
       if (this.connected && this.sessionKey) {
-        void loadEnterpriseChatRoute(this, this.sessionKey);
+        void loadEnterpriseChatRoute(this, this.sessionKey, this.enterpriseChatRouteAgentId());
       }
     }
     // The route card follows the RUN lifecycle, not the send ACK. chat.send acks
@@ -1020,7 +1070,7 @@ export class OpenClawApp extends LitElement {
     // trace that does not exist yet and then never look again.
     if (changed.has("chatRunId") && !this.chatRunId && this.connected && this.sessionKey) {
       // The run reached a terminal state: its trace exists now.
-      void loadEnterpriseChatRoute(this, this.sessionKey);
+      void loadEnterpriseChatRoute(this, this.sessionKey, this.enterpriseChatRouteAgentId());
     }
     // Some render callbacks assign tab directly while preparing nested panel state.
     if (changed.has("tab") && this.tab !== "chat" && this.chatMobileControlsOpen) {

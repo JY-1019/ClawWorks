@@ -135,6 +135,15 @@ export type AgentRunContext = {
   isHeartbeat?: boolean;
   /** Whether control UI clients should receive chat/agent updates for this run. */
   isControlUiVisible?: boolean;
+  /**
+   * `sessionEffects: "internal"` — this run borrows a session for storage but
+   * must leave no trace an operator sees in it.
+   *
+   * Deliberately NOT the same question as `isControlUiVisible`, which asks who
+   * receives live updates and can be false for reasons that have nothing to do
+   * with session effects. Anything durable must key on this one.
+   */
+  sessionEffectsInternal?: boolean;
   /** Timestamp when this context was first registered (for TTL-based cleanup). */
   registeredAt?: number;
   /** Timestamp of last activity (updated on every emitAgentEvent). */
@@ -245,6 +254,9 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   }
   if (context.verboseLevel && existing.verboseLevel !== context.verboseLevel) {
     existing.verboseLevel = context.verboseLevel;
+  }
+  if (context.sessionEffectsInternal !== undefined) {
+    existing.sessionEffectsInternal = context.sessionEffectsInternal;
   }
   if (context.isControlUiVisible !== undefined) {
     existing.isControlUiVisible = context.isControlUiVisible;

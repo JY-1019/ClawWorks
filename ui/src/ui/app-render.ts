@@ -1138,6 +1138,11 @@ function renderGuardedChatControls(state: AppViewState) {
       // A cleared error must repaint the selector; without this the stale banner
       // survives until an unrelated chat-control dependency happens to change.
       state.enterpriseChatModeError,
+      // A live step is usually the ONLY thing that changed, so without this the
+      // guarded template is reused and the progress chip never advances — the
+      // exact opposite of the live-progress it exists for. Fresh object per
+      // event, so identity comparison is enough.
+      state.enterpriseChatStep,
       state.chatModelOverrides,
       state.chatModelSwitchPromises,
       state.chatModelsLoading,

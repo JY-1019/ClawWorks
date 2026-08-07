@@ -1234,6 +1234,10 @@ CREATE TABLE IF NOT EXISTS enterprise_runs (
   execution_id TEXT NOT NULL PRIMARY KEY,
   run_id TEXT NOT NULL,
   session_key TEXT,
+  -- The ephemeral session this execution ran for. session_key names the agent
+  -- lane; only session_id names the TRANSCRIPT FILE, so without it nothing in
+  -- SQLite can say which conversation a run's steps belong to.
+  session_id TEXT,
   agent_id TEXT,
   tree_id TEXT NOT NULL,
   tree_version TEXT NOT NULL,
@@ -1243,7 +1247,17 @@ CREATE TABLE IF NOT EXISTS enterprise_runs (
   plan_json TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  ended_at INTEGER
+  ended_at INTEGER,
+  -- 0 for runs that borrow a visible session but must not appear in it
+  -- (sessionEffects: "internal"). The trace keeps their session attribution for
+  -- audit; only chat-facing lookups filter on this.
+  chat_visible INTEGER,
+  -- Which process incarnation owns this run, as "<pid>:<start-time>". The state
+  -- DB is shared (a gateway and an \`openclaw agent --local\` run write the same
+  -- rows), so orphan cleanup must PROVE a row's owner is gone. The start time is
+  -- what makes that provable: a container that restarts hands the new process
+  -- the same pid, so a bare pid would read as still alive forever.
+  owner_token TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_enterprise_runs_run
@@ -1257,6 +1271,13 @@ CREATE INDEX IF NOT EXISTS idx_enterprise_runs_created
 -- runs, and a thread with no recent run pays for it on every refresh.
 CREATE INDEX IF NOT EXISTS idx_enterprise_runs_session
   ON enterprise_runs(session_key, created_at DESC, execution_id);
+
+-- Under \`session.scope: "global"\` every agent's runs share session_key='global',
+-- so the session index above leaves agent_id as a residual filter and the
+-- per-turn LIMIT 1 walks other agents' history. Leading with both key columns
+-- keeps that lookup O(1) as global run volume grows.
+CREATE INDEX IF NOT EXISTS idx_enterprise_runs_session_agent
+  ON enterprise_runs(session_key, agent_id, created_at DESC, execution_id);
 
 CREATE TABLE IF NOT EXISTS enterprise_run_events (
   execution_id TEXT NOT NULL,

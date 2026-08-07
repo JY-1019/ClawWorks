@@ -12,7 +12,10 @@ import {
 import { hasOperatorAdminAccess, syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { persistChatComposerState, restoreChatComposerState } from "./chat/composer-persistence.ts";
-import { renderEnterpriseModeSelect } from "./chat/enterprise-controls.ts";
+import {
+  renderEnterpriseModeSelect,
+  renderEnterpriseStepProgress,
+} from "./chat/enterprise-controls.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
   renderChatSessionSelect as renderChatSessionSelectBase,
@@ -426,7 +429,7 @@ export function renderChatControls(state: AppViewState) {
       error: state.enterpriseChatModeError,
       onSelect: (mode) => void state.setEnterpriseChatMode(mode),
     })}
-    ${renderChatQuotaPill(state)}
+    ${renderEnterpriseStepProgress(state.enterpriseChatStep)} ${renderChatQuotaPill(state)}
     <div class="chat-settings-popover-wrapper">
       <button
         class="chat-settings-chip ${settingsOpen ? "chat-settings-chip--open" : ""}"

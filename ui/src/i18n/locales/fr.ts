@@ -361,6 +361,10 @@ export const fr: TranslationMap = {
       declaredSection: "Déclaré par {treeName}",
       otherSection: "Autres Skills installés",
     },
+    step: {
+      progress: "Étape {ordinal} sur {total} : {title}",
+      routeComplete: "Itinéraire terminé",
+    },
     runsTitle: "Exécutions récentes",
     treesTitle: "Arborescences de workflows",
     noRuns: "Aucune exécution enterprise enregistrée pour le moment.",

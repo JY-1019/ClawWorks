@@ -30,6 +30,13 @@ export type EnterpriseRunTraceSink = (event: {
 
 export type EnterpriseActiveRun = {
   plan: EnterpriseRunPlan;
+  /**
+   * This begin->end cycle. runIds recur (retries and recurring cron sessions
+   * reuse them), so anything asking "is THIS execution the live one" must
+   * compare on this, not the run id. Mediation always sets it; the field is
+   * optional only because narrower fixtures construct this type directly.
+   */
+  executionId?: string;
   policies: readonly GovernancePolicy[];
   /**
    * MCP servers registered under `mcp.servers`, snapshotted at mediation like
@@ -92,6 +99,35 @@ export function registerEnterpriseActiveRun(run: EnterpriseActiveRun): void {
     // current run.
     sessionActiveRuns().set(run.sessionId, run.plan.runId);
   }
+}
+
+/**
+ * Follow a transcript rotation (overflow or context-engine compaction).
+ *
+ * The run holds a COPY of the sessionId, and live step events publish it so a
+ * chat can tell one conversation's run from another's. Without this the copy
+ * goes stale the moment the transcript rotates and every later event names a
+ * transcript that no longer exists, so the UI rejects its own run's progress.
+ * The sessionId index moves with it, since that is how the loopback resolves a
+ * tool call back to its run.
+ */
+export function adoptEnterpriseActiveRunSessionId(
+  runId: string,
+  sessionId: string,
+  onAdopted?: (run: EnterpriseActiveRun, sessionId: string) => void,
+): void {
+  const run = activeRuns().get(runId);
+  if (!run || !sessionId || run.sessionId === sessionId) {
+    return;
+  }
+  // Only drop the old link if it still points here: a newer run for the previous
+  // transcript may already own it.
+  if (run.sessionId && sessionActiveRuns().get(run.sessionId) === runId) {
+    sessionActiveRuns().delete(run.sessionId);
+  }
+  run.sessionId = sessionId;
+  sessionActiveRuns().set(sessionId, runId);
+  onAdopted?.(run, sessionId);
 }
 
 export function getEnterpriseActiveRun(runId: string): EnterpriseActiveRun | undefined {

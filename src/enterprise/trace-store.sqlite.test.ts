@@ -5,7 +5,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
   appendEnterpriseRunEvent,
+  abortOrphanedEnterpriseRuns,
   finalizeEnterpriseRun,
+  updateEnterpriseRunSessionId,
   getEnterpriseRunRecord,
   listEnterpriseRunEvents,
   listEnterpriseRunExecutions,
@@ -146,6 +148,190 @@ describe("enterprise trace store", () => {
     // A limit of 1 without the filter would return an other-session run.
     const mine = listEnterpriseRunRecords({ limit: 1, sessionKey: "agent:main:me" }, storeOptions);
     expect(mine.map((record) => record.executionId)).toEqual(["exec-mine"]);
+  });
+
+  it("filters by agentId, which sessionKey alone cannot do under global scope", () => {
+    // Every agent's store shares the canonical "global" key, so a chat scoped to
+    // one agent has to say which one or it can adopt another agent's run.
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-other-agent",
+        plan: makePlan("run-other-agent"),
+        sessionKey: "global",
+        agentId: "research",
+        now: 2000, // newer, so a limit of 1 would return it
+      },
+      storeOptions,
+    );
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-my-agent",
+        plan: makePlan("run-my-agent"),
+        sessionKey: "global",
+        agentId: "main",
+        now: 1000,
+      },
+      storeOptions,
+    );
+
+    const mine = listEnterpriseRunRecords(
+      { limit: 1, sessionKey: "global", agentId: "main" },
+      storeOptions,
+    );
+    expect(mine.map((record) => record.executionId)).toEqual(["exec-my-agent"]);
+
+    // Without the agent filter the same query returns the other agent's run,
+    // which is exactly the confusion the filter exists to prevent.
+    const unscoped = listEnterpriseRunRecords({ limit: 1, sessionKey: "global" }, storeOptions);
+    expect(unscoped.map((record) => record.executionId)).toEqual(["exec-other-agent"]);
+  });
+
+  it("hides internal runs from chat lookups but keeps them for audit", () => {
+    // An internal run borrows a visible session for storage, so it matches the
+    // session filter and would otherwise be reconstructed into that chat.
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-internal",
+        // Ordering is by the plan's createdAt, so state it rather than relying
+        // on `now` (which only sets updated_at).
+        plan: { ...makePlan("run-internal"), createdAt: 3000 }, // newest
+        sessionKey: "agent:main:me",
+        chatVisible: false,
+      },
+      storeOptions,
+    );
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-visible",
+        plan: { ...makePlan("run-visible"), createdAt: 1000 },
+        sessionKey: "agent:main:me",
+      },
+      storeOptions,
+    );
+
+    const chat = listEnterpriseRunRecords(
+      { limit: 1, sessionKey: "agent:main:me", chatVisibleOnly: true },
+      storeOptions,
+    );
+    expect(chat.map((record) => record.executionId)).toEqual(["exec-visible"]);
+
+    // The audit screen passes no such filter and still sees the hidden run.
+    const audit = listEnterpriseRunRecords({ limit: 1, sessionKey: "agent:main:me" }, storeOptions);
+    expect(audit.map((record) => record.executionId)).toEqual(["exec-internal"]);
+  });
+
+  it("closes runs a previous process left running, and only those", () => {
+    // Mediated runs live only in memory, so a `running` row at startup belongs
+    // to a process that is gone.
+    persistEnterpriseRunStart(
+      { executionId: "exec-orphan", plan: makePlan("run-orphan") },
+      storeOptions,
+    );
+    persistEnterpriseRunStart(
+      { executionId: "exec-done", plan: makePlan("run-done") },
+      storeOptions,
+    );
+    finalizeEnterpriseRun({ executionId: "exec-done", status: "completed" }, storeOptions);
+
+    // Count is not asserted exactly: earlier cases in this file share the store
+    // and leave their own running rows, which the sweep legitimately closes too.
+    // Owner reported dead, so the sweep may close it.
+    expect(
+      abortOrphanedEnterpriseRuns({ now: 5000, isOwnerGone: () => true }, storeOptions),
+    ).toBeGreaterThanOrEqual(1);
+    expect(getEnterpriseRunRecord("run-orphan", storeOptions)?.status).toBe("aborted");
+    // A run that ended on its own terms keeps the status it ended with.
+    expect(getEnterpriseRunRecord("run-done", storeOptions)?.status).toBe("completed");
+
+    // The append-only trace closes too: a summary that says `aborted` above an
+    // event list that never ends reads as a run still in flight.
+    const orphanEvents = listEnterpriseRunEvents("exec-orphan", storeOptions);
+    const terminal = orphanEvents.at(-1);
+    expect(terminal?.kind).toBe("run.ended");
+    expect(terminal?.payload).toMatchObject({ status: "aborted" });
+    // Sequence continues the existing trace rather than colliding with it.
+    expect(terminal?.seq).toBeGreaterThan(orphanEvents.at(-2)?.seq ?? -1);
+
+    // Idempotent: a second sweep has nothing left to close.
+    expect(abortOrphanedEnterpriseRuns({ now: 6000, isOwnerGone: () => true }, storeOptions)).toBe(
+      0,
+    );
+  });
+
+  it("honors a terminal event written before the process died", () => {
+    // Finalization appends `run.ended` and updates the summary in two writes, so
+    // a crash between them leaves a terminal event above a `running` row. That
+    // run reported its own verdict; recovery must not overwrite it.
+    persistEnterpriseRunStart(
+      { executionId: "exec-half-final", plan: makePlan("run-half-final") },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-half-final",
+        seq: 0,
+        nodeId: null,
+        kind: "run.ended",
+        payload: { status: "completed" },
+        createdAt: 100,
+      },
+      storeOptions,
+    );
+
+    abortOrphanedEnterpriseRuns({ now: 9500, isOwnerGone: () => true }, storeOptions);
+
+    expect(getEnterpriseRunRecord("run-half-final", storeOptions)?.status).toBe("completed");
+    // And no second, contradictory terminal event.
+    const events = listEnterpriseRunEvents("exec-half-final", storeOptions);
+    expect(events.filter((event) => event.kind === "run.ended")).toHaveLength(1);
+  });
+
+  it("leaves a run alone while its owning process is alive", () => {
+    // The state DB is shared: an `openclaw agent --local` run writes these rows
+    // too, so sweeping every `running` row would end a live execution's trace.
+    persistEnterpriseRunStart(
+      { executionId: "exec-live-owner", plan: makePlan("run-live-owner") },
+      storeOptions,
+    );
+    expect(abortOrphanedEnterpriseRuns({ now: 7000, isOwnerGone: () => false }, storeOptions)).toBe(
+      0,
+    );
+    expect(getEnterpriseRunRecord("run-live-owner", storeOptions)?.status).toBe("running");
+  });
+
+  // The default owner check is what makes the sweep safe in a container, where a
+  // restart hands the new process the same pid. Exercised through the injected
+  // predicate so the assertion does not depend on real process ids.
+  it("treats a recycled pid as a different owner", () => {
+    persistEnterpriseRunStart(
+      { executionId: "exec-recycled", plan: makePlan("run-recycled") },
+      storeOptions,
+    );
+    // Same pid, different start time — a new incarnation, so the old run is gone.
+    const recycled = (token: string) => {
+      const [, startedAt = ""] = token.split(":");
+      return startedAt !== "999";
+    };
+    expect(
+      abortOrphanedEnterpriseRuns({ now: 9000, isOwnerGone: recycled }, storeOptions),
+    ).toBeGreaterThanOrEqual(1);
+    expect(getEnterpriseRunRecord("run-recycled", storeOptions)?.status).toBe("aborted");
+  });
+
+  it("follows a transcript rotation on the durable row", () => {
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-rotate",
+        plan: makePlan("run-rotate"),
+        sessionId: "transcript-before",
+      },
+      storeOptions,
+    );
+    updateEnterpriseRunSessionId(
+      { executionId: "exec-rotate", sessionId: "transcript-after", now: 8000 },
+      storeOptions,
+    );
+    expect(getEnterpriseRunRecord("run-rotate", storeOptions)?.sessionId).toBe("transcript-after");
   });
 
   it("lists executions newest-first with a bounded limit", () => {

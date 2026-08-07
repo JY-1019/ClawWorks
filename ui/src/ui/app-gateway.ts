@@ -55,6 +55,10 @@ import {
 } from "./controllers/chat.ts";
 import { loadControlUiBootstrapConfig } from "./controllers/control-ui-bootstrap.ts";
 import { loadDevices, type DevicesState } from "./controllers/devices.ts";
+import {
+  applyEnterpriseChatStep,
+  type EnterpriseChatState,
+} from "./controllers/enterprise-chat.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import {
   clearResolvedExecApprovalPrompt,
@@ -1391,6 +1395,29 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "cron" && host.tab === "cron") {
     void loadCron(host as unknown as Parameters<typeof loadCron>[0]);
+  }
+
+  // Where a governed run is right now. Applied regardless of the active tab: the
+  // chat surface shows it, and a long route is exactly the case where the user is
+  // watching the conversation rather than the Enterprise screen.
+  if (evt.event === "enterprise.step") {
+    // Scoped to the conversation on screen: this event goes to every read-scoped
+    // client, so the controller drops any run that is not this session's. The
+    // field is `@state()` on the host element, so assigning it is what schedules
+    // the render — no explicit request needed.
+    applyEnterpriseChatStep(
+      host as unknown as EnterpriseChatState,
+      // Both gates, in the same order the session-message path uses them:
+      // sessionMessageMatchesHost alone returns true for any `global` event on
+      // its same-key branch, so it cannot tell two agents' global runs apart.
+      (sessionKey, agentId) =>
+        globalAgentScopeMatches(host, sessionKey, agentId) &&
+        sessionMessageMatchesHost(host, sessionKey, agentId),
+      host.currentSessionId ?? undefined,
+      host.chatRunId,
+      evt.payload,
+    );
+    return;
   }
 
   if (evt.event === "device.pair.requested" || evt.event === "device.pair.resolved") {

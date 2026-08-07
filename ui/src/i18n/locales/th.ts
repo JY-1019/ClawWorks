@@ -345,6 +345,10 @@ export const th: TranslationMap = {
       declaredSection: "ประกาศโดย {treeName}",
       otherSection: "Skills อื่นที่ติดตั้งแล้ว",
     },
+    step: {
+      progress: "ขั้นตอนที่ {ordinal} จาก {total}: {title}",
+      routeComplete: "เส้นทางเสร็จสมบูรณ์",
+    },
     runsTitle: "การรันล่าสุด",
     treesTitle: "แผนผังเวิร์กโฟลว์",
     noRuns: "ยังไม่มีการบันทึกการรัน Enterprise",

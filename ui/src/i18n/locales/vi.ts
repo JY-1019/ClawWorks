@@ -355,6 +355,10 @@ export const vi: TranslationMap = {
       declaredSection: "Được khai báo bởi {treeName}",
       otherSection: "Các Skills đã cài đặt khác",
     },
+    step: {
+      progress: "Bước {ordinal} / {total}: {title}",
+      routeComplete: "Hoàn tất lộ trình",
+    },
     runsTitle: "Lần chạy gần đây",
     treesTitle: "Cây quy trình",
     noRuns: "Chưa có lần chạy enterprise nào được ghi nhận.",

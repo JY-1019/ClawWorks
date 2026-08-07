@@ -358,6 +358,10 @@ export const id: TranslationMap = {
       declaredSection: "Dideklarasikan oleh {treeName}",
       otherSection: "Skills terinstal lainnya",
     },
+    step: {
+      progress: "Langkah {ordinal} dari {total}: {title}",
+      routeComplete: "Rute selesai",
+    },
     runsTitle: "Eksekusi terbaru",
     treesTitle: "Pohon alur kerja",
     noRuns: "Belum ada eksekusi enterprise yang tercatat.",
