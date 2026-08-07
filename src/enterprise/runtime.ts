@@ -121,6 +121,12 @@ export function completeEnterpriseStep(params: {
   runId: string;
   expectedNodeId?: string;
   summary?: string;
+  /**
+   * The advancing call's tool-call id. The transcript's toolResult row carries the
+   * same id, so recording it on `node.completed` anchors the step timeline to an
+   * exact point in the conversation instead of a timestamp somewhere near it.
+   */
+  toolCallId?: string;
 }): EnterpriseStepAdvance {
   const run = activeRuns().get(params.runId);
   if (!run) {
@@ -166,6 +172,10 @@ export function completeEnterpriseStep(params: {
         // enterprise_run_events and rendered by both the Control UI and
         // `openclaw enterprise runs show`.
         ...(summary ? { summary } : {}),
+        // The conversation anchor. Joins this step to the exact transcript row
+        // that closed it, which is what makes "what happened at node X" answerable
+        // without stamping a node id onto every message.
+        ...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
       },
     });
   }

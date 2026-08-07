@@ -8,6 +8,7 @@ import {
   MCP_LOOPBACK_SERVER_NAME,
   MCP_LOOPBACK_SERVER_VERSION,
   MCP_LOOPBACK_SUPPORTED_PROTOCOL_VERSIONS,
+  MCP_LOOPBACK_TOOL_CALL_ID_PREFIX,
   jsonRpcError,
   jsonRpcResult,
   type JsonRpcRequest,
@@ -131,7 +132,7 @@ export async function handleMcpJsonRpc(params: {
           isError: true,
         });
       }
-      const toolCallId = `mcp-${crypto.randomUUID()}`;
+      const toolCallId = `${MCP_LOOPBACK_TOOL_CALL_ID_PREFIX}${crypto.randomUUID()}`;
       let executedToolArgs = toolArgs;
       // A governed run's loopback calls execute in arrival order.
       //

@@ -40,6 +40,7 @@ import {
   type AvailableSkill,
   type ResolvedSkillInstructions,
 } from "./skill-instructions.js";
+import { emitEnterpriseStepEvent } from "./step-events.js";
 import {
   appendEnterpriseRunEvent,
   finalizeEnterpriseRun,
@@ -328,6 +329,14 @@ async function beginEnterpriseRunInternal(
           updateEnterpriseRunPlan({ executionId: run.executionId, plan: run.plan });
         });
       }
+      // Tell live surfaces where the run stands. The trace is durable but it is
+      // something you go and read afterwards; a long governed run has to be able
+      // to say which step it is on WHILE it runs. Publishing here rather than at
+      // the advance site covers the opening step too, which mediation enters
+      // itself. Never throws: a listener fault must not affect the run.
+      if (event.kind === "node.entered" || event.kind === "node.completed") {
+        publishStepEvent(run, event);
+      }
     },
   };
 
@@ -481,6 +490,41 @@ export function clearEnterpriseRunMediationForTest(): void {
   }
   mediatedRuns.clear();
   pendingBegins.clear();
+}
+
+/**
+ * Publish one step transition to live surfaces.
+ *
+ * Ordinal/total come from the plan rather than the event payload: the payload
+ * carries `seq`, which counts scope containers too, while an operator watching a
+ * run wants "step 2 of 4" among the steps it actually executes.
+ */
+function publishStepEvent(
+  run: MediatedRunState,
+  event: { kind: string; nodeId: string; payload: Record<string, unknown> },
+): void {
+  try {
+    const steps = enterpriseStepSequence(run.plan);
+    const summary = event.payload.summary;
+    emitEnterpriseStepEvent({
+      runId: run.plan.runId,
+      executionId: run.executionId,
+      treeId: run.plan.treeId,
+      treeName: run.plan.treeName,
+      kind: event.kind === "node.completed" ? "completed" : "entered",
+      nodeId: event.nodeId,
+      title: typeof event.payload.title === "string" ? event.payload.title : event.nodeId,
+      ordinal: steps.indexOf(event.nodeId) + 1,
+      total: steps.length,
+      ...(typeof summary === "string" ? { summary } : {}),
+    });
+  } catch (err) {
+    // Fail open, like the trace sink: a subscriber that throws must not take the
+    // run down, and the operator losing one live update is not worth a failed run.
+    log.warn(
+      `enterprise step event publish failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 function appendEvent(

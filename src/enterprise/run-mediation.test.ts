@@ -644,6 +644,35 @@ describe("enterprise step tracing", () => {
     }
   });
 
+  it("publishes live step transitions with their position in the route", async () => {
+    const { onEnterpriseStepEvent, resetEnterpriseStepEventsForTest } =
+      await import("./step-events.js");
+    const seen: string[] = [];
+    const unsub = onEnterpriseStepEvent((evt) => {
+      seen.push(`${evt.kind}:${evt.nodeId}:${evt.ordinal}/${evt.total}`);
+    });
+    try {
+      await withFlowTree(async () => {
+        const runId = nextRunId();
+        await beginEnterpriseRun({
+          runId,
+          prompt: "run the flowtest now",
+          routePlanner: flowPlanner(),
+        });
+        completeEnterpriseStep({ runId, summary: "did the thing" });
+        endEnterpriseRun({ runId, status: "completed" });
+      });
+      // The opening step is entered by mediation itself, so publishing from the
+      // SINK rather than the advance site is what makes the first one visible.
+      // Ordinal counts EXECUTABLE steps, not the plan's seq, which also counts
+      // the scope container an operator never watches.
+      expect(seen).toEqual(["entered:flow.a:1/2", "completed:flow.a:1/2", "entered:flow.b:2/2"]);
+    } finally {
+      unsub();
+      resetEnterpriseStepEventsForTest();
+    }
+  });
+
   it("records the step timeline (open + advance) in trace order", async () => {
     await withFlowTree(async () => {
       const runId = nextRunId();

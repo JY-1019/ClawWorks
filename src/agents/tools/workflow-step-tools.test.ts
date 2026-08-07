@@ -105,6 +105,38 @@ describe("complete_step", () => {
     expect(String(payload.error)).toContain("no steps");
   });
 
+  it("anchors the completed step to the transcript row that closed it", async () => {
+    // The toolResult row for this very call carries the same id, so the trace can
+    // say "everything up to here belonged to that step" — which is what makes
+    // per-node history answerable without stamping a node id onto every message.
+    const run = makeRun();
+    const anchors: unknown[] = [];
+    run.sink = (event) => {
+      if (event.kind === "node.completed") {
+        anchors.push(event.payload.toolCallId);
+      }
+    };
+    const tool = createCompleteStepTool({ runId: RUN_ID });
+    await tool.execute("call-anchor-1", {});
+    expect(anchors).toEqual(["call-anchor-1"]);
+  });
+
+  it("stores no anchor for a loopback id the caller never sees", async () => {
+    // The MCP loopback mints its own id and never returns it, so a CLI backend's
+    // transcript records a different one. Storing ours would be worse than storing
+    // nothing: a join that matches zero rows still looks like data.
+    const run = makeRun();
+    const anchors: unknown[] = [];
+    run.sink = (event) => {
+      if (event.kind === "node.completed") {
+        anchors.push(event.payload.toolCallId);
+      }
+    };
+    const tool = createCompleteStepTool({ runId: RUN_ID });
+    await tool.execute("mcp-1234-5678", {});
+    expect(anchors).toEqual([undefined]);
+  });
+
   it("hands the summary to the runtime, which owns redaction and bounding", async () => {
     const run = makeRun();
     const recorded: string[] = [];

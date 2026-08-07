@@ -1075,6 +1075,7 @@ export async function startGatewayServer(
       mediaCleanup: runtimeState.mediaCleanup,
       agentUnsub: runtimeState.agentUnsub,
       heartbeatUnsub: runtimeState.heartbeatUnsub,
+      enterpriseStepUnsub: runtimeState.enterpriseStepUnsub,
       transcriptUnsub: runtimeState.transcriptUnsub,
       lifecycleUnsub: runtimeState.lifecycleUnsub,
       chatRunState,

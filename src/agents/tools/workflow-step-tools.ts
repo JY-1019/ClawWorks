@@ -18,6 +18,7 @@
 import { Type } from "typebox";
 import { completeEnterpriseStep, type EnterpriseStepAdvance } from "../../enterprise/runtime.js";
 import { WORKFLOW_STEP_ADVANCE_TOOL } from "../../enterprise/workflow-control.js";
+import { MCP_LOOPBACK_TOOL_CALL_ID_PREFIX } from "../../gateway/mcp-http.protocol.js";
 import { asToolParamsRecord, jsonResult, readStringParam, type AnyAgentTool } from "./common.js";
 
 const CompleteStepSchema = Type.Object({
@@ -81,6 +82,17 @@ function describeAdvance(
   };
 }
 
+/**
+ * Can this tool-call id anchor a step to the caller's transcript?
+ *
+ * Only when the CALLER minted it. A loopback id is private to our MCP server and
+ * never reaches the client, so a CLI backend's transcript records its own
+ * tool-use id instead and nothing would ever match ours.
+ */
+function isAnchorableToolCallId(toolCallId: string | undefined): toolCallId is string {
+  return Boolean(toolCallId) && !toolCallId!.startsWith(MCP_LOOPBACK_TOOL_CALL_ID_PREFIX);
+}
+
 export function createCompleteStepTool(opts: { runId: string }): AnyAgentTool {
   return {
     label: "Workflow",
@@ -101,12 +113,21 @@ export function createCompleteStepTool(opts: { runId: string }): AnyAgentTool {
     description:
       "Finish the current workflow step and move the run onto the next one. Call it when the step's work is genuinely done — it is the only thing that advances the run, and a later step's tools, knowledge sources and constraints apply only once the run reaches it.",
     parameters: CompleteStepSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (toolCallId, params) => {
       const record = asToolParamsRecord(params);
       const step = readStringParam(record, "step");
       const summary = readStringParam(record, "summary");
       const advance = completeEnterpriseStep({
         runId: opts.runId,
+        // The transcript's toolResult row for THIS call carries the same id, so
+        // recording it turns the step timeline from a clock bracket into an exact
+        // anchor: everything up to that row belongs to the step just closed.
+        //
+        // Except on the MCP loopback, where the id is minted by our own server and
+        // never returned to the caller — no transcript row can carry it. Storing
+        // it would be worse than storing nothing: a join that silently matches
+        // zero rows still looks like data.
+        ...(isAnchorableToolCallId(toolCallId) ? { toolCallId } : {}),
         ...(step ? { expectedNodeId: step } : {}),
         // Passed through raw: the runtime redacts and bounds it at the
         // persistence boundary, so trimming here would just be a second, weaker

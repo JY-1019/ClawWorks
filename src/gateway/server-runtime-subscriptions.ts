@@ -1,3 +1,4 @@
+import { onEnterpriseStepEvent } from "../enterprise/step-events.js";
 // Gateway event subscription wiring for agent, heartbeat, transcript, and lifecycle broadcasts.
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
@@ -226,6 +227,13 @@ export function startGatewayEventSubscriptions(params: {
     params.broadcast("heartbeat", evt, { dropIfSlow: true });
   });
 
+  // Which step a governed run is on, as it moves. dropIfSlow like the other
+  // progress feeds: a client too slow to keep up wants the CURRENT step, and
+  // queueing stale positions behind it would show the wrong one.
+  const enterpriseStepUnsub = onEnterpriseStepEvent((evt) => {
+    params.broadcast("enterprise.step", evt, { dropIfSlow: true });
+  });
+
   const transcriptUnsub = onInternalSessionTranscriptUpdate((evt) => {
     void getTranscriptUpdateHandler().then((handler) => handler(evt));
   });
@@ -237,6 +245,7 @@ export function startGatewayEventSubscriptions(params: {
   return {
     agentUnsub,
     heartbeatUnsub,
+    enterpriseStepUnsub,
     transcriptUnsub,
     lifecycleUnsub,
   };

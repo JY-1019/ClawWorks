@@ -2,6 +2,16 @@
 export const MCP_LOOPBACK_SERVER_NAME = "openclaw";
 /** Protocol-facing loopback server version, independent from the OpenClaw app version. */
 export const MCP_LOOPBACK_SERVER_VERSION = "0.1.0";
+
+/**
+ * Prefix of the tool-call id the loopback mints for a `tools/call`.
+ *
+ * PRIVATE to this server: it is never returned to the client, so nothing the
+ * caller persists — a CLI backend's transcript row, for one — can ever carry it.
+ * Anything that means to correlate a call with the caller's own record has to
+ * recognize and reject it rather than store a id that matches nothing.
+ */
+export const MCP_LOOPBACK_TOOL_CALL_ID_PREFIX = "mcp-";
 /** MCP protocol versions accepted by the loopback HTTP bridge, newest first for negotiation. */
 export const MCP_LOOPBACK_SUPPORTED_PROTOCOL_VERSIONS = ["2025-03-26", "2024-11-05"] as const;
 

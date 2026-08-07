@@ -1875,6 +1875,7 @@ describe("startGatewayPostAttachRuntime", () => {
       mediaCleanup: null,
       agentUnsub: null,
       heartbeatUnsub: null,
+      enterpriseStepUnsub: null,
       transcriptUnsub: null,
       lifecycleUnsub: null,
       chatRunState: createChatRunState(),

@@ -30,6 +30,10 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "exec.approval.requested": [APPROVALS_SCOPE],
   "exec.approval.resolved": [APPROVALS_SCOPE],
   heartbeat: [],
+  // Live step transitions of a governed run. READ scope: it says which step a run
+  // is on, which is the same class of operational detail as `agent` or `cron`.
+  // Without an entry here the event is silently dropped.
+  "enterprise.step": [READ_SCOPE],
   "plugin.approval.requested": [APPROVALS_SCOPE],
   "plugin.approval.resolved": [APPROVALS_SCOPE],
   presence: [],

@@ -10,6 +10,13 @@ describe("GATEWAY_EVENTS", () => {
     expect(GATEWAY_EVENTS).not.toContain("talk.realtime.relay");
     expect(GATEWAY_EVENTS).not.toContain("talk.transcription.relay");
   });
+
+  it("advertises the enterprise step feed so clients do not skip it", () => {
+    // Clients gate event handling on `hello-ok.features.events`. A broadcast the
+    // server emits but never advertises is one a conforming client ignores, which
+    // looks exactly like the feature not working.
+    expect(GATEWAY_EVENTS).toContain("enterprise.step");
+  });
 });
 
 describe("listGatewayMethods", () => {
