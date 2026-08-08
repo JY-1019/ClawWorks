@@ -342,7 +342,7 @@ export function abortOrphanedEnterpriseRuns(
           kind: "run.ended",
           payload_json: JSON.stringify({
             status: "aborted",
-            reason: "owning process is gone; closed during startup recovery",
+            reason: RECOVERY_ABORT_REASON,
           }),
           created_at: now,
         }),
@@ -427,6 +427,15 @@ export function updateEnterpriseRunSessionId(
     );
   }, stateDatabaseOptions(options));
 }
+
+/**
+ * Reason stamped on runs that startup recovery closed.
+ *
+ * A shared constant because two places depend on the exact string: recovery
+ * writes it, and resume eligibility reads it to tell a crashed run from one an
+ * operator actually stopped. They must not drift.
+ */
+const RECOVERY_ABORT_REASON = "owning process is gone; closed during startup recovery";
 
 /** Read the most recent execution trace for a runId (null when absent). */
 export function getEnterpriseRunRecord(

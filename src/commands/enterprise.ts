@@ -222,7 +222,13 @@ export async function enterpriseBundleExportCommand(
   // (live plugins) are not visible here and are reported as skipped below; the
   // bundle is a portable artifact of the persisted, self-contained content.
   loadPersistedBundleFoundations();
-  const result = await exportWorkflowBundle({ treeId, format });
+  // Governance policies live in config, not in the tree, so the export needs it
+  // or the bundle arrives unenforced with nothing saying so.
+  const result = await exportWorkflowBundle({
+    treeId,
+    format,
+    ...(getRuntimeConfigSnapshot() ? { config: getRuntimeConfigSnapshot() ?? undefined } : {}),
+  });
   if (!result.ok) {
     runtime.error(result.reason);
     runtime.exit(1);
@@ -267,7 +273,11 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
   if (!file) {
     return;
   }
-  const result = importWorkflowBundle({ content: file.content, format: file.format });
+  const result = importWorkflowBundle({
+    content: file.content,
+    format: file.format,
+    ...(getRuntimeConfigSnapshot() ? { config: getRuntimeConfigSnapshot() ?? undefined } : {}),
+  });
   if (!result.ok) {
     printValidationIssues(result.issues, runtime, "workflow bundle");
     runtime.exit(1);
@@ -284,6 +294,37 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
   }
   for (const foundationId of result.foundations) {
     runtime.log(`Imported knowledge foundation: ${foundationId}`);
+  }
+  // Policies are operator config, so importing one behind their back would be
+  // wrong — but importing the work-map WITHOUT saying its rules are absent would
+  // hand them a governed-looking tree that enforces less than the sender's.
+  // Policies are only half the contract. Identical bodies enforce nothing under a
+  // weaker mode, so an enforcing sender importing into `observe` or `off` is a
+  // downgrade that no policy comparison would reveal.
+  if (result.governanceModeDowngrade) {
+    runtime.error(
+      `Warning: this bundle was exported from a deployment running enterprise mode "${result.governanceModeDowngrade.from}", ` +
+        `but this one runs "${result.governanceModeDowngrade.to}". Its policies are recorded here, not applied.`,
+    );
+  }
+  // A different remedy from "missing": the operator already has a rule under this
+  // id and has to decide which body is right. Nothing is rewritten for them.
+  if (result.conflictingGovernancePolicies.length > 0) {
+    runtime.error(
+      `Warning: ${result.conflictingGovernancePolicies.length} policy/policies here differ from the ones the bundle was governed by ` +
+        `(${result.conflictingGovernancePolicies.join(", ")}). The ids match but the rules do not, so this work-map may enforce differently than the sender intended.`,
+    );
+  }
+  if (result.missingGovernancePolicies.length > 0) {
+    runtime.error(
+      `Warning: this bundle was governed by ${result.missingGovernancePolicies.length} policy/policies this deployment does not configure ` +
+        `(${result.missingGovernancePolicies.join(", ")}). The work-map imported, but it will enforce less here until they are added to enterprise.governance.policies` +
+        `${
+          result.governanceModeDowngrade
+            ? ` AND enterprise.mode is raised to "${result.governanceModeDowngrade.from}", the mode the sender ran — policy decisions only block when enforcing`
+            : ""
+        }.`,
+    );
   }
   // Warn about foundations the trees reference but the bundle did not carry (the
   // sender's export skipped them as server-backed): retrieval for these is dead

@@ -11,9 +11,16 @@
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { policyTargetsNode, policyTargetsTree } from "./governance.js";
 import { reloadPersistedBundleFoundations } from "./knowledge-bundle-loader.js";
 import { snapshotEnterpriseKnowledgeFoundation } from "./knowledge.js";
-import { EnterpriseIdSchema, WorkflowTreeDefinitionSchema } from "./schema.js";
+import { resolveEnterpriseMode } from "./runtime.js";
+import {
+  EnterpriseIdSchema,
+  GovernancePolicySchema,
+  WorkflowTreeDefinitionSchema,
+} from "./schema.js";
 import {
   collectReferencedFoundationIds,
   collectReferencedMcpServers,
@@ -35,7 +42,9 @@ import {
   WORKFLOW_BUNDLE_SCHEMA,
   WORKFLOW_BUNDLE_SCHEMA_VERSION,
   type BundledKnowledgeFoundation,
+  type GovernancePolicy,
   type WorkflowBundle,
+  type WorkflowNodeDefinition,
 } from "./types.js";
 
 const KnowledgeFoundationDescriptorSchema = z
@@ -80,6 +89,11 @@ const WorkflowBundleSchema = z
     requiredSkills: z.array(z.string()),
     // Optional: bundles written before MCP attachments existed still load.
     requiredMcpServers: z.array(z.string()).optional(),
+    // Same: bundles written before policies travelled still load. Validated with
+    // the runtime's own schema so a bundle cannot smuggle a policy shape config
+    // would reject.
+    governancePolicies: z.array(GovernancePolicySchema).optional(),
+    governanceMode: z.enum(["enforce", "observe", "off"]).optional(),
   })
   .strict()
   .superRefine((bundle, ctx) => {
@@ -164,6 +178,28 @@ export type WorkflowBundleImportResult =
       /** Skill ids the imported trees declare, so the recipient can spot any it lacks. */
       requiredSkills: string[];
       /**
+       * Policy ids the bundle carried that this deployment does NOT configure.
+       *
+       * Governance lives in `enterprise.governance.policies`, which is operator
+       * config — importing a bundle must not write it. Reporting the gap is the
+       * whole point: without it the work-map imports cleanly and runs with less
+       * enforcement than the sender had, and nothing says so.
+       */
+      missingGovernancePolicies: string[];
+      /**
+       * Set when the exporting deployment enforced more than this one does.
+       * Policies are only half the contract; the mode is the other half.
+       */
+      governanceModeDowngrade?: { from: string; to: string };
+      /**
+       * Policy ids this deployment configures DIFFERENTLY from the bundle.
+       *
+       * A policy id is a stable name, not an immutable definition: the recipient
+       * may have an `audit` rule where the sender had a `deny`. Reporting only
+       * missing ids would call that configured and enforce less without notice.
+       */
+      conflictingGovernancePolicies: string[];
+      /**
        * `mcp.servers` names the imported trees attach. A server is deployment
        * configuration, so the bundle carries only the name: without this the import
        * looks complete while every attachment on the recipient is inert.
@@ -186,6 +222,15 @@ export function serializeWorkflowBundle(
     ),
     requiredTools: [...bundle.requiredTools].toSorted(),
     requiredSkills: [...bundle.requiredSkills].toSorted(),
+    // NOT sorted, unlike every other list here. resolvePolicyDecision picks the
+    // FIRST policy of the winning effect (src/enterprise/governance.ts), so among
+    // two matching `require_approval` rules the order decides which approval
+    // settings apply — reordering would turn deny-on-timeout into allow-on-timeout
+    // on the recipient. Declaration order is part of the rule set.
+    ...(bundle.governancePolicies?.length
+      ? { governancePolicies: [...bundle.governancePolicies] }
+      : {}),
+    ...(bundle.governanceMode ? { governanceMode: bundle.governanceMode } : {}),
     ...(bundle.requiredMcpServers?.length
       ? { requiredMcpServers: [...bundle.requiredMcpServers].toSorted() }
       : {}),
@@ -224,7 +269,7 @@ export function parseWorkflowBundleContent(
       })),
     };
   }
-  return { ok: true, bundle: result.data as WorkflowBundle };
+  return { ok: true, bundle: result.data };
 }
 
 /**
@@ -233,7 +278,16 @@ export function parseWorkflowBundleContent(
  * foundation it could not snapshot rather than shipping partial content.
  */
 export async function exportWorkflowBundle(
-  params: { treeId: string; format: WorkflowTreeSourceFormat },
+  params: {
+    treeId: string;
+    format: WorkflowTreeSourceFormat;
+    /**
+     * Config to read `enterprise.governance.policies` from. Passed in rather
+     * than read here so a caller can export deterministically in tests, and so
+     * this stays a pure function of what it is given.
+     */
+    config?: OpenClawConfig;
+  },
   options: EnterpriseTreeStoreOptions = {},
 ): Promise<WorkflowBundleExportResult> {
   const snapshot = getWorkflowTreeRegistrySnapshot(options);
@@ -264,6 +318,20 @@ export async function exportWorkflowBundle(
       skippedFoundations.push({ id, reason: snap.status });
     }
   }
+  // The policies that actually govern this tree. Without them an export looks
+  // complete and arrives unenforced, which for a governance artifact is worse
+  // than an obviously incomplete one.
+  const treeNodeIds = collectTreeNodeIds(entry.tree.root);
+  const governancePolicies = (params.config?.enterprise?.governance?.policies ?? []).filter(
+    (policy) =>
+      policyTargetsTree(policy, entry.tree.id) &&
+      // ...and, when it names nodes, at least one of THIS tree's nodes. A policy
+      // whose node globs belong to another work-map can never apply here, so
+      // carrying it would only produce a bogus missing-policy warning.
+      (policy.nodes === undefined ||
+        policy.nodes.length === 0 ||
+        treeNodeIds.some((nodeId) => policyTargetsNode(policy, nodeId))),
+  );
   const bundle: WorkflowBundle = {
     schema: WORKFLOW_BUNDLE_SCHEMA,
     schemaVersion: WORKFLOW_BUNDLE_SCHEMA_VERSION,
@@ -272,6 +340,15 @@ export async function exportWorkflowBundle(
     requiredTools,
     requiredSkills,
     ...(requiredMcpServers.length > 0 ? { requiredMcpServers } : {}),
+    ...(governancePolicies.length > 0 ? { governancePolicies } : {}),
+    // Independent of whether any policy travels: a work-map governed only by
+    // ontology restrictions (deniedTools, explicit grants, MCP attachments) also
+    // stops blocking under a weaker mode, and no policy comparison would say so.
+    // The RESOLVED mode, not the raw key: `enterprise.mode` is optional and
+    // defaults to `enforce`, so a deployment that never set it would otherwise
+    // export no mode at all — and importing into `observe` would look like no
+    // change when it is exactly the downgrade this exists to catch.
+    governanceMode: resolveEnterpriseMode(params.config),
   };
   return {
     ok: true,
@@ -294,7 +371,16 @@ export async function exportWorkflowBundle(
  * surfaced, not fatal.
  */
 export function importWorkflowBundle(
-  params: { content: string; format: WorkflowTreeSourceFormat },
+  params: {
+    content: string;
+    format: WorkflowTreeSourceFormat;
+    /**
+     * Config to compare the bundle's carried policies against. Omitted means the
+     * caller cannot check, and every carried policy is reported as missing —
+     * the safe direction for a governance artifact.
+     */
+    config?: OpenClawConfig;
+  },
   options: EnterpriseTreeStoreOptions = {},
 ): WorkflowBundleImportResult {
   const parsed = parseWorkflowBundleContent(params.content, params.format);
@@ -360,5 +446,162 @@ export function importWorkflowBundle(
     requiredTools: [...requiredTools].toSorted(),
     requiredSkills: [...requiredSkills].toSorted(),
     requiredMcpServers: [...requiredMcpServers].toSorted(),
+    ...comparePolicies(bundle, params.config),
   };
+}
+
+/**
+ * How the bundle's policies compare to what this deployment configures.
+ *
+ * Two answers, because they need different remedies: an ABSENT rule has to be
+ * added, while one that exists under the same id with a different body is the
+ * operator's own decision to reconcile. Neither is written automatically —
+ * governance is operator config, and importing a work-map must not edit it.
+ */
+function comparePolicies(
+  bundle: WorkflowBundle,
+  config?: OpenClawConfig,
+): {
+  missingGovernancePolicies: string[];
+  conflictingGovernancePolicies: string[];
+  governanceModeDowngrade?: { from: string; to: string };
+} {
+  // Mode first, and unconditionally: it is not a property of the policy list.
+  const sourceMode = bundle.governanceMode;
+  // Resolved on this side too, for the same reason.
+  const localMode = resolveEnterpriseMode(config);
+  // Ranked, because only a DOWNGRADE loses enforcement: importing into a stricter
+  // deployment is not a portability problem.
+  const strength: Record<string, number> = { off: 0, observe: 1, enforce: 2 };
+  const modeDowngrade =
+    sourceMode && localMode && (strength[localMode] ?? 0) < (strength[sourceMode] ?? 0)
+      ? { governanceModeDowngrade: { from: sourceMode, to: localMode } }
+      : {};
+
+  const carried = bundle.governancePolicies ?? [];
+  // Only policies that can govern THIS tree take part. A same-id rule aimed at
+  // another work-map never competes here, and counting it would fail the group
+  // comparison for configurations that are in fact equivalent.
+  const tree = bundle.trees[0];
+  const treeNodeIds = tree ? collectTreeNodeIds(tree.root) : [];
+  const governsTree = (policy: GovernancePolicy) =>
+    tree !== undefined &&
+    policyTargetsTree(policy, tree.id) &&
+    (policy.nodes === undefined ||
+      policy.nodes.length === 0 ||
+      treeNodeIds.some((nodeId) => policyTargetsNode(policy, nodeId)));
+
+  // Grouped, not keyed: the schema permits repeated ids, and keeping only the
+  // last local definition would report identical configs as conflicting and hide
+  // an extra same-id rule that genuinely changes enforcement.
+  const configured = new Map<string, GovernancePolicy[]>();
+  for (const policy of (config?.enterprise?.governance?.policies ?? []).filter(governsTree)) {
+    configured.set(policy.id, [...(configured.get(policy.id) ?? []), policy]);
+  }
+  const carriedById = new Map<string, GovernancePolicy[]>();
+  for (const policy of carried.filter(governsTree)) {
+    carriedById.set(policy.id, [...(carriedById.get(policy.id) ?? []), policy]);
+  }
+  const missing: string[] = [];
+  const conflicting = new Set<string>();
+  for (const [id, group] of carriedById) {
+    const local = configured.get(id);
+    if (!local) {
+      missing.push(id);
+      continue;
+    }
+    // Whole group against whole group, in order: order is semantic among policies
+    // of the same effect.
+    const same =
+      local.length === group.length &&
+      group.every((policy, index) => {
+        const counterpart = local[index];
+        return (
+          counterpart !== undefined && canonicalPolicy(policy) === canonicalPolicy(counterpart)
+        );
+      });
+    if (!same) {
+      conflicting.add(id);
+    }
+  }
+
+  // Order matters ACROSS ids too, and so do local rules the bundle never carried.
+  // resolvePolicyDecision picks the FIRST policy of the winning effect, so an
+  // extra local `require_approval` sitting before an identical carried one
+  // changes which timeout behavior applies — while every per-id group still
+  // matches. Comparing only carried ids would call that compatible.
+  //
+  // Scoped to policies that can govern THIS tree: an unrelated rule aimed at
+  // another work-map never competes, and flagging it would be noise.
+  const localSequence = (config?.enterprise?.governance?.policies ?? []).filter(governsTree);
+  const carriedSequence = carried.filter(governsTree);
+  // Grouped by effect before comparing. resolvePolicyDecision applies a FIXED
+  // effect precedence (deny, then require_approval, then allow, then audit), so
+  // moving a rule past one of a different effect cannot change the winner — only
+  // order WITHIN an effect can. Comparing raw order would call an equivalent
+  // config a conflict.
+  const sequenceOf = (policies: readonly GovernancePolicy[]) =>
+    (["deny", "require_approval", "allow", "audit"] as const)
+      .flatMap((effect) => policies.filter((policy) => policy.effect === effect))
+      .map((policy) => canonicalPolicy(policy))
+      .join("\u0000");
+  if (sequenceOf(localSequence) !== sequenceOf(carriedSequence)) {
+    // Which ids differ: everything the target has here that the bundle did not
+    // place identically, plus any carried rule now in a different position.
+    const byEffect = (policies: readonly GovernancePolicy[]) =>
+      (["deny", "require_approval", "allow", "audit"] as const).flatMap((effect) =>
+        policies.filter((policy) => policy.effect === effect),
+      );
+    const localOrdered = byEffect(localSequence);
+    const carriedOrdered = byEffect(carriedSequence);
+    carriedOrdered.forEach((policy, index) => {
+      const local = localOrdered[index];
+      if (!local || canonicalPolicy(local) !== canonicalPolicy(policy)) {
+        conflicting.add(policy.id);
+      }
+    });
+    localOrdered.forEach((policy, index) => {
+      const remote = carriedOrdered[index];
+      if (!remote || canonicalPolicy(remote) !== canonicalPolicy(policy)) {
+        conflicting.add(policy.id);
+      }
+    });
+  }
+
+  return {
+    missingGovernancePolicies: missing.toSorted(),
+    // A rule the target simply lacks is reported once, as missing: it needs
+    // adding, not reconciling, and listing it twice only muddies the remedy.
+    conflictingGovernancePolicies: [...conflicting]
+      .filter((id) => !missing.includes(id))
+      .toSorted(),
+    ...modeDowngrade,
+  };
+}
+
+/**
+ * Form that ignores what does not change enforcement, so a reformatted config is
+ * not reported as a conflict: object key order, and selector arrays, which are
+ * matched as SETS. The same normalization hashGovernanceContract applies.
+ */
+function canonicalPolicy(policy: GovernancePolicy): string {
+  return JSON.stringify(policy, (_key, value: unknown) => {
+    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+      return [...value].toSorted();
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.keys(record)
+          .toSorted()
+          .map((key) => [key, record[key]]),
+      );
+    }
+    return value;
+  });
+}
+
+/** Every node id in the tree, for matching a policy's node selectors. */
+function collectTreeNodeIds(node: WorkflowNodeDefinition): string[] {
+  return [node.id, ...(node.children ?? []).flatMap((child) => collectTreeNodeIds(child))];
 }

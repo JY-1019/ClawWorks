@@ -44,6 +44,17 @@ function hasSubjectSelectors(policy: GovernancePolicy): boolean {
 }
 
 /** Whether a policy's tree selector matches (or is unset for) the given tree. */
+/**
+ * Whether a policy's NODE selector matches (or is unset for) the given node id.
+ *
+ * Paired with `policyTargetsTree` for callers that need to know whether a policy
+ * can ever apply to a definition — an export deciding what to carry, say. The
+ * runtime path checks use the same matcher against the whole root→node path.
+ */
+export function policyTargetsNode(policy: GovernancePolicy, nodeId: string): boolean {
+  return matchesSelector(nodeId, policy.nodes);
+}
+
 export function policyTargetsTree(policy: GovernancePolicy, treeId: string): boolean {
   return matchesSelector(treeId, policy.trees);
 }

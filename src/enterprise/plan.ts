@@ -660,8 +660,11 @@ export function buildEnterprisePromptSection(
       plan.mode === "enforce"
         ? "a tool granted only on a later step is not yours yet — calling an ordinary one before you get there asks a human to approve that single call, while the two exceptions above stay refused"
         : "a later step's scope only applies once you reach it";
+    // Where this run actually opens. Saying "step 1" while the cursor sits on
+    // step 3 is the one thing that would make a resumed run redo finished work.
+    const openingOrdinal = stepOrdinals.get(plan.activeNodeId) ?? 1;
     lines.push(
-      `This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step 1. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,
+      `This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step ${openingOrdinal}. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,
     );
   }
   lines.push("Steps:");

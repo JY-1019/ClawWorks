@@ -512,6 +512,297 @@ describe("workflow bundle import", () => {
     expect(result.ok).toBe(false);
     expect(listBundledKnowledgeFoundations(storeOptions).records).toEqual([]);
   });
+  it("carries the policies that govern the tree through a round trip", () => {
+    // Governance is the one part of a work-map's enforcement that does not live
+    // in the tree, so an export without it looks complete and arrives unenforced.
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [
+        { id: "acme.no-bash", effect: "deny", tools: ["bash"] },
+        { id: "acme.ask-first", effect: "deny", tools: ["exec"] },
+      ],
+    };
+    const parsed = parseWorkflowBundleContent(serializeWorkflowBundle(bundle, "json"), "json");
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    // Declaration ORDER is preserved, unlike every other bundle list: among
+    // policies of the same effect the first match wins (resolvePolicyDecision),
+    // so sorting them would change which approval settings apply.
+    expect(parsed.bundle.governancePolicies?.map((policy) => policy.id)).toEqual([
+      "acme.no-bash",
+      "acme.ask-first",
+    ]);
+  });
+
+  it("separates a policy this deployment lacks from one it defines differently", () => {
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [
+        { id: "acme.same", effect: "deny", tools: ["bash"] },
+        { id: "acme.different", effect: "deny", tools: ["exec"] },
+        { id: "acme.absent", effect: "deny", tools: ["write"] },
+      ],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                // Same rule, keys in a different order: not a conflict.
+                { tools: ["bash"], effect: "deny", id: "acme.same" },
+                // Same id, weaker rule: a conflict the operator must reconcile.
+                { id: "acme.different", effect: "audit", tools: ["exec"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.missingGovernancePolicies).toEqual(["acme.absent"]);
+    expect(result.conflictingGovernancePolicies).toEqual(["acme.different"]);
+  });
+
+  it("reports an enforcement downgrade the policy bodies cannot reveal", () => {
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [{ id: "acme.same", effect: "deny", tools: ["bash"] }],
+      governanceMode: "enforce",
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            mode: "observe",
+            governance: { policies: [{ id: "acme.same", effect: "deny", tools: ["bash"] }] },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // Identical bodies, so nothing is missing or conflicting — and yet the rule
+    // does not block here.
+    expect(result.missingGovernancePolicies).toEqual([]);
+    expect(result.conflictingGovernancePolicies).toEqual([]);
+    expect(result.governanceModeDowngrade).toEqual({ from: "enforce", to: "observe" });
+  });
+
+  it("reports reordering across ids, which changes which policy wins", () => {
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [
+        { id: "acme.first", effect: "require_approval", tools: ["bash"] },
+        { id: "acme.second", effect: "require_approval", tools: ["bash"] },
+      ],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              // Same two rules, swapped. Each per-id group is identical, but
+              // resolvePolicyDecision takes the FIRST of the winning effect, so
+              // the approval settings that apply are the other one's.
+              policies: [
+                { id: "acme.second", effect: "require_approval", tools: ["bash"] },
+                { id: "acme.first", effect: "require_approval", tools: ["bash"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.conflictingGovernancePolicies).toEqual(["acme.first", "acme.second"]);
+  });
+
+  // A tree governed only by ontology restrictions still stops blocking under a
+  // weaker mode, and no policy comparison would say so.
+  it("reports a mode downgrade even when the bundle carries no policies", () => {
+    const bundle: WorkflowBundle = { ...makeBundle(), governanceMode: "enforce" };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: { enterprise: { mode: "off" } },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.governanceModeDowngrade).toEqual({ from: "enforce", to: "off" });
+  });
+
+  // `enterprise.mode` is optional and defaults to `enforce`, so reading the raw
+  // key would export nothing and hide the very downgrade this catches.
+  it("records the default mode when the source never set one", () => {
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle({ ...makeBundle(), governanceMode: "enforce" }, "json"),
+        format: "json",
+        config: { enterprise: { mode: "observe" } },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.governanceModeDowngrade).toEqual({ from: "enforce", to: "observe" });
+  });
+
+  it("treats a target with no explicit mode as enforcing", () => {
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle({ ...makeBundle(), governanceMode: "enforce" }, "json"),
+        format: "json",
+        config: {},
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // Same default on both sides, so this is not a downgrade.
+    expect(result.governanceModeDowngrade).toBeUndefined();
+  });
+
+  it("rejects a bundle whose mode is not a real enterprise mode", () => {
+    const serialized = serializeWorkflowBundle(makeBundle(), "json").replace(
+      '"requiredTools"',
+      '"governanceMode": "enforc", "requiredTools"',
+    );
+    // A typo would otherwise rank as strength zero and suppress the warning.
+    expect(parseWorkflowBundleContent(serialized, "json").ok).toBe(false);
+  });
+
+  // resolvePolicyDecision picks the FIRST policy of the winning effect, so a
+  // local rule the bundle never carried can still take the decision away from an
+  // identical carried one — while every per-id group matches.
+  it("reports an extra local policy that outranks a carried one", () => {
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [{ id: "acme.carried", effect: "require_approval", tools: ["bash"] }],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                { id: "acme.local-first", effect: "require_approval", tools: ["bash"] },
+                { id: "acme.carried", effect: "require_approval", tools: ["bash"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // Nothing is absent — the carried rule is present and identical — but the
+    // decision here is made by a rule the sender never had.
+    expect(result.missingGovernancePolicies).toEqual([]);
+    expect(result.conflictingGovernancePolicies).toContain("acme.local-first");
+  });
+
+  // resolvePolicyDecision applies a fixed effect precedence, so moving a rule past
+  // one of a DIFFERENT effect cannot change the winner.
+  it("does not report reordering across different effects", () => {
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [
+        { id: "acme.deny", effect: "deny", tools: ["bash"] },
+        { id: "acme.audit", effect: "audit", tools: ["read"] },
+      ],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                { id: "acme.audit", effect: "audit", tools: ["read"] },
+                { id: "acme.deny", effect: "deny", tools: ["bash"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.conflictingGovernancePolicies).toEqual([]);
+    expect(result.missingGovernancePolicies).toEqual([]);
+  });
+
+  // A bundle with no policies is not "nothing to compare": a local rule the
+  // sender never had still changes how the imported tree runs.
+  it("reports a target-only policy even when the bundle carries none", () => {
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(makeBundle(), "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: { policies: [{ id: "acme.local-deny", effect: "deny", tools: ["bash"] }] },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.conflictingGovernancePolicies).toContain("acme.local-deny");
+  });
+
+  it("still loads a bundle written before policies travelled", () => {
+    const parsed = parseWorkflowBundleContent(
+      serializeWorkflowBundle(makeBundle(), "json"),
+      "json",
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.bundle.governancePolicies).toBeUndefined();
+  });
 });
 
 describe("bundle export knowledge scope with explicit grants", () => {

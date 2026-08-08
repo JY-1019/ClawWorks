@@ -420,6 +420,19 @@ describe("enterpriseRunTracksSteps", () => {
     expect(enterpriseRunTracksSteps("run-steps")).toBe(true);
   });
 
+  it("ignores node-scoped policies whose node globs match nothing here", () => {
+    const run = makeGovernedRun();
+    run.plan.nodes[0].ontology = {};
+    // The tree matches, but the glob names a node this plan does not contain, so
+    // the policy can never fire — advancing for it would buy nothing, and an
+    // exporter judging relevance would disagree with this predicate.
+    run.policies = [
+      { id: "deny.absent.node", effect: "deny", tools: ["exec"], nodes: ["support.nowhere"] },
+    ];
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunTracksSteps("run-steps")).toBe(false);
+  });
+
   it("ignores node-scoped policies whose tree selector cannot match this run", () => {
     const run = makeGovernedRun();
     run.plan.nodes[0].ontology = {};

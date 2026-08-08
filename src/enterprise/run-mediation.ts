@@ -225,13 +225,14 @@ async function beginEnterpriseRunInternal(
     matchedBy: EnterpriseRunPlan["matchedBy"];
     treeRationale?: string;
     route?: EnterpriseRouteSelection;
-  }) =>
-    buildEnterpriseRunPlan({
+  }) => {
+    return buildEnterpriseRunPlan({
       runId: params.runId,
       requestText: params.prompt,
       mode,
       ...chosen,
     });
+  };
 
   // Evaluate run-start governance BEFORE any model contact. Planning sends the
   // request text to a provider, so a run a policy denies must be blocked first —

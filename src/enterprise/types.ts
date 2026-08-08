@@ -346,6 +346,30 @@ export type WorkflowBundle = {
   /** Skill ids the trees' nodes declare as dependencies, so import can warn on gaps. Names only — content is not inlined. */
   requiredSkills: string[];
   /**
+   * Governance policies that target the bundled tree, copied from
+   * `enterprise.governance.policies`.
+   *
+   * Carried because they are the ONLY part of a work-map's enforcement that does
+   * not live in the tree: an export without them looks complete while arriving
+   * ungoverned, which is the worst possible failure for a governance artifact.
+   *
+   * Advisory on import for the same reason `mcp.servers` names are: policies are
+   * deployment configuration an operator owns, so importing a bundle reports the
+   * ones the target lacks rather than writing config behind their back.
+   *
+   * Optional so bundles written before this field still load.
+   */
+  governancePolicies?: GovernancePolicy[];
+  /**
+   * The enterprise mode the exporting deployment ran under.
+   *
+   * Policies are only half the contract: identical bodies enforce nothing under
+   * `observe` or `off`, so a bundle exported from an enforcing deployment and
+   * imported into a permissive one is a silent downgrade unless the mode travels
+   * with it. Advisory like the policies themselves — reported, never applied.
+   */
+  governanceMode?: EnterpriseMode;
+  /**
    * `mcp.servers` names the trees attach. Names only, like skills: a server is
    * deployment configuration (credentials, transport), so a bundle cannot carry it
    * — but without the list an import looks complete while every attachment is
