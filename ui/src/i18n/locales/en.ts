@@ -329,6 +329,49 @@ export const en: TranslationMap = {
       treeUnavailable:
         "The selected work-map could not be loaded, so no step usage is shown: {message}.",
     },
+    ontologyEditor: {
+      title: "Object types",
+      subtitle:
+        "The domain concepts this step works with, their fields, and how they link. Actions and derived values are still declared by importing the work-map.",
+      addEntity: "Add object type",
+      addProperty: "Add field",
+      removeEntity: "Remove",
+      removeEntityTitle: "Remove the {entity} object type from this step",
+      removePropertyTitle: "Remove the {property} field",
+      removeLinkTitle: "Remove the {link} link",
+      noProperties: "No fields yet.",
+      links: "Links",
+      noLinks: "No links declared yet.",
+      titleLabel: "Display name (optional)",
+      typeLabel: "Type",
+      primaryKeyLabel: "Identifies an instance",
+      primaryKeyMark: "(identity)",
+      fromLabel: "From",
+      toLabel: "To",
+      cardinalityLabel: "Cardinality",
+      save: "Save",
+      idLabel: {
+        entity: "Object type id",
+        property: "Field id",
+        relationship: "Link id",
+      },
+      error: {
+        "invalid-id":
+          "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
+        "endpoint-missing": "A link needs an object type at both ends.",
+        "duplicate-entry": "That id is already declared on this step.",
+        "entity-not-found": "That object type is not in this step's scope.",
+        "entity-in-use": "A link still points at this object type. Remove the link first.",
+        "entity-referenced":
+          "An action or derived value on this work-map still uses this object type. Those are declared by importing the work-map, so remove the reference there first.",
+        "property-in-use":
+          "A derived value or a write action on this work-map still needs this field. Those are declared by importing the work-map, so change it there first.",
+        "seeded-data-in-use":
+          "Seeded objects or links in this work-map still depend on this. Those records come from the imported work-map, so change them there first.",
+        "primary-key-taken":
+          "This object type already has a field that identifies an instance, and it can only have one.",
+      },
+    },
     guidanceEditor: {
       title: "Role prompt",
       // Renamed from `subtitle` so the reworded English re-translates: the old

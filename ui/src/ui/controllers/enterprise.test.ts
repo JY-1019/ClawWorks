@@ -72,6 +72,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseNodeDraft: null,
     enterpriseBindingPicker: null,
     enterpriseGuidanceDraft: null,
+    enterpriseOntologyDraft: null,
     enterpriseMcpDraft: null,
     enterpriseCatalogPhase: "unloaded",
     enterpriseCatalogErrors: { tools: null, skills: null, foundations: null },

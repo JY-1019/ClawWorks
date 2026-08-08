@@ -28,6 +28,8 @@ import type {
   EnterpriseBindingPicker,
   EnterpriseBindingPickerFailure,
   EnterpriseMcpDraft,
+  EnterpriseOntologyDraft,
+  EnterpriseOntologyDraftBody,
   EnterpriseOntologyEntryDraftError,
   EnterpriseTreeConfirm,
   EnterpriseTreeEditFormat,
@@ -35,10 +37,17 @@ import type {
 import type { SkillStatusEntry } from "../types.ts";
 import {
   collectNodeOntologyGraph,
+  declaredNodePathEntityIds,
   collectOntologyGraph,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
-import type { NodeOntologyListField } from "./enterprise-tree-edit.ts";
+import {
+  ONTOLOGY_CARDINALITIES,
+  ONTOLOGY_VALUE_TYPES,
+  type NodeOntologyListField,
+  type OntologyCardinalityName,
+  type OntologyValueTypeName,
+} from "./enterprise-tree-edit.ts";
 import type { McpServerRow } from "./mcp.ts";
 import { renderSkillStatusChips } from "./skills-shared.ts";
 
@@ -116,6 +125,18 @@ export type EnterpriseProps = {
   onGuidanceDraft: (nodeId: string, text: string) => void;
   onSaveGuidance: (nodeId: string) => void;
   onCancelGuidance: () => void;
+  /** The one open ontology form, or null. */
+  ontologyDraft: EnterpriseOntologyDraft | null;
+  onOntologyDraft: (draft: EnterpriseOntologyDraftBody) => void;
+  onEditOntologyDraft: (patch: Partial<EnterpriseOntologyDraft>) => void;
+  onSubmitOntologyDraft: () => void;
+  onCancelOntologyDraft: () => void;
+  onRemoveOntologyEntity: (nodeId: string, entityId: string) => void;
+  onRemoveOntologyProperty: (nodeId: string, entityId: string, propertyId: string) => void;
+  onRemoveOntologyRelationship: (
+    nodeId: string,
+    link: { id: string; from: string; to: string },
+  ) => void;
   onBindingPickerQuery: (query: string) => void;
   onBindingPickerCustom: (value: string) => void;
   onToggleBindingPickerValue: (value: string) => void;
@@ -2135,7 +2156,8 @@ function renderNodeInspector(
             ></openclaw-ontology-graph>
             ${renderNodeObjects(objectEntities, props)}
           `}
-      ${renderNodeGuidance(node, props)} ${renderNodeBindings(adders, props)}
+      ${renderNodeOntologyEditor(node, props)} ${renderNodeGuidance(node, props)}
+      ${renderNodeBindings(adders, props)}
       <!-- Adding a CHILD STEP is structural: it changes the workflow shape, not
         what this step may call. Kept in its own block, behind a rule, so it is
         not read as a fourth kind of binding. -->
@@ -2389,6 +2411,357 @@ function renderNodeGuidance(
       </button>
     </div>
   `;
+}
+
+/**
+ * Whether the merged shape of `entityId` already declares an identity field.
+ *
+ * The schema merges an entity across every declaration, so a child extending an
+ * ancestor's type can have an empty local `properties` array while the type is
+ * already keyed. Defaulting the checkbox from the local array would open it
+ * checked and make the first Save fail.
+ */
+function mergedEntityHasIdentity(props: EnterpriseProps, entityId: string): boolean {
+  // TREE-wide, matching what the edit helper validates. The path view would miss
+  // a key declared on a sibling branch and open the box checked, so the first
+  // save would always be refused.
+  return (props.treeDetail?.nodes ?? []).some((node) =>
+    (node.ontology.entities ?? []).some(
+      (entity) =>
+        entity.id === entityId && (entity.properties ?? []).some((property) => property.primaryKey),
+    ),
+  );
+}
+
+/** One "id — remove" chip, the shape every ontology list row uses. */
+function renderOntologyChip(
+  label: string,
+  removeTitle: string,
+  props: EnterpriseProps,
+  onRemove: () => void,
+): TemplateResult {
+  return html`<span class="chip"
+    ><code>${label}</code>${props.canEdit
+      ? html`<button
+          type="button"
+          class="chip-remove"
+          title=${removeTitle}
+          aria-label=${removeTitle}
+          ?disabled=${props.treeSaving}
+          @click=${onRemove}
+        >
+          ×
+        </button>`
+      : nothing}</span
+  >`;
+}
+
+/**
+ * Declare this step's object types, their properties, and the links between them.
+ *
+ * Editable in place rather than through the raw definition, because an ontology
+ * is the part an operator reasons about in domain terms — the whole point of
+ * having one. Only ONE form is open at a time (see EnterpriseOntologyDraft): the
+ * inspector is narrow, and a form per row would leave half-typed state behind
+ * whenever the operator moved on.
+ *
+ * Actions and derived values stay import-only for now: they carry an expression
+ * language of their own, which needs its own editor rather than a text field
+ * that produces definitions the import rejects.
+ */
+function renderNodeOntologyEditor(
+  node: EnterpriseTreeNode,
+  props: EnterpriseProps,
+): TemplateResult | typeof nothing {
+  const entities = node.ontology.entities ?? [];
+  const relationships = node.ontology.relationships ?? [];
+  // A node may declare only LINKS, inheriting every endpoint from an ancestor —
+  // valid and common, so an empty local entity list is not an empty section.
+  if (!props.canEdit && entities.length === 0 && relationships.length === 0) {
+    return nothing;
+  }
+  // Edit access can be lost while a form is open (a reconnect with only
+  // operator.read), and the draft outlives that. Rendering it anyway would offer
+  // inputs and a Save the server can only refuse.
+  const draft =
+    props.canEdit && props.ontologyDraft?.nodeId === node.id ? props.ontologyDraft : null;
+  // Link endpoints come from the node's SCOPE, not its own declarations: object
+  // types are inherited down the path, so a child that declares none may still
+  // link the ones an ancestor gave it — which is what the import accepts.
+  // DECLARED ones only: the graph synthesizes endpoints for legacy links that
+  // name an undeclared type, and offering one here would produce a save the
+  // splicer refuses as out of scope.
+  const scopeEntityIds = props.treeDetail
+    ? declaredNodePathEntityIds(props.treeDetail, node.id)
+    : entities.map((entity) => entity.id);
+  return html`
+    <div class="card-title" style="margin-top: 16px;">${t("enterprise.ontologyEditor.title")}</div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.ontologyEditor.subtitle")}</div>
+    ${entities.map((entity) => {
+      const properties = entity.properties ?? [];
+      const propertyDraft =
+        draft?.kind === "property" && draft.entityId === entity.id ? draft : null;
+      return html`
+        <section class="ontology-group" style="margin-top: 8px;">
+          <header class="ontology-group__head">
+            <span class="ontology-group__title"
+              >${entity.title ? `${entity.title} — ${entity.id}` : entity.id}</span
+            >
+            ${props.canEdit
+              ? html`<button
+                    type="button"
+                    class="btn"
+                    ?disabled=${props.treeSaving}
+                    @click=${() =>
+                      props.onOntologyDraft({
+                        kind: "property",
+                        nodeId: node.id,
+                        entityId: entity.id,
+                        id: "",
+                        type: "string",
+                        // From the MERGED shape, not this node's array: an
+                        // ancestor may already carry the identity field, and
+                        // opening the box checked would guarantee a refusal.
+                        primaryKey: !mergedEntityHasIdentity(props, entity.id),
+                      })}
+                  >
+                    ${t("enterprise.ontologyEditor.addProperty")}
+                  </button>
+                  ${renderOntologyChip(
+                    t("enterprise.ontologyEditor.removeEntity"),
+                    t("enterprise.ontologyEditor.removeEntityTitle", { entity: entity.id }),
+                    props,
+                    () => props.onRemoveOntologyEntity(node.id, entity.id),
+                  )}`
+              : nothing}
+          </header>
+          <div class="ontology-group__body">
+            ${properties.length === 0
+              ? html`<div class="muted">${t("enterprise.ontologyEditor.noProperties")}</div>`
+              : html`<div class="chip-row">
+                  ${properties.map((property) =>
+                    renderOntologyChip(
+                      `${property.id}: ${property.type}${
+                        property.primaryKey
+                          ? ` ${t("enterprise.ontologyEditor.primaryKeyMark")}`
+                          : ""
+                      }`,
+                      t("enterprise.ontologyEditor.removePropertyTitle", { property: property.id }),
+                      props,
+                      () => props.onRemoveOntologyProperty(node.id, entity.id, property.id),
+                    ),
+                  )}
+                </div>`}
+            ${propertyDraft
+              ? renderOntologyDraftForm(propertyDraft, scopeEntityIds, props)
+              : nothing}
+          </div>
+        </section>
+      `;
+    })}
+    <section class="ontology-group" style="margin-top: 8px;">
+      <header class="ontology-group__head">
+        <span class="ontology-group__title">${t("enterprise.ontologyEditor.links")}</span>
+        ${props.canEdit && scopeEntityIds.length >= 1
+          ? html`<button
+              type="button"
+              class="btn"
+              ?disabled=${props.treeSaving}
+              @click=${() =>
+                props.onOntologyDraft({
+                  kind: "relationship",
+                  nodeId: node.id,
+                  id: "",
+                  from: scopeEntityIds[0] ?? "",
+                  to: scopeEntityIds[Math.min(1, scopeEntityIds.length - 1)] ?? "",
+                  cardinality: "many-to-many",
+                })}
+            >
+              ${t("enterprise.entryDraft.add")}
+            </button>`
+          : nothing}
+      </header>
+      <div class="ontology-group__body">
+        ${relationships.length === 0
+          ? html`<div class="muted">${t("enterprise.ontologyEditor.noLinks")}</div>`
+          : html`<div class="chip-row">
+              ${relationships.map((relationship) =>
+                renderOntologyChip(
+                  `${relationship.from} → ${relationship.to} (${relationship.id})`,
+                  t("enterprise.ontologyEditor.removeLinkTitle", { link: relationship.id }),
+                  props,
+                  () =>
+                    props.onRemoveOntologyRelationship(node.id, {
+                      id: relationship.id,
+                      from: relationship.from,
+                      to: relationship.to,
+                    }),
+                ),
+              )}
+            </div>`}
+        ${draft?.kind === "relationship"
+          ? renderOntologyDraftForm(draft, scopeEntityIds, props)
+          : nothing}
+      </div>
+    </section>
+    ${props.canEdit
+      ? html`<div class="row" style="margin-top: 8px;">
+          <button
+            type="button"
+            class="btn"
+            ?disabled=${props.treeSaving}
+            @click=${() =>
+              props.onOntologyDraft({ kind: "entity", nodeId: node.id, id: "", title: "" })}
+          >
+            ${t("enterprise.ontologyEditor.addEntity")}
+          </button>
+        </div>`
+      : nothing}
+    ${draft?.kind === "entity" ? renderOntologyDraftForm(draft, scopeEntityIds, props) : nothing}
+  `;
+}
+
+/** The open ontology form. One shape per kind, one submit path. */
+function renderOntologyDraftForm(
+  draft: EnterpriseOntologyDraft,
+  entityIds: readonly string[],
+  props: EnterpriseProps,
+): TemplateResult {
+  const idLabel = t(`enterprise.ontologyEditor.idLabel.${draft.kind}`);
+  return html`
+    <div class="node-structure" style="margin-top: 8px;">
+      <label class="field">
+        <span class="muted">${idLabel}</span>
+        <input
+          class="input"
+          .value=${draft.id}
+          ?disabled=${props.treeSaving}
+          @input=${(event: Event) =>
+            props.onEditOntologyDraft({ id: (event.target as HTMLInputElement).value })}
+        />
+      </label>
+      ${draft.kind === "entity"
+        ? html`<label class="field">
+            <span class="muted">${t("enterprise.ontologyEditor.titleLabel")}</span>
+            <input
+              class="input"
+              .value=${draft.title}
+              ?disabled=${props.treeSaving}
+              @input=${(event: Event) =>
+                props.onEditOntologyDraft({ title: (event.target as HTMLInputElement).value })}
+            />
+          </label>`
+        : nothing}
+      ${draft.kind === "property"
+        ? html`<label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.typeLabel")}</span>
+              <select
+                class="input"
+                .value=${draft.type}
+                ?disabled=${props.treeSaving}
+                @change=${(event: Event) =>
+                  props.onEditOntologyDraft({
+                    type: (event.target as HTMLSelectElement).value as OntologyValueTypeName,
+                  })}
+              >
+                ${ONTOLOGY_VALUE_TYPES.map(
+                  (type) => html`<option value=${type} ?selected=${type === draft.type}>
+                    ${type}
+                  </option>`,
+                )}
+              </select>
+            </label>
+            <label class="field">
+              <input
+                type="checkbox"
+                .checked=${draft.primaryKey}
+                ?disabled=${props.treeSaving}
+                @change=${(event: Event) =>
+                  props.onEditOntologyDraft({
+                    primaryKey: (event.target as HTMLInputElement).checked,
+                  })}
+              />
+              <span class="muted">${t("enterprise.ontologyEditor.primaryKeyLabel")}</span>
+            </label>`
+        : nothing}
+      ${draft.kind === "relationship"
+        ? html`${renderEntitySelect(
+              t("enterprise.ontologyEditor.fromLabel"),
+              draft.from,
+              entityIds,
+              props,
+              (value) => props.onEditOntologyDraft({ from: value }),
+            )}
+            ${renderEntitySelect(
+              t("enterprise.ontologyEditor.toLabel"),
+              draft.to,
+              entityIds,
+              props,
+              (value) => props.onEditOntologyDraft({ to: value }),
+            )}
+            <label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.cardinalityLabel")}</span>
+              <select
+                class="input"
+                .value=${draft.cardinality}
+                ?disabled=${props.treeSaving}
+                @change=${(event: Event) =>
+                  props.onEditOntologyDraft({
+                    cardinality: (event.target as HTMLSelectElement)
+                      .value as OntologyCardinalityName,
+                  })}
+              >
+                ${ONTOLOGY_CARDINALITIES.map(
+                  (value) => html`<option value=${value} ?selected=${value === draft.cardinality}>
+                    ${value}
+                  </option>`,
+                )}
+              </select>
+            </label>`
+        : nothing}
+      ${draft.error
+        ? html`<div class="callout">${t(`enterprise.ontologyEditor.error.${draft.error}`)}</div>`
+        : nothing}
+      <div class="row" style="margin-top: 6px; gap: 8px;">
+        <button
+          type="button"
+          class="btn"
+          ?disabled=${props.treeSaving}
+          @click=${() => props.onSubmitOntologyDraft()}
+        >
+          ${t("enterprise.ontologyEditor.save")}
+        </button>
+        <button
+          type="button"
+          class="btn"
+          ?disabled=${props.treeSaving}
+          @click=${() => props.onCancelOntologyDraft()}
+        >
+          ${t("enterprise.entryDraft.cancel")}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderEntitySelect(
+  label: string,
+  value: string,
+  entityIds: readonly string[],
+  props: EnterpriseProps,
+  onChange: (value: string) => void,
+): TemplateResult {
+  return html`<label class="field">
+    <span class="muted">${label}</span>
+    <select
+      class="input"
+      .value=${value}
+      ?disabled=${props.treeSaving}
+      @change=${(event: Event) => onChange((event.target as HTMLSelectElement).value)}
+    >
+      ${entityIds.map((id) => html`<option value=${id} ?selected=${id === value}>${id}</option>`)}
+    </select>
+  </label>`;
 }
 
 function renderNodeBindings(

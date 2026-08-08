@@ -6832,14 +6832,16 @@ details[open] > .ov-expandable-toggle::after {
   margin-top: 12px;
 }
 
-.binding-group {
+.binding-group,
+.ontology-group {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--card);
   overflow: hidden;
 }
 
-.binding-group__head {
+.binding-group__head,
+.ontology-group__head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -6849,12 +6851,14 @@ details[open] > .ov-expandable-toggle::after {
   background: var(--bg-accent, var(--secondary));
 }
 
-.binding-group__title {
+.binding-group__title,
+.ontology-group__title {
   font-weight: 550;
   flex: 1 1 auto;
 }
 
-.binding-group__body {
+.binding-group__body,
+.ontology-group__body {
   display: grid;
   gap: 8px;
   padding: 12px;

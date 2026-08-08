@@ -28,8 +28,16 @@ import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
   addNodeOntologyEntry,
+  addNodeOntologyEntity,
+  addNodeOntologyProperty,
+  addNodeOntologyRelationship,
+  removeNodeOntologyEntity,
   removeNodeOntologyEntry,
+  removeNodeOntologyProperty,
+  removeNodeOntologyRelationship,
   setNodeGuidance,
+  type OntologyCardinalityName,
+  type OntologyValueTypeName,
   isValidEnterpriseId,
   isValidSkillName,
   type EditableTreeDefinition,
@@ -362,6 +370,12 @@ export type EnterpriseState = {
    * into — the same-named step of tree B.
    */
   enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null;
+  /**
+   * The one open ontology form. A single slot rather than one per kind: only one
+   * can be filled in at a time, and a slot per kind would leave half-typed forms
+   * hanging around the inspector after the operator moved on.
+   */
+  enterpriseOntologyDraft: EnterpriseOntologyDraft | null;
   enterpriseMcpDraft: EnterpriseMcpDraft | null;
   // Catalogs of what a step can be bound TO: every tool the gateway exposes,
   // every installed skill, and every registered knowledge foundation. Read-only
@@ -708,6 +722,7 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
   // pruned node, or scope loss and then reappear under a same-named node
   // elsewhere — or be silently overwritten by editing a different node.
   state.enterpriseGuidanceDraft = null;
+  state.enterpriseOntologyDraft = null;
 }
 
 /**
@@ -1304,6 +1319,132 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
  * undo. Widening a governance scope IS what this does, though, so it reports
  * failures on the tree banner rather than failing quietly.
  */
+/**
+ * An open ontology form, tagged by what it declares.
+ *
+ * Carries its tree and node for the same reason the role-prompt draft does: ids
+ * repeat across trees, so a draft that named only the entity could be applied to
+ * the wrong work-map entirely.
+ */
+export type EnterpriseOntologyDraftBody =
+  | { kind: "entity"; nodeId: string; id: string; title: string }
+  | {
+      kind: "property";
+      nodeId: string;
+      entityId: string;
+      id: string;
+      type: OntologyValueTypeName;
+      primaryKey: boolean;
+    }
+  | {
+      kind: "relationship";
+      nodeId: string;
+      id: string;
+      from: string;
+      to: string;
+      cardinality: OntologyCardinalityName;
+    };
+
+/**
+ * Spelled as an intersection over the body union, not `Omit<...>`: Omit on a
+ * discriminated union collapses it to the keys every member shares, which would
+ * lose `entityId`, `from`, and `to` from the callers' view.
+ */
+export type EnterpriseOntologyDraft = EnterpriseOntologyDraftBody & {
+  treeId: string;
+  error: string | null;
+};
+
+/** Open an ontology form on the selected step, replacing any other open one. */
+export function beginEnterpriseOntologyDraft(
+  state: EnterpriseState,
+  draft: EnterpriseOntologyDraftBody,
+) {
+  const treeId = state.enterpriseTreeDetail?.id;
+  if (!treeId) {
+    return;
+  }
+  state.enterpriseOntologyDraft = { ...draft, treeId, error: null };
+}
+
+/** Patch the open form. Any prior error clears as the operator types. */
+export function editEnterpriseOntologyDraft(
+  state: EnterpriseState,
+  patch: Partial<EnterpriseOntologyDraft>,
+) {
+  const draft = state.enterpriseOntologyDraft;
+  if (!draft) {
+    return;
+  }
+  state.enterpriseOntologyDraft = { ...draft, ...patch, error: null } as EnterpriseOntologyDraft;
+}
+
+export function cancelEnterpriseOntologyDraft(state: EnterpriseState) {
+  state.enterpriseOntologyDraft = null;
+}
+
+/**
+ * Apply the open form.
+ *
+ * Validation failures stay ON the form rather than becoming a tree-wide banner:
+ * the operator is mid-typing and the fix belongs next to the field they got
+ * wrong. Anything else (a vanished node, a refused import) is the shared write
+ * path's business and reports where it always does.
+ */
+export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
+  const draft = state.enterpriseOntologyDraft;
+  const tree = state.enterpriseTreeDetail;
+  if (!draft || !tree || draft.treeId !== tree.id || state.enterpriseTreeSaving) {
+    return;
+  }
+  const id = draft.id.trim().toLowerCase();
+  if (!isValidEnterpriseId(id)) {
+    state.enterpriseOntologyDraft = { ...draft, error: "invalid-id" };
+    return;
+  }
+  if (draft.kind === "relationship" && (!draft.from || !draft.to)) {
+    state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
+    return;
+  }
+  const saved = await applyEnterpriseTreeEdit(
+    state,
+    (definition) => {
+      if (draft.kind === "entity") {
+        const title = draft.title.trim();
+        return addNodeOntologyEntity(definition, draft.nodeId, {
+          id,
+          ...(title ? { title } : {}),
+        });
+      }
+      if (draft.kind === "property") {
+        return addNodeOntologyProperty(definition, draft.nodeId, draft.entityId, {
+          id,
+          type: draft.type,
+          ...(draft.primaryKey ? { primaryKey: true } : {}),
+        });
+      }
+      return addNodeOntologyRelationship(definition, draft.nodeId, {
+        id,
+        from: draft.from,
+        to: draft.to,
+        cardinality: draft.cardinality,
+      });
+    },
+    // Refusals belong ON the form: the operator is mid-typing and the fix is the
+    // field in front of them, not a banner beside the tree.
+    (reason) => {
+      if (state.enterpriseOntologyDraft === draft) {
+        state.enterpriseOntologyDraft = { ...draft, error: reason ?? "invalid-id" };
+      }
+    },
+  );
+  // Closed only on success: a duplicate id or a vanished endpoint should leave
+  // the operator's typing in front of them, not discard it.
+  if (saved && state.enterpriseOntologyDraft === draft) {
+    state.enterpriseOntologyDraft = null;
+  }
+}
+
 /** Start or update the role-prompt draft for one step. */
 export function editEnterpriseNodeGuidance(state: EnterpriseState, nodeId: string, text: string) {
   const treeId = state.enterpriseTreeDetail?.id;
@@ -1335,18 +1476,72 @@ export async function saveEnterpriseNodeGuidance(state: EnterpriseState, nodeId:
     draft.nodeId !== nodeId ||
     // The draft must belong to the tree on screen, or a same-named step in
     // another tree would receive it.
-    draft.treeId !== tree.id ||
-    state.enterpriseTreeSaving
+    draft.treeId !== tree.id
   ) {
     return;
   }
   const treeId = tree.id;
   const text = draft.text.trim();
+  const saved = await applyEnterpriseTreeEdit(state, (definition) =>
+    setNodeGuidance(definition, nodeId, text),
+  );
+  if (!saved) {
+    return;
+  }
+  // Only after the reload the helper already awaited: the draft IS what the
+  // textarea shows, so dropping it earlier snaps the field back to the pre-save
+  // snapshot — and if that reload failed, the stale text would sit there inviting
+  // an overwrite of a save that already landed. Guarded so a draft the operator
+  // started elsewhere meanwhile is not discarded.
+  if (
+    state.enterpriseGuidanceDraft?.treeId === treeId &&
+    state.enterpriseGuidanceDraft.nodeId === nodeId &&
+    state.enterpriseGuidanceDraft.text.trim() === text
+  ) {
+    state.enterpriseGuidanceDraft = null;
+  }
+}
+
+/**
+ * Run one edit against the tree's canonical definition and save the result.
+ *
+ * Every per-node write takes this path — detach, role prompt, ontology — so the
+ * export→edit→import dance, the supersession rules, and the shared write lock
+ * exist once instead of once per action. Each call lands as a single whole-tree
+ * revision the version history can restore.
+ *
+ * Returns whether the write was saved, so a caller with follow-up state (a draft
+ * to clear, say) can act only on success.
+ */
+async function applyEnterpriseTreeEdit(
+  state: EnterpriseState,
+  edit: (
+    definition: EditableTreeDefinition,
+  ) => { ok: true; definition: EditableTreeDefinition } | { ok: false; reason?: string },
+  /**
+   * Where a REFUSED edit reports. Without one it falls back to the tree banner,
+   * which is right for a removal button but wrong for an open form.
+   */
+  onRefused?: (reason: string | undefined) => void,
+): Promise<boolean> {
+  const tree = state.enterpriseTreeDetail;
+  if (!tree || state.enterpriseTreeSaving) {
+    return false;
+  }
+  const treeId = tree.id;
   const editIntent = ++editSeedSeq;
   const saveToken = ++treeSaveSeq;
   state.enterpriseTreeSaving = true;
   state.enterpriseTreeSaveError = null;
   state.enterpriseTreeSaveIssues = null;
+  // Released exactly once, and only while this write still owns the flag: a
+  // superseded writer must not unlock the newer one, and a non-writer intent
+  // must never strand it (which is why this is not keyed on editSeedSeq).
+  const releaseLock = () => {
+    if (saveToken === treeSaveSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+  };
   try {
     const exported = await fetchExportContent(state, treeId, "json");
     // The export awaited, so the operator may have moved on. A failure belongs to
@@ -1357,51 +1552,66 @@ export async function saveEnterpriseNodeGuidance(state: EnterpriseState, nodeId:
       if (!exported.scopeCleared && stillOnThisTree()) {
         state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
       }
-      return;
+      return false;
     }
     const definition = parseTreeDefinition(exported.content);
     if (!definition) {
       if (stillOnThisTree()) {
         state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
       }
-      return;
+      return false;
     }
     // A newer edit claimed the intent while the export was in flight; writing this
     // whole-tree replace now would undo it.
     if (editIntent !== editSeedSeq) {
-      return;
+      return false;
     }
-    const result = setNodeGuidance(definition, nodeId, text);
+    const result = edit(definition);
     if (!result.ok) {
-      // The step is gone, so someone else reshaped this tree; reload rather than
-      // report, the screen is simply behind.
-      await refreshAfterTreeWrite(state, treeId, treeId);
-      return;
+      // Two different failures wear the same shape here. A missing node or entry
+      // means the screen is behind, so reload. Anything else is the edit itself
+      // being refused — a duplicate id, a key already taken, a type still linked
+      // — and reloading would make the button look dead.
+      // `entity-not-found` counts as stale ONLY for a caller with no form to
+      // report into: another editor can remove the object type between this
+      // screen's snapshot and the export, so a removal button is simply behind.
+      // For the ontology form it is a real refusal — an endpoint out of scope —
+      // and belongs next to the field the operator chose it in.
+      const stale =
+        result.reason === "node-not-found" ||
+        result.reason === "entry-not-found" ||
+        (result.reason === "entity-not-found" && !onRefused);
+      if (stale) {
+        await refreshAfterTreeWrite(state, treeId, treeId);
+        return false;
+      }
+      releaseLock();
+      if (onRefused) {
+        onRefused(result.reason);
+      } else if (stillOnThisTree()) {
+        state.enterpriseTreeSaveError = t(`enterprise.ontologyEditor.error.${result.reason}`);
+      }
+      return false;
     }
     const imported = await importTreeDefinition(state, result.definition);
     if (imported.status !== "saved") {
       // The operator navigated while this was in flight; its failure belongs to
       // the tree it was written against, not to whatever is on screen now.
       if (editIntent !== editSeedSeq || state.enterpriseSelectedTreeId !== treeId) {
-        return;
+        return false;
       }
       state.enterpriseTreeSaveError = importFailureText(imported);
-      return;
+      return false;
     }
     // The write landed. Release before the reloads: those are separate requests
     // with no client-side timeout, and holding the lock would leave every
-    // role-prompt and detach control disabled over a save that already
-    // succeeded. Ownership-checked, because the flag is shared — once a newer
-    // write claims the intent, clearing it here would unlock THAT write.
-    if (saveToken === treeSaveSeq) {
-      state.enterpriseTreeSaving = false;
-    }
-    await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
+    // per-node control disabled over a save that already succeeded.
+    releaseLock();
+    // The write landed; whether the RELOAD did is a separate question, and only
+    // the refresh itself can answer it — the stale detail carries the same id.
+    return await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
   } finally {
-    // Same ownership check: a superseded call must not release a newer one's lock.
-    if (saveToken === treeSaveSeq) {
-      state.enterpriseTreeSaving = false;
-    }
+    releaseLock();
   }
 }
 
@@ -1409,72 +1619,88 @@ export async function removeEnterpriseBinding(
   state: EnterpriseState,
   params: { nodeId: string; field: NodeOntologyListField; entry: string },
 ) {
-  const tree = state.enterpriseTreeDetail;
-  if (!tree || state.enterpriseTreeSaving) {
-    return;
-  }
-  const treeId = tree.id;
-  const editIntent = ++editSeedSeq;
-  const saveToken = ++treeSaveSeq;
-  state.enterpriseTreeSaving = true;
-  state.enterpriseTreeSaveError = null;
-  state.enterpriseTreeSaveIssues = null;
-  try {
-    const exported = await fetchExportContent(state, treeId, "json");
-    // The export awaited, so the operator may have moved on. A failure belongs to
-    // the tree it was read for; writing it now would blame whatever is on screen.
-    const stillOnThisTree = () =>
-      editIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
-    if (!exported.ok) {
-      if (!exported.scopeCleared && stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
-      }
-      return;
-    }
-    const definition = parseTreeDefinition(exported.content);
-    if (!definition) {
-      if (stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
-      }
-      return;
-    }
-    // A newer edit claimed the intent while the export was in flight; writing this
-    // whole-tree replace now would undo it.
-    if (editIntent !== editSeedSeq) {
-      return;
-    }
-    const result = removeNodeOntologyEntry(definition, params.nodeId, params.field, params.entry);
-    if (!result.ok) {
-      // The node or the entry is gone, so someone else already changed this tree.
-      // Reload rather than report: the screen is simply behind.
-      await refreshAfterTreeWrite(state, treeId, treeId);
-      return;
-    }
-    const imported = await importTreeDefinition(state, result.definition);
-    if (imported.status !== "saved") {
-      // The operator navigated while this was in flight; its failure belongs to
-      // the tree it was written against, not to whatever is on screen now.
-      if (editIntent !== editSeedSeq || state.enterpriseSelectedTreeId !== treeId) {
-        return;
-      }
-      state.enterpriseTreeSaveError = importFailureText(imported);
-      return;
-    }
-    // The write landed. Release before the reloads: those are separate requests
-    // with no client-side timeout, and holding the lock would leave every
-    // role-prompt and detach control disabled over a save that already
-    // succeeded. Ownership-checked, because the flag is shared — once a newer
-    // write claims the intent, clearing it here would unlock THAT write.
-    if (saveToken === treeSaveSeq) {
-      state.enterpriseTreeSaving = false;
-    }
-    await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
-  } finally {
-    // Same ownership check: a superseded call must not release a newer one's lock.
-    if (saveToken === treeSaveSeq) {
-      state.enterpriseTreeSaving = false;
-    }
-  }
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyEntry(definition, params.nodeId, params.field, params.entry),
+  );
+}
+
+/** Declare an ontology object type on a step. */
+export async function addEnterpriseOntologyEntity(
+  state: EnterpriseState,
+  params: { nodeId: string; id: string; title?: string },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    addNodeOntologyEntity(definition, params.nodeId, {
+      id: params.id,
+      ...(params.title ? { title: params.title } : {}),
+    }),
+  );
+}
+
+export async function removeEnterpriseOntologyEntity(
+  state: EnterpriseState,
+  params: { nodeId: string; entityId: string },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyEntity(definition, params.nodeId, params.entityId),
+  );
+}
+
+export async function addEnterpriseOntologyProperty(
+  state: EnterpriseState,
+  params: {
+    nodeId: string;
+    entityId: string;
+    id: string;
+    type: OntologyValueTypeName;
+    primaryKey?: boolean;
+  },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    addNodeOntologyProperty(definition, params.nodeId, params.entityId, {
+      id: params.id,
+      type: params.type,
+      ...(params.primaryKey ? { primaryKey: true } : {}),
+    }),
+  );
+}
+
+export async function removeEnterpriseOntologyProperty(
+  state: EnterpriseState,
+  params: { nodeId: string; entityId: string; propertyId: string },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyProperty(definition, params.nodeId, params.entityId, params.propertyId),
+  );
+}
+
+export async function addEnterpriseOntologyRelationship(
+  state: EnterpriseState,
+  params: {
+    nodeId: string;
+    id: string;
+    from: string;
+    to: string;
+    cardinality?: OntologyCardinalityName;
+  },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    addNodeOntologyRelationship(definition, params.nodeId, {
+      id: params.id,
+      from: params.from,
+      to: params.to,
+      ...(params.cardinality ? { cardinality: params.cardinality } : {}),
+    }),
+  );
+}
+
+export async function removeEnterpriseOntologyRelationship(
+  state: EnterpriseState,
+  params: { nodeId: string; link: { id: string; from: string; to: string } },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyRelationship(definition, params.nodeId, params.link),
+  );
 }
 
 /**
@@ -1634,12 +1860,21 @@ async function importTreeDefinition(
 }
 
 /** Reload what a whole-tree replace invalidates. Runs after the write settles. */
+/**
+ * Reload the registry and the written tree after a successful import.
+ *
+ * Returns whether the DETAIL on screen is authoritative afterwards. A caller
+ * holding unsaved state may only discard it on `true`: a failed list reload, or
+ * navigation mid-flight, leaves the pre-save snapshot in place, and clearing a
+ * draft against that would make the saved change appear to vanish — and invite a
+ * retry from stale content.
+ */
 async function refreshAfterTreeWrite(
   state: EnterpriseState,
   treeId: string | undefined,
   /** What was selected when the write STARTED; navigation since then wins. */
   selectedAtWrite: string | null,
-) {
+): Promise<boolean> {
   // An import rebuilds the server's bundle knowledge registry, so the catalogs
   // this screen suggests from are stale until reloaded.
   void loadEnterpriseCatalogs(state);
@@ -1650,15 +1885,20 @@ async function refreshAfterTreeWrite(
   // A failed list reload set the banner; opening the saved tree would clear
   // enterpriseError at request start and present stale lists as current.
   if (state.enterpriseError || !treeId || state.enterpriseSelectedTreeId !== selectedAtWrite) {
-    return;
+    return false;
   }
   await loadEnterpriseTreeDetail(state, treeId);
   // The detail load awaited, so the operator can select another tree meanwhile.
   // Its history request would win the sequence and overwrite the new selection.
   if (state.enterpriseSelectedTreeId !== treeId) {
-    return;
+    return false;
   }
+  // Only now is what the screen shows the post-write server copy.
+  // `enterpriseTreeIssue` is what a failed detail load leaves behind, so a stale
+  // snapshot with the right id does not pass for a fresh one.
+  const reloaded = state.enterpriseTreeDetail?.id === treeId && !state.enterpriseTreeIssue;
   await loadEnterpriseTreeVersions(state, treeId);
+  return reloaded;
 }
 
 function parseTreeDefinition(content: string): EditableTreeDefinition | null {

@@ -145,6 +145,14 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     onGuidanceDraft: () => undefined,
     onSaveGuidance: () => undefined,
     onCancelGuidance: () => undefined,
+    ontologyDraft: null,
+    onOntologyDraft: () => undefined,
+    onEditOntologyDraft: () => undefined,
+    onSubmitOntologyDraft: () => undefined,
+    onCancelOntologyDraft: () => undefined,
+    onRemoveOntologyEntity: () => undefined,
+    onRemoveOntologyProperty: () => undefined,
+    onRemoveOntologyRelationship: () => undefined,
     onBindingPickerQuery: () => undefined,
     onBindingPickerCustom: () => undefined,
     onToggleBindingPickerValue: () => undefined,
@@ -806,6 +814,63 @@ describe("enterprise Worktree step bindings (browser)", () => {
     );
     // The root declares allowedTools, so a grant on the child is still gated by it.
     expect(container.textContent ?? "").toContain("Parent steps (support)");
+  });
+
+  it("renders the ontology editor with its own sections, not as bindings", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Object types");
+    expect(text).toContain("Links");
+    // Its own class: an object type is not a capability grant, and the binding
+    // rows are counted elsewhere.
+    expect(container.querySelectorAll(".ontology-group").length).toBeGreaterThan(0);
+  });
+
+  it("opens one ontology form at a time and reports the id contract", () => {
+    const opened: unknown[] = [];
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        onOntologyDraft: (draft) => opened.push(draft),
+      }),
+    );
+    const addEntity = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Add object type",
+    );
+    expect(addEntity).toBeDefined();
+    addEntity?.click();
+    expect(opened).toEqual([{ kind: "entity", nodeId: "support.triage", id: "", title: "" }]);
+
+    // With a draft open, the form shows — and an invalid id explains the rule
+    // rather than failing silently at import time.
+    const withDraft = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        ontologyDraft: {
+          kind: "entity",
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          id: "not valid!",
+          title: "",
+          error: "invalid-id",
+        },
+      }),
+    );
+    expect(withDraft.textContent ?? "").toContain("Object type id");
+    expect(withDraft.textContent ?? "").toContain("lowercase letters");
   });
 
   it("offers Add per binding kind and no inline text field", () => {

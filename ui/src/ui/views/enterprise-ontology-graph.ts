@@ -59,6 +59,29 @@ export function nodeObjectEntityIds(tree: EnterpriseTreeDetail, nodeId: string):
     .map((entity) => entity.id);
 }
 
+/**
+ * Object type ids a node's path actually DECLARES, in path order.
+ *
+ * Not `collectNodeOntologyGraph(...).entities`: that synthesizes an entity for a
+ * relationship endpoint nothing declares, so a legacy work-map renders its links
+ * completely. Useful for drawing, wrong for editing — offering a synthesized id
+ * as a link endpoint produces a save the splicer rejects, because only declared
+ * types are in scope.
+ */
+export function declaredNodePathEntityIds(tree: EnterpriseTreeDetail, nodeId: string): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const node of nodePathTo(tree, nodeId)) {
+    for (const entity of node.ontology.entities ?? []) {
+      if (!seen.has(entity.id)) {
+        seen.add(entity.id);
+        ids.push(entity.id);
+      }
+    }
+  }
+  return ids;
+}
+
 function mergeOntologyNodes(nodes: readonly EnterpriseTreeNode[]): OntologyGraph {
   const entityById = new Map<string, OntologyEntity>();
   const relationshipByKey = new Map<string, OntologyRelationship>();

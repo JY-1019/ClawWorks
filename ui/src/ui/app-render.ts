@@ -139,7 +139,14 @@ import {
   cancelEnterpriseMcpDraft,
   editEnterpriseMcpDraft,
   openEnterpriseBindingPicker,
+  beginEnterpriseOntologyDraft,
   cancelEnterpriseNodeGuidance,
+  cancelEnterpriseOntologyDraft,
+  editEnterpriseOntologyDraft,
+  removeEnterpriseOntologyEntity,
+  removeEnterpriseOntologyProperty,
+  removeEnterpriseOntologyRelationship,
+  submitEnterpriseOntologyDraft,
   editEnterpriseNodeGuidance,
   removeEnterpriseBinding,
   saveEnterpriseNodeGuidance,
@@ -3044,6 +3051,17 @@ export function renderApp(state: AppViewState) {
                 onGuidanceDraft: (nodeId, text) => editEnterpriseNodeGuidance(state, nodeId, text),
                 onSaveGuidance: (nodeId) => void saveEnterpriseNodeGuidance(state, nodeId),
                 onCancelGuidance: () => cancelEnterpriseNodeGuidance(state),
+                ontologyDraft: state.enterpriseOntologyDraft,
+                onOntologyDraft: (draft) => beginEnterpriseOntologyDraft(state, draft),
+                onEditOntologyDraft: (patch) => editEnterpriseOntologyDraft(state, patch),
+                onSubmitOntologyDraft: () => void submitEnterpriseOntologyDraft(state),
+                onCancelOntologyDraft: () => cancelEnterpriseOntologyDraft(state),
+                onRemoveOntologyEntity: (nodeId, entityId) =>
+                  void removeEnterpriseOntologyEntity(state, { nodeId, entityId }),
+                onRemoveOntologyProperty: (nodeId, entityId, propertyId) =>
+                  void removeEnterpriseOntologyProperty(state, { nodeId, entityId, propertyId }),
+                onRemoveOntologyRelationship: (nodeId, link) =>
+                  void removeEnterpriseOntologyRelationship(state, { nodeId, link }),
                 onBindingPickerQuery: (query) => setEnterpriseBindingPickerQuery(state, query),
                 onBindingPickerCustom: (value) => setEnterpriseBindingPickerCustom(state, value),
                 onToggleBindingPickerValue: (value) =>
