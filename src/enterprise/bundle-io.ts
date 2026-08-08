@@ -12,7 +12,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { policyTargetsNode, policyTargetsTree } from "./governance.js";
+import { policyCanFireInScope } from "./governance.js";
 import { reloadPersistedBundleFoundations } from "./knowledge-bundle-loader.js";
 import { snapshotEnterpriseKnowledgeFoundation } from "./knowledge.js";
 import { resolveEnterpriseMode } from "./runtime.js";
@@ -45,7 +45,15 @@ import {
   type GovernancePolicy,
   type WorkflowBundle,
   type WorkflowNodeDefinition,
+  type WorkflowTreeDefinition,
 } from "./types.js";
+
+/**
+ * Joins canonicalized policies into one comparable sequence. A control character
+ * so it cannot occur inside the JSON forms it separates — written as an escape,
+ * never a literal byte, which would make this file binary to `rg` and `grep`.
+ */
+const SEQUENCE_SEPARATOR = "\u0000";
 
 const KnowledgeFoundationDescriptorSchema = z
   .object({
@@ -321,16 +329,8 @@ export async function exportWorkflowBundle(
   // The policies that actually govern this tree. Without them an export looks
   // complete and arrives unenforced, which for a governance artifact is worse
   // than an obviously incomplete one.
-  const treeNodeIds = collectTreeNodeIds(entry.tree.root);
   const governancePolicies = (params.config?.enterprise?.governance?.policies ?? []).filter(
-    (policy) =>
-      policyTargetsTree(policy, entry.tree.id) &&
-      // ...and, when it names nodes, at least one of THIS tree's nodes. A policy
-      // whose node globs belong to another work-map can never apply here, so
-      // carrying it would only produce a bogus missing-policy warning.
-      (policy.nodes === undefined ||
-        policy.nodes.length === 0 ||
-        treeNodeIds.some((nodeId) => policyTargetsNode(policy, nodeId))),
+    treeGovernancePredicate(entry.tree),
   );
   const bundle: WorkflowBundle = {
     schema: WORKFLOW_BUNDLE_SCHEMA,
@@ -482,20 +482,33 @@ function comparePolicies(
   // Only policies that can govern THIS tree take part. A same-id rule aimed at
   // another work-map never competes here, and counting it would fail the group
   // comparison for configurations that are in fact equivalent.
-  const tree = bundle.trees[0];
-  const treeNodeIds = tree ? collectTreeNodeIds(tree.root) : [];
-  const governsTree = (policy: GovernancePolicy) =>
-    tree !== undefined &&
-    policyTargetsTree(policy, tree.id) &&
-    (policy.nodes === undefined ||
-      policy.nodes.length === 0 ||
-      treeNodeIds.some((nodeId) => policyTargetsNode(policy, nodeId)));
+  const governsTree = treeGovernancePredicate(bundle.trees[0]);
+
+  // Grouped by effect before ANY comparison below. resolvePolicyDecision applies
+  // a FIXED effect precedence (deny, then require_approval, then allow, then
+  // audit), so moving a rule past one of a different effect cannot change the
+  // winner — only order WITHIN an effect can. Comparing raw config order would
+  // call an equivalent config a conflict.
+  const byEffect = (policies: readonly GovernancePolicy[]) =>
+    (["deny", "require_approval", "allow", "audit"] as const).flatMap((effect) =>
+      policies.filter((policy) => policy.effect === effect),
+    );
+  const sequenceOf = (policies: readonly GovernancePolicy[]) =>
+    byEffect(policies)
+      .map((policy) => canonicalPolicy(policy))
+      .join(SEQUENCE_SEPARATOR);
 
   // Grouped, not keyed: the schema permits repeated ids, and keeping only the
   // last local definition would report identical configs as conflicting and hide
   // an extra same-id rule that genuinely changes enforcement.
+  //
+  // Grouped across the WHOLE local config, unfiltered: relevance decides what
+  // ENFORCES, presence decides which remedy the operator is given. A target that
+  // defines the id but scopes it at another tree, node, or action is not missing
+  // the rule — it has one that does not reach here — and telling it to add a
+  // policy it already has points at the wrong line of config.
   const configured = new Map<string, GovernancePolicy[]>();
-  for (const policy of (config?.enterprise?.governance?.policies ?? []).filter(governsTree)) {
+  for (const policy of config?.enterprise?.governance?.policies ?? []) {
     configured.set(policy.id, [...(configured.get(policy.id) ?? []), policy]);
   }
   const carriedById = new Map<string, GovernancePolicy[]>();
@@ -510,17 +523,12 @@ function comparePolicies(
       missing.push(id);
       continue;
     }
-    // Whole group against whole group, in order: order is semantic among policies
-    // of the same effect.
-    const same =
-      local.length === group.length &&
-      group.every((policy, index) => {
-        const counterpart = local[index];
-        return (
-          counterpart !== undefined && canonicalPolicy(policy) === canonicalPolicy(counterpart)
-        );
-      });
-    if (!same) {
+    // Whole group against whole group, comparing only what enforces here: order
+    // is semantic among policies of the same effect, and only there — a config
+    // that repeats an id across effects enforces the same whichever order it
+    // lists them in. A local definition scoped out of this tree contributes
+    // nothing, so an id present but pointed elsewhere reads as a conflict.
+    if (sequenceOf(local.filter(governsTree)) !== sequenceOf(group)) {
       conflicting.add(id);
     }
   }
@@ -535,23 +543,9 @@ function comparePolicies(
   // another work-map never competes, and flagging it would be noise.
   const localSequence = (config?.enterprise?.governance?.policies ?? []).filter(governsTree);
   const carriedSequence = carried.filter(governsTree);
-  // Grouped by effect before comparing. resolvePolicyDecision applies a FIXED
-  // effect precedence (deny, then require_approval, then allow, then audit), so
-  // moving a rule past one of a different effect cannot change the winner — only
-  // order WITHIN an effect can. Comparing raw order would call an equivalent
-  // config a conflict.
-  const sequenceOf = (policies: readonly GovernancePolicy[]) =>
-    (["deny", "require_approval", "allow", "audit"] as const)
-      .flatMap((effect) => policies.filter((policy) => policy.effect === effect))
-      .map((policy) => canonicalPolicy(policy))
-      .join("\u0000");
   if (sequenceOf(localSequence) !== sequenceOf(carriedSequence)) {
     // Which ids differ: everything the target has here that the bundle did not
     // place identically, plus any carried rule now in a different position.
-    const byEffect = (policies: readonly GovernancePolicy[]) =>
-      (["deny", "require_approval", "allow", "audit"] as const).flatMap((effect) =>
-        policies.filter((policy) => policy.effect === effect),
-      );
     const localOrdered = byEffect(localSequence);
     const carriedOrdered = byEffect(carriedSequence);
     carriedOrdered.forEach((policy, index) => {
@@ -581,13 +575,14 @@ function comparePolicies(
 
 /**
  * Form that ignores what does not change enforcement, so a reformatted config is
- * not reported as a conflict: object key order, and selector arrays, which are
- * matched as SETS. The same normalization hashGovernanceContract applies.
+ * not reported as a conflict: object key order, and selector arrays, which
+ * `matchesSelector` evaluates as SETS — hence sorted AND deduplicated, since a
+ * glob repeated in one config matches exactly what it matches once.
  */
 function canonicalPolicy(policy: GovernancePolicy): string {
   return JSON.stringify(policy, (_key, value: unknown) => {
     if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
-      return [...value].toSorted();
+      return [...new Set(value)].toSorted();
     }
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const record = value as Record<string, unknown>;
@@ -604,4 +599,35 @@ function canonicalPolicy(policy: GovernancePolicy): string {
 /** Every node id in the tree, for matching a policy's node selectors. */
 function collectTreeNodeIds(node: WorkflowNodeDefinition): string[] {
   return [node.id, ...(node.children ?? []).flatMap((child) => collectTreeNodeIds(child))];
+}
+
+/** Every ontology action id the tree declares, for a policy's action selectors. */
+function collectTreeActionIds(node: WorkflowNodeDefinition): string[] {
+  return [
+    ...(node.ontology?.actions ?? []).map((action) => action.id),
+    ...(node.children ?? []).flatMap((child) => collectTreeActionIds(child)),
+  ];
+}
+
+/**
+ * Can this policy ever govern a run of this tree?
+ *
+ * The scope a tree declares, judged by the runtime's own `policyCanFireInScope`
+ * so export, import, and step tracking agree on which policies matter. Carrying
+ * one that cannot fire produces a missing- or conflicting-policy warning whose
+ * remedy changes no enforcement, and a governance warning nobody can act on is
+ * the kind that gets ignored.
+ */
+function treeGovernancePredicate(
+  tree: WorkflowTreeDefinition | undefined,
+): (policy: GovernancePolicy) => boolean {
+  if (!tree) {
+    return () => false;
+  }
+  const scope = {
+    treeId: tree.id,
+    nodeIds: collectTreeNodeIds(tree.root),
+    actionIds: collectTreeActionIds(tree.root),
+  };
+  return (policy) => policyCanFireInScope(policy, scope);
 }

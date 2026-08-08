@@ -7,7 +7,7 @@
  */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { activeRuns, getEnterpriseActiveRun, type EnterpriseActiveRun } from "./active-runs.js";
-import { evaluateToolCallGovernance, policyTargetsNode, policyTargetsTree } from "./governance.js";
+import { evaluateToolCallGovernance, policyCanFireInScope } from "./governance.js";
 import {
   enterpriseStepSequence,
   findPlanNode,
@@ -56,21 +56,25 @@ function runTracksSteps(run: EnterpriseActiveRun): boolean {
     return true;
   }
   // Node-scoped governance policies also require advancement so the active node
-  // can reach the leaves they target. Only policies that can match this run
-  // count, or an unrelated tree's policy would break the write-quiet no-op path.
+  // can reach the leaves they target. Only policies that can actually fire here
+  // count: an unrelated tree's policy would break the write-quiet no-op path, and
+  // a selector matching nothing in this plan can never produce a decision, so
+  // advancing for it buys nothing.
   //
-  // "Can match" means the NODES too, not just the tree: a policy whose globs hit
-  // nothing in this plan can never fire, so advancing for it buys nothing — and
-  // an exporter deciding which policies are relevant to a work-map would
-  // otherwise disagree with this predicate and silently drop step tracking on the
-  // imported copy.
+  // Shares `policyCanFireInScope` with the bundle exporter on purpose — when the
+  // two disagreed about which policies were relevant, export silently dropped
+  // step tracking on the imported copy of a work-map.
+  const scope = {
+    treeId: run.plan.treeId,
+    nodeIds: run.plan.nodes.map((node) => node.nodeId),
+    actionIds: run.plan.nodes.flatMap((node) =>
+      (node.ontology.actions ?? []).map((action) => action.id),
+    ),
+  };
   return (
     run.plan.nodes.length > 1 &&
     run.policies.some(
-      (policy) =>
-        (policy.nodes?.length ?? 0) > 0 &&
-        policyTargetsTree(policy, run.plan.treeId) &&
-        run.plan.nodes.some((node) => policyTargetsNode(policy, node.nodeId)),
+      (policy) => (policy.nodes?.length ?? 0) > 0 && policyCanFireInScope(policy, scope),
     )
   );
 }

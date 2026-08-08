@@ -433,6 +433,26 @@ describe("enterpriseRunTracksSteps", () => {
     expect(enterpriseRunTracksSteps("run-steps")).toBe(false);
   });
 
+  it("ignores node-scoped policies whose action selector matches nothing here", () => {
+    const run = makeGovernedRun();
+    run.plan.nodes[0].ontology = {};
+    // Same rule as the node glob above, applied to the other selector. The bundle
+    // exporter judges relevance with this very predicate, so a policy counted
+    // here and dropped there would silently change whether the imported work-map
+    // advances through its steps at all.
+    run.policies = [
+      {
+        id: "deny.absent.action",
+        effect: "deny",
+        tools: ["exec"],
+        nodes: ["support.*"],
+        actions: ["support.nowhere"],
+      },
+    ];
+    registerEnterpriseActiveRun(run);
+    expect(enterpriseRunTracksSteps("run-steps")).toBe(false);
+  });
+
   it("ignores node-scoped policies whose tree selector cannot match this run", () => {
     const run = makeGovernedRun();
     run.plan.nodes[0].ontology = {};
@@ -1070,7 +1090,7 @@ describe("enterpriseRunAttachedMcpServers", () => {
             "my:server": { command: "node", enabled: false },
           },
         },
-      } as never),
+      }),
     ).toEqual(["my server"]);
   });
 

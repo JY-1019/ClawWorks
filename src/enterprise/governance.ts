@@ -60,6 +60,52 @@ export function policyTargetsTree(policy: GovernancePolicy, treeId: string): boo
 }
 
 /**
+ * Whether a policy's ACTION selector matches a declared ontology action id.
+ *
+ * Both gate paths in `actionSelectorMatches` decide on an action id the tree
+ * declares — the named one for `invoke_action`, the covering set otherwise — so
+ * an id is all a caller asking "could this policy ever fire" needs to supply.
+ */
+function policyTargetsAction(policy: GovernancePolicy, actionId: string): boolean {
+  return matchesSelector(actionId, policy.actions);
+}
+
+/** The ids a scope declares, for judging whether a policy can ever fire in it. */
+export type GovernanceScope = {
+  treeId: string;
+  nodeIds: readonly string[];
+  actionIds: readonly string[];
+};
+
+/**
+ * Can this policy ever produce a decision anywhere in the given scope?
+ *
+ * `policyAppliesToCall` requires EVERY selector a policy sets to match, so one
+ * naming a tree, node, or action the scope does not contain can never fire.
+ * Callers pass the ids their own shape declares — a tree definition when
+ * exporting, a run plan when deciding whether to track steps — so an exporter's
+ * idea of a relevant policy and the runtime's cannot drift apart. They did once:
+ * a bundle that dropped a policy the runtime still counted silently changed
+ * whether the imported work-map advanced through its steps at all.
+ *
+ * The ids are the whole scope's, which for a tree or a full plan is a superset
+ * of any single root→node path. Sound only in that direction — "matches nothing
+ * in the scope" implies "matches nothing on any path", never the reverse, so a
+ * path-wise check here would discard policies that do govern some steps.
+ *
+ * `knowledge` selectors are deliberately not part of this: they gate retrieval
+ * rather than the tool calls these callers reason about.
+ */
+export function policyCanFireInScope(policy: GovernancePolicy, scope: GovernanceScope): boolean {
+  return (
+    policyTargetsTree(policy, scope.treeId) &&
+    (!policy.nodes?.length || scope.nodeIds.some((nodeId) => policyTargetsNode(policy, nodeId))) &&
+    (!policy.actions?.length ||
+      scope.actionIds.some((actionId) => policyTargetsAction(policy, actionId)))
+  );
+}
+
+/**
  * Ontology actions across the active step's root→node path that cover the
  * called tool. An omitted `tools` list means the action covers every tool; an
  * empty list (which the schema rejects, but guard programmatic policies)

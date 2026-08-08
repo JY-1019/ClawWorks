@@ -572,6 +572,136 @@ describe("workflow bundle import", () => {
     expect(result.conflictingGovernancePolicies).toEqual(["acme.different"]);
   });
 
+  it("ignores a policy whose action selector names nothing the tree declares", () => {
+    // Every selector a policy sets must match for the gate to apply it, so an
+    // `actions` glob naming no declared action can never fire here. Reporting it
+    // would send the operator to add a rule that changes no enforcement.
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [{ id: "acme.governs", effect: "deny", tools: ["bash"] }],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                { id: "acme.governs", effect: "deny", tools: ["bash"] },
+                { id: "acme.elsewhere", effect: "deny", actions: ["acme.refund"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // The local action-scoped rule never competes, so it is not a conflict — and
+    // the tree's own rule still compares clean.
+    expect(result.conflictingGovernancePolicies).toEqual([]);
+    expect(result.missingGovernancePolicies).toEqual([]);
+  });
+
+  it("calls a policy scoped away from this tree conflicting, not missing", () => {
+    // The operator HAS this rule; it just does not reach the imported work-map.
+    // "Add it" would send them to write a second copy — the remedy is to widen
+    // the one they already wrote.
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [{ id: "acme.scoped", effect: "deny", tools: ["bash"] }],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                { id: "acme.scoped", effect: "deny", tools: ["bash"], trees: ["other.tree"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.missingGovernancePolicies).toEqual([]);
+    expect(result.conflictingGovernancePolicies).toEqual(["acme.scoped"]);
+  });
+
+  it("treats a repeated id as equivalent when only its effects are reordered", () => {
+    // The schema permits one id across several effects, and resolvePolicyDecision
+    // applies a FIXED effect precedence, so listing them the other way round
+    // enforces identically.
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [
+        { id: "acme.pair", effect: "deny", tools: ["bash"] },
+        { id: "acme.pair", effect: "audit", tools: ["read"] },
+      ],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            governance: {
+              policies: [
+                { id: "acme.pair", effect: "audit", tools: ["read"] },
+                { id: "acme.pair", effect: "deny", tools: ["bash"] },
+              ],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.conflictingGovernancePolicies).toEqual([]);
+  });
+
+  it("treats a repeated selector as the set the matcher evaluates", () => {
+    const bundle: WorkflowBundle = {
+      ...makeBundle(),
+      governancePolicies: [{ id: "acme.dupe", effect: "deny", tools: ["bash"] }],
+    };
+    const result = importWorkflowBundle(
+      {
+        content: serializeWorkflowBundle(bundle, "json"),
+        format: "json",
+        config: {
+          enterprise: {
+            // Selectors are matched as sets: listing "bash" twice denies exactly
+            // what listing it once denies.
+            governance: {
+              policies: [{ id: "acme.dupe", effect: "deny", tools: ["bash", "bash"] }],
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.conflictingGovernancePolicies).toEqual([]);
+  });
+
   it("reports an enforcement downgrade the policy bodies cannot reveal", () => {
     const bundle: WorkflowBundle = {
       ...makeBundle(),
