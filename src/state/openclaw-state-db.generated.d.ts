@@ -495,6 +495,7 @@ export interface EnterpriseRuns {
   owner_token: string | null;
   plan_json: string;
   request_summary: string;
+  resume_requested: number | null;
   run_id: string;
   session_id: string | null;
   session_key: string | null;

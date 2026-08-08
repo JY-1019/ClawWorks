@@ -110,6 +110,9 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "enterprise.trees.history.get", scope: "operator.read" },
   { name: "enterprise.runs.list", scope: "operator.read" },
   { name: "enterprise.runs.get", scope: "operator.read" },
+  // Admin, not read: this decides where the next run in a session OPENS, so it
+  // changes what governed work executes rather than what an operator can see.
+  { name: "enterprise.runs.resume", scope: "operator.admin" },
   { name: "enterprise.knowledge.foundations.list", scope: "operator.read" },
   { name: "enterprise.knowledge.foundations.testConnection", scope: "operator.read" },
   { name: "enterprise.knowledge.documents.list", scope: "operator.read" },

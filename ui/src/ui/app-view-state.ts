@@ -337,6 +337,7 @@ export type AppViewState = {
   enterpriseSkills: SkillStatusEntry[];
   enterpriseFoundations: EnterpriseKnowledgeFoundationSummary[];
   enterpriseError: string | null;
+  enterpriseResuming: boolean;
   knowledgePhase: import("./controllers/knowledge.js").KnowledgeListPhase;
   knowledgeFoundations: EnterpriseKnowledgeFoundationSummary[];
   knowledgeConnections: Record<

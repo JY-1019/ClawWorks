@@ -11,6 +11,7 @@ import {
   classifyWorkflowTrigger,
   collectWorkflowTreeCandidates,
   enterpriseStepSequence,
+  firstUnfinishedStep,
   ontologyHasGuidance,
   planTracksSteps,
   resolvePlanNodePath,
@@ -284,6 +285,38 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     expect(plan.nodes.length).toBeGreaterThan(0);
     expect(plan.route?.source).toBe("whole-tree");
     expect(plan.route?.routes).toEqual([]);
+  });
+});
+
+describe("firstUnfinishedStep", () => {
+  const steps = ["a", "b", "c"];
+
+  it("opens on the step after a contiguous completed prefix", () => {
+    expect(firstUnfinishedStep(steps, ["a", "b"])).toBe("c");
+  });
+
+  it("ignores completions with an unfinished step before them", () => {
+    // Advancement is sequential, so this means the route changed between the two
+    // runs. Opening on "c" would skip "b" — governed work nobody ran.
+    expect(firstUnfinishedStep(steps, ["b"])).toBeUndefined();
+  });
+
+  it("carries nothing over when the whole route finished", () => {
+    // A route with no work left is a fresh start, not a resume onto a step that
+    // does not exist.
+    expect(firstUnfinishedStep(steps, ["a", "b", "c"])).toBeUndefined();
+  });
+
+  it("does not care what order the earlier run finished them in", () => {
+    // A reordered work-map: the earlier run finished b then a. Both are done, so
+    // opening on c skips no governed work — refusing would make an operator redo
+    // it to satisfy bookkeeping.
+    expect(firstUnfinishedStep(steps, ["b", "a"])).toBe("c");
+  });
+
+  it("carries nothing over when the earlier run finished nothing here", () => {
+    expect(firstUnfinishedStep(steps, [])).toBeUndefined();
+    expect(firstUnfinishedStep(steps, ["z"])).toBeUndefined();
   });
 });
 

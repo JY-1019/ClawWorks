@@ -62,6 +62,8 @@ export type EnterpriseProps = {
   detailLoading: boolean;
   /** Full tree the selected run bound to, so its route can be shown in context. */
   runTree: EnterpriseTreeDetail | null;
+  resuming: boolean;
+  onResumeRun: (executionId: string) => void;
   selectedTreeId: string | null;
   treeDetail: EnterpriseTreeDetail | null;
   treeLoading: boolean;
@@ -1617,7 +1619,7 @@ function renderDetailCard(props: EnterpriseProps): TemplateResult {
         >
       </div>
 
-      ${renderRoute(detail, props.runTree)}
+      ${renderRoute(detail, props.runTree)} ${renderResume(detail, props)}
 
       <div class="card-title" style="margin-top: 16px;">${t("enterprise.stepsTitle")}</div>
       <div class="list" style="margin-top: 8px;">
@@ -1631,6 +1633,43 @@ function renderDetailCard(props: EnterpriseProps): TemplateResult {
           : detail.events.map((event) => renderEvent(event))}
       </div>
     </section>
+  `;
+}
+
+/**
+ * Offer to continue a run that stopped partway through its route.
+ *
+ * Only for a run that ENDED (there is nothing to continue otherwise) and only one
+ * that finished a step, which is the same bar the server enforces — a control
+ * whose only outcome is a refusal teaches operators to distrust the rest.
+ *
+ * Read from the trace, which is where the server reads it too, so the two agree
+ * on what "finished a step" means.
+ */
+function renderResume(detail: EnterpriseRunDetail, props: EnterpriseProps) {
+  // `resumable` is the server's own answer, so a run whose route is finished (or
+  // that never finished a step) offers nothing rather than a button that can only
+  // fail. canEdit mirrors the operator.admin scope the method requires: without
+  // it, a read-only operator browsing History sees a control they cannot use.
+  if (!props.canEdit || !detail.resumable) {
+    return nothing;
+  }
+  if (detail.resumeRequested) {
+    return html`<div class="muted" style="margin-top: 12px;">
+      ${t("enterprise.resumeRequested")}
+    </div>`;
+  }
+  return html`
+    <div style="margin-top: 12px;">
+      <button
+        class="btn"
+        ?disabled=${props.resuming}
+        @click=${() => props.onResumeRun(detail.executionId)}
+      >
+        ${t("enterprise.resume")}
+      </button>
+      <div class="muted" style="margin-top: 6px;">${t("enterprise.resumeHint")}</div>
+    </div>
   `;
 }
 

@@ -13,6 +13,8 @@ import {
   listEnterpriseRunExecutions,
   listEnterpriseRunRecords,
   persistEnterpriseRunStart,
+  requestEnterpriseRunResume,
+  takeEnterpriseRunResume,
 } from "./trace-store.sqlite.js";
 import type { EnterpriseRunPlan } from "./types.js";
 
@@ -45,6 +47,27 @@ function makePlan(runId: string): EnterpriseRunPlan {
     activeNodeId: "support",
     mode: "enforce",
     createdAt: 111,
+  };
+}
+
+/**
+ * A route with TWO steps, so finishing the first leaves something to resume onto.
+ * `makePlan` has a single leaf, where completing it finishes the whole route.
+ */
+function makeTwoStepPlan(runId: string): EnterpriseRunPlan {
+  const base = makePlan(runId);
+  return {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      {
+        nodeId: "support.resolve",
+        parentId: "support",
+        seq: 2,
+        title: "Resolve",
+        ontology: {},
+      },
+    ],
   };
 }
 
@@ -332,6 +355,485 @@ describe("enterprise trace store", () => {
       storeOptions,
     );
     expect(getEnterpriseRunRecord("run-rotate", storeOptions)?.sessionId).toBe("transcript-after");
+  });
+
+  it("marks a finished execution for resume and hands it over exactly once", () => {
+    const plan = makeTwoStepPlan("run-resume-1");
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-resume",
+        plan,
+        sessionKey: "agent:main:resume",
+        sessionId: "t-resume",
+        now: 900,
+      },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-resume",
+        seq: 0,
+        nodeId: "support.triage",
+        kind: "node.completed",
+        payload: { seq: 1, title: "Triage" },
+        createdAt: 901,
+      },
+      storeOptions,
+    );
+    // Still running: there is nothing to continue yet.
+    expect(requestEnterpriseRunResume("exec-resume", { now: 8000 }, storeOptions)).toEqual({
+      ok: false,
+      reason: "still-running",
+    });
+    finalizeEnterpriseRun(
+      { executionId: "exec-resume", status: "aborted", now: 950 },
+      storeOptions,
+    );
+    expect(requestEnterpriseRunResume("exec-resume", { now: 8000 }, storeOptions)).toEqual({
+      ok: true,
+      sessionKey: "agent:main:resume",
+      treeId: "acme.support",
+    });
+    expect(getEnterpriseRunRecord("run-resume-1", storeOptions)?.resumeRequested).toBe(true);
+
+    // A different tree in the same session is not the work the operator named.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:resume",
+          sessionId: "t-resume",
+          agentId: null,
+          treeId: "acme.other",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toBeNull();
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:resume",
+          sessionId: "t-resume",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toEqual({ executionId: "exec-resume", completedNodeIds: ["support.triage"] });
+    // One-shot: a second run in the same session starts fresh.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:resume",
+          sessionId: "t-resume",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses to mark a run that finished no step", () => {
+    const plan = makeTwoStepPlan("run-resume-2");
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-resume-empty",
+        plan,
+        sessionKey: "agent:main:empty",
+        sessionId: "t-empty",
+        now: 960,
+      },
+      storeOptions,
+    );
+    finalizeEnterpriseRun(
+      { executionId: "exec-resume-empty", status: "aborted", now: 970 },
+      storeOptions,
+    );
+    // Resuming it would open exactly where a fresh run does, so the marker would
+    // only add a claim to the trace that nothing acts on.
+    expect(requestEnterpriseRunResume("exec-resume-empty", { now: 8000 }, storeOptions)).toEqual({
+      ok: false,
+      reason: "no-steps-completed",
+    });
+  });
+
+  it("keeps one pending resume per session", () => {
+    for (const [runId, executionId] of [
+      ["run-resume-3", "exec-pending-a"],
+      ["run-resume-4", "exec-pending-b"],
+    ]) {
+      persistEnterpriseRunStart(
+        {
+          executionId,
+          plan: makeTwoStepPlan(runId),
+          sessionKey: "agent:main:one",
+          sessionId: "t-one",
+          now: 980,
+        },
+        storeOptions,
+      );
+      appendEnterpriseRunEvent(
+        {
+          executionId,
+          seq: 0,
+          nodeId: "support.triage",
+          kind: "node.completed",
+          payload: {},
+          createdAt: 981,
+        },
+        storeOptions,
+      );
+      finalizeEnterpriseRun({ executionId, status: "aborted", now: 985 }, storeOptions);
+      expect(requestEnterpriseRunResume(executionId, { now: 8000 }, storeOptions).ok).toBe(true);
+    }
+    // The second request replaces the first: two marked rows would leave whichever
+    // one mediation read first deciding where the next run opens.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:one",
+          sessionId: "t-one",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      )?.executionId,
+    ).toBe("exec-pending-b");
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:one",
+          sessionId: "t-one",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses to mark a run that finished its whole route", () => {
+    const plan = makePlan("run-resume-5");
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-resume-done",
+        plan,
+        sessionKey: "agent:main:done",
+        sessionId: "t-done",
+        now: 1100,
+      },
+      storeOptions,
+    );
+    // "support.triage" is this plan's only leaf, so completing it finishes the
+    // route. The run can still end `aborted` — the provider dropped after the
+    // last step — which is why status alone cannot answer this.
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-resume-done",
+        seq: 0,
+        nodeId: "support.triage",
+        kind: "node.completed",
+        payload: {},
+        createdAt: 1101,
+      },
+      storeOptions,
+    );
+    finalizeEnterpriseRun(
+      { executionId: "exec-resume-done", status: "aborted", now: 1110 },
+      storeOptions,
+    );
+    // Accepting it would let mediation fall back to step 1 and rerun everything.
+    expect(requestEnterpriseRunResume("exec-resume-done", { now: 8000 }, storeOptions)).toEqual({
+      ok: false,
+      reason: "route-complete",
+    });
+  });
+
+  it("keeps one agent's pending resume out of another's reach on a shared session key", () => {
+    // Under `session.scope: "global"` every agent shares one session_key, so the
+    // lane is (session, agent) — not the session alone.
+    const lanes = [
+      { agentId: "main", executionId: "exec-lane-main", runId: "run-lane-1" },
+      { agentId: "research", executionId: "exec-lane-research", runId: "run-lane-2" },
+    ];
+    for (const lane of lanes) {
+      persistEnterpriseRunStart(
+        {
+          executionId: lane.executionId,
+          plan: makeTwoStepPlan(lane.runId),
+          sessionKey: "global",
+          sessionId: "t-lane",
+          agentId: lane.agentId,
+          now: 1200,
+        },
+        storeOptions,
+      );
+      appendEnterpriseRunEvent(
+        {
+          executionId: lane.executionId,
+          seq: 0,
+          nodeId: "support.triage",
+          kind: "node.completed",
+          payload: {},
+          createdAt: 1201,
+        },
+        storeOptions,
+      );
+      finalizeEnterpriseRun(
+        { executionId: lane.executionId, status: "aborted", now: 1210 },
+        storeOptions,
+      );
+      expect(requestEnterpriseRunResume(lane.executionId, { now: 8000 }, storeOptions).ok).toBe(
+        true,
+      );
+    }
+    // Both stay pending: the second request must not have cleared the first, and
+    // each agent's next run picks up its own.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "global",
+          sessionId: "t-lane",
+          agentId: "main",
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      )?.executionId,
+    ).toBe("exec-lane-main");
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "global",
+          sessionId: "t-lane",
+          agentId: "research",
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      )?.executionId,
+    ).toBe("exec-lane-research");
+  });
+
+  it("carries progress across a chain of resumes", () => {
+    // a -> b -> c interrupted twice. Execution 2 finished only `b`; read alone
+    // that is not a prefix of the route, so the route would look finished and `c`
+    // could never be reached without redoing `a`.
+    const plan: EnterpriseRunPlan = {
+      ...makePlan("run-chain"),
+      nodes: [
+        { nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} },
+        { nodeId: "a", parentId: "root", seq: 1, title: "A", ontology: {} },
+        { nodeId: "b", parentId: "root", seq: 2, title: "B", ontology: {} },
+        { nodeId: "c", parentId: "root", seq: 3, title: "C", ontology: {} },
+      ],
+    };
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-chain-1",
+        plan,
+        sessionKey: "agent:main:chain",
+        sessionId: "t-chain",
+        now: 1300,
+      },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-chain-1",
+        seq: 0,
+        nodeId: "a",
+        kind: "node.completed",
+        payload: {},
+        createdAt: 1301,
+      },
+      storeOptions,
+    );
+    finalizeEnterpriseRun(
+      { executionId: "exec-chain-1", status: "aborted", now: 1310 },
+      storeOptions,
+    );
+
+    // Execution 2 continues it: the resume event records the inherited prefix.
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-chain-2",
+        plan,
+        sessionKey: "agent:main:chain",
+        sessionId: "t-chain",
+        now: 1320,
+      },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-chain-2",
+        seq: 0,
+        nodeId: null,
+        kind: "run.resumed",
+        payload: { resumedFrom: "exec-chain-1", carriedSteps: ["a"], openedOn: "b" },
+        createdAt: 1321,
+      },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-chain-2",
+        seq: 1,
+        nodeId: "b",
+        kind: "node.completed",
+        payload: {},
+        createdAt: 1322,
+      },
+      storeOptions,
+    );
+    finalizeEnterpriseRun(
+      { executionId: "exec-chain-2", status: "aborted", now: 1330 },
+      storeOptions,
+    );
+
+    expect(requestEnterpriseRunResume("exec-chain-2", { now: 8000 }, storeOptions).ok).toBe(true);
+    // Both steps carry forward, so the third run opens on `c`.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:chain",
+          sessionId: "t-chain",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toEqual({ executionId: "exec-chain-2", completedNodeIds: ["a", "b"] });
+  });
+
+  it("will not hand a resume to another transcript or to a turn that predates it", () => {
+    const plan = makeTwoStepPlan("run-resume-6");
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-resume-bind",
+        plan,
+        sessionKey: "agent:main:bind",
+        sessionId: "t-before",
+        now: 1400,
+      },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-resume-bind",
+        seq: 0,
+        nodeId: "support.triage",
+        kind: "node.completed",
+        payload: {},
+        createdAt: 1401,
+      },
+      storeOptions,
+    );
+    finalizeEnterpriseRun(
+      { executionId: "exec-resume-bind", status: "aborted", now: 1410 },
+      storeOptions,
+    );
+    expect(requestEnterpriseRunResume("exec-resume-bind", { now: 8000 }, storeOptions).ok).toBe(
+      true,
+    );
+
+    // `/new` rebinds the session key to a fresh transcript. That conversation
+    // never saw the completed steps, so the marker must not follow it there.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:bind",
+          sessionId: "t-after-reset",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toBeNull();
+
+    // A turn already in flight when the operator clicked began before they asked,
+    // so "the next request" cannot mean this one.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:bind",
+          sessionId: "t-before",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 7999,
+        },
+        storeOptions,
+      ),
+    ).toBeNull();
+
+    // The operator's actual next request in that transcript takes it.
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:bind",
+          sessionId: "t-before",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 8001,
+        },
+        storeOptions,
+      )?.executionId,
+    ).toBe("exec-resume-bind");
+  });
+
+  it("refuses a run whose conversation was replaced after it", () => {
+    const plan = makeTwoStepPlan("run-resume-7");
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-rotated",
+        plan: { ...plan, createdAt: 1500 },
+        sessionKey: "agent:main:rotate",
+        sessionId: "t-old",
+        now: 1500,
+      },
+      storeOptions,
+    );
+    appendEnterpriseRunEvent(
+      {
+        executionId: "exec-rotated",
+        seq: 0,
+        nodeId: "support.triage",
+        kind: "node.completed",
+        payload: {},
+        createdAt: 1501,
+      },
+      storeOptions,
+    );
+    finalizeEnterpriseRun(
+      { executionId: "exec-rotated", status: "aborted", now: 1510 },
+      storeOptions,
+    );
+    // `/new` under the same key: a later run in this lane carries a different
+    // transcript, so nothing can ever consume a marker bound to the old one.
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-after-reset",
+        plan: { ...makeTwoStepPlan("run-resume-8"), createdAt: 1600 },
+        sessionKey: "agent:main:rotate",
+        sessionId: "t-new",
+        now: 1600,
+      },
+      storeOptions,
+    );
+
+    // Accepting it would leave the screen waiting on something that cannot happen.
+    expect(requestEnterpriseRunResume("exec-rotated", { now: 8000 }, storeOptions)).toEqual({
+      ok: false,
+      reason: "transcript-rotated",
+    });
   });
 
   it("lists executions newest-first with a bounded limit", () => {

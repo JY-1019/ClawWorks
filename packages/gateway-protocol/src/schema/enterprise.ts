@@ -501,6 +501,7 @@ export const EnterpriseRunEventKindSchema = Type.Union([
   Type.Literal("governance.decision"),
   Type.Literal("node.entered"),
   Type.Literal("node.completed"),
+  Type.Literal("run.resumed"),
   Type.Literal("action.invoked"),
 ]);
 
@@ -552,6 +553,21 @@ export const EnterpriseRunDetailSchema = Type.Object(
      * something it can follow.
      */
     locallyActive: Type.Optional(Type.Boolean()),
+    /**
+     * An operator asked for this execution to be continued and nothing has
+     * consumed it yet. Server-owned: the marker is one-shot and another operator
+     * or the next run can clear it, so a client that remembered its own request
+     * would keep showing it as pending long after it fired.
+     */
+    resumeRequested: Type.Optional(Type.Boolean()),
+    /**
+     * Whether asking to continue this execution would be accepted. Server-owned
+     * for the same reason the decision is: it depends on the route's unfinished
+     * remainder, which only the stored plan plus the run's completion ancestry
+     * can answer. A client guessing from the event list would offer a button
+     * whose only outcome is a refusal.
+     */
+    resumable: Type.Optional(Type.Boolean()),
     matchedBy: Type.String(),
     requestSummary: Type.String(),
     activeNodeId: Type.String(),
@@ -578,6 +594,36 @@ export const EnterpriseRunsGetParamsSchema = Type.Object(
 export const EnterpriseRunsGetResultSchema = Type.Object(
   {
     run: Type.Union([EnterpriseRunDetailSchema, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+/** Ask for an ended execution to be continued by the next run in its session. */
+export const EnterpriseRunsResumeParamsSchema = Type.Object(
+  {
+    executionId: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * Whether the request was accepted, and if not, why — the operator sees a
+ * specific reason rather than a failed call, since every refusal here is a normal
+ * state of the run rather than a fault.
+ */
+export const EnterpriseRunsResumeResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    reason: Type.Optional(
+      Type.Union([
+        Type.Literal("not-found"),
+        Type.Literal("still-running"),
+        Type.Literal("no-session"),
+        Type.Literal("no-steps-completed"),
+        Type.Literal("route-complete"),
+        Type.Literal("transcript-rotated"),
+      ]),
+    ),
   },
   { additionalProperties: false },
 );

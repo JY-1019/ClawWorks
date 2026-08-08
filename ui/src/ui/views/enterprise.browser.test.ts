@@ -97,6 +97,8 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     detail: null,
     detailLoading: false,
     runTree: null,
+    resuming: false,
+    onResumeRun: () => {},
     selectedTreeId: null,
     treeDetail: null,
     treeLoading: false,

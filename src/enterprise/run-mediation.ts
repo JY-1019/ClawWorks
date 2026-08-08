@@ -27,6 +27,7 @@ import {
   collectWorkflowTreeCandidates,
   enterpriseStepSequence,
   findPlanNode,
+  firstUnfinishedStep,
 } from "./plan.js";
 import {
   enterpriseRunTracksSteps,
@@ -46,6 +47,7 @@ import {
   appendEnterpriseRunEvent,
   finalizeEnterpriseRun,
   persistEnterpriseRunStart,
+  takeEnterpriseRunResume,
   updateEnterpriseRunPlan,
   updateEnterpriseRunSessionId,
 } from "./trace-store.sqlite.js";
@@ -161,6 +163,11 @@ export async function beginEnterpriseRun(
 async function beginEnterpriseRunInternal(
   params: BeginEnterpriseRunParams,
 ): Promise<EnterpriseRunMediation> {
+  // Before the first await, and NOT `plan.createdAt`: the plan is stamped after
+  // route planning returns, so a request that was already waiting on the planner
+  // when an operator armed a resume would look newer than the marker and consume
+  // the one thing meant for their next request. This is when the turn arrived.
+  const turnStartedAt = Date.now();
   const mode = resolveEnterpriseMode(params.config);
   if (mode === "off") {
     return { kind: "off" };
@@ -455,8 +462,58 @@ async function beginEnterpriseRunInternal(
   // cosmetic: calls made on the first step would be judged against the ROOT rather
   // than the leaf the policy targets, and the first complete_step would merely
   // enter step 1 instead of finishing it.
-  if (tracksSteps && steps.length > 0 && !steps.includes(plan.activeNodeId)) {
-    plan.activeNodeId = steps[0];
+  // An operator's pending request to continue an earlier execution, consumed
+  // once. Resume is never inferred: same session, same work-map, same revision
+  // and a previous run left aborted still cannot separate "carry on with that"
+  // from "a new request that routes the same way", and guessing wrong opens a
+  // run partway through a governed route. Someone has to say so.
+  // Only a run the operator could have meant. A work-map whose triggers include
+  // `system` also binds to heartbeats and memory flushes in the same session, and
+  // one of those arriving first would consume the marker and open mid-route — then
+  // the user's actual request, the one the operator queued this for, would start
+  // the work-map over. Same for an internal run borrowing a visible session.
+  const resumeSessionKey = params.sessionKey;
+  const resumeSessionId = params.sessionId;
+  const resume =
+    trigger === "user" &&
+    params.chatVisible !== false &&
+    tracksSteps &&
+    steps.length > 0 &&
+    resumeSessionKey &&
+    resumeSessionId
+      ? readTrace(() =>
+          takeEnterpriseRunResume({
+            sessionKey: resumeSessionKey,
+            sessionId: resumeSessionId,
+            agentId: params.agentId ?? null,
+            treeId: plan.treeId,
+            // When this turn ARRIVED, so a request already in flight when the
+            // operator clicked Continue cannot take a marker armed after it began.
+            startedAt: turnStartedAt,
+          }),
+        )
+      : null;
+  const resumeStepId = resume ? firstUnfinishedStep(steps, resume.completedNodeIds) : undefined;
+  if (tracksSteps && steps.length > 0 && (resumeStepId || !steps.includes(plan.activeNodeId))) {
+    plan.activeNodeId = resumeStepId ?? steps[0];
+  }
+  if (resumeStepId && resume) {
+    // Only when the cursor actually moved. The marker is consumed either way (it
+    // is one-shot), but a route edited between the two runs can leave nothing to
+    // carry over, and tracing `run.resumed` over a run that opened on step 1
+    // would describe a restart as a continuation.
+    // `openedOn` is the plan's own node id, never model text.
+    persistTrace(() => {
+      appendEvent(run, "run.resumed", null, {
+        resumedFrom: resume.executionId,
+        // The cumulative prefix, not a count: the NEXT resume reads this to know
+        // what the whole chain finished, so an interruption after this one can
+        // still open past work neither run repeated. Step ids are operator-
+        // authored, never model text.
+        carriedSteps: resume.completedNodeIds,
+        openedOn: resumeStepId,
+      });
+    });
   }
   // A run that tracks no steps must NOT open one. `enterpriseStepSequence` calls a
   // childless root its own single leaf, so a one-node work-map would otherwise be
@@ -635,5 +692,23 @@ function persistTrace(write: () => void): void {
     log.warn(
       `enterprise trace persistence failed: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+}
+
+/**
+ * `persistTrace` for a read that returns something.
+ *
+ * The trace store fails OPEN: a locked, read-only or corrupt state database must
+ * never abort an otherwise valid agent run. Asking whether a resume is pending is
+ * still a write transaction (the marker is consumed as it is read), so without
+ * this it is the one trace call that could take the run down with it — and the
+ * answer it fails to get, "no resume", is the safe one anyway.
+ */
+function readTrace<T>(read: () => T): T | null {
+  try {
+    return read();
+  } catch (err) {
+    log.warn(`enterprise trace read failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
   }
 }

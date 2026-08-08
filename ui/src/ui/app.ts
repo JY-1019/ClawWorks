@@ -552,6 +552,7 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseSkills: SkillStatusEntry[] = [];
   @state() enterpriseFoundations: EnterpriseKnowledgeFoundationSummary[] = [];
   @state() enterpriseError: string | null = null;
+  @state() enterpriseResuming = false;
   @state() knowledgePhase: import("./controllers/knowledge.js").KnowledgeListPhase = "unloaded";
   @state() knowledgeFoundations: EnterpriseKnowledgeFoundationSummary[] = [];
   @state() knowledgeConnections: Record<

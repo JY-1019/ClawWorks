@@ -427,6 +427,21 @@ export const en: TranslationMap = {
     activeStep: "Active step: {node}",
     executionCount: "{count} execution(s) of this run",
     stepsTitle: "Steps",
+    resume: "Continue this run",
+    resumeHint:
+      "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
+    resumeRequested:
+      "Waiting. The next request in this session that routes to this work-map continues this run. It stays armed until then, and applies only once.",
+    resumeRefusedRunning: "This run is still going, so there is nothing to continue.",
+    resumeRefusedNoSession:
+      "This run is not attached to a session, so there is no conversation to continue it in.",
+    resumeRefusedNoSteps:
+      "This run finished no step, so continuing it would open exactly where a new run does.",
+    resumeRefusedRouteComplete:
+      "This run finished every step of its route, so there is nothing left to continue.",
+    resumeRefusedRotated:
+      "This conversation has been reset since the run, so there is no thread left to continue it in.",
+    resumeRefusedNotFound: "This run is no longer on record.",
     traceTitle: "Governance trace",
     noTrace: "No governance events recorded for this execution.",
     allowedTools: "Allow: {tools}",

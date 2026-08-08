@@ -6,6 +6,7 @@ import type {
   EnterpriseOntologyObject,
   EnterpriseRunDetail,
   EnterpriseRunsGetResult,
+  EnterpriseRunsResumeResult,
   EnterpriseRunsListResult,
   EnterpriseRunSummary,
   EnterpriseTreeDetail,
@@ -392,6 +393,7 @@ export type EnterpriseState = {
   enterpriseSkills: SkillStatusEntry[];
   enterpriseFoundations: EnterpriseKnowledgeFoundationSummary[];
   enterpriseError: string | null;
+  enterpriseResuming: boolean;
 };
 
 // Monotonic token so the latest list load wins. A guarded "skip if already
@@ -502,6 +504,69 @@ export async function loadEnterpriseCatalogs(state: EnterpriseState) {
 let detailRequestSeq = 0;
 
 /** Fetch one execution's plan + governance trace for the inspector panel. */
+/**
+ * Static `t()` calls per reason, not one interpolated key: the extractor reads
+ * literals, so a computed key ships an untranslated string to every locale.
+ */
+function resumeRefusalMessage(reason: EnterpriseRunsResumeResult["reason"]): string {
+  switch (reason) {
+    case "still-running":
+      return t("enterprise.resumeRefusedRunning");
+    case "no-session":
+      return t("enterprise.resumeRefusedNoSession");
+    case "no-steps-completed":
+      return t("enterprise.resumeRefusedNoSteps");
+    case "route-complete":
+      return t("enterprise.resumeRefusedRouteComplete");
+    case "transcript-rotated":
+      return t("enterprise.resumeRefusedRotated");
+    default:
+      return t("enterprise.resumeRefusedNotFound");
+  }
+}
+
+/**
+ * Ask for an ended execution to be continued by the next run in its session.
+ *
+ * Deliberately not "resume now": nothing here starts an agent turn, and the
+ * operator's next request in that session is what carries the work forward. That
+ * is also what makes it safe — the run to continue is named rather than inferred,
+ * and inference cannot separate "carry on with that" from "a new request that
+ * routes the same way".
+ */
+export async function requestEnterpriseRunResume(state: EnterpriseState, executionId: string) {
+  if (!state.client || !state.connected || state.enterpriseResuming) {
+    return;
+  }
+  state.enterpriseResuming = true;
+  state.enterpriseError = null;
+  try {
+    const res = await state.client.request<EnterpriseRunsResumeResult>("enterprise.runs.resume", {
+      executionId,
+    });
+    if (res.ok) {
+      // Re-read rather than remember: the marker is one-shot and server-owned, so
+      // a locally-held "queued" would survive the next run consuming it and keep
+      // claiming a resume that already fired.
+      //
+      // Only while this run is still the selected one. loadEnterpriseRunDetail
+      // also SETS the selection, so an operator who moved to another run while
+      // this was in flight would be yanked back to the old one.
+      if (state.enterpriseSelectedExecutionId === executionId) {
+        await loadEnterpriseRunDetail(state, executionId);
+      }
+      return;
+    }
+    // Every refusal is a state of the run, not a fault, so it reads as a reason
+    // rather than a failure.
+    state.enterpriseError = resumeRefusalMessage(res.reason);
+  } catch (err) {
+    applyError(state, err);
+  } finally {
+    state.enterpriseResuming = false;
+  }
+}
+
 export async function loadEnterpriseRunDetail(state: EnterpriseState, executionId: string) {
   if (!state.client || !state.connected) {
     return;
@@ -1909,7 +1974,7 @@ function parseTreeDefinition(content: string): EditableTreeDefinition | null {
       parsed &&
       typeof parsed === "object" &&
       "root" in parsed &&
-      typeof (parsed as { root: unknown }).root === "object"
+      typeof parsed.root === "object"
     ) {
       return parsed as EditableTreeDefinition;
     }

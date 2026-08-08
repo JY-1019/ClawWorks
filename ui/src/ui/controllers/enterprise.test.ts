@@ -81,6 +81,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseSkills: [],
     enterpriseFoundations: [],
     enterpriseError: null,
+    enterpriseResuming: false,
   };
   return { state, request };
 }

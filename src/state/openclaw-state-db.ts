@@ -717,6 +717,10 @@ function ensureAdditiveStateColumns(db: DatabaseSync): void {
   // a run, so orphan cleanup can tell a dead owner from a live one sharing this
   // database. NULL on existing rows means unknown ownership, treated as live.
   ensureColumn(db, "enterprise_runs", "owner_token TEXT");
+  // Added after enterprise_runs shipped: an operator's one-shot request to
+  // continue this execution. NULL on existing rows means nobody asked, which is
+  // the only safe reading — a run is never resumed unless someone said so.
+  ensureColumn(db, "enterprise_runs", "resume_requested INTEGER");
   ensureColumn(db, "cron_run_logs", "status TEXT");
   ensureColumn(db, "cron_run_logs", "error TEXT");
   ensureColumn(db, "cron_run_logs", "summary TEXT");

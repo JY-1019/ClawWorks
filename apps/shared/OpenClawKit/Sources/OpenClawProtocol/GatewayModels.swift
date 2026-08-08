@@ -6696,6 +6696,8 @@ public struct EnterpriseRunDetail: Codable, Sendable {
     public let mode: String
     public let status: AnyCodable
     public let locallyactive: Bool?
+    public let resumerequested: Bool?
+    public let resumable: Bool?
     public let matchedby: String
     public let requestsummary: String
     public let activenodeid: String
@@ -6719,6 +6721,8 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         mode: String,
         status: AnyCodable,
         locallyactive: Bool? = nil,
+        resumerequested: Bool? = nil,
+        resumable: Bool? = nil,
         matchedby: String,
         requestsummary: String,
         activenodeid: String,
@@ -6741,6 +6745,8 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         self.mode = mode
         self.status = status
         self.locallyactive = locallyactive
+        self.resumerequested = resumerequested
+        self.resumable = resumable
         self.matchedby = matchedby
         self.requestsummary = requestsummary
         self.activenodeid = activenodeid
@@ -6765,6 +6771,8 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         case mode
         case status
         case locallyactive = "locallyActive"
+        case resumerequested = "resumeRequested"
+        case resumable
         case matchedby = "matchedBy"
         case requestsummary = "requestSummary"
         case activenodeid = "activeNodeId"
@@ -6881,6 +6889,38 @@ public struct EnterpriseRunsGetResult: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case run
+    }
+}
+
+public struct EnterpriseRunsResumeParams: Codable, Sendable {
+    public let executionid: String
+
+    public init(
+        executionid: String)
+    {
+        self.executionid = executionid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case executionid = "executionId"
+    }
+}
+
+public struct EnterpriseRunsResumeResult: Codable, Sendable {
+    public let ok: Bool
+    public let reason: AnyCodable?
+
+    public init(
+        ok: Bool,
+        reason: AnyCodable?)
+    {
+        self.ok = ok
+        self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case reason
     }
 }
 

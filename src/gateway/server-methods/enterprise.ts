@@ -37,6 +37,7 @@ import {
   validateEnterpriseKnowledgeFoundationsTestConnectionParams,
   validateEnterpriseObjectsListParams,
   validateEnterpriseRunsGetParams,
+  validateEnterpriseRunsResumeParams,
   validateEnterpriseRunsListParams,
   validateEnterpriseTreesExportParams,
   validateEnterpriseTreesGetParams,
@@ -69,8 +70,12 @@ import {
   type EnterpriseRunRecord,
   getEnterpriseRunRecordByExecutionId,
   listEnterpriseRunEvents,
+  cumulativeCompletedNodeIds,
+  enterpriseRunResumeRefusal,
+  enterpriseRunTranscriptRotated,
   listEnterpriseRunExecutions,
   listEnterpriseRunRecords,
+  requestEnterpriseRunResume,
 } from "../../enterprise/trace-store.sqlite.js";
 import {
   exportWorkflowTree,
@@ -105,7 +110,7 @@ const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 /** Longest document name accepted; most filesystems stop at 255 bytes. */
 const DOCUMENT_NAME_MAX_LENGTH = 200;
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting them is the point
+// oxlint-disable-next-line no-control-regex -- matching control characters is the point: this is the guard that rejects them.
 const DOCUMENT_NAME_FORBIDDEN = /[/\\\x00-\x1f\x7f]/;
 
 /**
@@ -195,6 +200,13 @@ function mapRunDetail(
     executionId: record.executionId,
     runId: record.runId,
     ...(active?.executionId === record.executionId ? { locallyActive: true } : {}),
+    ...(record.resumeRequested ? { resumeRequested: true } : {}),
+    // The same rule requestEnterpriseRunResume applies, so the control the
+    // operator sees and the answer they get cannot disagree.
+    ...(enterpriseRunResumeRefusal(record, cumulativeCompletedNodeIds(events)) ||
+    enterpriseRunTranscriptRotated(record)
+      ? {}
+      : { resumable: true }),
     sessionKey: record.sessionKey,
     agentId: record.agentId,
     treeId: record.treeId,
@@ -874,6 +886,23 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
     // Sibling execution count for the same runId gives the inspector "run N of M".
     const executionCount = listEnterpriseRunExecutions(record.runId).length;
     respond(true, { run: mapRunDetail(record, events, executionCount) });
+  },
+  "enterprise.runs.resume": ({ params, respond }) => {
+    if (!validateEnterpriseRunsResumeParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.runs.resume params: ${formatValidationErrors(validateEnterpriseRunsResumeParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const result = requestEnterpriseRunResume(params.executionId, {});
+    // A refusal is a state of the run, not a failed call: the operator gets the
+    // specific reason so the UI can say "still running" rather than "error".
+    respond(true, result.ok ? { ok: true } : { ok: false, reason: result.reason });
   },
   "enterprise.mode.get": ({ params, respond }) => {
     if (!validateEnterpriseModeGetParams(params)) {

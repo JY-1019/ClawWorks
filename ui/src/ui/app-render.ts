@@ -125,6 +125,7 @@ import {
   exportEnterpriseTree,
   loadEnterpriseCatalogs,
   loadEnterpriseRunDetail,
+  requestEnterpriseRunResume,
   loadEnterpriseTreeVersion,
   refreshEnterprise,
   requestRemoveEnterpriseTree,
@@ -2985,6 +2986,10 @@ export function renderApp(state: AppViewState) {
                 detail: state.enterpriseDetail,
                 runTree: state.enterpriseRunTree,
                 detailLoading: state.enterpriseDetailLoading,
+                resuming: state.enterpriseResuming,
+                onResumeRun: (executionId: string) => {
+                  void requestEnterpriseRunResume(state, executionId);
+                },
                 selectedTreeId: state.enterpriseSelectedTreeId,
                 treeDetail: state.enterpriseTreeDetail,
                 treeLoading: state.enterpriseTreeLoading,

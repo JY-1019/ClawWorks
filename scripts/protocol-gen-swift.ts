@@ -48,7 +48,7 @@ const DEFAULTED_OPTIONAL_INIT_PARAM_ENTRIES: readonly [string, readonly string[]
   // even though the protocol changes themselves are additive.
   ["EnterpriseRunsListParams", ["sessionKey", "agentId", "chatVisibleOnly"]],
   ["EnterpriseRunSummary", ["sessionKey"]],
-  ["EnterpriseRunDetail", ["route", "treeHash", "locallyActive"]],
+  ["EnterpriseRunDetail", ["route", "treeHash", "locallyActive", "resumeRequested", "resumable"]],
   ["EnterpriseTreeDetail", ["hash", "capabilityGrants"]],
   ["EnterpriseTreeOntology", ["guidance", "skills", "mcpServers"]],
   ["EnterpriseKnowledgeFoundationSummary", ["description", "ownerTreeIds"]],

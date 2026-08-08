@@ -349,6 +349,39 @@ export function enterpriseStepSequence(plan: EnterpriseRunPlan): string[] {
   return leafNodeIds(plan.nodes);
 }
 
+/**
+ * The step a resumed run should open on: the first one of THIS route that the
+ * earlier execution did not finish.
+ *
+ * The prefix must be contiguous IN THIS ROUTE'S ORDER. Advancement is sequential
+ * (completeEnterpriseStep never skips), so a finished step with an unfinished one
+ * before it means the route changed between the two runs — a step was inserted,
+ * or the earlier run walked a different branch. Opening past that gap would
+ * silently skip governed work; stopping at it re-runs a step already done, which
+ * the trace shows and a human can read.
+ *
+ * The order the steps were FINISHED in does not matter, only which ones were:
+ * a reordered work-map whose earlier run finished b then a has still done both,
+ * and refusing to carry that forward would make an operator redo governed work to
+ * satisfy a bookkeeping detail. What is checked is that nothing unfinished sits
+ * ahead of where this run would open.
+ *
+ * Returns undefined when nothing carries over (no prefix matched) and when the
+ * whole route is finished — a route with no work left is a fresh start, not a
+ * resume onto a step that does not exist.
+ */
+export function firstUnfinishedStep(
+  steps: readonly string[],
+  completedNodeIds: readonly string[],
+): string | undefined {
+  const completed = new Set(completedNodeIds);
+  let index = 0;
+  while (index < steps.length && completed.has(steps[index])) {
+    index += 1;
+  }
+  return index === 0 ? undefined : steps[index];
+}
+
 /** True when an ontology carries model-facing guidance (digest is non-empty). */
 export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
   return Boolean(

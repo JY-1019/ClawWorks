@@ -723,6 +723,12 @@ export type EnterpriseRunEventKind =
   | "node.entered"
   | "node.completed"
   /**
+   * This run continued an earlier execution at an operator's request, opening on
+   * the step after the work that execution finished. Distinct from `run.started`
+   * so a route that begins mid-way is never mistaken for one that skipped steps.
+   */
+  | "run.resumed"
+  /**
    * An ontology action ran and wrote to the object store. The governance
    * decision that PERMITTED it is a separate event; this one records what it
    * actually did, which no other event captures.

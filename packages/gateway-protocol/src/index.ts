@@ -204,6 +204,10 @@ import {
   EnterpriseRunsGetParamsSchema,
   type EnterpriseRunsGetResult,
   EnterpriseRunsGetResultSchema,
+  type EnterpriseRunsResumeParams,
+  EnterpriseRunsResumeParamsSchema,
+  type EnterpriseRunsResumeResult,
+  EnterpriseRunsResumeResultSchema,
   type EnterpriseRunsListParams,
   EnterpriseRunsListParamsSchema,
   type EnterpriseRunsListResult,
@@ -825,6 +829,9 @@ export const validateEnterpriseRunsListParams = lazyCompile<EnterpriseRunsListPa
 export const validateEnterpriseRunsGetParams = lazyCompile<EnterpriseRunsGetParams>(
   EnterpriseRunsGetParamsSchema,
 );
+export const validateEnterpriseRunsResumeParams = lazyCompile<EnterpriseRunsResumeParams>(
+  EnterpriseRunsResumeParamsSchema,
+);
 export const validateEnterpriseTreesGetParams = lazyCompile<EnterpriseTreesGetParams>(
   EnterpriseTreesGetParamsSchema,
 );
@@ -1250,6 +1257,8 @@ export {
   EnterpriseRunDetailSchema,
   EnterpriseRunsGetParamsSchema,
   EnterpriseRunsGetResultSchema,
+  EnterpriseRunsResumeParamsSchema,
+  EnterpriseRunsResumeResultSchema,
   EnterpriseTreeOntologySchema,
   EnterpriseTreeNodeSchema,
   EnterpriseTreeDetailSchema,
@@ -1628,6 +1637,8 @@ export type {
   EnterpriseRunDetail,
   EnterpriseRunsGetParams,
   EnterpriseRunsGetResult,
+  EnterpriseRunsResumeParams,
+  EnterpriseRunsResumeResult,
   EnterpriseTreeOntology,
   EnterpriseTreeNode,
   EnterpriseTreeDetail,

@@ -6,6 +6,8 @@
  * its workflow node.
  */
 import { existsSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
+import type { Kysely } from "kysely";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -20,6 +22,7 @@ import {
   type OpenClawStateDatabaseOptions,
 } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
+import { enterpriseStepSequence, firstUnfinishedStep } from "./plan.js";
 import type { EnterpriseRunEventKind, EnterpriseRunPlan, EnterpriseRunStatus } from "./types.js";
 
 export type EnterpriseTraceStoreOptions = {
@@ -48,6 +51,8 @@ export type EnterpriseRunRecord = {
   createdAt: number;
   updatedAt: number;
   endedAt: number | null;
+  /** An operator asked for this execution to be continued; not yet consumed. */
+  resumeRequested: boolean;
 };
 
 export type EnterpriseRunEventRecord = {
@@ -67,6 +72,7 @@ type EnterpriseRunRow = {
   agent_id: string | null;
   chat_visible: number | null;
   owner_token: string | null;
+  resume_requested: number | null;
   tree_id: string;
   tree_version: string;
   mode: string;
@@ -94,6 +100,7 @@ const RUN_EVENT_KINDS: readonly EnterpriseRunEventKind[] = [
   "governance.decision",
   "node.entered",
   "node.completed",
+  "run.resumed",
   "action.invoked",
 ];
 
@@ -133,6 +140,7 @@ function rowToRunRecord(row: EnterpriseRunRow): EnterpriseRunRecord {
     createdAt: requireSqliteNumber(row.created_at),
     updatedAt: requireSqliteNumber(row.updated_at),
     endedAt: row.ended_at === null ? null : requireSqliteNumber(row.ended_at),
+    resumeRequested: row.resume_requested !== null,
   };
 }
 
@@ -546,6 +554,354 @@ export function listEnterpriseRunRecords(
   }
   const rows = executeSqliteQuerySync(database.db, query.limit(limit)).rows as EnterpriseRunRow[];
   return rows.map(rowToRunRecord);
+}
+
+/**
+ * Every step a run's whole chain finished, derived from its event log.
+ *
+ * Exported so the detail projection and the resume writer agree: one deciding a
+ * run is resumable while the other refuses it would put a button on screen whose
+ * only outcome is an error. See `completedNodeIdsFor` for why `run.resumed`
+ * carries a prefix.
+ */
+export function cumulativeCompletedNodeIds(
+  events: readonly { kind: string; nodeId: string | null; payload: Record<string, unknown> }[],
+): string[] {
+  const completed: string[] = [];
+  for (const event of events) {
+    if (event.kind === "run.resumed") {
+      const carried = event.payload.carriedSteps;
+      if (Array.isArray(carried)) {
+        completed.push(...carried.filter((step): step is string => typeof step === "string"));
+      }
+      continue;
+    }
+    if (event.kind === "node.completed" && event.nodeId) {
+      completed.push(event.nodeId);
+    }
+  }
+  return [...new Set(completed)];
+}
+
+/**
+ * Would a request to continue this execution be accepted, and if not, why?
+ *
+ * The single rule. `requestEnterpriseRunResume` enforces it and the run detail
+ * projects it, so the control an operator sees and the answer they get cannot
+ * disagree.
+ */
+export function enterpriseRunResumeRefusal(
+  run: {
+    status: string;
+    sessionKey: string | null;
+    sessionId: string | null;
+    plan: EnterpriseRunPlan;
+  },
+  completedNodeIds: readonly string[],
+): EnterpriseResumeRefusal | null {
+  if (run.status === "running") {
+    return "still-running";
+  }
+  // The TRANSCRIPT as well as the lane. `/new` and `/reset` rebind a session key
+  // to a fresh transcript while the key itself stays put, so a marker matched on
+  // the key alone could be consumed in a conversation that never saw the steps it
+  // claims are done — the resumed run would open past context that is not there.
+  // A row predating the column cannot prove which transcript it belongs to, so it
+  // is not resumable rather than resumable into the wrong one.
+  if (!run.sessionKey || !run.sessionId) {
+    return "no-session";
+  }
+  if (completedNodeIds.length === 0) {
+    return "no-steps-completed";
+  }
+  // Judged against the route this execution actually planned, not its status: a
+  // run can end `aborted` with every step done (the provider dropped after the
+  // last one), and resuming that has nowhere to open. Mediation would fall back
+  // to step 1 and rerun the entire work-map.
+  return firstUnfinishedStep(enterpriseStepSequence(run.plan), completedNodeIds)
+    ? null
+    : "route-complete";
+}
+
+export type EnterpriseResumeRefusal =
+  | "not-found"
+  | "still-running"
+  | "no-session"
+  | "no-steps-completed"
+  | "route-complete"
+  | "transcript-rotated";
+
+/**
+ * Has this run's conversation been replaced since it ran?
+ *
+ * `/new` and `/reset` mint a fresh transcript under the same session key, and a
+ * marker is bound to the transcript whose steps it continues — so after a
+ * rotation no future turn can ever consume it. Detected from the trace itself: a
+ * NEWER run in the same lane carrying a different `session_id` is the rotation.
+ * Without this the endpoint would accept the request and the screen would wait
+ * forever on something that cannot happen.
+ *
+ * One-directional, like every other scope check here: a rotation this store has
+ * not yet seen a run for is not detectable, and the marker simply never fires.
+ */
+export function enterpriseRunTranscriptRotated(
+  run: {
+    executionId: string;
+    sessionKey: string | null;
+    sessionId: string | null;
+    agentId: string | null;
+    createdAt: number;
+  },
+  options: EnterpriseTraceStoreOptions = {},
+): boolean {
+  if (!run.sessionKey || !run.sessionId || !enterpriseStateDatabaseExists(options)) {
+    return false;
+  }
+  const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
+  const agentId = run.agentId;
+  const newer = executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .selectFrom("enterprise_runs")
+      .select(["execution_id"])
+      .where("session_key", "=", run.sessionKey)
+      .where("created_at", ">", run.createdAt)
+      .where("session_id", "is not", null)
+      .where("session_id", "!=", run.sessionId)
+      .where((eb) => (agentId === null ? eb("agent_id", "is", null) : eb("agent_id", "=", agentId)))
+      .limit(1),
+  ).rows[0] as { execution_id: string } | undefined;
+  return newer !== undefined;
+}
+
+/** Why a resume request was refused, or the run it will continue. */
+export type EnterpriseResumeRequest =
+  | { ok: true; sessionKey: string; treeId: string }
+  | { ok: false; reason: EnterpriseResumeRefusal };
+
+/**
+ * Record an operator's request to continue an execution.
+ *
+ * Refused for a run still in flight (there is nothing to continue), for one with
+ * no session to continue IN, for one that completed no step — a route that never
+ * got past its first step resumes to exactly where a fresh run starts, so the
+ * marker would only add a claim to the trace that nothing acts on — and for one
+ * that finished its WHOLE route, where the same fallback would silently restart
+ * the work-map from step 1 and repeat every write it already made.
+ */
+export function requestEnterpriseRunResume(
+  executionId: string,
+  params: { now?: number } = {},
+  options: EnterpriseTraceStoreOptions = {},
+): EnterpriseResumeRequest {
+  if (!enterpriseStateDatabaseExists(options)) {
+    return { ok: false, reason: "not-found" };
+  }
+  const armedAt = params.now ?? Date.now();
+  let result: EnterpriseResumeRequest = { ok: false, reason: "not-found" };
+  runOpenClawStateWriteTransaction((database) => {
+    const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
+    const row = executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .selectFrom("enterprise_runs")
+        .select([
+          "execution_id",
+          "session_key",
+          "session_id",
+          "agent_id",
+          "tree_id",
+          "status",
+          "plan_json",
+          "created_at",
+        ])
+        .where("execution_id", "=", executionId),
+    ).rows[0] as
+      | {
+          execution_id: string;
+          session_key: string | null;
+          session_id: string | null;
+          agent_id: string | null;
+          tree_id: string;
+          status: string;
+          plan_json: string;
+          created_at: number | bigint;
+        }
+      | undefined;
+    if (!row) {
+      return;
+    }
+    const completed = completedNodeIdsFor(database.db, stateDb, executionId);
+    const refusal = enterpriseRunResumeRefusal(
+      {
+        status: row.status,
+        sessionKey: row.session_key,
+        sessionId: row.session_id,
+        plan: JSON.parse(row.plan_json) as EnterpriseRunPlan,
+      },
+      completed,
+    );
+    // `!sessionKey` is already covered by the refusal above ("no-session"); it is
+    // restated so the non-null session key below is a fact rather than a cast.
+    const sessionKey = row.session_key;
+    if (refusal || !sessionKey) {
+      result = { ok: false, reason: refusal ?? "no-session" };
+      return;
+    }
+    if (
+      enterpriseRunTranscriptRotated(
+        {
+          executionId: row.execution_id,
+          sessionKey,
+          sessionId: row.session_id,
+          agentId: row.agent_id,
+          createdAt: requireSqliteNumber(row.created_at),
+        },
+        options,
+      )
+    ) {
+      result = { ok: false, reason: "transcript-rotated" };
+      return;
+    }
+    executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .updateTable("enterprise_runs")
+        .set({ resume_requested: armedAt })
+        .where("execution_id", "=", executionId),
+    );
+    // One pending resume per AGENT LANE, not per session: under
+    // `session.scope: "global"` every agent shares one `session_key`, so keying
+    // this on the session alone would let one agent's request clear another's —
+    // and, in takeEnterpriseRunResume, be consumed by another agent's next run,
+    // opening it partway through steps only the first agent performed. NULL is
+    // its own lane and needs IS, which "=" never satisfies in SQL.
+    executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .updateTable("enterprise_runs")
+        .set({ resume_requested: null })
+        // Pending rows only. `enterprise_runs` has no retention, so matching the
+        // whole lane would rewrite every run this session ever traced — an
+        // unbounded write on the shared state DB for what is nearly always a
+        // no-op. It also lets the partial pending index serve this.
+        .where("resume_requested", "is not", null)
+        .where("session_key", "=", sessionKey)
+        .where("execution_id", "!=", executionId)
+        .where((eb) =>
+          row.agent_id === null ? eb("agent_id", "is", null) : eb("agent_id", "=", row.agent_id),
+        ),
+    );
+    result = { ok: true, sessionKey, treeId: row.tree_id };
+  }, stateDatabaseOptions(options));
+  return result;
+}
+
+/**
+ * Consume a pending resume for this session and tree, if one is marked.
+ *
+ * One-shot by design: it clears the marker in the same transaction that reads it,
+ * so a resume can never apply twice and a crash between reading and running
+ * leaves the operator to ask again rather than silently re-opening a route
+ * mid-way. Four things must match, and each closes a way the marker could bind to
+ * a turn the operator did not mean:
+ *
+ * - the TREE, or a request that routes somewhere else is not the work they named;
+ * - the AGENT, because a shared `session_key` is not an identity (see
+ *   requestEnterpriseRunResume);
+ * - the TRANSCRIPT, because `/new` and `/reset` keep the key and change the
+ *   conversation, and resuming into one that never saw those steps opens past
+ *   context that is not there;
+ * - the ORDER, because a turn already in flight when the operator clicked began
+ *   before they asked, and "the next request" has to mean the next one.
+ */
+export function takeEnterpriseRunResume(
+  params: {
+    sessionKey: string;
+    sessionId: string;
+    agentId: string | null;
+    treeId: string;
+    /** When the consuming turn began; only a turn started after arming may take it. */
+    startedAt: number;
+  },
+  options: EnterpriseTraceStoreOptions = {},
+): { executionId: string; completedNodeIds: string[] } | null {
+  if (!enterpriseStateDatabaseExists(options)) {
+    return null;
+  }
+  let taken: { executionId: string; completedNodeIds: string[] } | null = null;
+  runOpenClawStateWriteTransaction((database) => {
+    const stateDb = getNodeSqliteKysely<EnterpriseTraceDatabase>(database.db);
+    const agentId = params.agentId;
+    const row = executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .selectFrom("enterprise_runs")
+        .select(["execution_id"])
+        .where("resume_requested", "is not", null)
+        .where("resume_requested", "<", params.startedAt)
+        .where("session_key", "=", params.sessionKey)
+        .where("session_id", "=", params.sessionId)
+        .where("tree_id", "=", params.treeId)
+        .where((eb) =>
+          agentId === null ? eb("agent_id", "is", null) : eb("agent_id", "=", agentId),
+        )
+        .orderBy("created_at", "desc")
+        .limit(1),
+    ).rows[0] as { execution_id: string } | undefined;
+    if (!row) {
+      return;
+    }
+    executeSqliteQuerySync(
+      database.db,
+      stateDb
+        .updateTable("enterprise_runs")
+        .set({ resume_requested: null })
+        .where("execution_id", "=", row.execution_id),
+    );
+    const completedNodeIds = completedNodeIdsFor(database.db, stateDb, row.execution_id);
+    if (completedNodeIds.length > 0) {
+      taken = { executionId: row.execution_id, completedNodeIds };
+    }
+  }, stateDatabaseOptions(options));
+  return taken;
+}
+
+/**
+ * Every step finished by this execution AND by the chain it continues.
+ *
+ * A route can be interrupted more than once: execution 1 finishes step a,
+ * execution 2 resumes and finishes b, execution 3 must open on c. Reading only
+ * execution 2's own `node.completed` events would see `[b]`, which is not a
+ * prefix of the route, so the whole thing would read as unresumable and c could
+ * never be reached without redoing a.
+ *
+ * One hop, not a recursive walk: `run.resumed` carries the cumulative prefix its
+ * own run inherited, so each execution's event log already states everything
+ * before it.
+ */
+function completedNodeIdsFor(
+  db: DatabaseSync,
+  stateDb: Kysely<EnterpriseTraceDatabase>,
+  executionId: string,
+): string[] {
+  const rows = executeSqliteQuerySync(
+    db,
+    stateDb
+      .selectFrom("enterprise_run_events")
+      .select(["node_id", "kind", "payload_json"])
+      .where("execution_id", "=", executionId)
+      .where((eb) => eb.or([eb("kind", "=", "node.completed"), eb("kind", "=", "run.resumed")]))
+      .orderBy("seq", "asc"),
+  ).rows as { node_id: string | null; kind: string; payload_json: string }[];
+  return cumulativeCompletedNodeIds(
+    rows.map((row) => ({
+      kind: row.kind,
+      nodeId: row.node_id,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+    })),
+  );
 }
 
 /** List one execution's trace events in seq order. */

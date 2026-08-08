@@ -1252,7 +1252,15 @@ CREATE TABLE IF NOT EXISTS enterprise_runs (
   -- rows), so orphan cleanup must PROVE a row's owner is gone. The start time is
   -- what makes that provable: a container that restarts hands the new process
   -- the same pid, so a bare pid would read as still alive forever.
-  owner_token TEXT
+  owner_token TEXT,
+  -- When an operator asked for this execution to be continued, as the epoch ms
+  -- they asked. The TIME, not a flag: a turn already in flight when the operator
+  -- clicked would otherwise consume a marker armed after it began, and open
+  -- partway through a route the operator meant their NEXT request to continue.
+  -- One-shot — the run that consumes it clears it. Resuming is never inferred:
+  -- nothing distinguishes "carry on with that work" from "a new request that
+  -- routes the same way", and guessing wrong opens a run mid-route.
+  resume_requested INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_enterprise_runs_run
@@ -1273,6 +1281,14 @@ CREATE INDEX IF NOT EXISTS idx_enterprise_runs_session
 -- keeps that lookup O(1) as global run volume grows.
 CREATE INDEX IF NOT EXISTS idx_enterprise_runs_session_agent
   ON enterprise_runs(session_key, agent_id, created_at DESC, execution_id);
+
+-- Every step-tracking run start asks whether a resume is pending, and almost
+-- always the answer is no. PARTIAL, so the index holds only the rare marked rows
+-- rather than one entry per run ever traced: without it that lookup scans a whole
+-- session lane, which under `session.scope: "global"` is every run on the box.
+CREATE INDEX IF NOT EXISTS idx_enterprise_runs_resume_pending
+  ON enterprise_runs(session_key, agent_id, session_id, tree_id, created_at DESC)
+  WHERE resume_requested IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS enterprise_run_events (
   execution_id TEXT NOT NULL,
