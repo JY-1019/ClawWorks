@@ -80,6 +80,7 @@ import {
   claimAgentRunContext,
   clearAgentRunContext,
   getAgentEventLifecycleGeneration,
+  registerAgentRunContext,
 } from "../../infra/agent-events.js";
 import { formatUncaughtError, readErrorName } from "../../infra/errors.js";
 import {
@@ -2738,6 +2739,14 @@ export const agentHandlers: GatewayRequestHandlers = {
           const execApprovalFollowupElevatedDefaults =
             execApprovalFollowupRuntimeHandoff?.bashElevated;
 
+          if (execApprovalFollowupApprovalId) {
+            // Stated here because this is the only place that can tell: the run
+            // this dispatches is visible and arrives tagged like an operator
+            // turn, yet the runtime wrote its prompt. Registered BEFORE dispatch
+            // so mediation sees it, and registration merges, so the runner's own
+            // later context registration keeps it.
+            registerAgentRunContext(runId, { runtimeContinuation: true });
+          }
           dispatchAgentRunFromGateway({
             ingressOpts: {
               message,

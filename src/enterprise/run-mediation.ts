@@ -121,6 +121,14 @@ export type BeginEnterpriseRunParams = {
    * no chat routing, so a hidden run cannot paint over the visible one.
    */
   chatVisible?: boolean;
+  /**
+   * The runtime continuing earlier work (an exec-approval followup), not the
+   * operator asking for something. Such a turn is visible and arrives tagged
+   * `trigger: "user"`, so nothing here could tell otherwise; the gateway states
+   * it. Resume will not bind to one — an operator arms a run for their NEXT
+   * request, and this is not it.
+   */
+  runtimeContinuation?: boolean;
   config?: OpenClawConfig;
   /**
    * Picks the governing tree and the route through it. Omit to bind the trigger's
@@ -476,6 +484,7 @@ async function beginEnterpriseRunInternal(
   const resumeSessionId = params.sessionId;
   const resume =
     trigger === "user" &&
+    !params.runtimeContinuation &&
     params.chatVisible !== false &&
     tracksSteps &&
     steps.length > 0 &&

@@ -770,6 +770,56 @@ describe("enterprise step tracing", () => {
     });
   });
 
+  it("continues an interrupted route on the step it did not finish", async () => {
+    await withFlowTree(async () => {
+      const { requestEnterpriseRunResume } = await import("./trace-store.sqlite.js");
+      const first = nextRunId();
+      await beginEnterpriseRun({
+        runId: first,
+        prompt: "run the flowtest now",
+        sessionKey: "agent:main:resumeflow",
+        sessionId: "t-resumeflow",
+        routePlanner: flowPlanner(),
+      });
+      completeEnterpriseStep({ runId: first, summary: "step a done" });
+      endEnterpriseRun({ runId: first, status: "aborted" });
+      const firstRecord = getEnterpriseRunRecord(first);
+      expect(requestEnterpriseRunResume(firstRecord?.executionId ?? "", { now: 1 }).ok).toBe(true);
+
+      // A runtime continuation must NOT take it: the operator armed this for the
+      // request they are about to type, not for an exec-approval followup that
+      // happens to route here first.
+      const followup = nextRunId();
+      await beginEnterpriseRun({
+        runId: followup,
+        prompt: "run the flowtest now",
+        sessionKey: "agent:main:resumeflow",
+        sessionId: "t-resumeflow",
+        runtimeContinuation: true,
+        routePlanner: flowPlanner(),
+      });
+      expect(getEnterpriseRunRecord(followup)?.plan.activeNodeId).toBe("flow.a");
+      endEnterpriseRun({ runId: followup, status: "completed" });
+
+      // The operator's own next request opens on step B, and says so in the trace.
+      const second = nextRunId();
+      await beginEnterpriseRun({
+        runId: second,
+        prompt: "run the flowtest now",
+        sessionKey: "agent:main:resumeflow",
+        sessionId: "t-resumeflow",
+        routePlanner: flowPlanner(),
+      });
+      const secondRecord = getEnterpriseRunRecord(second);
+      expect(secondRecord?.plan.activeNodeId).toBe("flow.b");
+      const resumed = listEnterpriseRunEvents(secondRecord?.executionId ?? "").find(
+        (event) => event.kind === "run.resumed",
+      );
+      expect(resumed?.payload).toMatchObject({ openedOn: "flow.b", carriedSteps: ["flow.a"] });
+      endEnterpriseRun({ runId: second, status: "completed" });
+    });
+  });
+
   it("leaves an unfinished step entered-but-uncompleted", async () => {
     await withFlowTree(async () => {
       const runId = nextRunId();

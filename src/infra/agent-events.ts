@@ -144,6 +144,19 @@ export type AgentRunContext = {
    * with session effects. Anything durable must key on this one.
    */
   sessionEffectsInternal?: boolean;
+  /**
+   * The runtime continuing its own earlier work — an exec-approval followup —
+   * rather than the operator asking for something.
+   *
+   * Deliberately NOT `sessionEffectsInternal`: such a turn IS visible and IS the
+   * operator's business, it simply was not typed by them. Only the gateway can
+   * tell, and everything downstream sees a normal visible turn tagged
+   * `trigger: "user"`, so the fact is carried here rather than re-derived.
+   * Enterprise resume reads it: an operator arms a run to be continued by their
+   * NEXT request, and a followup arriving first would spend that on a turn they
+   * did not mean.
+   */
+  runtimeContinuation?: boolean;
   /** Timestamp when this context was first registered (for TTL-based cleanup). */
   registeredAt?: number;
   /** Timestamp of last activity (updated on every emitAgentEvent). */
@@ -263,6 +276,9 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   }
   if (context.isHeartbeat !== undefined && existing.isHeartbeat !== context.isHeartbeat) {
     existing.isHeartbeat = context.isHeartbeat;
+  }
+  if (context.runtimeContinuation !== undefined) {
+    existing.runtimeContinuation = context.runtimeContinuation;
   }
   if (context.registeredAt !== undefined) {
     existing.registeredAt = context.registeredAt;

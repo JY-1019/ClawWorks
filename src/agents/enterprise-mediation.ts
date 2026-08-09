@@ -49,6 +49,22 @@ function resolveChatVisible(params: EnterpriseMediatedRunParams): boolean {
   return getAgentRunContext(params.runId)?.sessionEffectsInternal !== true;
 }
 
+/**
+ * Was this turn written by the runtime continuing earlier work rather than by
+ * the operator?
+ *
+ * From the run context for the same reason `resolveChatVisible` reads it: the
+ * gateway is the only layer that can tell, and by here the turn is
+ * indistinguishable from a typed one. An explicit param wins so a caller that
+ * mediates before registration can still say.
+ */
+function resolveRuntimeContinuation(params: EnterpriseMediatedRunParams): boolean {
+  if (params.runtimeContinuation !== undefined) {
+    return params.runtimeContinuation;
+  }
+  return getAgentRunContext(params.runId)?.runtimeContinuation === true;
+}
+
 /** Structural param surface shared by the mediated runner entrypoints. */
 export type EnterpriseMediatedRunParams = {
   runId: string;
@@ -73,6 +89,12 @@ export type EnterpriseMediatedRunParams = {
    * without every caller opting in.
    */
   silentExpected?: boolean;
+  /**
+   * The runtime continuing its own earlier work rather than the operator asking
+   * for something. Structural, like `chatVisible` above: it arrives from the
+   * runner params so no caller has to opt in.
+   */
+  runtimeContinuation?: boolean;
   config?: OpenClawConfig;
   extraSystemPrompt?: string;
   /** Internal one-shot model probe (raw model run). */
@@ -282,6 +304,7 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
     runId: params.runId,
     prompt: params.prompt,
     ...(params.trigger !== undefined ? { trigger: params.trigger } : {}),
+    ...(resolveRuntimeContinuation(params) ? { runtimeContinuation: true } : {}),
     ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
