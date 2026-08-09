@@ -186,9 +186,12 @@ export function completeEnterpriseStep(params: {
         // enterprise_run_events and rendered by both the Control UI and
         // `openclaw enterprise runs show`.
         ...(summary ? { summary } : {}),
-        // The conversation anchor. Joins this step to the exact transcript row
-        // that closed it, which is what makes "what happened at node X" answerable
-        // without stamping a node id onto every message.
+        // The conversation anchor: the exact transcript row that CLOSED this step.
+        // Paired with the same id recorded on the next step's `node.entered` below,
+        // every step resolves to an explicit transcript span — which is what makes
+        // "what happened at node X" answerable from the trace WITHOUT stamping a
+        // node id onto every message (that would push the enterprise layer down
+        // into the core transcript, which it must never do).
         ...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
       },
     });
@@ -207,7 +210,22 @@ export function completeEnterpriseStep(params: {
   run.sink?.({
     kind: "node.entered",
     nodeId: to.nodeId,
-    payload: { seq: to.seq, title: to.title },
+    payload: {
+      seq: to.seq,
+      title: to.title,
+      // The START anchor for this step. The single complete_step row that closed
+      // the previous step is where this one begins, so its id marks this step's
+      // opening the way `toolCallId` above marks a step's close. It matters most
+      // for a step that is entered but never completed — an abandoned or
+      // interrupted route — which otherwise has NO transcript position at all: its
+      // work would sit in the conversation unattributable to any node.
+      //
+      // Absent when the advancing call carried no caller-visible id (the loopback
+      // mints a private one), exactly as the completion anchor is — a step
+      // advanced across the loopback stays attributed at the run level, not a
+      // per-step span.
+      ...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
+    },
   });
   const next = stepRef(run, to.nodeId);
   return { kind: "advanced", completed, next: next ?? { ...active, nodeId: to.nodeId } };

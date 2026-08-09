@@ -471,6 +471,24 @@ early — which the trace records — and it can never reopen a step it has left
 step the run never finished stays `entered` with no matching `node.completed`,
 which is exactly how an abandoned or interrupted route reads in the trace.
 
+Steps are anchored to the conversation rather than tagged onto every message.
+The one `complete_step` call that closes a step is also where the next one
+begins, so when that call carries a caller-visible id it is recorded on the
+closing step's `node.completed` and the opening step's `node.entered` alike,
+giving the pair an explicit transcript span. This is what lets a step that was
+entered and then abandoned still resolve to a transcript position instead of
+vanishing — its `node.entered` anchor places its work even though no
+`node.completed` ever closed it.
+
+Two boundaries carry no such id, and there attribution stays at the run level —
+its `session_id` names the whole conversation, shared by every node on the
+route. The run's opening step begins at the start of that transcript, so it has
+no preceding `complete_step` call to anchor to. And the CLI loopback mints a
+tool-call id that is private to our MCP server and never reaches the caller's
+transcript, so steps advanced across it are left to the run-level link rather
+than a per-step span. The trade is deliberate: node attribution costs no
+per-message storage.
+
 ## Operating on the ontology
 
 When a run's active node declares a typed object model, the agent gets tools

@@ -498,6 +498,52 @@ describe("enterprise step cursor", () => {
     expect(events[0].payload).toMatchObject({ seq: 1, title: "Triage", summary: "classified" });
   });
 
+  it("anchors both ends of a step to the transcript so its span is explicit", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+
+    // The single complete_step row closes triage AND opens resolve, so the same
+    // id is the END of triage and the START of resolve. Recording it on both is
+    // what turns "which node does a transcript row belong to" from a timestamp
+    // guess into an exact span lookup.
+    completeEnterpriseStep({ runId: "run-steps", toolCallId: "call-boundary" });
+    const completed = events.find((event) => event.kind === "node.completed");
+    const entered = events.find((event) => event.kind === "node.entered");
+    expect(completed?.payload).toMatchObject({ toolCallId: "call-boundary" });
+    expect(entered?.payload).toMatchObject({ toolCallId: "call-boundary" });
+  });
+
+  it("gives an entered-but-uncompleted step a start anchor to attribute its work", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+
+    // Advance INTO resolve, then stop — the model never completes it. This is the
+    // abandoned/interrupted-route shape (entered, no node.completed). Its work
+    // still lives in the transcript, so it must resolve to a node: the entered
+    // anchor is the only thing that can place it.
+    completeEnterpriseStep({ runId: "run-steps", toolCallId: "call-into-resolve" });
+    const enteredResolve = events.find(
+      (event) => event.kind === "node.entered" && event.nodeId === "support.resolve",
+    );
+    const completedResolve = events.find(
+      (event) => event.kind === "node.completed" && event.nodeId === "support.resolve",
+    );
+    expect(completedResolve).toBeUndefined();
+    expect(enteredResolve?.payload).toMatchObject({ toolCallId: "call-into-resolve" });
+  });
+
+  it("omits the entered anchor when the advancing call carried none", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+
+    // The loopback path drops its private id before it reaches here, so a step
+    // entered without one carries no anchor rather than a join that matches
+    // nothing — the same rule the completion anchor already follows.
+    completeEnterpriseStep({ runId: "run-steps" });
+    const entered = events.find((event) => event.kind === "node.entered");
+    expect(entered?.payload).not.toHaveProperty("toolCallId");
+  });
+
   it("stays on a step until it is completed, however many turns that takes", () => {
     registerEnterpriseActiveRun(makeGovernedRun());
     // Nothing but a completion moves the cursor: this is the whole point of the
