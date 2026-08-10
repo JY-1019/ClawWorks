@@ -1279,6 +1279,24 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
     expect(decision.effect).toBe("allow");
   });
 
+  it("governs the reopen tool even though it shares the workflow control surface", () => {
+    // Going BACK is not the same claim as advancing. A work-map that narrows tools
+    // step by step is relying on that order, so walking back re-grants a scope the
+    // route already left — an operator has to be able to gate it, and the ordinary
+    // tool gate is what does that. Exempting it beside complete_step would make a
+    // scoped work-map unable to hold its own sequence.
+    const { plan, path } = grantingPlan(["memory_search"]);
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "reopen_step",
+      policies: [],
+      path,
+      tracksSteps: true,
+    });
+    expect(decision.effect).toBe("require_approval");
+  });
+
   it("does not exempt the name on a run that walks no steps", () => {
     // The core tool is only built for a step-tracking run, so on any other run a
     // PLUGIN may legitimately own that name — and exempting it would hand a plugin

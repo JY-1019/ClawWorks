@@ -125,11 +125,16 @@ function stepRef(run: EnterpriseActiveRun, nodeId: string): EnterpriseStepRef | 
  * needing five turns was abandoned after one and the remaining four executed
  * under the NEXT node's tools, knowledge and ontology.
  *
- * Advancement is monotonic and one step at a time: the cursor can never go
- * backwards and never skips a step, so the worst a confused model can do is
- * finish early, which the trace records. `expectedNodeId` lets the caller assert
- * which step it believes it is finishing, so a model that has lost track is told
- * where the run actually stands instead of silently advancing the wrong one.
+ * Advancement is one step at a time and never skips a step, so the worst a
+ * confused model can do is finish early, which the trace records. `expectedNodeId`
+ * lets the caller assert which step it believes it is finishing, so a model that
+ * has lost track is told where the run actually stands instead of silently
+ * advancing the wrong one.
+ *
+ * This call only ever moves FORWARD. `reopenEnterpriseStep` is the one way back,
+ * and it is deliberately a separate entry point: going back re-grants a scope the
+ * route already left, which is a governed capability, while advancing is just how
+ * a route executes.
  */
 export function completeEnterpriseStep(params: {
   runId: string;
@@ -229,6 +234,151 @@ export function completeEnterpriseStep(params: {
   });
   const next = stepRef(run, to.nodeId);
   return { kind: "advanced", completed, next: next ?? { ...active, nodeId: to.nodeId } };
+}
+
+/**
+ * Record a message that reached a live run mid-flight.
+ *
+ * Steering does not end the run, so a human correction lands inside the current
+ * execution and is judged by the step the cursor is on. That step id is the
+ * attribution: "the operator redirected the work while step 3 was open" is the
+ * fact an auditor needs, and no other event carries it.
+ *
+ * Silent for an unmediated run, exactly like the ontology tools: the caller is a
+ * generic steering seam that has no idea whether this run is governed.
+ */
+export function recordEnterpriseRunSteer(params: {
+  runId: string;
+  text: string;
+  /** `user` for a human steer or `/steer`; `runtime` for events the system injects. */
+  origin: "user" | "runtime";
+}): void {
+  const run = activeRuns().get(params.runId);
+  if (!run) {
+    return;
+  }
+  // Redacted and bounded HERE, at the persistence boundary, like every other
+  // free text on the trace: a steer is user- or event-authored and can quote a
+  // credential straight into enterprise_run_events, which both the Control UI and
+  // `openclaw enterprise runs show` render.
+  const summary = summarizeModelText(params.text);
+  run.sink?.({
+    kind: "run.steered",
+    nodeId: runTracksSteps(run) ? run.plan.activeNodeId : null,
+    payload: {
+      origin: params.origin,
+      ...(summary ? { summary } : {}),
+    },
+  });
+}
+
+/**
+ * How many times one run may go back.
+ *
+ * Forward advancement terminates by construction — an N-step route moves the
+ * cursor at most N times — and reopening removes that bound: reopen, redo,
+ * complete, reopen again is a loop nothing else stops, and under a guidance-free
+ * tree there is no approval in the way of it. Generous against real corrections
+ * (they are human-driven and arrive a handful of times at most) and still finite,
+ * so a model that keeps second-guessing runs out instead of never answering.
+ */
+const MAX_STEP_REOPENS_PER_RUN = 10;
+
+/** Outcome of asking a run to step back onto work it already closed. */
+export type EnterpriseStepReopen =
+  | { kind: "unmediated" }
+  | { kind: "no-steps" }
+  | { kind: "unknown-step"; steps: readonly string[] }
+  | { kind: "not-behind"; active: EnterpriseStepRef }
+  | { kind: "exhausted"; active: EnterpriseStepRef; limit: number }
+  | { kind: "reopened"; from: EnterpriseStepRef; to: EnterpriseStepRef };
+
+/**
+ * Move the cursor back onto a step this run already completed.
+ *
+ * The correction path. A human can steer a governed run at any tool boundary, and
+ * that instruction keeps the run, the tree binding and the cursor — but until
+ * this existed, a correction aimed at a step the model had already closed had
+ * nowhere to land: the work would be redone under the LATER step's scope while
+ * the trace still showed the earlier step finished and correct.
+ *
+ * Backwards only. Jumping forward would claim a step's scope without doing its
+ * work, which is exactly what one-step-at-a-time advancement exists to prevent.
+ * A finished route is the one case where the current step itself can be reopened:
+ * the cursor parks on the final step after completing it, so "reopen the last
+ * step" is a backward move even though the ids match.
+ */
+export function reopenEnterpriseStep(params: {
+  runId: string;
+  nodeId: string;
+  /** Why, in the model's words. Recorded against the step on the trace. */
+  reason?: string;
+  /** The reopening call's tool-call id, anchoring the step to the transcript. */
+  toolCallId?: string;
+}): EnterpriseStepReopen {
+  const run = activeRuns().get(params.runId);
+  if (!run) {
+    return { kind: "unmediated" };
+  }
+  if (!runTracksSteps(run)) {
+    return { kind: "no-steps" };
+  }
+  const steps = enterpriseStepSequence(run.plan);
+  const targetIndex = steps.indexOf(params.nodeId);
+  if (targetIndex < 0) {
+    // Naming the route's own steps back: a model that invented a step id can pick
+    // a real one instead of retrying the same wrong name.
+    return { kind: "unknown-step", steps };
+  }
+  const activeId = run.plan.activeNodeId;
+  const active = stepRef(run, activeId);
+  if (!active) {
+    return { kind: "no-steps" };
+  }
+  const activeIndex = steps.indexOf(activeId);
+  if (targetIndex >= activeIndex && run.routeCompleted !== true) {
+    return { kind: "not-behind", active };
+  }
+  const to = findPlanNode(run.plan, params.nodeId);
+  if (!to) {
+    return { kind: "unknown-step", steps };
+  }
+  if ((run.reopenCount ?? 0) >= MAX_STEP_REOPENS_PER_RUN) {
+    return { kind: "exhausted", active, limit: MAX_STEP_REOPENS_PER_RUN };
+  }
+  run.reopenCount = (run.reopenCount ?? 0) + 1;
+  const reason = params.reason ? summarizeModelText(params.reason) : "";
+  run.plan.activeNodeId = to.nodeId;
+  // The route is open again by definition, so a later complete_step must be able
+  // to close steps rather than answer `already-complete`.
+  run.routeCompleted = false;
+  run.sink?.({
+    kind: "node.reopened",
+    nodeId: to.nodeId,
+    payload: {
+      seq: to.seq,
+      title: to.title,
+      // Where the cursor came from. A backward jump is only legible with both
+      // ends: "reopened triage" does not say whether the run had reached step 2
+      // or finished the whole route.
+      from: activeId,
+      // Every step from the target onward, because redoing a step invalidates
+      // what was built ON it — a resolution written from a triage the operator
+      // just called wrong is stale too. Recorded rather than re-derived so the
+      // trace is self-describing, and load-bearing for resume: dropping only the
+      // target would leave a completed set that is not a route PREFIX, and
+      // firstUnfinishedStep reads a gap at index 0 as "route finished", refusing
+      // to continue a run that finished neither the reopened step nor the tail.
+      invalidated: steps.slice(targetIndex),
+      ...(reason ? { reason } : {}),
+      ...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
+    },
+  });
+  return {
+    kind: "reopened",
+    from: active,
+    to: stepRef(run, to.nodeId) ?? { ...active, nodeId: to.nodeId },
+  };
 }
 
 /** The step the run currently stands on, or null when it tracks no steps. */

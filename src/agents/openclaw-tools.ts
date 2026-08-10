@@ -80,7 +80,7 @@ import { createTtsTool } from "./tools/tts-tool.js";
 import { createUpdatePlanTool } from "./tools/update-plan-tool.js";
 import { createVideoGenerateTool } from "./tools/video-generate-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
-import { createCompleteStepTool } from "./tools/workflow-step-tools.js";
+import { createCompleteStepTool, createReopenStepTool } from "./tools/workflow-step-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 type OpenClawToolsDeps = {
@@ -551,7 +551,15 @@ export function createOpenClawTools(
         ]
       : []),
     ...(exposeOntologyWriteTool ? [createInvokeActionTool({ runId: ontologyCallRunId })] : []),
-    ...(exposeCompleteStepTool ? [createCompleteStepTool({ runId: stepCallRunId })] : []),
+    // One gate for both: a run that walks steps can advance and can be corrected
+    // back onto one. Built together so tool ORDER — part of the prompt-cache key —
+    // stays fixed for the run.
+    ...(exposeCompleteStepTool
+      ? [
+          createCompleteStepTool({ runId: stepCallRunId }),
+          createReopenStepTool({ runId: stepCallRunId }),
+        ]
+      : []),
     createGetGoalTool({
       agentSessionKey: options?.agentSessionKey,
       runSessionKey: options?.runSessionKey,

@@ -1284,6 +1284,10 @@ export async function runReplyAgent(params: {
       followupRun.prompt,
       {
         steeringMode: "all",
+        // A person typed this while the run was working. Marked so the enterprise
+        // trace can tell an operator's correction apart from runtime traffic
+        // arriving on the same steering queue.
+        origin: "user",
         ...(resolvedQueue.debounceMs !== undefined ? { debounceMs: resolvedQueue.debounceMs } : {}),
       },
     );

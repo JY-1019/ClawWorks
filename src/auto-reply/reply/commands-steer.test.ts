@@ -57,6 +57,9 @@ describe("handleSteerCommand", () => {
       "keep going",
       {
         steeringMode: "all",
+        // Marks the instruction as a person's, so the enterprise trace can tell an
+        // operator's correction apart from runtime traffic on the same queue.
+        origin: "user",
         debounceMs: 0,
       },
     );
@@ -80,6 +83,9 @@ describe("handleSteerCommand", () => {
       "check the target",
       {
         steeringMode: "all",
+        // Marks the instruction as a person's, so the enterprise trace can tell an
+        // operator's correction apart from runtime traffic on the same queue.
+        origin: "user",
         debounceMs: 0,
       },
     );
@@ -102,6 +108,9 @@ describe("handleSteerCommand", () => {
       "continue from state",
       {
         steeringMode: "all",
+        // Marks the instruction as a person's, so the enterprise trace can tell an
+        // operator's correction apart from runtime traffic on the same queue.
+        origin: "user",
         debounceMs: 0,
       },
     );

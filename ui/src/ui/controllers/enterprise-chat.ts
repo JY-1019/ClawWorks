@@ -360,10 +360,11 @@ function reconcileEnterpriseChatStep(state: EnterpriseChatState, run: Enterprise
 /**
  * How recently this snapshot saw the run.
  *
- * NOT `updatedAt` alone: the trace sink re-persists the plan on `node.entered`
- * only, so a run whose final step COMPLETED still carries the timestamp of the
- * enter before it. A client that missed that completion would then judge its own
- * stale `entered` chip newer than the snapshot proving the route finished.
+ * NOT `updatedAt` alone: the trace sink re-persists the plan when a step is
+ * ENTERED (advanced onto or reopened), never when one completes, so a run whose
+ * final step COMPLETED still carries the timestamp of the enter before it. A
+ * client that missed that completion would then judge its own stale `entered`
+ * chip newer than the snapshot proving the route finished.
  */
 function runObservedAt(run: EnterpriseRunDetail): number {
   const newestEvent = run.events?.at(-1)?.createdAt ?? 0;
@@ -380,7 +381,10 @@ function latestNodeKind(run: EnterpriseRunDetail, nodeId: string): "entered" | "
     if (event.kind === "node.completed") {
       return "completed";
     }
-    if (event.kind === "node.entered") {
+    // A reopen re-OPENS a step that was already closed, so it has to answer here
+    // too. Skipping it would let the older `node.completed` win the backward scan
+    // and paint a step the run is actively redoing as finished.
+    if (event.kind === "node.entered" || event.kind === "node.reopened") {
       return "entered";
     }
   }

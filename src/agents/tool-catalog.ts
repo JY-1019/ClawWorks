@@ -298,6 +298,20 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     includeInOpenClawGroup: true,
   },
   {
+    // The correction half of the same control surface, and it ships the same way:
+    // a human can steer a governed run at any tool boundary, so every profile that
+    // can walk a route has to be able to take one back a step. Whether a given step
+    // may actually do it is the ENTERPRISE gate's call, not this one — unlike
+    // complete_step, this is an ordinary governed tool there, so an operator keeps
+    // control without the profile having to withhold it.
+    id: "reopen_step",
+    label: "reopen_step",
+    description: "Go back to a finished workflow step to redo its work",
+    sectionId: "workflow",
+    profiles: ["minimal", "coding", "messaging"],
+    includeInOpenClawGroup: true,
+  },
+  {
     // Enterprise-only, opt-in tool: its own `group:enterprise` and excluded from
     // group:openclaw/group:memory so it never widens existing broad allowlists.
     id: "knowledge_search",

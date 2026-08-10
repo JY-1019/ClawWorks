@@ -33,6 +33,17 @@ export type EmbeddedAgentQueueMessageOptions = {
   deliveryTimeoutMs?: number;
   waitForTranscriptCommit?: boolean;
   sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
+  /**
+   * Who is injecting this message. Only the two human seams — a plain message
+   * arriving mid-run and `/steer` — set `"user"`; every other caller (subagent
+   * completions, `sessions_send`, plugin harness sends) is runtime traffic.
+   *
+   * Read solely to attribute the enterprise `run.steered` trace event, which is
+   * the difference between an operator seeing "a person redirected this run" and
+   * seeing an unexplained change of course. Defaults to runtime so a new caller
+   * cannot silently claim to be a human.
+   */
+  origin?: "user";
 };
 
 export type ActiveEmbeddedRunSnapshot = {

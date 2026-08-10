@@ -28,7 +28,7 @@ import type {
   KnowledgeSnippet,
 } from "./types.js";
 
-type SinkEvent = { kind: string; nodeId: string; payload: Record<string, unknown> };
+type SinkEvent = { kind: string; nodeId: string | null; payload: Record<string, unknown> };
 
 function run(opts: {
   mode?: "enforce" | "observe";

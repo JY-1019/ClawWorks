@@ -4,7 +4,10 @@
  * The shared module owns classification and message contracts; this adapter
  * binds those contracts to embedded-run abort, status, and steering primitives.
  */
-import type { EmbeddedAgentQueueMessageOutcome } from "../agents/embedded-agent-runner/runs.js";
+import type {
+  EmbeddedAgentQueueMessageOptions,
+  EmbeddedAgentQueueMessageOutcome,
+} from "../agents/embedded-agent-runner/runs.js";
 import {
   abortEmbeddedAgentRun,
   queueEmbeddedAgentMessageWithOutcomeAsync,
@@ -42,10 +45,13 @@ export {
 
 type RealtimeVoiceAgentControlDeps = {
   abortEmbeddedAgentRun: (sessionId: string) => boolean;
+  // The real options type rather than a local subset: a re-declared shape silently
+  // drops fields the runner grew, and this seam feeds one of them (`origin`, which
+  // marks a spoken correction as an operator's on the enterprise trace).
   queueEmbeddedAgentMessageWithOutcomeAsync: (
     sessionId: string,
     text: string,
-    options?: { steeringMode?: "all"; debounceMs?: number },
+    options?: EmbeddedAgentQueueMessageOptions,
   ) => Promise<EmbeddedAgentQueueMessageOutcome>;
   getDiagnosticSessionActivitySnapshot: (params: {
     sessionId?: string;
@@ -156,6 +162,9 @@ export async function controlRealtimeVoiceAgentRun(
   const steerText = mode === "followup" ? buildRealtimeVoiceAgentFollowupSteeringText(text) : text;
   const outcome = await deps.queueEmbeddedAgentMessageWithOutcomeAsync(sessionId, steerText, {
     steeringMode: "all",
+    // A person speaking into a live run is as much an operator decision as a
+    // typed one, so the enterprise trace must not file it as runtime traffic.
+    origin: "user",
     debounceMs: 0,
   });
   if (!outcome.queued) {

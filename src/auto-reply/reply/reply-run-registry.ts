@@ -15,11 +15,26 @@ export type ReplyBackendKind = "embedded" | "cli";
 
 export type ReplyBackendCancelReason = "user_abort" | "restart" | "superseded";
 
+/**
+ * Queue options a reply-run backend forwards.
+ *
+ * A structural subset of the embedded runner's own options type, declared here so
+ * this module does not import from the runner that attaches to it. It has to
+ * carry `origin`: this path re-enters the SAME embedded queue handle, which is
+ * where a steer is attributed on the enterprise trace, so dropping it would file
+ * an operator's mid-run correction as system traffic.
+ */
+export type ReplyBackendQueueOptions = {
+  steeringMode?: "all";
+  debounceMs?: number;
+  origin?: "user";
+};
+
 export type ReplyBackendHandle = {
   readonly kind: ReplyBackendKind;
   cancel(reason?: ReplyBackendCancelReason): void;
   isStreaming(): boolean;
-  queueMessage?: (text: string) => Promise<void>;
+  queueMessage?: (text: string, options?: ReplyBackendQueueOptions) => Promise<void>;
   /**
    * Compatibility-only hook so legacy "abort compacting runs" paths can still
    * find embedded runs that are compacting during the main run phase.
@@ -720,7 +735,11 @@ export function isReplyRunStreamingForSessionId(sessionId: string): boolean {
   return getAttachedBackend(operation)?.isStreaming() ?? false;
 }
 
-export function queueReplyRunMessage(sessionId: string, text: string): boolean {
+export function queueReplyRunMessage(
+  sessionId: string,
+  text: string,
+  options?: ReplyBackendQueueOptions,
+): boolean {
   const operation = resolveReplyRunForCurrentSessionId(sessionId);
   const backend = operation ? getAttachedBackend(operation) : undefined;
   if (!operation || operation.phase !== "running" || !backend?.queueMessage) {
@@ -729,7 +748,7 @@ export function queueReplyRunMessage(sessionId: string, text: string): boolean {
   if (!backend.isStreaming()) {
     return false;
   }
-  void backend.queueMessage(text);
+  void backend.queueMessage(text, options);
   return true;
 }
 

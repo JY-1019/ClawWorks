@@ -342,7 +342,40 @@ describe("embedded-agent runner run registry", () => {
     });
     expect(outcome.enqueuedAtMs).toEqual(expect.any(Number));
     expect(outcome.deliveredAtMs).toBeUndefined();
-    expect(queueMessage).toHaveBeenCalledWith("completion from child");
+    // The commit wait must NOT reach the fallback: it dispatches fire-and-forget,
+    // so the wait would run unawaited and its timeout would land as an unhandled
+    // rejection — which is why the outcome above reports nothing delivered.
+    expect(queueMessage).toHaveBeenCalledWith("completion from child", {});
+  });
+
+  it("carries a human steer's origin through the reply-run fallback", async () => {
+    // Same fallback path, but this is the field that must survive it: it re-enters
+    // the embedded handle, which is where the enterprise trace attributes a steer,
+    // so dropping it would file an operator's correction as system traffic.
+    const queueMessage = vi.fn(async () => {});
+    const operation = createReplyOperation({
+      sessionKey: "agent:main:main",
+      sessionId: "session-reply-origin",
+      resetTriggered: false,
+    });
+    operation.attachBackend({
+      kind: "embedded",
+      cancel: vi.fn(),
+      isStreaming: () => true,
+      queueMessage,
+    });
+    operation.setPhase("running");
+
+    await queueEmbeddedAgentMessageWithOutcomeAsync(
+      "session-reply-origin",
+      "check the refund window",
+      { steeringMode: "all", origin: "user", debounceMs: 0 },
+    );
+    expect(queueMessage).toHaveBeenCalledWith("check the refund window", {
+      steeringMode: "all",
+      origin: "user",
+      debounceMs: 0,
+    });
   });
 
   it("force-clears an aborted run that does not drain", async () => {
@@ -588,5 +621,4 @@ describe("embedded-agent runner run registry", () => {
     clearActiveEmbeddedRun("session-snapshot", handle);
     expect(getActiveEmbeddedRunSnapshot("session-snapshot")).toBeUndefined();
   });
-
 });

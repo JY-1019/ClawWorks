@@ -23,8 +23,18 @@ import type { EnterprisePlanNode, EnterpriseRunPlan, GovernancePolicy } from "./
 
 /** Trace sink installed by run mediation; must never throw. */
 export type EnterpriseRunTraceSink = (event: {
-  kind: "governance.decision" | "node.entered" | "node.completed" | "action.invoked";
-  nodeId: string;
+  kind:
+    | "governance.decision"
+    | "node.entered"
+    | "node.completed"
+    | "action.invoked"
+    | "run.steered"
+    | "node.reopened";
+  /**
+   * Null only for a run-scoped event on a run that walks no steps: `run.steered`
+   * can fire on a single-scope run, which has no step to attribute it to.
+   */
+  nodeId: string | null;
   payload: Record<string, unknown>;
 }) => void;
 
@@ -60,13 +70,21 @@ export type EnterpriseActiveRun = {
    */
   treeRequiredProperties?: Map<string, Set<string>>;
   /**
-   * Set once the run has finished its LAST step. Advancement is monotonic, so
-   * this is the only state the cursor position cannot express on its own: the
-   * cursor stays on the final step after completing it (dropping to the root
-   * would widen the scope the run ends under), and without this flag a repeated
-   * complete_step would re-emit `node.completed` for a step already closed.
+   * Set once the run has finished its LAST step. Advancement only ever moves
+   * forward, so this is the only state the cursor position cannot express on its
+   * own: the cursor stays on the final step after completing it (dropping to the
+   * root would widen the scope the run ends under), and without this flag a
+   * repeated complete_step would re-emit `node.completed` for a step already
+   * closed. `reopenEnterpriseStep` clears it, which is also what makes reopening
+   * the final step of a finished route legible as a backward move.
    */
   routeCompleted?: boolean;
+  /**
+   * Backward cursor moves so far. Forward advancement is bounded by the route
+   * length; reopening is not, so this is what keeps a reopen/complete loop finite
+   * (MAX_STEP_REOPENS_PER_RUN in runtime.ts).
+   */
+  reopenCount?: number;
 };
 
 // Symbol-keyed global so duplicated dist chunks share one registry
