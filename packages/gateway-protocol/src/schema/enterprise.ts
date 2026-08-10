@@ -526,6 +526,8 @@ export const EnterpriseRunEventKindSchema = Type.Union([
   Type.Literal("node.completed"),
   Type.Literal("run.resumed"),
   Type.Literal("action.invoked"),
+  Type.Literal("run.steered"),
+  Type.Literal("node.reopened"),
 ]);
 
 /** One trace event in an execution timeline. */

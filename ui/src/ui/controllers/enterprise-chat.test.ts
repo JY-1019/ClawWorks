@@ -759,9 +759,51 @@ describe("applyEnterpriseChatStep", () => {
     expect(state.enterpriseChatStep).toMatchObject({ ordinal: 2, total: 2, kind: "completed" });
   });
 
-  // The trace row is only re-persisted on `node.entered`, so a run whose final
-  // step COMPLETED still reports the earlier enter as `updatedAt`. Judging
-  // freshness on that alone would keep a stale chip that missed the completion.
+  // A steered correction sends the run back onto work it had closed. The chip has
+  // to follow, or the operator watches a step being redone while the UI insists it
+  // is finished.
+  it("reports a reopened step as open again, not as the completion it undid", async () => {
+    const { state, request } = createState();
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [{ ...runSummary("exec-reopen", SESSION), status: "running" }] };
+      }
+      if (method === "enterprise.runs.get") {
+        return {
+          run: {
+            ...runSummary("exec-reopen", SESSION),
+            status: "running",
+            locallyActive: true,
+            updatedAt: 9_000,
+            activeNodeId: "a",
+            events: [
+              { seq: 1, kind: "node.completed", nodeId: "a", payload: {}, createdAt: 7_000 },
+              { seq: 2, kind: "node.entered", nodeId: "b", payload: {}, createdAt: 8_000 },
+              {
+                seq: 3,
+                kind: "node.reopened",
+                nodeId: "a",
+                payload: { from: "b" },
+                createdAt: 9_000,
+              },
+            ],
+            nodes: [
+              { nodeId: "a", parentId: null, seq: 0, title: "First", ontology: {} },
+              { nodeId: "b", parentId: null, seq: 1, title: "Second", ontology: {} },
+            ],
+          },
+        };
+      }
+      return {};
+    });
+    await loadEnterpriseChatRoute(state, SESSION);
+    expect(state.enterpriseChatStep).toMatchObject({ ordinal: 1, total: 2, kind: "entered" });
+  });
+
+  // The trace row is only re-persisted when a step is ENTERED (advanced onto or
+  // reopened), so a run whose final step COMPLETED still reports the earlier enter
+  // as `updatedAt`. Judging freshness on that alone would keep a stale chip that
+  // missed the completion.
   it("uses the newest event, not updatedAt, to judge snapshot freshness", async () => {
     const { state, request } = createState();
     applyEnterpriseChatStep(state, inView, SESSION_ID, null, {

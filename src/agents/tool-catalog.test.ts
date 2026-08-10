@@ -48,6 +48,10 @@ describe("tool-catalog", () => {
       // Run machinery, not a capability: a profile that filtered it out would
       // strand every governed work-map on its opening step.
       "complete_step",
+      // Ships with it because a user can steer a governed run at any tool
+      // boundary, and a correction often lands on a step already closed. Whether
+      // a given step may take it is the enterprise gate's call, not the profile's.
+      "reopen_step",
       "get_goal",
       "create_goal",
       "update_goal",
@@ -70,12 +74,18 @@ describe("tool-catalog", () => {
       "session_status",
       "message",
       "complete_step",
+      "reopen_step",
       "bundle-mcp",
     ]);
-    // complete_step joins every profile: it is inert without a bound work-map
-    // (the factory only builds it for a step-tracking run), and a profile that
-    // withheld it would break how a governed run executes rather than narrow it.
-    expect(requirePolicyAllow("minimal")).toEqual(["session_status", "complete_step"]);
+    // Both step tools join every profile: they are inert without a bound work-map
+    // (the factory only builds them for a step-tracking run), and a profile that
+    // withheld them would break how a governed run executes and how a human
+    // corrects it, rather than narrow what either may do.
+    expect(requirePolicyAllow("minimal")).toEqual([
+      "session_status",
+      "complete_step",
+      "reopen_step",
+    ]);
   });
 
   it("full profile uses wildcard to grant all tools (#76507)", () => {

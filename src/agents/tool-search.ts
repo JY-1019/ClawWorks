@@ -13,7 +13,7 @@ import {
 } from "@openclaw/normalization-core/string-normalization";
 import { Type } from "typebox";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { isWorkflowControlTool } from "../enterprise/workflow-control.js";
+import { isDirectWorkflowTool } from "../enterprise/workflow-control.js";
 import { getPluginToolMeta, type PluginToolMcpMeta } from "../plugins/tools.js";
 import {
   isToolWrappedWithBeforeToolCallHook,
@@ -708,14 +708,15 @@ function shouldCatalogTool(tool: AnyAgentTool): boolean {
   if (TOOL_SEARCH_CONTROL_TOOL_NAMES.has(tool.name)) {
     return false;
   }
-  // The workflow step-advance tool stays DIRECT, never behind the catalog wrapper.
-  // Cataloging it breaks it two ways: the model would call the visible wrapper, so
+  // Both workflow step tools stay DIRECT, never behind the catalog wrapper.
+  // Cataloging one breaks it two ways: the model would call the visible wrapper, so
   // governance would judge the WRAPPER's name — and a work-map narrowing that does
   // not happen to list the wrapper blocks the one call that lets the run advance,
-  // stranding it on step 1 forever. The wrapper is also what gets scheduled, so the
-  // tool's `executionMode: "sequential"` would be discarded and a batched sibling
-  // could straddle the step transition. Cheap to keep visible: one small schema.
-  if (isWorkflowControlTool({ toolName: tool.name })) {
+  // stranding it on step 1 forever, or silently voids an operator's `reopen_step`
+  // grant. The wrapper is also what gets scheduled, so the tools'
+  // `executionMode: "sequential"` would be discarded and a batched sibling could
+  // straddle the cursor move. Cheap to keep visible: two small schemas.
+  if (isDirectWorkflowTool({ toolName: tool.name })) {
     return false;
   }
   return true;

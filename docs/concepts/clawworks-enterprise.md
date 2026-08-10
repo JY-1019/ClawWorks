@@ -565,11 +565,12 @@ loopback surface, and the Codex app-server. ACP runs own their own tool channel
 and receive none of ours, so they stay on the step they opened on for the whole
 run.
 
-`complete_step` is deliberately the only way forward. Advancement is monotonic
-and one step at a time, so the worst a confused model can do is finish a step
-early — which the trace records — and it can never reopen a step it has left. A
+`complete_step` is deliberately the only way forward, one step at a time, so the
+worst a confused model can do is finish a step early — which the trace records. A
 step the run never finished stays `entered` with no matching `node.completed`,
-which is exactly how an abandoned or interrupted route reads in the trace.
+which is exactly how an abandoned or interrupted route reads in the trace. The
+one way back is `reopen_step`, covered under [Steering a governed
+run](#steering-a-governed-run) below.
 
 Steps are anchored to the conversation rather than tagged onto every message.
 The one `complete_step` call that closes a step is also where the next one
@@ -588,6 +589,54 @@ tool-call id that is private to our MCP server and never reaches the caller's
 transcript, so steps advanced across it are left to the run-level link rather
 than a per-step span. The trade is deliberate: node attribution costs no
 per-message storage.
+
+## Steering a governed run
+
+A person can type while a run is working, and that message reaches the model at
+the next tool boundary — the current tool calls finish, then the instruction is
+added before the next model call. This is ordinary ClawWorks behavior (see
+`messages.queue.mode`, which defaults to `steer`), and enterprise mode keeps it:
+steering does not end the run, so the instruction lands inside the same governed
+execution, on the step the cursor is on, under that step's scope. The tree
+binding does not change and the planner does not run again.
+
+Two things follow from that.
+
+**The steer is recorded.** Every message that reaches a live governed run writes a
+`run.steered` event carrying the step it landed on and whether it came from a
+person (`origin: "user"` — a chat message or `/steer`) or from the runtime
+(`origin: "runtime"` — a subagent completion, an `sessions_send`). The text is
+redacted and bounded like every other free text on the trace. Without it a run
+that a human redirected would read afterwards as one that walked its route
+untouched.
+
+**A correction can reach a finished step.** Instructions often arrive after the
+model has already closed the step they are about, and redoing that work under the
+current step's scope would be wrong twice over — wrong tools, and a trace still
+claiming the earlier step finished correctly. `reopen_step` moves the cursor back
+onto a completed step; the run then redoes that work under that step's own
+ontology and advances forward again with `complete_step`. It moves backwards
+only, and a finished route can have its final step reopened.
+
+Unlike `complete_step`, `reopen_step` is an **ordinary governed tool**. Advancing
+is how a route executes at all, so nothing may withhold it; going back re-grants a
+scope the route already left, and a work-map that narrows tools step by step is
+relying on that order. So under the guidance-free default trees the model can
+reopen freely, while under a work-map that scopes tools the call lands in the
+normal approval lane — a human confirms that one move, and a run with no
+interactive channel fails closed. Name `reopen_step` in a step's
+`ontology.allowedTools` to grant it outright.
+
+A reopened step is recorded as `node.reopened`, carrying the step it came back
+from and every step the correction invalidated — the target and everything after
+it, because work built on a step the operator called wrong is stale too. Those
+completions stop counting, so a later run that resumes this one will not skip
+work a correction reopened.
+
+Going forward terminates by itself (an N-step route moves the cursor N times);
+going back does not, so a run may reopen at most ten times. Past that the tool
+refuses and tells the model to finish with what it has, which keeps a
+second-guessing model from looping instead of answering.
 
 ## Operating on the ontology
 

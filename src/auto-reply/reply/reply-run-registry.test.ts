@@ -472,7 +472,9 @@ describe("reply run registry", () => {
     operation.setPhase("running");
 
     expect(queueReplyRunMessage("session-running", "hello")).toBe(true);
-    expect(queueMessage).toHaveBeenCalledWith("hello");
+    // Options are forwarded verbatim, absent included: the backend is the same
+    // embedded queue handle, so anything the caller set has to reach it.
+    expect(queueMessage).toHaveBeenCalledWith("hello", undefined);
   });
 
   it("aborts compacting runs through the registry compatibility helper", () => {

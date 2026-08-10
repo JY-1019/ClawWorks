@@ -754,4 +754,25 @@ export type EnterpriseRunEventKind =
    * decision that PERMITTED it is a separate event; this one records what it
    * actually did, which no other event captures.
    */
-  | "action.invoked";
+  | "action.invoked"
+  /**
+   * A message reached this run while it was still executing — a human steering
+   * the work, or a runtime event (a subagent completion, an agent-to-agent send)
+   * arriving mid-flight.
+   *
+   * Recorded because steering does NOT end the run: the instruction lands inside
+   * this execution, on its current step, under that step's scope. Without this
+   * event the trace shows a route walked start to finish with no sign that
+   * anything redirected it, so the one decision a human made mid-run would be the
+   * one decision the audit trail omits.
+   */
+  | "run.steered"
+  /**
+   * The cursor moved BACK onto a step this run had already completed.
+   *
+   * Distinct from `node.entered`, which reads as forward progress: both an
+   * auditor and `cumulativeCompletedNodeIds` have to be able to tell that the
+   * earlier completion no longer stands, or a resumed run would open past work
+   * that was reopened precisely because it was wrong.
+   */
+  | "node.reopened";

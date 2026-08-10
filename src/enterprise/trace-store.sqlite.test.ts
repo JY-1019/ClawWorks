@@ -713,6 +713,167 @@ describe("enterprise trace store", () => {
     ).toEqual({ executionId: "exec-chain-2", completedNodeIds: ["a", "b"] });
   });
 
+  it("drops the whole suffix a reopen invalidated so the carried set stays a prefix", () => {
+    // Route [a,b,c]: `a` and `b` finished, then a steered correction sent the run
+    // back to `a` and the run died before redoing it. Dropping only `a` would leave
+    // `[b]` — not a prefix — and firstUnfinishedStep reads the gap at index 0 as a
+    // finished route, so the operator would be told a run that completed neither
+    // `a` nor `c` was done. The suffix goes with it, because `b` was built on `a`.
+    const plan: EnterpriseRunPlan = {
+      ...makePlan("run-reopen"),
+      nodes: [
+        { nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} },
+        { nodeId: "a", parentId: "root", seq: 1, title: "A", ontology: {} },
+        { nodeId: "b", parentId: "root", seq: 2, title: "B", ontology: {} },
+        { nodeId: "c", parentId: "root", seq: 3, title: "C", ontology: {} },
+      ],
+    };
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-reopen-1",
+        plan,
+        sessionKey: "agent:main:reopen",
+        sessionId: "t-reopen",
+        now: 1500,
+      },
+      storeOptions,
+    );
+    const events = [
+      { nodeId: "a", kind: "node.completed", payload: {} },
+      { nodeId: "b", kind: "node.completed", payload: {} },
+      { nodeId: "a", kind: "node.reopened", payload: { invalidated: ["a", "b", "c"] } },
+      { nodeId: "a", kind: "node.completed", payload: {} },
+    ];
+    for (const [seq, event] of events.entries()) {
+      appendEnterpriseRunEvent(
+        {
+          executionId: "exec-reopen-1",
+          seq,
+          nodeId: event.nodeId,
+          kind: event.kind as "node.completed",
+          payload: event.payload,
+          createdAt: 1501 + seq,
+        },
+        storeOptions,
+      );
+    }
+    finalizeEnterpriseRun(
+      { executionId: "exec-reopen-1", status: "aborted", now: 1510 },
+      storeOptions,
+    );
+
+    // `a` was redone after the reopen, so the run is resumable and the next one
+    // opens on `b` — the first step whose work the correction invalidated.
+    expect(requestEnterpriseRunResume("exec-reopen-1", { now: 8000 }, storeOptions).ok).toBe(true);
+    expect(
+      takeEnterpriseRunResume(
+        {
+          sessionKey: "agent:main:reopen",
+          sessionId: "t-reopen",
+          agentId: null,
+          treeId: "acme.support",
+          startedAt: 9000,
+        },
+        storeOptions,
+      ),
+    ).toEqual({ executionId: "exec-reopen-1", completedNodeIds: ["a"] });
+  });
+
+  it("refuses resume while a reopened step is still unfinished", () => {
+    // Same correction, but the run died BEFORE redoing `a`. Nothing is finished, so
+    // there is no prefix to continue from and the refusal must say exactly that
+    // rather than claim the route completed.
+    const plan: EnterpriseRunPlan = {
+      ...makePlan("run-reopen-2"),
+      nodes: [
+        { nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} },
+        { nodeId: "a", parentId: "root", seq: 1, title: "A", ontology: {} },
+        { nodeId: "b", parentId: "root", seq: 2, title: "B", ontology: {} },
+      ],
+    };
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-reopen-2",
+        plan,
+        sessionKey: "agent:main:reopen2",
+        sessionId: "t-reopen2",
+        now: 1600,
+      },
+      storeOptions,
+    );
+    const events = [
+      { nodeId: "a", kind: "node.completed", payload: {} },
+      { nodeId: "a", kind: "node.reopened", payload: { invalidated: ["a", "b"] } },
+    ];
+    for (const [seq, event] of events.entries()) {
+      appendEnterpriseRunEvent(
+        {
+          executionId: "exec-reopen-2",
+          seq,
+          nodeId: event.nodeId,
+          kind: event.kind as "node.completed",
+          payload: event.payload,
+          createdAt: 1601 + seq,
+        },
+        storeOptions,
+      );
+    }
+    finalizeEnterpriseRun(
+      { executionId: "exec-reopen-2", status: "aborted", now: 1610 },
+      storeOptions,
+    );
+
+    expect(requestEnterpriseRunResume("exec-reopen-2", { now: 8000 }, storeOptions)).toMatchObject({
+      ok: false,
+      reason: "no-steps-completed",
+    });
+  });
+
+  it("reads back every event kind it can write", () => {
+    // The write side is unvalidated — appendEnterpriseRunEvent inserts the kind
+    // straight into SQLite — so a kind missing from the read side's table would
+    // surface only here, throwing for the run inspector and `runs show` alike.
+    const plan = makeTwoStepPlan("run-kinds");
+    persistEnterpriseRunStart(
+      {
+        executionId: "exec-kinds",
+        plan,
+        sessionKey: "agent:main:kinds",
+        sessionId: "t-kinds",
+        now: 1700,
+      },
+      storeOptions,
+    );
+    const kinds = [
+      "run.started",
+      "route.selected",
+      "governance.decision",
+      "node.entered",
+      "node.completed",
+      "node.reopened",
+      "run.steered",
+      "run.resumed",
+      "action.invoked",
+      "run.ended",
+    ] as const;
+    for (const [seq, kind] of kinds.entries()) {
+      appendEnterpriseRunEvent(
+        {
+          executionId: "exec-kinds",
+          seq,
+          nodeId: null,
+          kind,
+          payload: {},
+          createdAt: 1701 + seq,
+        },
+        storeOptions,
+      );
+    }
+    expect(listEnterpriseRunEvents("exec-kinds", storeOptions).map((event) => event.kind)).toEqual([
+      ...kinds,
+    ]);
+  });
+
   it("will not hand a resume to another transcript or to a turn that predates it", () => {
     const plan = makeTwoStepPlan("run-resume-6");
     persistEnterpriseRunStart(

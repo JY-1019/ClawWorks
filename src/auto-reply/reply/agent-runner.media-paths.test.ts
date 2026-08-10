@@ -429,6 +429,9 @@ describe("runReplyAgent media path normalization", () => {
       "generate chart",
       {
         steeringMode: "all",
+        // A person typed this mid-run, which is what the enterprise trace records
+        // to tell an operator's correction from runtime traffic.
+        origin: "user",
       },
     );
     expect(enqueueFollowupRunMock).not.toHaveBeenCalled();

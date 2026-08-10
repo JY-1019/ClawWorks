@@ -14,7 +14,58 @@
 export const WORKFLOW_STEP_ADVANCE_TOOL = "complete_step";
 
 /**
+ * The tool that moves a run BACK onto a step it already closed.
+ *
+ * Named here beside the advance tool, but deliberately NOT part of
+ * `isWorkflowControlTool`: that exemption exists because there is no legitimate
+ * "refuse to advance", and going back is a different claim. A work-map that
+ * narrows tools step by step is relying on that order; walking back re-grants a
+ * scope the route already left, so an operator has to be able to gate it. As an
+ * ordinary tool it inherits the existing gate for free — unrestricted under the
+ * guidance-free default tree, an approvable omission under a work-map that scopes
+ * tools, and grantable outright by naming it in a step's `allowedTools`.
+ */
+export const WORKFLOW_STEP_REOPEN_TOOL = "reopen_step";
+
+function isOurBareTool(
+  params: { toolName: string; mcpTool?: { serverName: string } },
+  expected: string,
+): boolean {
+  if (params.mcpTool !== undefined) {
+    return false;
+  }
+  return params.toolName.trim().toLowerCase() === expected;
+}
+
+/**
+ * Must this call reach the model — and the gate — under its own bare name?
+ *
+ * True for BOTH step tools, and that is a different question from whether the
+ * tool is governed. The tool-search catalog otherwise hides a tool behind a
+ * wrapper, which would break either of these two the same two ways: governance
+ * would judge the WRAPPER's name, so a step's `allowedTools` entry naming the real
+ * tool would never match; and the wrapper is what gets scheduled, so
+ * `executionMode: "sequential"` would be dropped and a batched sibling could
+ * straddle the cursor move. Advancing and going back both move the cursor
+ * synchronously, so both need the direct registration.
+ */
+export function isDirectWorkflowTool(params: {
+  toolName: string;
+  mcpTool?: { serverName: string };
+}): boolean {
+  return (
+    isOurBareTool(params, WORKFLOW_STEP_ADVANCE_TOOL) ||
+    isOurBareTool(params, WORKFLOW_STEP_REOPEN_TOOL)
+  );
+}
+
+/**
  * Is this call the run's own step-advance tool — and provably ours?
+ *
+ * The GOVERNANCE exemption, and deliberately narrower than
+ * `isDirectWorkflowTool`: advancing is how a route executes, so there is no
+ * legitimate refusal, while `reopen_step` re-grants a scope the route already left
+ * and stays an ordinary governed tool.
  *
  * Matched on the BARE name only, and that narrowing is deliberate: both paths
  * that can legitimately deliver this tool to the gate deliver it bare.
@@ -47,8 +98,5 @@ export function isWorkflowControlTool(params: {
   /** The tool's MCP registration, when the dispatcher holds one. */
   mcpTool?: { serverName: string };
 }): boolean {
-  if (params.mcpTool !== undefined) {
-    return false;
-  }
-  return params.toolName.trim().toLowerCase() === WORKFLOW_STEP_ADVANCE_TOOL;
+  return isOurBareTool(params, WORKFLOW_STEP_ADVANCE_TOOL);
 }

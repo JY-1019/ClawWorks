@@ -14,6 +14,8 @@ import {
   completeEnterpriseStep,
   enterpriseRunActiveStep,
   recordEnterpriseApprovalResolution,
+  recordEnterpriseRunSteer,
+  reopenEnterpriseStep,
   enterpriseRunAttachedMcpServers,
   adoptEnterpriseActiveRunSessionId,
   registerEnterpriseActiveRun,
@@ -358,7 +360,7 @@ describe("session → active run index", () => {
   });
 });
 
-type SinkEvent = { kind: string; nodeId: string; payload: Record<string, unknown> };
+type SinkEvent = { kind: string; nodeId: string | null; payload: Record<string, unknown> };
 
 function leaf(nodeId: string, seq: number, title: string): EnterprisePlanNode {
   return { nodeId, parentId: "support", seq, title, ontology: {} };
@@ -663,6 +665,199 @@ describe("enterprise step cursor", () => {
     const decisions = events.filter((event) => event.kind === "governance.decision");
     expect(decisions).toHaveLength(1);
     expect(decisions[0].nodeId).toBe("support.triage");
+  });
+});
+
+describe("enterprise step reopen", () => {
+  afterEach(() => {
+    clearEnterpriseActiveRunsForTest();
+  });
+
+  it("moves the cursor back onto a completed step and traces both ends", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    completeEnterpriseStep({ runId: "run-steps" });
+    events.length = 0;
+
+    const reopen = reopenEnterpriseStep({
+      runId: "run-steps",
+      nodeId: "support.triage",
+      reason: "the operator says triage picked the wrong category",
+    });
+
+    expect(reopen).toMatchObject({
+      kind: "reopened",
+      from: { nodeId: "support.resolve" },
+      to: { nodeId: "support.triage", ordinal: 1 },
+    });
+    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "node.reopened",
+      nodeId: "support.triage",
+      // Both ends, because "reopened triage" alone cannot say how far the run had
+      // already got when the correction arrived.
+      payload: { from: "support.resolve" },
+    });
+  });
+
+  it("records every step from the target onward as invalidated", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    completeEnterpriseStep({ runId: "run-steps" });
+    events.length = 0;
+    reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.triage" });
+
+    // The suffix goes with the target: work built ON a step the operator called
+    // wrong is stale too, and resume needs the completed set to stay a prefix.
+    expect(events[0]?.payload.invalidated).toEqual(["support.triage", "support.resolve"]);
+  });
+
+  it("stops going back once the run has spent its reopen budget", () => {
+    registerEnterpriseActiveRun(makeGovernedRun());
+    // Forward advancement is bounded by the route length; going back is not, so a
+    // model that keeps second-guessing would loop until the turn limit instead of
+    // ever answering.
+    let outcome = reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.triage" });
+    for (let attempt = 0; attempt < 20 && outcome.kind !== "exhausted"; attempt++) {
+      completeEnterpriseStep({ runId: "run-steps" });
+      outcome = reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.triage" });
+    }
+    expect(outcome).toMatchObject({ kind: "exhausted", limit: 10 });
+    // A refused reopen moves nothing: the cursor stays where the last accepted
+    // move left it, so the run finishes its route rather than being stranded by
+    // its own budget.
+    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.resolve");
+  });
+
+  it("refuses a forward jump so a step cannot claim scope without doing its work", () => {
+    registerEnterpriseActiveRun(makeGovernedRun());
+    expect(reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.resolve" })).toMatchObject({
+      kind: "not-behind",
+      active: { nodeId: "support.triage", ordinal: 1 },
+    });
+    expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
+  });
+
+  it("refuses the step the run is already on while the route is still open", () => {
+    registerEnterpriseActiveRun(makeGovernedRun());
+    expect(reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.triage" })).toMatchObject({
+      kind: "not-behind",
+    });
+  });
+
+  it("reopens the final step of a finished route and lets it be closed again", () => {
+    registerEnterpriseActiveRun(makeGovernedRun());
+    completeEnterpriseStep({ runId: "run-steps" });
+    expect(completeEnterpriseStep({ runId: "run-steps" })).toMatchObject({
+      kind: "route-complete",
+    });
+
+    // The cursor parks on the last step after finishing it, so reopening THAT step
+    // is a backward move even though the ids match — this is the correction path
+    // for a run whose final answer was wrong.
+    expect(reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.resolve" })).toMatchObject({
+      kind: "reopened",
+      to: { nodeId: "support.resolve" },
+    });
+    expect(getEnterpriseActiveRun("run-steps")?.routeCompleted).toBe(false);
+    expect(completeEnterpriseStep({ runId: "run-steps" })).toMatchObject({
+      kind: "route-complete",
+    });
+  });
+
+  it("names the route's own steps back when the caller invents an id", () => {
+    registerEnterpriseActiveRun(makeGovernedRun());
+    completeEnterpriseStep({ runId: "run-steps" });
+    expect(reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.nope" })).toMatchObject({
+      kind: "unknown-step",
+      steps: ["support.triage", "support.resolve"],
+    });
+  });
+
+  it("redacts the reason before it reaches the trace", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    completeEnterpriseStep({ runId: "run-steps" });
+    events.length = 0;
+    reopenEnterpriseStep({
+      runId: "run-steps",
+      nodeId: "support.triage",
+      reason: "retry with sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL instead",
+    });
+    expect(events[0]?.payload.reason).not.toContain(
+      "sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL",
+    );
+  });
+
+  it("stays silent on a run it does not govern", () => {
+    expect(reopenEnterpriseStep({ runId: "nope", nodeId: "support.triage" })).toEqual({
+      kind: "unmediated",
+    });
+  });
+});
+
+describe("recordEnterpriseRunSteer", () => {
+  afterEach(() => {
+    clearEnterpriseActiveRunsForTest();
+  });
+
+  it("attributes a human steer to the step the run is standing on", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    completeEnterpriseStep({ runId: "run-steps" });
+    events.length = 0;
+
+    recordEnterpriseRunSteer({
+      runId: "run-steps",
+      text: "actually check the refund window first",
+      origin: "user",
+    });
+
+    expect(events).toEqual([
+      {
+        kind: "run.steered",
+        nodeId: "support.resolve",
+        payload: { origin: "user", summary: "actually check the refund window first" },
+      },
+    ]);
+  });
+
+  it("marks runtime traffic apart from an operator's instruction", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    recordEnterpriseRunSteer({ runId: "run-steps", text: "subagent finished", origin: "runtime" });
+    expect(events[0]?.payload.origin).toBe("runtime");
+  });
+
+  it("records a run-scoped steer with no step when the run walks none", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-flat", sink: (event) => events.push(event) }),
+    );
+    recordEnterpriseRunSteer({ runId: "run-flat", text: "hold on", origin: "user" });
+    expect(events[0]).toMatchObject({ kind: "run.steered", nodeId: null });
+  });
+
+  it("redacts steer text before it reaches the trace", () => {
+    const events: SinkEvent[] = [];
+    registerEnterpriseActiveRun(makeGovernedRun((event) => events.push(event)));
+    // User-authored and persisted to enterprise_run_events, so it gets the same
+    // treatment as every other free text on the trace.
+    recordEnterpriseRunSteer({
+      runId: "run-steps",
+      text: "use sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL for this",
+      origin: "user",
+    });
+    expect(events[0]?.payload.summary).not.toContain(
+      "sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL",
+    );
+  });
+
+  it("stays silent on a run it does not govern", () => {
+    expect(() =>
+      recordEnterpriseRunSteer({ runId: "nope", text: "hello", origin: "user" }),
+    ).not.toThrow();
   });
 });
 

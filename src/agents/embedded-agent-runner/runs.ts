@@ -11,6 +11,7 @@ import {
   queueReplyRunMessage,
   waitForReplyRunEndBySessionId,
 } from "../../auto-reply/reply/reply-run-registry.js";
+import { getSessionActiveRunId, recordEnterpriseRunSteer } from "../../enterprise/runtime.js";
 import {
   markDiagnosticEmbeddedRunEnded,
   markDiagnosticEmbeddedRunStarted,
@@ -362,6 +363,38 @@ export async function queueEmbeddedAgentMessageWithOutcomeAsync(
   }
 }
 
+/**
+ * Trace a message that a LIVE run is about to receive.
+ *
+ * Recorded here rather than inside a backend's own `queueMessage`, because this
+ * is the one dispatch every backend shares: the embedded runner, the Codex
+ * app-server and the Copilot harness all register their handle in
+ * `ACTIVE_EMBEDDED_RUNS` and every steer arrives through this module. Recording
+ * in the embedded handle alone would leave a Codex-backed governed run showing a
+ * route walked untouched while a human was redirecting it.
+ *
+ * Resolved from the sessionId the enterprise run bound at mediation, and a no-op
+ * when this session has no governed run. Fires before the enqueue: this is the
+ * last moment the cursor still names the step the instruction is aimed at, and an
+ * enqueue that later fails leaves an entry for a steer that did not land — the
+ * safe direction for an audit trail.
+ */
+function traceSteerOnGovernedRun(
+  sessionId: string,
+  text: string,
+  options?: EmbeddedAgentQueueMessageOptions,
+): void {
+  const runId = getSessionActiveRunId(sessionId);
+  if (!runId) {
+    return;
+  }
+  recordEnterpriseRunSteer({
+    runId,
+    text,
+    origin: options?.origin === "user" ? "user" : "runtime",
+  });
+}
+
 function prepareEmbeddedAgentQueueMessage(
   sessionId: string,
   text: string,
@@ -369,8 +402,19 @@ function prepareEmbeddedAgentQueueMessage(
 ): PreparedEmbeddedAgentQueueMessage {
   const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
   if (!handle) {
-    const queuedReplyRunMessage = queueReplyRunMessage(sessionId, text);
+    // Narrowed on purpose, field by field. This re-enters the same embedded queue
+    // handle, so `origin` has to survive or a human correction is traced as
+    // runtime traffic — but `waitForTranscriptCommit` must NOT: the fallback
+    // dispatches fire-and-forget, so a commit wait would run unawaited and its
+    // timeout would surface as an unhandled rejection, while the outcome below
+    // already tells the caller nothing was confirmed delivered.
+    const queuedReplyRunMessage = queueReplyRunMessage(sessionId, text, {
+      ...(options?.steeringMode ? { steeringMode: options.steeringMode } : {}),
+      ...(options?.debounceMs !== undefined ? { debounceMs: options.debounceMs } : {}),
+      ...(options?.origin ? { origin: options.origin } : {}),
+    });
     if (queuedReplyRunMessage) {
+      traceSteerOnGovernedRun(sessionId, text, options);
       logMessageQueued({ sessionId, source: "embedded-agent-runner" });
       return {
         kind: "complete",
@@ -424,6 +468,7 @@ function prepareEmbeddedAgentQueueMessage(
       outcome: createQueueFailureOutcome(sessionId, "source_reply_delivery_mode_mismatch"),
     };
   }
+  traceSteerOnGovernedRun(sessionId, text, options);
   return { kind: "embedded_run", handle };
 }
 

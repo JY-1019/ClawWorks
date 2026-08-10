@@ -142,6 +142,9 @@ export const handleSteerCommand: CommandHandler = async (params, allowTextComman
 
   const queueOutcome = await queueEmbeddedAgentMessageWithOutcomeAsync(sessionId, message, {
     steeringMode: "all",
+    // Explicitly a person's instruction, so the enterprise trace attributes it to
+    // an operator rather than to runtime traffic on the same queue.
+    origin: "user",
     debounceMs: 0,
   }).catch((err: unknown): CommandHandlerResult => {
     return continueWithSteerFallback(

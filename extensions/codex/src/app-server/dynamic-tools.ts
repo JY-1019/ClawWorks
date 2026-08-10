@@ -359,13 +359,25 @@ export const CODEX_OPENCLAW_DYNAMIC_TOOL_NAMESPACE = "openclaw";
 // `complete_step` is direct for two reasons that both break a governed run if it
 // is not. Codex FLATTENS a namespaced dynamic tool for legacy boundaries by
 // concatenating namespace and name with no separator
-// (`flat_tool_name`, ../codex/codex-rs/core/src/tools/mod.rs:43-53), so the
-// PreToolUse hook would see `openclawcomplete_step` and the governance gate —
-// which knows the tool by its real name — would judge it an ungranted ordinary
-// tool and block it. And a namespaced tool defers loading, so the model has to
-// search for it first, while the run digest tells it this is the only way to
-// advance. Direct registration keeps the name honest and the tool present.
-const ALWAYS_DIRECT_DYNAMIC_TOOL_NAMES = new Set(["sessions_yield", "complete_step"]);
+// (`flat_tool_name`, ../codex/codex-rs/core/src/tools/mod.rs:42-52), and the hook
+// name is built from exactly that
+// (`HookToolName::new(flat_tool_name(...))`, ../codex/codex-rs/core/src/tools/registry.rs:825),
+// so the PreToolUse hook would see `openclawcomplete_step` and the governance
+// gate — which knows the tool by its real name — would judge it an ungranted
+// ordinary tool and block it. And a namespaced tool defers loading, so the model
+// has to search for it first, while the run digest tells it this is the only way
+// to advance. Direct registration keeps the name honest and the tool present.
+//
+// `reopen_step` needs the same registration for the first reason, and needs it
+// MORE: it is a governed tool, so an operator can grant it by naming it in a
+// step's ontology.allowedTools — a grant the flattened spelling would silently
+// void, leaving the correction path refused outright on every Codex-backed
+// governed run with no approval prompt to notice it by.
+const ALWAYS_DIRECT_DYNAMIC_TOOL_NAMES = new Set([
+  "sessions_yield",
+  "complete_step",
+  "reopen_step",
+]);
 const EXPLICIT_MESSAGE_PROVIDER_KEYS = ["channel", "provider"];
 const EXPLICIT_MESSAGE_TARGET_KEYS = ["target", "to", "channelId"];
 const EXPLICIT_MESSAGE_THREAD_KEYS = ["threadId", "thread_id", "messageThreadId", "topicId"];

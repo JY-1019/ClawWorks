@@ -143,7 +143,9 @@ describe("controlRealtimeVoiceAgentRun", () => {
     expect(deps.queueEmbeddedAgentMessageWithOutcomeAsync).toHaveBeenCalledWith(
       "session-active",
       "use the safer path",
-      { steeringMode: "all", debounceMs: 0 },
+      // origin marks the spoken instruction as an operator's, so the enterprise
+      // trace does not file a voice correction as runtime traffic.
+      { steeringMode: "all", origin: "user", debounceMs: 0 },
     );
   });
 

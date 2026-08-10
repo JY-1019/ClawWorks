@@ -93,16 +93,29 @@ const RUN_STATUSES: readonly EnterpriseRunStatus[] = [
   "timed_out",
 ];
 
-const RUN_EVENT_KINDS: readonly EnterpriseRunEventKind[] = [
-  "run.started",
-  "route.selected",
-  "run.ended",
-  "governance.decision",
-  "node.entered",
-  "node.completed",
-  "run.resumed",
-  "action.invoked",
-];
+/**
+ * Keyed by the union, not listed as an array, and that is load-bearing.
+ *
+ * `readonly EnterpriseRunEventKind[]` happily accepts a SHORT list, so a kind
+ * added to the union would compile here while `parseRunEventKind` still rejected
+ * it. Writes are unvalidated — `appendEnterpriseRunEvent` inserts the kind
+ * straight into SQLite — so the omission would surface only on the READ side,
+ * throwing for every consumer of that execution's timeline: the Control UI run
+ * inspector and `openclaw enterprise runs show` both. A Record makes the same
+ * omission a build error instead.
+ */
+const RUN_EVENT_KINDS = {
+  "run.started": true,
+  "route.selected": true,
+  "run.ended": true,
+  "governance.decision": true,
+  "node.entered": true,
+  "node.completed": true,
+  "run.resumed": true,
+  "action.invoked": true,
+  "run.steered": true,
+  "node.reopened": true,
+} as const satisfies Record<EnterpriseRunEventKind, true>;
 
 function requireSqliteNumber(value: number | bigint): number {
   return normalizeSqliteNumber(value) ?? 0;
@@ -117,11 +130,10 @@ function parseRunStatus(value: string): EnterpriseRunStatus {
 }
 
 function parseRunEventKind(value: string): EnterpriseRunEventKind {
-  const kind = RUN_EVENT_KINDS.find((candidate) => candidate === value);
-  if (!kind) {
+  if (!Object.hasOwn(RUN_EVENT_KINDS, value)) {
     throw new Error(`unknown enterprise run event kind "${value}"`);
   }
-  return kind;
+  return value as EnterpriseRunEventKind;
 }
 
 function rowToRunRecord(row: EnterpriseRunRow): EnterpriseRunRecord {
@@ -567,20 +579,42 @@ export function listEnterpriseRunRecords(
 export function cumulativeCompletedNodeIds(
   events: readonly { kind: string; nodeId: string | null; payload: Record<string, unknown> }[],
 ): string[] {
-  const completed: string[] = [];
+  // Replayed in event order, and that ordering is the point: a step can be closed,
+  // reopened for a correction, and closed again, so the LAST event about it decides
+  // whether it counts as finished. A pass that only collected completions would
+  // hand resume a step the run reopened precisely because it was wrong.
+  const completed = new Set<string>();
   for (const event of events) {
     if (event.kind === "run.resumed") {
       const carried = event.payload.carriedSteps;
       if (Array.isArray(carried)) {
-        completed.push(...carried.filter((step): step is string => typeof step === "string"));
+        for (const step of carried) {
+          if (typeof step === "string") {
+            completed.add(step);
+          }
+        }
+      }
+      continue;
+    }
+    if (event.kind === "node.reopened") {
+      // The whole suffix the reopen invalidated, as the event recorded it. Not
+      // just `nodeId`: the completed set has to stay a route PREFIX or
+      // firstUnfinishedStep reads the first gap as a finished route.
+      const invalidated = event.payload.invalidated;
+      if (Array.isArray(invalidated)) {
+        for (const step of invalidated) {
+          if (typeof step === "string") {
+            completed.delete(step);
+          }
+        }
       }
       continue;
     }
     if (event.kind === "node.completed" && event.nodeId) {
-      completed.push(event.nodeId);
+      completed.add(event.nodeId);
     }
   }
-  return [...new Set(completed)];
+  return [...completed];
 }
 
 /**
@@ -892,7 +926,16 @@ function completedNodeIdsFor(
       .selectFrom("enterprise_run_events")
       .select(["node_id", "kind", "payload_json"])
       .where("execution_id", "=", executionId)
-      .where((eb) => eb.or([eb("kind", "=", "node.completed"), eb("kind", "=", "run.resumed")]))
+      // `node.reopened` belongs in this narrowing as much as the other two: it is
+      // what UNDOES a completion, so filtering it out here would hand the resume
+      // writer a prefix that still contains the step a correction reopened.
+      .where((eb) =>
+        eb.or([
+          eb("kind", "=", "node.completed"),
+          eb("kind", "=", "node.reopened"),
+          eb("kind", "=", "run.resumed"),
+        ]),
+      )
       .orderBy("seq", "asc"),
   ).rows as { node_id: string | null; kind: string; payload_json: string }[];
   return cumulativeCompletedNodeIds(

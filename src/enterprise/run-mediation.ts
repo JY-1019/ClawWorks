@@ -360,9 +360,12 @@ async function beginEnterpriseRunInternal(
       persistTrace(() => {
         appendEvent(run, event.kind, event.nodeId, event.payload);
       });
-      // Advancement mutated run.plan.activeNodeId in place; re-persist the plan
-      // so trace reads reflect the current step, not the run-start root.
-      if (event.kind === "node.entered") {
+      // Both kinds land the cursor ON a step: an advance moves it forward, a
+      // reopen moves it back onto corrected work. Either way run.plan.activeNodeId
+      // was mutated in place, so re-persist the plan or trace reads keep reporting
+      // the step the run already left.
+      const entersStep = event.kind === "node.entered" || event.kind === "node.reopened";
+      if (entersStep) {
         persistTrace(() => {
           updateEnterpriseRunPlan({ executionId: run.executionId, plan: run.plan });
         });
@@ -372,8 +375,8 @@ async function beginEnterpriseRunInternal(
       // to say which step it is on WHILE it runs. Publishing here rather than at
       // the advance site covers the opening step too, which mediation enters
       // itself. Never throws: a listener fault must not affect the run.
-      if (event.kind === "node.entered" || event.kind === "node.completed") {
-        publishStepEvent(run, event);
+      if ((entersStep || event.kind === "node.completed") && event.nodeId !== null) {
+        publishStepEvent(run, { ...event, nodeId: event.nodeId });
       }
     },
   };
@@ -662,6 +665,9 @@ function publishStepEvent(
       ...(run.agentId ? { agentId: run.agentId } : {}),
       treeId: run.plan.treeId,
       treeName: run.plan.treeName,
+      // A reopen reports as `entered`: what a live surface needs is which step the
+      // run is on now, and it is on this one. The durable trace keeps the
+      // distinction, so nothing is lost by not widening the live event's shape.
       kind: event.kind === "node.completed" ? "completed" : "entered",
       nodeId: event.nodeId,
       title: typeof event.payload.title === "string" ? event.payload.title : event.nodeId,

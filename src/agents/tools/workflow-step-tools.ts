@@ -1,5 +1,10 @@
 /**
- * complete_step: the model's half of walking a work-map.
+ * complete_step and reopen_step: the model's half of walking a work-map.
+ *
+ * Two directions, and only one of them is free. `complete_step` is how a route
+ * executes at all, so nothing may withhold it; `reopen_step` walks back onto a
+ * step a correction says was wrong, which re-grants a scope the route already
+ * left — so it stays an ordinary governed tool. See WORKFLOW_STEP_REOPEN_TOOL.
  *
  * A run bound to a workflow tree executes its route inside ONE tool-calling loop,
  * and this is what moves that loop from one step to the next. Advancement used to
@@ -16,8 +21,16 @@
  * from an unmediated run, the same way the ontology tools do.
  */
 import { Type } from "typebox";
-import { completeEnterpriseStep, type EnterpriseStepAdvance } from "../../enterprise/runtime.js";
-import { WORKFLOW_STEP_ADVANCE_TOOL } from "../../enterprise/workflow-control.js";
+import {
+  completeEnterpriseStep,
+  reopenEnterpriseStep,
+  type EnterpriseStepAdvance,
+  type EnterpriseStepReopen,
+} from "../../enterprise/runtime.js";
+import {
+  WORKFLOW_STEP_ADVANCE_TOOL,
+  WORKFLOW_STEP_REOPEN_TOOL,
+} from "../../enterprise/workflow-control.js";
 import { MCP_LOOPBACK_TOOL_CALL_ID_PREFIX } from "../../gateway/mcp-http.protocol.js";
 import { asToolParamsRecord, jsonResult, readStringParam, type AnyAgentTool } from "./common.js";
 
@@ -135,6 +148,87 @@ export function createCompleteStepTool(opts: { runId: string }): AnyAgentTool {
         ...(summary ? { summary } : {}),
       });
       return jsonResult(describeAdvance(advance, step));
+    },
+  };
+}
+
+const ReopenStepSchema = Type.Object({
+  step: Type.String({
+    description:
+      "Id of the already-completed step to go back to, as shown in the workflow section.",
+  }),
+  reason: Type.Optional(
+    Type.String({
+      description:
+        "Why the run is going back, in one sentence. Recorded against the step in the run's trace.",
+    }),
+  ),
+});
+
+/** Turn a reopen outcome into what the model reads back. Mirrors describeAdvance. */
+function describeReopen(
+  reopen: EnterpriseStepReopen,
+  requestedStep: string,
+): Record<string, unknown> {
+  if (reopen.kind === "unmediated") {
+    return { error: "this run is not governed by a workflow tree, so it has no steps to reopen" };
+  }
+  if (reopen.kind === "no-steps") {
+    return { error: "this run's workflow has a single scope and no steps to go back to" };
+  }
+  if (reopen.kind === "unknown-step") {
+    return {
+      error: `"${requestedStep}" is not a step in this run's route`,
+      steps: reopen.steps,
+    };
+  }
+  if (reopen.kind === "not-behind") {
+    // The common miss is aiming at the CURRENT step, which needs no reopening —
+    // say so rather than leaving the model to retry the same call.
+    return {
+      error: `"${requestedStep}" is not behind the run: it is on step "${reopen.active.nodeId}" (${reopen.active.ordinal} of ${reopen.active.total}), and this tool only moves backwards`,
+      step: reopen.active,
+    };
+  }
+  if (reopen.kind === "exhausted") {
+    // Tell it what to do INSTEAD. A bare refusal invites the same call again, and
+    // the whole point of the budget is that this run stops going in circles.
+    return {
+      error: `this run has already gone back ${reopen.limit} times, which is the limit. Finish the work from step "${reopen.active.nodeId}" and answer with what you have, or report what is still wrong.`,
+      step: reopen.active,
+    };
+  }
+  return {
+    step: reopen.to,
+    reopenedFrom: reopen.from,
+    message: `back on step ${reopen.to.ordinal} of ${reopen.to.total}: "${reopen.to.title}" (${reopen.to.nodeId}). Its tools, knowledge sources and constraints apply again; redo the work, then call ${WORKFLOW_STEP_ADVANCE_TOOL} to move forward from here.`,
+  };
+}
+
+export function createReopenStepTool(opts: { runId: string }): AnyAgentTool {
+  return {
+    label: "Workflow",
+    name: WORKFLOW_STEP_REOPEN_TOOL,
+    // Same reason complete_step is sequential: this moves the active node
+    // synchronously, and a sibling in the same batch would otherwise execute under
+    // a node governance never authorized it for.
+    executionMode: "sequential",
+    description:
+      "Go back to a workflow step this run already finished, when new instructions say that step's work was wrong. Redo the work under that step's own scope, then advance forward again. It only moves backwards.",
+    parameters: ReopenStepSchema,
+    execute: async (toolCallId, params) => {
+      const record = asToolParamsRecord(params);
+      const step = readStringParam(record, "step") ?? "";
+      const reason = readStringParam(record, "reason");
+      const reopen = reopenEnterpriseStep({
+        runId: opts.runId,
+        nodeId: step,
+        // Same anchoring rule as complete_step: a loopback-minted id matches no
+        // transcript row, so storing it would be a join that silently finds nothing.
+        ...(isAnchorableToolCallId(toolCallId) ? { toolCallId } : {}),
+        ...(reason ? { reason } : {}),
+      });
+      return jsonResult(describeReopen(reopen, step));
     },
   };
 }

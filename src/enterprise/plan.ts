@@ -25,7 +25,7 @@ import type {
   WorkflowTreeDefinition,
   WorkflowTreeTrigger,
 } from "./types.js";
-import { WORKFLOW_STEP_ADVANCE_TOOL } from "./workflow-control.js";
+import { WORKFLOW_STEP_ADVANCE_TOOL, WORKFLOW_STEP_REOPEN_TOOL } from "./workflow-control.js";
 
 const REQUEST_SUMMARY_MAX_CHARS = 300;
 const DIGEST_MAX_HINT_LINES = 8;
@@ -136,10 +136,11 @@ function flattenPlanNodes(
 const MODEL_TEXT_MAX_CHARS = 300;
 
 /**
- * Redact + bound text the MODEL produced about the request (route rationales,
- * hallucinated route strings). It is persisted to the trace and rendered in the
- * UI, so it gets the same redaction as the request summary — a rationale that
- * quotes the prompt back would otherwise smuggle a secret into the trace.
+ * Redact + bound free text written onto a run's trace: route rationales and step
+ * summaries the model produced, and the steer text a human or a runtime event
+ * injected mid-run. All of it is persisted and rendered in the UI, so it gets the
+ * same redaction as the request summary — text that quotes the prompt back would
+ * otherwise smuggle a secret into the trace.
  */
 export function summarizeModelText(text: string): string {
   const redacted = redactSecrets(text).replace(/\s+/g, " ").trim();
@@ -733,6 +734,14 @@ export function buildEnterprisePromptSection(
     const openingOrdinal = stepOrdinals.get(plan.activeNodeId) ?? 1;
     lines.push(
       `This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step ${openingOrdinal}. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,
+    );
+    // A user can steer a governed run at any tool boundary, and a correction often
+    // lands on work an earlier step already closed. Without this line the model
+    // redoes that work under the CURRENT step's scope and the trace keeps showing
+    // the earlier step finished and correct, so the correction is invisible to
+    // both governance and the operator screen.
+    lines.push(
+      `If someone tells you an earlier step was wrong, call ${WORKFLOW_STEP_REOPEN_TOOL} with that step's id before redoing it, so the work happens under that step's own scope and the run records the correction. It only moves backwards, and unlike ${WORKFLOW_STEP_ADVANCE_TOOL} it is an ordinary governed tool, so a work-map that scopes tools may ask a human to approve the move.`,
     );
   }
   lines.push("Steps:");

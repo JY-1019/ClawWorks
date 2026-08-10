@@ -33,7 +33,10 @@ import { resolveContextEngineOwnerPluginId } from "../../../context-engine/regis
 import { buildContextEngineRuntimeSettings } from "../../../context-engine/runtime-settings.js";
 import type { AssembleResult } from "../../../context-engine/types.js";
 import { enterpriseRunTracksSteps } from "../../../enterprise/runtime.js";
-import { WORKFLOW_STEP_ADVANCE_TOOL } from "../../../enterprise/workflow-control.js";
+import {
+  WORKFLOW_STEP_ADVANCE_TOOL,
+  WORKFLOW_STEP_REOPEN_TOOL,
+} from "../../../enterprise/workflow-control.js";
 import { diagnosticErrorCategory } from "../../../infra/diagnostic-error-metadata.js";
 import { emitTrustedDiagnosticEvent } from "../../../infra/diagnostic-events.js";
 import { resolveDiagnosticModelContentCapturePolicy } from "../../../infra/diagnostic-llm-content.js";
@@ -1392,6 +1395,16 @@ export async function runEmbeddedAttempt(
       if (!canAdvance) {
         log.warn(
           `[${sessionLabel}] enterprise: this run is governed by a work-map with steps, but "${WORKFLOW_STEP_ADVANCE_TOOL}" was filtered out by an allowlist — the run cannot advance past its first step. Add "${WORKFLOW_STEP_ADVANCE_TOOL}" (or "group:openclaw") to the allowlist that applies.`,
+        );
+      }
+      // Same reasoning, softer consequence: the run still finishes, but the digest
+      // tells the model to reopen a mis-done step and the tool is not there, so a
+      // steered correction turns into repeated calls to a tool that does not exist.
+      // Worth its own line because the remedy is a different allowlist entry.
+      const canReopen = toolsRaw.some((tool) => tool.name === WORKFLOW_STEP_REOPEN_TOOL);
+      if (!canReopen) {
+        log.warn(
+          `[${sessionLabel}] enterprise: "${WORKFLOW_STEP_REOPEN_TOOL}" was filtered out by an allowlist — this run cannot go back to redo a step a correction says was wrong. Add "${WORKFLOW_STEP_REOPEN_TOOL}" (or "group:openclaw") to the allowlist that applies.`,
         );
       }
     }
@@ -3752,6 +3765,9 @@ export async function runEmbeddedAttempt(
         cancel: (reason?: "user_abort" | "restart" | "superseded") => void;
       } = {
         kind: "embedded",
+        // The enterprise `run.steered` trace is NOT written here: every backend
+        // shares the dispatch in embedded-agent-runner/runs.ts, so recording in
+        // this handle alone would miss Codex- and Copilot-backed governed runs.
         queueMessage: async (text: string, options) => {
           if (options?.steeringMode) {
             activeSession.agent.steeringMode = options.steeringMode;
