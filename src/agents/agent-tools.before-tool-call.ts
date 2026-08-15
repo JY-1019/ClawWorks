@@ -9,6 +9,7 @@ import { addTimerTimeoutGraceMs } from "@openclaw/normalization-core/number-coer
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
 import {
+  enterpriseRunEnforces,
   evaluateEnterpriseToolCall,
   readInvokedActionId,
   recordEnterpriseApprovalResolution,
@@ -230,10 +231,22 @@ export function getBeforeToolCallPolicyDiagnosticState(): BeforeToolCallPolicyDi
   };
 }
 
-/** Return true when any before_tool_call policy could affect tool execution. */
-export function hasBeforeToolCallPolicy(): boolean {
+/**
+ * Return true when any before_tool_call policy could affect tool execution.
+ *
+ * Pass the run when the caller has one. Enterprise governance is a core step of
+ * this gate rather than a registered hook, so a run's work-map is invisible to
+ * the hook and trusted-tool registries the diagnostic state reads — a governed
+ * run on an install with neither would otherwise answer "nothing gates tools
+ * here" while a work-map was deciding every call.
+ */
+export function hasBeforeToolCallPolicy(runId?: string): boolean {
   const state = getBeforeToolCallPolicyDiagnosticState();
-  return state.hasBeforeToolCallHook || state.trustedToolPolicies.length > 0;
+  return (
+    state.hasBeforeToolCallHook ||
+    state.trustedToolPolicies.length > 0 ||
+    enterpriseRunEnforces(runId)
+  );
 }
 
 const log = createSubsystemLogger("agents/tools");

@@ -134,6 +134,21 @@ export function getEnterpriseActiveRun(runId: string): EnterpriseActiveRun | und
   return activeRuns().get(runId);
 }
 
+/**
+ * Is this run governed by rules a denial must actually enforce?
+ *
+ * Asked by surfaces that decide, ahead of a tool call, whether the before-tool
+ * gate has anything to say for a run — the native hook relay stamps that answer
+ * into the hook command it hands the harness, before any tool is named.
+ *
+ * Observe runs answer NO on purpose. Their gate only writes trace, so treating a
+ * degraded gate as a refusal there would block work the mode promises to leave
+ * alone; enforce is the mode that fails closed (see evaluateEnterpriseToolCall).
+ */
+export function enterpriseRunEnforces(runId: string | undefined): boolean {
+  return runId ? activeRuns().get(runId)?.plan.mode === "enforce" : false;
+}
+
 /** The run a session is executing right now, or undefined between/outside runs. */
 export function getSessionActiveRunId(sessionId: string): string | undefined {
   return sessionActiveRuns().get(sessionId);

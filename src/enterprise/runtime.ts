@@ -27,6 +27,7 @@ export {
   clearEnterpriseActiveRunsForTest,
   adoptEnterpriseActiveRunSessionId,
   enterpriseRunAttachedMcpServers,
+  enterpriseRunEnforces,
   getEnterpriseActiveRun,
   getSessionActiveRunId,
   registerEnterpriseActiveRun,

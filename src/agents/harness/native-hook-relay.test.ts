@@ -7,6 +7,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { updateSessionStore, type SessionEntry } from "../../config/sessions.js";
+// The plan-free registry, not enterprise/runtime.js: this is the module the relay
+// predicate reads, and it stays clear of the planner package alias.
+import {
+  clearEnterpriseActiveRunsForTest,
+  registerEnterpriseActiveRun,
+} from "../../enterprise/active-runs.js";
+import type { EnterpriseRunPlan } from "../../enterprise/types.js";
 import {
   initializeGlobalHookRunner,
   resetGlobalHookRunner,
@@ -31,7 +38,27 @@ afterEach(() => {
   resetGlobalHookRunner();
   setActivePluginRegistry(createEmptyPluginRegistry());
   testing.clearNativeHookRelaysForTests();
+  // The registry is a process-wide global, so a leaked run would silently turn
+  // every later case's pre-tool assertion into the governed answer.
+  clearEnterpriseActiveRunsForTest();
 });
+
+/** Minimal governed run: only the mode reaches the relay's pre-tool decision. */
+function registerGovernedRun(params: { runId: string; mode: "enforce" | "observe" }): void {
+  const plan: EnterpriseRunPlan = {
+    runId: params.runId,
+    treeId: "acme.support",
+    treeVersion: "1.0.0",
+    treeName: "Support",
+    matchedBy: "planner",
+    requestSummary: "help",
+    nodes: [{ nodeId: "support", parentId: null, seq: 0, title: "Support", ontology: {} }],
+    activeNodeId: "support",
+    mode: params.mode,
+    createdAt: 0,
+  };
+  registerEnterpriseActiveRun({ plan, policies: [] });
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -598,6 +625,55 @@ describe("native hook relay registry", () => {
     });
 
     expect(relay.shouldRelayEvent("pre_tool_use")).toBe(false);
+  });
+
+  it("keeps pre-tool relays active for a governed run with no other before-tool policy", () => {
+    // The gate this marker speaks for is a core step, not a registered hook, so
+    // nothing else in this registration can reveal that a work-map is deciding
+    // every call. Without the run, the command would carry the no-op marker and
+    // an unreachable relay would ALLOW the call the work-map may refuse.
+    registerGovernedRun({ runId: "run-governed", mode: "enforce" });
+    const relay = registerNativeHookRelay({
+      provider: "codex",
+      sessionId: "session-1",
+      runId: "run-governed",
+      config: { tools: { loopDetection: { enabled: false } } } as never,
+      command: {
+        executable: "/opt/Open Claw/openclaw.mjs",
+        nodeExecutable: "/usr/local/bin/node",
+        timeoutMs: 1234,
+      },
+    });
+
+    expect(relay.shouldRelayEvent("pre_tool_use")).toBe(true);
+    expect(relay.commandForEvent("pre_tool_use")).toBe(
+      "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
+        `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
+    );
+  });
+
+  it("keeps the pre-tool no-op marker for an observe run", () => {
+    // Observe traces, it does not refuse. Failing closed on an unreachable relay
+    // would block work the mode promises to leave running.
+    registerGovernedRun({ runId: "run-observed", mode: "observe" });
+    const relay = registerNativeHookRelay({
+      provider: "codex",
+      sessionId: "session-1",
+      runId: "run-observed",
+      config: { tools: { loopDetection: { enabled: false } } } as never,
+      command: {
+        executable: "/opt/Open Claw/openclaw.mjs",
+        nodeExecutable: "/usr/local/bin/node",
+        timeoutMs: 1234,
+      },
+    });
+
+    expect(relay.shouldRelayEvent("pre_tool_use")).toBe(false);
+    expect(relay.commandForEvent("pre_tool_use")).toBe(
+      "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
+        `${relay.relayId} --generation ${relay.generation} --event pre_tool_use ` +
+        "--pre-tool-use-unavailable noop --timeout 1234",
+    );
   });
 
   it("builds relay commands only for native events with matching local hooks", () => {

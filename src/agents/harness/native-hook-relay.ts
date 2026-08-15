@@ -600,8 +600,14 @@ function nativeHookRelayEventHasLocalWork(
 ): boolean {
   if (event === "pre_tool_use") {
     // Avoid spawning a native hook relay for every Codex tool call when there
-    // is no before_tool_call hook, trusted-tool policy, or loop detector work.
-    return hasBeforeToolCallPolicy() || nativePreToolUseMayRunLoopDetection(registration);
+    // is no before_tool_call hook, trusted-tool policy, governed run, or loop
+    // detector work. The run is passed because the answer is per-run: "no work"
+    // becomes a no-op marker on the hook command, which turns an unreachable
+    // relay into an ALLOW, and a governed run must refuse instead.
+    return (
+      hasBeforeToolCallPolicy(registration.runId) ||
+      nativePreToolUseMayRunLoopDetection(registration)
+    );
   }
   if (event === "post_tool_use") {
     return hasGlobalHooks("after_tool_call");
