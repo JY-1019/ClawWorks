@@ -19,6 +19,10 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { redactSecrets } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
+  isAuthErrorMessage,
+  isBillingErrorMessage,
+} from "./embedded-agent-helpers/failover-matches.js";
+import {
   completeWithPreparedSimpleCompletionModel,
   prepareSimpleCompletionModelForAgent,
 } from "./simple-completion-runtime.js";
@@ -125,6 +129,29 @@ export function parseWorkflowPlannerResponse(text: string): WorkflowPlanDecision
     routes: result.data.routes,
     ...(result.data.rationale ? { rationale: result.data.rationale } : {}),
   };
+}
+
+/**
+ * "Unavailable" for a refusal no request can change: the planner credential is
+ * rejected, expired, or unpaid. Undefined for anything else.
+ *
+ * selectWorkflowPlan's header puts "none is configured/authorized" in the
+ * `unavailable` bucket precisely because it is the same answer for every run on
+ * the box. Preparation only catches a MISSING credential; one the provider
+ * rejects at call time is the same install fact and must land in the same
+ * bucket, or a broken credential quietly binds every unrelated request to
+ * whichever work-map sorts first, planned whole. Rate limits, overloads and
+ * provider bugs stay failures: those are transient or request-shaped, and a
+ * hostile request must not be able to talk its way out of governance.
+ */
+function credentialRefusal(message: string): WorkflowPlanDecision | undefined {
+  if (!isAuthErrorMessage(message) && !isBillingErrorMessage(message)) {
+    return undefined;
+  }
+  log.warn(
+    `enterprise workflow planner: the provider rejected the planner credential (${message}); work-maps cannot govern until it is fixed`,
+  );
+  return { kind: "unavailable" };
 }
 
 /** A provider failure surfaces as stopReason "error", not as a rejected promise. */
@@ -311,11 +338,16 @@ export function createModelWorkflowPlanner(params: {
       // "unparseable reply" for what is actually an auth/quota/provider failure.
       const completionError = extractCompletionError(result);
       if (completionError) {
+        // The provider WAS reached and refused. Why it refused decides the
+        // bucket: a rejected credential is an install fact, anything else can be
+        // transient or request-shaped and stays a fail-closed failure.
+        const refused = credentialRefusal(completionError);
+        if (refused) {
+          return refused;
+        }
         log.warn(
           `enterprise workflow planner: model call failed (${completionError}); falling back to deterministic selection`,
         );
-        // The provider WAS reached and refused. Unlike a missing model this can be
-        // transient or request-shaped, so it stays a fail-closed failure.
         return { kind: "failed" };
       }
       const text = result.content
@@ -333,9 +365,14 @@ export function createModelWorkflowPlanner(params: {
       }
       return decision;
     } catch (err) {
-      log.warn(
-        `enterprise workflow planner failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      // Same split as the refusal above: a transport that throws the credential
+      // rejection instead of reporting it must not read as a request failure.
+      const refused = credentialRefusal(message);
+      if (refused) {
+        return refused;
+      }
+      log.warn(`enterprise workflow planner failed: ${message}`);
       return { kind: "failed" };
     }
   };

@@ -13,10 +13,23 @@ schemaVersion: 1
 id: golden.orders
 version: 1.0.0
 name: Order support
+# The description IS the routing signal — the planner judges a request against
+# this text and nothing else. It has to name what this work-map uniquely OWNS,
+# which is the seeded records below: a request naming an order or ticket id can
+# only be answered here, because this is the only work-map holding those rows.
+#
+# It deliberately does NOT advertise "returns, refunds, delivery complaints" in
+# the abstract. The shipped support-desk example claims exactly those from a
+# handbook, and two work-maps competing on the same words route by coin flip —
+# which for an id-bearing request means landing on the one that has no rows to
+# look the id up in. Policy question -> handbook; named record -> here.
 description: >-
-  Order support for a small retail shop: look up an order, investigate what went
-  wrong with it, then either refund it or hand it to a human. Covers returns,
-  refunds, delivery complaints, and order lookups.
+  Look up the shop's own order and support-ticket records by id. Given an order
+  id (ORD-prefixed) or a support ticket id (TKT-prefixed), read that stored
+  record, say what went wrong with that specific order, and either issue a refund
+  against it or hand it to a human. This is record lookup and investigation over
+  the shop's stored order data — not policy questions answered from a support
+  handbook, and not production-system incidents.
 match:
   # A model judges whether a request belongs here; `triggers` is the one gate it
   # cannot override.
