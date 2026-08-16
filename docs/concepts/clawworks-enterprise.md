@@ -462,6 +462,16 @@ thing for every run; it is no longer needed for governance and remains a
 preference. A side question (`/btw`) forks the parent thread and inherits the
 tools it registered, so it follows whatever the parent turn used.
 
+**A session attached with `/codex resume` is the exception.** Codex accepts a tool
+catalog only when a thread STARTS — `thread/resume` has no field for one, and a
+resumed thread restores the catalog it was created with. So an attached thread
+keeps whatever names it already registered, and a governed turn on it can still be
+judged on flattened names and refuse tools the work-map grants. Replacing the
+catalog would mean abandoning the thread the operator deliberately attached, along
+with the history that is the reason to attach it, so ClawWorks keeps the thread.
+For governed work on such a session, start a new one, or set
+`codexDynamicToolsLoading` to `"direct"` before the thread is created.
+
 The hook stays synchronous and short-lived either way, so on Codex a scope
 omission is REFUSED rather than prompted: the approval would outlive the harness
 deadline. Grant a Codex work-map what its steps need rather than relying on the
