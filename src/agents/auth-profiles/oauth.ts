@@ -85,6 +85,22 @@ const isOAuthProvider = (provider: string): provider is OAuthProvider =>
 const resolveOAuthProvider = (provider: string): OAuthProvider | null =>
   isOAuthProvider(provider) ? provider : null;
 
+/**
+ * The OAuth provider that can refresh a credential carrying `provider`.
+ *
+ * The registry is keyed by the provider that ISSUED the token ("anthropic"),
+ * while a CLI-runtime credential carries the runtime's own id ("claude-cli").
+ * Looked up unresolved it matched nothing, so such a credential could never be
+ * refreshed: once its access token expired the profile resolved to null and the
+ * candidate loop skipped it in silence, handing the run whatever credential
+ * sorted next. The alias map is the authority — a runtime that aliases no
+ * canonical provider stays unresolvable rather than borrowing an unrelated
+ * vendor's refresh flow.
+ */
+export function resolveCredentialOAuthProvider(provider: string): OAuthProvider | null {
+  return resolveOAuthProvider(resolveProviderIdForAuth(provider));
+}
+
 /** Bearer-token auth modes that are interchangeable (oauth tokens and raw tokens). */
 const BEARER_AUTH_MODES = new Set(["oauth", "token"]);
 
@@ -207,12 +223,14 @@ async function refreshOAuthCredential(
     return await refreshChutesTokens({ credential });
   }
 
-  const oauthProvider = resolveOAuthProvider(credential.provider);
+  const oauthProvider = resolveCredentialOAuthProvider(credential.provider);
   if (!oauthProvider || typeof getOAuthApiKey !== "function") {
     return null;
   }
+  // Key the map by the id being passed: getOAuthApiKey reads credentials[providerId],
+  // so keying it by the runtime's own id would read back undefined.
   const result = await getOAuthApiKey(oauthProvider, {
-    [credential.provider]: credential,
+    [oauthProvider]: credential,
   });
   return result?.newCredentials ?? null;
 }
