@@ -485,6 +485,44 @@ describe("Codex app-server dynamic tool build", () => {
     expect(toolBridge.specs.some((tool) => tool.type === "namespace")).toBe(false);
   });
 
+  it("uses direct dynamic tools when the run decides tool calls by name", () => {
+    // Searchable registration would namespace these, and Codex flattens namespace
+    // and tool for hook payloads — so a work-map granting `knowledge_search` would
+    // be judged on `openclawknowledge_search` and refuse its own tool.
+    const loading = resolveCodexDynamicToolsLoadingForRuntime({}, "openai/gpt-5.5", {
+      governsToolNames: true,
+    });
+    const toolBridge = createCodexDynamicToolBridge({
+      tools: [createRuntimeDynamicTool("message"), createRuntimeDynamicTool("knowledge_search")],
+      signal: new AbortController().signal,
+      loading,
+    });
+
+    expect(loading).toBe("direct");
+    expect(toolBridge.specs.some((tool) => tool.type === "namespace")).toBe(false);
+    expect(flattenCodexDynamicToolFunctions(toolBridge.specs).map((tool) => tool.name)).toEqual([
+      "message",
+      "knowledge_search",
+    ]);
+  });
+
+  it("keeps searchable dynamic tools for a run that scopes no tools", () => {
+    expect(
+      resolveCodexDynamicToolsLoadingForRuntime({}, "openai/gpt-5.5", { governsToolNames: false }),
+    ).toBe("searchable");
+  });
+
+  it("overrides an explicit searchable preference when the run governs tool names", () => {
+    // Deliberate, and the same precedence the remote-connection rule already has:
+    // honoring the preference here would knowingly break the operator's own
+    // work-map, since its rules would be judged against flattened names.
+    expect(
+      resolveCodexDynamicToolsLoadingForRuntime({ codexDynamicToolsLoading: "searchable" }, "gpt", {
+        governsToolNames: true,
+      }),
+    ).toBe("direct");
+  });
+
   it("quarantines unreadable tool entries before Codex-specific filtering", async () => {
     const messageTool = createRuntimeDynamicTool("message");
     const sourceTools = new Proxy([messageTool] as RuntimeDynamicToolForTest[], {

@@ -149,6 +149,48 @@ export function enterpriseRunEnforces(runId: string | undefined): boolean {
   return runId ? activeRuns().get(runId)?.plan.mode === "enforce" : false;
 }
 
+/**
+ * Does this run decide tool calls by NAME?
+ *
+ * Asked at launch by a harness that can rename the tools it exposes. Codex
+ * concatenates a namespace onto the tool for hook payloads with no delimiter
+ * (`flat_tool_name`, ../codex/codex-rs/core/src/tools/mod.rs:42-53), so a run
+ * whose rules name `knowledge_search` would be judged on `openclawknowledge_search`
+ * — a spelling no work-map can express, read as ungranted, refused. The harness
+ * answers this before it registers anything and keeps the names honest when it is
+ * true. There is no way to repair it afterwards: the flattened string is the only
+ * identity the hook carries, and namespace+name is ambiguous once joined.
+ *
+ * Observe counts. It blocks nothing, but a false denial in its trace is a false
+ * record of what the work-map decided, which is the whole product of that mode.
+ *
+ * False for a run bound to a work-map that scopes nothing (the default
+ * `clawworks.assist` is deliberately empty), so a stock install pays none of the
+ * cost of registering every tool up front.
+ */
+export function enterpriseRunGovernsToolNames(runId: string | undefined): boolean {
+  const run = runId ? activeRuns().get(runId) : undefined;
+  if (!run) {
+    return false;
+  }
+  // Deny-by-default judges every call, including the ones no list mentions.
+  if (run.plan.capabilityGrants === "explicit") {
+    return true;
+  }
+  if (
+    run.plan.nodes.some(
+      (node) =>
+        (node.ontology.allowedTools?.length ?? 0) > 0 ||
+        (node.ontology.deniedTools?.length ?? 0) > 0,
+    )
+  ) {
+    return true;
+  }
+  // Only policies that can reach THIS tree: an unrelated tree's policy would
+  // otherwise make every run on the install pay for rules it can never hit.
+  return run.policies.some((policy) => policyTargetsTree(policy, run.plan.treeId));
+}
+
 /** The run a session is executing right now, or undefined between/outside runs. */
 export function getSessionActiveRunId(sessionId: string): string | undefined {
   return sessionActiveRuns().get(sessionId);

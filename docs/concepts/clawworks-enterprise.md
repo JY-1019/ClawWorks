@@ -435,28 +435,37 @@ any tool call exists:
   There is no tool call to approve, because the tool was never offered. See
   "MCP servers" below for what that ceiling reads.
 
-One known rough edge on the Codex app-server, worth knowing before you read a
-trace: with the default `searchable` dynamic-tool mode, Codex reports a ClawWorks
-tool to its PreToolUse hook under a FLATTENED name (namespace and tool
-concatenated, `flat_tool_name` in `codex-rs/core/src/tools/mod.rs`), and the same
-call is then governed again under its real name when the tool actually runs. The
-flattened spelling matches no rule an operator wrote, so a tool the work-map DOES
-grant reads as out of scope. That hook is also synchronous and short-lived, so the
-approval path cannot run there: the call is refused outright rather than prompted,
-and it never reaches the gate that would have judged it under its real name.
-`complete_step` is registered directly for exactly this reason and is unaffected.
+**On the Codex app-server, a work-map that scopes tools changes how they are
+registered.** Codex's default `searchable` mode puts ClawWorks tools under a
+namespace and concatenates namespace and tool with no separator when it names a
+call to its PreToolUse hook (`flat_tool_name` in `codex-rs/core/src/tools/mod.rs`),
+so `knowledge_search` arrives as `openclawknowledge_search` — a spelling no rule
+an operator can write, read as out of scope, refusing a tool the work-map DOES
+grant. Nothing downstream can repair it: that flattened string is the only identity
+the hook carries, and a namespace and a tool cannot be told apart once joined.
 
-Moving the grant to the root does NOT help: the flattened name is `openclawread`,
-not `read`, so a root list naming `read` still does not admit it. The working
-route is to turn the flattening off — set the Codex plugin's
-`codexDynamicToolsLoading` to `"direct"`, which registers every ClawWorks tool
-under its real name so governance judges what an operator actually wrote.
+So a run whose work-map decides tool calls by name registers those tools
+**directly**, under their real names, for the whole turn. That means any step
+naming `allowedTools` or `deniedTools`, any work-map under
+[explicit capability grants](#capability-grants), or any governance policy
+targeting the bound tree. A run that scopes nothing — the default
+`clawworks.assist` binding a request no work-map claimed — keeps searchable
+registration, so a stock install is unchanged.
 
-Even then the hook stays synchronous, so on Codex a scope omission is REFUSED
-rather than prompted: the approval would outlive the harness deadline. Grant a
-Codex work-map what its steps need rather than relying on the approval path. The
-durable fix for both is for the harness to declare the names it governs itself,
-so the relay stops judging a call the wrapped tool will judge again.
+The tradeoff is deliberate. Direct registration puts the tools in the turn's
+opening context instead of behind Codex's tool search, which costs prompt space on
+a governed turn. A work-map's rules meaning what they say is worth more than that,
+and a governed run's tool surface is the one the operator chose.
+
+Setting the Codex plugin's `codexDynamicToolsLoading` to `"direct"` does the same
+thing for every run; it is no longer needed for governance and remains a
+preference. A side question (`/btw`) forks the parent thread and inherits the
+tools it registered, so it follows whatever the parent turn used.
+
+The hook stays synchronous and short-lived either way, so on Codex a scope
+omission is REFUSED rather than prompted: the approval would outlive the harness
+deadline. Grant a Codex work-map what its steps need rather than relying on the
+approval path.
 
 A run opens on the first step of its route, not on the root. Because advancing is
 a tool call rather than a property of one runtime's loop, every runtime that

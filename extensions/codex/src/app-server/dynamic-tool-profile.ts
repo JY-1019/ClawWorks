@@ -92,11 +92,18 @@ export function resolveCodexDynamicToolsLoadingForModel(
 export function resolveCodexDynamicToolsLoadingForRuntime(
   config: Pick<CodexPluginConfig, "codexDynamicToolsLoading">,
   modelId: string | undefined,
-  options: { connectionClass?: CodexAppServerConnectionClass } = {},
+  options: { connectionClass?: CodexAppServerConnectionClass; governsToolNames?: boolean } = {},
   env: CodexDynamicToolProfileEnv = process.env,
 ): CodexDynamicToolsLoading {
   const loading = resolveCodexDynamicToolsLoadingForModel(config, modelId, env);
-  return loading === "searchable" && options.connectionClass === "remote" ? "direct" : loading;
+  if (loading !== "searchable") {
+    return loading;
+  }
+  // A run that decides tool calls by name needs the name it decides on. Searchable
+  // registration puts the tool under a namespace, and Codex flattens namespace and
+  // name together for hook payloads, so the work-map's own rule stops matching its
+  // own tool. Nothing downstream can undo that — see enterpriseRunGovernsToolNames.
+  return options.governsToolNames || options.connectionClass === "remote" ? "direct" : "searchable";
 }
 
 /** Filters ClawWorks tools that Codex owns natively or config explicitly excludes. */

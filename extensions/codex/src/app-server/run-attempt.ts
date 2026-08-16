@@ -33,6 +33,7 @@ import {
   setActiveEmbeddedRun,
   supportsModelTools,
   enterpriseRunAdmitsHostedTool,
+  enterpriseRunGovernsToolNames,
   resolveRunWithheldSkillEnvKeys,
   runAgentCleanupStep,
   type FastModeAutoProgressState,
@@ -872,6 +873,7 @@ export async function runCodexAppServerAttempt(
     signal: runAbortController.signal,
     loading: resolveCodexDynamicToolsLoadingForRuntime(pluginConfig, params.modelId, {
       connectionClass: appServer.connectionClass,
+      governsToolNames: enterpriseRunGovernsToolNames(params.runId),
     }),
     directToolNames: resolveCodexDynamicToolDirectNames(params),
     hookContext: {

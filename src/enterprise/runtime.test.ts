@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   enterpriseRunAdmitsHostedTool,
   enterpriseRunBoundableMcpServers,
+  enterpriseRunGovernsToolNames,
   enterpriseRunGrantedSkills,
 } from "./active-runs.js";
 import {
@@ -1623,6 +1624,61 @@ describe("enterpriseRunBoundableMcpServers", () => {
     expect([
       ...(enterpriseRunBoundableMcpServers("run-plugin-granted", ["bundled"]) ?? []),
     ]).toEqual(["bundled"]);
+  });
+});
+
+describe("enterpriseRunGovernsToolNames", () => {
+  it("answers no for an unmediated run", () => {
+    expect(enterpriseRunGovernsToolNames(undefined)).toBe(false);
+    expect(enterpriseRunGovernsToolNames("run-missing")).toBe(false);
+  });
+
+  it("answers no for a work-map that scopes no tools", () => {
+    // The default assist binding. A stock install must not pay for rules it has
+    // none of, so this is what keeps searchable registration the common case.
+    registerEnterpriseActiveRun(makeRun({ runId: "run-names-open" }));
+
+    expect(enterpriseRunGovernsToolNames("run-names-open")).toBe(false);
+  });
+
+  it("answers yes for an allow-list, a denial, or explicit grants", () => {
+    registerEnterpriseActiveRun(makeRun({ runId: "run-names-allow", allowedTools: ["message"] }));
+    registerEnterpriseActiveRun(makeRun({ runId: "run-names-deny", deniedTools: ["exec"] }));
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-names-explicit", capabilityGrants: "explicit" }),
+    );
+
+    expect(enterpriseRunGovernsToolNames("run-names-allow")).toBe(true);
+    expect(enterpriseRunGovernsToolNames("run-names-deny")).toBe(true);
+    expect(enterpriseRunGovernsToolNames("run-names-explicit")).toBe(true);
+  });
+
+  it("answers yes for a policy on this tree and no for one on another", () => {
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-names-policy",
+        policies: [{ id: "p1", effect: "deny", trees: ["acme.support"], tools: ["exec"] }],
+      }),
+    );
+    registerEnterpriseActiveRun(
+      makeRun({
+        runId: "run-names-other-tree",
+        policies: [{ id: "p2", effect: "deny", trees: ["acme.other"], tools: ["exec"] }],
+      }),
+    );
+
+    expect(enterpriseRunGovernsToolNames("run-names-policy")).toBe(true);
+    expect(enterpriseRunGovernsToolNames("run-names-other-tree")).toBe(false);
+  });
+
+  it("answers yes for an observe run, whose trace is the product", () => {
+    // Observe blocks nothing, but a denial recorded against a flattened name is a
+    // false record of what the work-map decided.
+    registerEnterpriseActiveRun(
+      makeRun({ runId: "run-names-observe", mode: "observe", allowedTools: ["message"] }),
+    );
+
+    expect(enterpriseRunGovernsToolNames("run-names-observe")).toBe(true);
   });
 });
 
