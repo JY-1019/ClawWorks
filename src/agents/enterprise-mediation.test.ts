@@ -17,6 +17,7 @@ import {
   applyEnterpriseMediation,
   finishEnterpriseMediation,
   resolveRouteModelRefForTest,
+  resolveRoutePlannerAuthProfileIdForTest,
   type EnterpriseMediatedRunParams,
 } from "./enterprise-mediation.js";
 
@@ -203,6 +204,32 @@ describe("route planning model selection", () => {
 
   it("uses the agent default when the run pinned nothing (that IS its choice)", () => {
     expect(resolveRouteModelRefForTest(makeParams({}))).toEqual({ kind: "agent-default" });
+  });
+});
+
+describe("resolveRoutePlannerAuthProfileId", () => {
+  it("keeps a profile the operator pinned (it is an account/tenant boundary)", () => {
+    expect(
+      resolveRoutePlannerAuthProfileIdForTest(
+        makeParams({ authProfileId: "anthropic:tenant-b", authProfileIdSource: "user" }),
+      ),
+    ).toBe("anthropic:tenant-b");
+  });
+
+  it("drops a profile failover picked on its own", () => {
+    // The run is already willing to use any profile in the provider's order, and a
+    // CLI-backed turn authenticates from its own login while scrubbing the
+    // provider's API-key env — so that profile may be a credential the turn never
+    // spends. Pinning routing to it made one dead API key fail EVERY run's
+    // planning, and each failure bound an unrelated work-map planned whole.
+    expect(
+      resolveRoutePlannerAuthProfileIdForTest(
+        makeParams({ authProfileId: "anthropic:default", authProfileIdSource: "auto" }),
+      ),
+    ).toBeUndefined();
+    expect(
+      resolveRoutePlannerAuthProfileIdForTest(makeParams({ authProfileId: "anthropic:default" })),
+    ).toBeUndefined();
   });
 });
 

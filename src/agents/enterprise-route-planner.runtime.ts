@@ -8,16 +8,22 @@ import type { WorkflowPlanDecision, WorkflowPlanner } from "@openclaw/enterprise
  * unit-testable; @openclaw/enterprise-planner owns the prompt inputs, the parsing
  * contract, and route→node resolution.
  *
- * Every failure path returns null, which the caller reads as "no opinion" — NOT
- * as "no tree applies". The caller fails closed on it (binds a work-map, planned
- * whole) precisely because a hostile request can provoke an unparseable reply,
- * and reading that as "nothing applies" would make rambling the model a reliable
- * way to escape governance. Only an explicit `treeId: null` means "none apply".
+ * A failure here reads as "no opinion" — NOT as "no tree applies". The caller
+ * fails closed on it (binds a work-map, planned whole) precisely because a hostile
+ * request can provoke an unparseable reply, and reading that as "nothing applies"
+ * would make rambling the model a reliable way to escape governance. Only an
+ * explicit `treeId: null` means "none apply".
+ *
+ * The exception is a refusal that belongs to the INSTALL rather than the request —
+ * no credit, revoked credentials. Those answer the same for every run on the box
+ * and get `unavailable`, which does not bind a work-map; see
+ * isInstallLevelProviderRefusal.
  */
 import { z } from "zod";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { redactSecrets } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { classifyFailoverReason } from "./embedded-agent-helpers/errors.js";
 import {
   completeWithPreparedSimpleCompletionModel,
   prepareSimpleCompletionModelForAgent,
@@ -137,6 +143,26 @@ function extractCompletionError(
   return "errorMessage" in result && typeof result.errorMessage === "string"
     ? result.errorMessage
     : "model returned an error";
+}
+
+/**
+ * Whether a provider's refusal is a property of the INSTALL rather than of this
+ * request.
+ *
+ * A dead account — no credit left, credentials revoked — answers the same way for
+ * every run on the box until an operator fixes it, and no request can provoke it.
+ * That is `unavailable`, not `failed`: failing closed on it would put every
+ * request, including unrelated ones, under whichever work-map sorts first, planned
+ * whole. Nothing about that is safer — the arbitrary work-map can grant tools the
+ * matching one denies — and it hides the outage behind plausible routing.
+ *
+ * Deliberately narrow. Rate limits, overload, server errors and ambiguous auth
+ * text stay `failed`: they are transient or request-shaped, so treating them as an
+ * install fact would hand a crafted request a way out of governance.
+ */
+function isInstallLevelProviderRefusal(errorMessage: string, provider: string): boolean {
+  const reason = classifyFailoverReason(errorMessage, { provider });
+  return reason === "billing" || reason === "auth_permanent";
 }
 
 /**
@@ -311,11 +337,21 @@ export function createModelWorkflowPlanner(params: {
       // "unparseable reply" for what is actually an auth/quota/provider failure.
       const completionError = extractCompletionError(result);
       if (completionError) {
+        // Name the account that refused. Without it the warning cannot tell a dead
+        // credential apart from a provider outage, and the profile a run plans with
+        // is not always the one its own backend spends.
+        const account = `${prepared.model.provider}/${prepared.auth.profileId ?? "default"}`;
+        if (isInstallLevelProviderRefusal(completionError, prepared.model.provider)) {
+          log.warn(
+            `enterprise workflow planner: ${account} cannot be used for planning (${completionError})`,
+          );
+          return { kind: "unavailable" };
+        }
         log.warn(
-          `enterprise workflow planner: model call failed (${completionError}); falling back to deterministic selection`,
+          `enterprise workflow planner: model call failed via ${account} (${completionError}); falling back to deterministic selection`,
         );
-        // The provider WAS reached and refused. Unlike a missing model this can be
-        // transient or request-shaped, so it stays a fail-closed failure.
+        // The provider WAS reached and refused for a reason a request can provoke,
+        // so it stays a fail-closed failure.
         return { kind: "failed" };
       }
       const text = result.content

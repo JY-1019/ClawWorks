@@ -124,6 +124,12 @@ export type EnterpriseMediatedRunParams = {
   /** The auth profile the run dispatches with (account/tenant boundary). */
   authProfileId?: string;
   /**
+   * Who chose that profile. "user" is an account/tenant the operator pinned;
+   * "auto" (or absent) is whatever failover reached for, which is NOT a boundary
+   * routing has to reproduce — see resolveRoutePlannerAuthProfileId.
+   */
+  authProfileIdSource?: "auto" | "user";
+  /**
    * The skills this run already resolved for its agent. Passed through so a
    * step's declared skills can have their instructions inlined into the step
    * digest; reusing the runner's snapshot keeps this off the discovery path.
@@ -220,6 +226,23 @@ export function resolveRouteModelRef(
   return { kind: "agent-default" };
 }
 
+/**
+ * The auth profile route planning should dispatch with, or undefined to let the
+ * provider pick one.
+ *
+ * ONLY a profile the operator pinned. In a multi-profile setup a pinned profile
+ * is an account/tenant boundary the router must reproduce, so it stays. A profile
+ * failover reached for on its own is not: the run is already willing to use any
+ * profile in the provider's order, and the turn may not authenticate with that
+ * profile at all — a CLI backend runs on its own login and scrubs the provider's
+ * API-key env, so its "auth profile" is metadata the turn never spends. Pinning
+ * the router to it turns an unused, possibly-dead credential into a hard routing
+ * failure, and every failure binds a work-map the request has nothing to do with.
+ */
+function resolveRoutePlannerAuthProfileId(params: EnterpriseMediatedRunParams): string | undefined {
+  return params.authProfileIdSource === "user" ? params.authProfileId : undefined;
+}
+
 export type EnterpriseMediationOutcome<T extends EnterpriseMediatedRunParams> = {
   params: T;
   /** Set when run-start governance denied the run in enforce mode. */
@@ -253,6 +276,7 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
   // runtime, and a static import would put that cost on every embedded/CLI/ACP
   // run — including the ones with enterprise mode off, which never plan.
   const modelChoice = resolveRouteModelRef(params);
+  const routeAuthProfileId = resolveRoutePlannerAuthProfileId(params);
   const planningPossible =
     Boolean(config) && resolveEnterpriseMode(config) !== "off" && modelChoice.kind !== "skip";
   // The planner module pulls in the provider/completion runtime. Import it inside
@@ -267,9 +291,10 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
           const planner = createModelWorkflowPlanner({
             cfg: config,
             ...(params.agentId ? { agentId: params.agentId } : {}),
-            // Route with the exact provider/model/profile the run dispatches to.
+            // Route with the exact provider/model the run dispatches to, and with
+            // the account the operator pinned when there is one.
             ...(modelChoice.kind === "ref" ? { modelRef: modelChoice.ref } : {}),
-            ...(params.authProfileId ? { authProfileId: params.authProfileId } : {}),
+            ...(routeAuthProfileId ? { authProfileId: routeAuthProfileId } : {}),
           });
           // No planner could be built (no config): "cannot be consulted", not
           // "answered badly" — the default tree governs rather than a work-map.
@@ -418,6 +443,9 @@ function isAbortError(error: unknown): boolean {
 
 /** Test-only alias: the ref contract is what keeps a private run off a cloud default. */
 export { resolveRouteModelRef as resolveRouteModelRefForTest };
+
+/** Test-only alias: which account routing is allowed to spend. */
+export { resolveRoutePlannerAuthProfileId as resolveRoutePlannerAuthProfileIdForTest };
 
 /**
  * Point this run's governed trace at a rotated transcript.

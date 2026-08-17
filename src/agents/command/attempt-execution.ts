@@ -97,9 +97,7 @@ const ACP_TRANSCRIPT_USAGE = {
 const GOOGLE_GEMINI_CLI_PROVIDER_ID = "google-gemini-cli";
 const GOOGLE_PROVIDER_ID = "google";
 
-function shouldSuppressEmbeddedLiveStreamOutput(params: {
-  opts: AgentCommandOpts;
-}): boolean {
+function shouldSuppressEmbeddedLiveStreamOutput(params: { opts: AgentCommandOpts }): boolean {
   return params.opts.sessionEffects === "internal" && params.opts.deliver !== true;
 }
 
@@ -692,6 +690,11 @@ export function runAgentAttempt(params: {
             ? activeCliSessionBinding
             : undefined,
         authProfileId,
+        // Same pairing the embedded branch below records. A CLI backend usually
+        // authenticates from its own login, so who CHOSE this profile is what
+        // tells a consumer whether it is an account the operator pinned or just
+        // what failover reached for — enterprise route planning splits on it.
+        authProfileIdSource: authProfileId ? harnessAuthSelection.authProfileIdSource : undefined,
         bootstrapPromptWarningSignaturesSeen,
         bootstrapPromptWarningSignature,
         images: params.isFallbackRetry ? undefined : params.opts.images,

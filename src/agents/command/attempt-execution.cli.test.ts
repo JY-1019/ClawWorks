@@ -787,6 +787,9 @@ describe("CLI attempt execution", () => {
 
     expect(runCliAgentMock).toHaveBeenCalledTimes(1);
     expect(firstRunCliAgentArg().authProfileId).toBe("openai:work");
+    // Consumers must be able to tell an operator-pinned account from one failover
+    // reached for; a CLI backend often spends neither.
+    expect(firstRunCliAgentArg().authProfileIdSource).toBe("user");
   });
 
   it("skips auto auth-profile resolution for CLI-owned transport", async () => {

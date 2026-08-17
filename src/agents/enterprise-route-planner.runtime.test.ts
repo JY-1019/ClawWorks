@@ -178,6 +178,43 @@ describe("createModelWorkflowPlanner budget", () => {
   });
 });
 
+describe("createModelWorkflowPlanner provider refusals", () => {
+  function refusal(errorMessage: string) {
+    return vi.fn(async () => ({ stopReason: "error", errorMessage, content: [] }));
+  }
+
+  it("reports a dead account as unavailable so no work-map is bound to it", async () => {
+    // Observed live: the planning call reached Anthropic on an API-key profile with
+    // no credit while the turn itself ran on a CLI subscription. Read as a
+    // request-shaped failure this bound the highest-priority work-map (40 nodes)
+    // planned whole to EVERY run on the box — and that tree granted a memory tool
+    // the matching work-map denies, so failing closed was not even more restrictive.
+    const complete = refusal(
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}',
+    );
+    const { run } = planner({ complete });
+    expect(await run?.({ trees: [TREE], requestText: "pay it", candidates: "ops" })).toEqual({
+      kind: "unavailable",
+    });
+  });
+
+  it("reports revoked credentials as unavailable", async () => {
+    const complete = refusal("401 this api key has been revoked");
+    const { run } = planner({ complete });
+    expect(await run?.({ trees: [TREE], requestText: "pay it", candidates: "ops" })).toEqual({
+      kind: "unavailable",
+    });
+  });
+
+  it("keeps a transient refusal fail-closed: a request can provoke it", async () => {
+    const complete = refusal("429 rate limit exceeded, please retry");
+    const { run } = planner({ complete });
+    expect(await run?.({ trees: [TREE], requestText: "pay it", candidates: "ops" })).toEqual({
+      kind: "failed",
+    });
+  });
+});
+
 describe("createModelWorkflowPlanner request framing", () => {
   it("embeds the request as a JSON string so it cannot steer the route", async () => {
     const { run, complete } = planner({});

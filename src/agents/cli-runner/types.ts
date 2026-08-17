@@ -97,6 +97,8 @@ export type RunCliAgentParams = {
   cliSessionId?: string;
   cliSessionBinding?: CliSessionBinding;
   authProfileId?: string;
+  /** Whether the operator pinned that profile or failover picked it. */
+  authProfileIdSource?: "auto" | "user";
   onBeforeFreshCliSessionRetry?: (params: {
     provider: string;
     reason: FailoverReason;
