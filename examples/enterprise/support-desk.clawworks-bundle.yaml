@@ -103,10 +103,11 @@ trees:
             # no binary, so it resolves on a stock install — the Skills tab
             # shows it under "Declared by Support desk (runnable example)".
             skills: [taskflow-inbox-triage]
-            actions:
-              - id: classify
-                description: Set the request's intent and urgency.
-                tools: [memory_search]
+            # No step here declares `actions`. An action is a write: its
+            # `effects` are its authorization, and the model reaches one only
+            # through `invoke_action`, which no scope here grants. This desk
+            # retrieves and replies, so restating a step's description as an
+            # action would just advertise a call the gate refuses.
             expectedOutput: An intent, an urgency, and whether the handbook can answer it.
         - id: desk.answer
           title: Answer from the handbook
@@ -115,10 +116,6 @@ trees:
             # it does not read memory.
             allowedTools: [knowledge_search, message]
             knowledgeFoundations: [acme.support-desk-handbook]
-            actions:
-              - id: reply
-                description: Send the handbook-backed answer to the customer.
-                tools: [message]
             constraints:
               - id: quote-the-source
                 description: Name the handbook section the answer came from.
@@ -151,10 +148,6 @@ trees:
             # server named "acme-tracker" under mcp.servers is what makes this
             # attachment resolve; until then the MCP tab shows it unregistered.
             mcpServers: [acme-tracker]
-            actions:
-              - id: handoff
-                description: Summarize the request and hand it to a human.
-                tools: [message]
             expectedOutput: A short handoff summary for the human queue.
 knowledgeFoundations:
   - id: acme.support-desk-handbook

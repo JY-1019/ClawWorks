@@ -92,11 +92,9 @@ trees:
         - id: research.answer
           title: Answer the requester
           ontology:
+            # No action declared: an action is an ontology WRITE reached through
+            # invoke_action, and this step only replies, which `message` covers.
             allowedTools: [message]
-            actions:
-              - id: reply
-                description: Send the handbook-backed answer.
-                tools: [message]
             constraints:
               - id: handbook-only
                 description: State only what the handbook covers; escalate anything it does not.

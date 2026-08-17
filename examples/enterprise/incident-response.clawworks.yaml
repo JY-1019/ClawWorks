@@ -25,19 +25,70 @@ root:
   title: Incident response
   description: End-to-end handling of a reported production incident.
   ontology:
+    # Typed properties with a primaryKey each. Descriptions alone are not enough:
+    # an object type with no primaryKey cannot be stored, addressed, or created,
+    # so `search_objects` has nothing to return and an action has no id to write
+    # under. A run against the untyped version answered by INVENTING an incident
+    # id, which is the failure this shape exists to prevent.
     entities:
-      - { id: incident, description: A reported production incident }
-      - { id: service, description: An affected service or component }
-      - { id: runbook, description: A documented recovery procedure }
+      - id: incident
+        description: A reported production incident
+        properties:
+          - { id: incident-id, type: id, primaryKey: true }
+          - { id: severity, type: string, required: true }
+          - { id: status, type: string, required: true }
+          - { id: summary, type: string }
+      - id: service
+        description: An affected service or component
+        properties:
+          - { id: service-id, type: id, primaryKey: true }
+          - { id: name, type: string, required: true }
+          - { id: tier, type: string }
+      - id: runbook
+        description: A documented recovery procedure
+        properties:
+          - { id: runbook-id, type: id, primaryKey: true }
+          - { id: title, type: string, required: true }
     relationships:
       - id: incident-affects-service
         from: incident
         to: service
+        cardinality: many-to-one
         description: The incident degrades a service
       - id: runbook-recovers-service
         from: runbook
         to: service
+        cardinality: many-to-one
         description: The runbook restores the service
+    # Seeded instances, so a step that reads the graph finds something. Objects
+    # live at the root because they are stored once per tree; the TYPE scoping
+    # above is what decides which step may address them.
+    objects:
+      - entity: service
+        properties: { service-id: SVC-checkout, name: checkout-api, tier: critical }
+      - entity: service
+        properties: { service-id: SVC-search, name: search-api, tier: standard }
+      - entity: incident
+        properties:
+          incident-id: INC-2201
+          severity: SEV-1
+          status: mitigating
+          summary: checkout-api 5xx rate above threshold
+      - entity: incident
+        properties:
+          incident-id: INC-2202
+          severity: SEV-3
+          status: resolved
+          summary: search-api latency spike during reindex
+      - entity: runbook
+        properties: { runbook-id: RB-checkout-5xx, title: Restart checkout workers }
+      - entity: runbook
+        properties: { runbook-id: RB-search-latency, title: Throttle reindex }
+    links:
+      - { relationship: incident-affects-service, from: INC-2201, to: SVC-checkout }
+      - { relationship: incident-affects-service, from: INC-2202, to: SVC-search }
+      - { relationship: runbook-recovers-service, from: RB-checkout-5xx, to: SVC-checkout }
+      - { relationship: runbook-recovers-service, from: RB-search-latency, to: SVC-search }
     contextHints:
       - Record the incident id and affected service in every update.
     constraints:
@@ -47,18 +98,45 @@ root:
     # that stay on the root (CLI/ACP do not advance into child steps). Keep it a
     # superset of the child scopes so children narrow within it; without it,
     # root-scoped runs would fall back to allow-all.
-    allowedTools: [memory_search, knowledge_search, exec, process, message]
+    #
+    # allowedTools is an independent gate at EVERY node on the root→active path,
+    # so a tool missing here is closed for every step below no matter what that
+    # step grants. The ontology tools have to be named here for the same reason.
+    allowedTools:
+      [
+        memory_search,
+        knowledge_search,
+        exec,
+        process,
+        message,
+        search_objects,
+        get_neighbors,
+        invoke_action,
+      ]
     knowledgeFoundations: [acme.runbooks]
   children:
     - id: incident.triage
       title: Triage the alert
       description: Classify severity and identify the affected service.
       ontology:
+        # `declare-incident` is a real action: its `effects` are its authorization
+        # AND its write scope, and the create effect carries `incident-id` so the
+        # call can name the object it mints. Without both, invoke_action refuses —
+        # which is how a step that was told to "record the incident" ended up
+        # inventing an id in prose instead of writing one.
         actions:
-          - id: search-history
-            description: Look up prior incidents and runbooks
-            tools: [memory_search, knowledge_search]
-        allowedTools: [memory_search, knowledge_search]
+          - id: declare-incident
+            title: Declare an incident
+            description: Record a new incident with its severity and affected service.
+            parameters:
+              - { id: incident-id, type: id, required: true }
+              - { id: severity, type: string, required: true }
+              - { id: status, type: string, required: true }
+              - { id: summary, type: string }
+            effects:
+              - { entity: incident, kind: create, description: Opens the incident record. }
+        allowedTools:
+          [memory_search, knowledge_search, search_objects, get_neighbors, invoke_action]
         knowledgeFoundations: [acme.runbooks]
         # Declared skills name the know-how a step depends on. They are recorded
         # for operators and travel with a workflow bundle; they never widen tool
@@ -77,11 +155,10 @@ root:
             from: metric
             to: incident
             description: A metric anomaly signals the incident
-        actions:
-          - id: inspect-diagnostics
-            description: Inspect diagnostics without mutating state
-            tools: [exec]
-        allowedTools: [exec, memory_search, knowledge_search]
+        # No action type here: diagnosis is read-only, and an action is an ontology
+        # WRITE reached through invoke_action. The read tools below are its surface —
+        # walking incident → service → runbook is what this step actually does.
+        allowedTools: [exec, memory_search, knowledge_search, search_objects, get_neighbors]
         deniedTools: [process]
         knowledgeFoundations: [acme.runbooks]
         constraints:
@@ -93,10 +170,17 @@ root:
       description: Execute the runbook step that recovers the service.
       ontology:
         actions:
-          - id: run-runbook
-            description: Apply a recovery action from the runbook
-            tools: [exec, process]
-        allowedTools: [exec, process, message]
+          - id: apply-remediation
+            title: Apply remediation
+            description: Record the outcome of the runbook step that recovered the service.
+            parameters:
+              - { id: incident-id, type: id, required: true }
+              - { id: status, type: string, required: true }
+            preconditions:
+              - Confirm the affected service before changing the incident's status.
+            effects:
+              - { entity: incident, kind: update, description: Advances the incident's status. }
+        allowedTools: [exec, process, message, search_objects, invoke_action]
         skills: [runbook-execution]
         # Human approval for high-risk remediation is NOT a tree constraint
         # (constraints are prompt guidance only). Enforce it with a config

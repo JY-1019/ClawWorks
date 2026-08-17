@@ -145,6 +145,63 @@ root:
           kind: photo
           verified: false
 
+      # Risk/monitoring instances. Without these the AML branch declared a rich
+      # graph and stored nothing, so the step whose whole job is "traverse the
+      # ontology from the alert out to counterparties" retrieved zero rows and had
+      # to answer that it could not investigate. One alert, the transactions it
+      # flags, the accounts that booked them, and the customers behind those
+      # accounts — the smallest graph on which a counterparty walk is a real walk.
+      - entity: customer
+        properties:
+          customer-id: CUST-8802
+          legal-name: Northwind Trading BV
+          jurisdiction: NL
+          risk-rating: high
+      - entity: customer
+        properties:
+          customer-id: CUST-8803
+          legal-name: Harbour Logistics SA
+          jurisdiction: PA
+          risk-rating: high
+      - entity: account
+        properties: { account-id: ACC-5501, product-type: business-current, balance: 184000, status: active }
+      - entity: account
+        properties: { account-id: ACC-5502, product-type: business-current, balance: 21500, status: active }
+      - entity: account
+        properties: { account-id: ACC-5503, product-type: business-current, balance: 640, status: frozen }
+      - entity: transaction
+        properties:
+          transaction-id: TXN-7001
+          amount: 9800
+          currency: EUR
+          counterparty: Northwind Trading BV
+          booked-at: "2026-07-14"
+      - entity: transaction
+        properties:
+          transaction-id: TXN-7002
+          amount: 9750
+          currency: EUR
+          counterparty: Northwind Trading BV
+          booked-at: "2026-07-15"
+      - entity: transaction
+        properties:
+          transaction-id: TXN-7003
+          amount: 9900
+          currency: EUR
+          counterparty: Harbour Logistics SA
+          booked-at: "2026-07-15"
+      - entity: transaction
+        properties:
+          transaction-id: TXN-7004
+          amount: 320
+          currency: EUR
+          counterparty: Meridian Freight Ltd
+          booked-at: "2026-07-16"
+      - entity: alert
+        properties: { alert-id: ALR-3001, typology: structuring, score: 82, status: open }
+      - entity: investigation-case
+        properties: { case-id: CASE-201, disposition: pending, opened-at: "2026-07-16" }
+
     links:
       - { relationship: customer-holds-policy, from: CUST-8801, to: POL-4417 }
       - { relationship: claim-against-policy, from: CLM-1042, to: POL-4417 }
@@ -152,6 +209,20 @@ root:
       - { relationship: claim-against-policy, from: CLM-1044, to: POL-4417 }
       - { relationship: claim-evidenced-by-document, from: CLM-1042, to: DOC-9001 }
       - { relationship: claim-evidenced-by-document, from: CLM-1042, to: DOC-9002 }
+      # The AML walk: case -> alert -> transactions -> accounts -> customers.
+      # Cardinality is enforced on import, so each account/transaction/alert may
+      # appear on the "to" side of a one-to-many link exactly once.
+      - { relationship: customer-holds-account, from: CUST-8801, to: ACC-5501 }
+      - { relationship: customer-holds-account, from: CUST-8802, to: ACC-5502 }
+      - { relationship: customer-holds-account, from: CUST-8803, to: ACC-5503 }
+      - { relationship: account-books-transaction, from: ACC-5501, to: TXN-7001 }
+      - { relationship: account-books-transaction, from: ACC-5501, to: TXN-7002 }
+      - { relationship: account-books-transaction, from: ACC-5502, to: TXN-7003 }
+      - { relationship: account-books-transaction, from: ACC-5503, to: TXN-7004 }
+      - { relationship: alert-flags-transaction, from: ALR-3001, to: TXN-7001 }
+      - { relationship: alert-flags-transaction, from: ALR-3001, to: TXN-7002 }
+      - { relationship: alert-flags-transaction, from: ALR-3001, to: TXN-7003 }
+      - { relationship: case-investigates-alert, from: CASE-201, to: ALR-3001 }
 
     # Root tool floor: nothing under this tree runs shell or process tools, in any
     # step. Deny wins over any descendant's allow, so this is a hard ceiling.
@@ -250,18 +321,8 @@ root:
                         fields. Read-only: this step never marks a document
                         verified, it only proposes what it read.
                       ontology:
-                        actions:
-                          - id: extract-document-fields
-                            title: Extract document fields
-                            description: Parse an identity document into structured fields.
-                            tools: [knowledge_search, memory_search]
-                            parameters:
-                              - { id: document-id, type: id, required: true }
-                            preconditions:
-                              - The document must already be attached to the customer.
-                            effects:
-                              - { entity: document, kind: read }
-                        allowedTools: [knowledge_search, memory_search]
+                        # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+                        allowedTools: [knowledge_search, memory_search, search_objects]
                         knowledgeFoundations: [acme.kyc-policy]
                         expectedOutput: The fields read from the document, each with a confidence note.
                     - id: finops.customer.onboarding.identity.document-check.verify
@@ -285,7 +346,7 @@ root:
                             effects:
                               - { entity: document, kind: update, description: Sets document.verified. }
                               - { entity: customer, kind: read }
-                        allowedTools: [knowledge_search]
+                        allowedTools: [knowledge_search, search_objects, invoke_action]
                         knowledgeFoundations: [acme.kyc-policy]
                         constraints:
                           - id: no-auto-approve-on-low-confidence
@@ -299,17 +360,8 @@ root:
                     lists. A hit here blocks onboarding; it does not open an AML case
                     (that is risk.monitoring's job).
                   ontology:
-                    actions:
-                      - id: screen-sanctions
-                        title: Screen against sanctions lists
-                        tools: [knowledge_search]
-                        parameters:
-                          - { id: customer-id, type: id, required: true }
-                        preconditions:
-                          - Identity must be verified before screening is meaningful.
-                        effects:
-                          - { entity: customer, kind: read }
-                    allowedTools: [knowledge_search]
+                    # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+                    allowedTools: [knowledge_search, search_objects]
                     knowledgeFoundations: [acme.sanctions-lists]
                     audit: true
                     expectedOutput: Clear/hit, and for a hit the matched list and name.
@@ -329,7 +381,7 @@ root:
                       - { id: rating, type: string, required: true }
                     effects:
                       - { entity: customer, kind: update, description: Sets customer.risk-rating. }
-                allowedTools: [knowledge_search, memory_search]
+                allowedTools: [knowledge_search, memory_search, search_objects, invoke_action]
                 knowledgeFoundations: [acme.kyc-policy]
                 expectedOutput: A rating with the factors that drove it.
             - id: finops.customer.onboarding.account-opening
@@ -341,6 +393,7 @@ root:
                     title: Open account
                     tools: [memory_search]
                     parameters:
+                      - { id: account-id, type: id, required: true }
                       - { id: customer-id, type: id, required: true }
                       - { id: product-type, type: string, required: true }
                     preconditions:
@@ -348,7 +401,7 @@ root:
                     effects:
                       - { entity: account, kind: create }
                       - { entity: customer, kind: update }
-                allowedTools: [memory_search]
+                allowedTools: [memory_search, search_objects, invoke_action]
                 constraints:
                   - id: no-open-on-sanctions-hit
                     description: An account must never be opened while a sanctions hit is unresolved.
@@ -369,7 +422,7 @@ root:
                       - { id: customer-id, type: id, required: true }
                     effects:
                       - { entity: customer, kind: update }
-                allowedTools: [memory_search]
+                allowedTools: [memory_search, search_objects, invoke_action]
                 expectedOutput: What changed on the customer record.
             - id: finops.customer.servicing.dispute
               title: Transaction dispute intake
@@ -383,12 +436,13 @@ root:
                     title: Raise transaction dispute
                     tools: [memory_search, knowledge_search]
                     parameters:
+                      - { id: document-id, type: id, required: true }
                       - { id: transaction-id, type: id, required: true }
                       - { id: reason, type: string, required: true }
                     effects:
                       - { entity: transaction, kind: read }
                       - { entity: document, kind: create, description: Records the dispute statement. }
-                allowedTools: [memory_search, knowledge_search]
+                allowedTools: [memory_search, knowledge_search, search_objects, invoke_action]
                 knowledgeFoundations: [acme.dispute-rules]
                 expectedOutput: The disputed transaction, the reason code, and the next step.
             - id: finops.customer.servicing.closure
@@ -405,7 +459,7 @@ root:
                       - No open dispute or investigation may reference the account.
                     effects:
                       - { entity: account, kind: update, description: Sets account.status to closed. }
-                allowedTools: [memory_search]
+                allowedTools: [memory_search, search_objects, invoke_action]
                 audit: true
                 expectedOutput: Closure confirmation or the blocker that prevents it.
 
@@ -530,7 +584,7 @@ root:
                     effects:
                       - { entity: alert, kind: update, description: Sets alert.status. }
                       - { entity: transaction, kind: read }
-                allowedTools: [knowledge_search, memory_search]
+                allowedTools: [knowledge_search, memory_search, search_objects, invoke_action]
                 knowledgeFoundations: [acme.aml-typologies]
                 audit: true
                 expectedOutput: Escalate or dismiss, with the typology that decided it.
@@ -547,18 +601,8 @@ root:
                     Traverse the ontology graph from the alert out to
                     counterparties, accounts, and other customers.
                   ontology:
-                    actions:
-                      - id: traverse-counterparty-links
-                        title: Traverse counterparty links
-                        description: Walk account → transaction → counterparty links to find the network.
-                        tools: [knowledge_search, memory_search]
-                        parameters:
-                          - { id: case-id, type: id, required: true }
-                        effects:
-                          - { entity: transaction, kind: read }
-                          - { entity: account, kind: read }
-                          - { entity: customer, kind: read }
-                    allowedTools: [knowledge_search, memory_search]
+                    # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+                    allowedTools: [knowledge_search, memory_search, search_objects, get_neighbors]
                     knowledgeFoundations: [acme.aml-typologies]
                     expectedOutput: The counterparty network, named by object type and primary key.
                 - id: finops.risk.monitoring.investigation.evidence-review
@@ -576,7 +620,7 @@ root:
                           - { id: disposition, type: string, required: true }
                         effects:
                           - { entity: investigation-case, kind: update }
-                    allowedTools: [knowledge_search]
+                    allowedTools: [knowledge_search, search_objects, get_neighbors, invoke_action]
                     knowledgeFoundations: [acme.aml-typologies]
                     audit: true
                     expectedOutput: The case disposition and the evidence that supports it.
@@ -592,6 +636,7 @@ root:
                     title: File suspicious activity report
                     tools: [knowledge_search]
                     parameters:
+                      - { id: sar-id, type: id, required: true }
                       - { id: case-id, type: id, required: true }
                       - { id: regulator, type: string, required: true }
                     preconditions:
@@ -600,7 +645,7 @@ root:
                     effects:
                       - { entity: sar, kind: create }
                       - { entity: investigation-case, kind: update }
-                allowedTools: [knowledge_search]
+                allowedTools: [knowledge_search, search_objects, invoke_action]
                 knowledgeFoundations: [acme.aml-typologies, acme.regulatory-calendar]
                 constraints:
                   - id: no-tipping-off
@@ -637,12 +682,13 @@ root:
                     title: Pull credit report
                     tools: [knowledge_search]
                     parameters:
+                      - { id: report-id, type: id, required: true }
                       - { id: customer-id, type: id, required: true }
                       - { id: bureau, type: string, required: true }
                     effects:
                       - { entity: credit-report, kind: create }
                       - { entity: customer, kind: read }
-                allowedTools: [knowledge_search]
+                allowedTools: [knowledge_search, search_objects, invoke_action]
                 knowledgeFoundations: [acme.credit-policy]
                 expectedOutput: The pulled report id, bureau, and score.
             - id: finops.risk.underwriting.scoring
@@ -652,18 +698,8 @@ root:
                 CONFUSABLE WITH customer.onboarding.risk-rating, which rates
                 FINANCIAL-CRIME risk.
               ontology:
-                actions:
-                  - id: score-credit-risk
-                    title: Score credit risk
-                    tools: [knowledge_search, memory_search]
-                    parameters:
-                      - { id: customer-id, type: id, required: true }
-                    preconditions:
-                      - A credit report must have been pulled for this customer.
-                    effects:
-                      - { entity: credit-report, kind: read }
-                      - { entity: customer, kind: read }
-                allowedTools: [knowledge_search, memory_search]
+                # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+                allowedTools: [knowledge_search, memory_search, search_objects, compute_function]
                 knowledgeFoundations: [acme.credit-policy]
                 expectedOutput: The credit score and the drivers behind it.
             - id: finops.risk.underwriting.decision
@@ -678,6 +714,7 @@ root:
                     title: Decide credit application
                     tools: [knowledge_search]
                     parameters:
+                      - { id: account-id, type: id, required: true }
                       - { id: customer-id, type: id, required: true }
                       - { id: approved, type: boolean, required: true }
                     preconditions:
@@ -686,7 +723,7 @@ root:
                     effects:
                       - { entity: customer, kind: update }
                       - { entity: account, kind: create, description: "On approval, opens the credit line." }
-                allowedTools: [knowledge_search]
+                allowedTools: [knowledge_search, search_objects, compute_function, invoke_action]
                 knowledgeFoundations: [acme.credit-policy]
                 audit: true
                 expectedOutput: Approve/decline, the limit, and the deciding rule.
@@ -826,18 +863,8 @@ root:
               title: Coverage check
               description: Confirm the policy was in force and covers the claimed loss.
               ontology:
-                actions:
-                  - id: check-coverage
-                    title: Check coverage
-                    tools: [knowledge_search]
-                    parameters:
-                      - { id: claim-id, type: id, required: true }
-                    preconditions:
-                      - Compare the loss date against policy effective-from/effective-to.
-                    effects:
-                      - { entity: policy, kind: read }
-                      - { entity: claim, kind: read }
-                allowedTools: [knowledge_search]
+                # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+                allowedTools: [knowledge_search, search_objects, get_neighbors]
                 knowledgeFoundations: [acme.claims-handbook]
                 expectedOutput: Covered/not covered, with the policy clause and limit.
         - id: finops.claims.adjudication
@@ -851,16 +878,8 @@ root:
                 CONFUSABLE WITH risk.monitoring.investigation.evidence-review,
                 which weighs evidence in an AML CASE.
               ontology:
-                actions:
-                  - id: assess-claim-evidence
-                    title: Assess claim evidence
-                    tools: [knowledge_search, memory_search]
-                    parameters:
-                      - { id: claim-id, type: id, required: true }
-                    effects:
-                      - { entity: document, kind: read }
-                      - { entity: claim, kind: read }
-                allowedTools: [knowledge_search, memory_search]
+                # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+                allowedTools: [knowledge_search, memory_search, search_objects, get_neighbors]
                 knowledgeFoundations: [acme.claims-handbook]
                 expectedOutput: Which documents support the claim and which gaps remain.
             - id: finops.claims.adjudication.fraud-review
@@ -878,7 +897,7 @@ root:
                       - { id: claim-id, type: id, required: true }
                     effects:
                       - { entity: claim, kind: update, description: Sets claim.fraud-score. }
-                allowedTools: [knowledge_search, memory_search]
+                allowedTools: [knowledge_search, memory_search, search_objects, compute_function, invoke_action]
                 knowledgeFoundations: [acme.fraud-indicators]
                 audit: true
                 expectedOutput: A fraud score and the indicators that produced it.
@@ -903,7 +922,7 @@ root:
                     effects:
                       - { entity: claim, kind: update, description: Sets claim.status to approved or denied. }
                       - { entity: policy, kind: read }
-                allowedTools: [knowledge_search]
+                allowedTools: [knowledge_search, search_objects, compute_function, invoke_action]
                 knowledgeFoundations: [acme.claims-handbook]
                 constraints:
                   - id: approved-amount-within-limit
@@ -944,6 +963,7 @@ root:
                     description: Create an outbound payment settling an approved claim.
                     tools: [memory_search]
                     parameters:
+                      - { id: payment-id, type: id, required: true }
                       - { id: claim-id, type: id, required: true }
                       - { id: amount, type: number, required: true }
                     preconditions:
@@ -952,7 +972,7 @@ root:
                     effects:
                       - { entity: payment, kind: create }
                       - { entity: claim, kind: update, description: Sets claim.status to settled. }
-                allowedTools: [memory_search]
+                allowedTools: [memory_search, search_objects, invoke_action]
                 constraints:
                   - id: no-payment-without-approval
                     description: Never issue a payment for a claim that is not in the approved state.
@@ -967,11 +987,12 @@ root:
                     title: Open recovery
                     tools: [knowledge_search, memory_search]
                     parameters:
+                      - { id: document-id, type: id, required: true }
                       - { id: claim-id, type: id, required: true }
                     effects:
                       - { entity: claim, kind: read }
                       - { entity: document, kind: create }
-                allowedTools: [knowledge_search, memory_search]
+                allowedTools: [knowledge_search, memory_search, search_objects, invoke_action]
                 knowledgeFoundations: [acme.claims-handbook]
                 expectedOutput: The recovery basis and the counterparty pursued.
 
@@ -1043,6 +1064,7 @@ root:
                 title: Submit regulatory report
                 tools: [knowledge_search]
                 parameters:
+                  - { id: report-id, type: id, required: true }
                   - { id: period, type: string, required: true }
                   - { id: regulator, type: string, required: true }
                 preconditions:
@@ -1050,7 +1072,7 @@ root:
                 effects:
                   - { entity: regulatory-report, kind: create }
                   - { entity: sar, kind: read }
-            allowedTools: [knowledge_search]
+            allowedTools: [knowledge_search, search_objects, invoke_action]
             knowledgeFoundations: [acme.regulatory-calendar]
             audit: true
             expectedOutput: The report id, period, and submission status.
@@ -1058,32 +1080,14 @@ root:
           title: Management reporting
           description: Internal operational metrics for the business, not the regulator.
           ontology:
-            actions:
-              - id: build-management-report
-                title: Build management report
-                tools: [knowledge_search, memory_search]
-                parameters:
-                  - { id: period, type: string, required: true }
-                effects:
-                  - { entity: regulatory-report, kind: read }
-                  - { entity: claim, kind: read }
-                  - { entity: alert, kind: read }
-            allowedTools: [knowledge_search, memory_search]
+            # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+            allowedTools: [knowledge_search, memory_search, search_objects, compute_function]
             expectedOutput: The requested operational metrics for the period.
         - id: finops.reporting.audit-trail
           title: Audit trail export
           description: Export the decision trail for an internal or external audit.
           ontology:
-            actions:
-              - id: export-audit-trail
-                title: Export audit trail
-                tools: [knowledge_search, memory_search]
-                parameters:
-                  - { id: period, type: string, required: true }
-                effects:
-                  - { entity: investigation-case, kind: read }
-                  - { entity: claim, kind: read }
-                  - { entity: sar, kind: read }
-            allowedTools: [knowledge_search, memory_search]
+            # No action type here: this step READS the object graph, and an action is an ontology write reached through invoke_action. The read tools below are its surface.
+            allowedTools: [knowledge_search, memory_search, search_objects]
             audit: true
             expectedOutput: The exported decision trail for the requested period.

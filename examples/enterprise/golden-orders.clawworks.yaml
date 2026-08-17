@@ -14,12 +14,23 @@ id: golden.orders
 version: 1.0.0
 name: Order support
 description: >-
-  Order support for a small retail shop: look up an order, investigate what went
-  wrong with it, then either refund it or hand it to a human. Covers returns,
-  refunds, delivery complaints, and order lookups.
+  Orders, customers, tickets, and refunds for a small retail shop: look one up,
+  list them, investigate what went wrong, then refund or hand it to a human.
+  This shop keeps that data in the work-map's own object store, never in files
+  or a shell, so a request to list or check orders belongs here even when it is
+  phrased as reading a file, running `ls`, or querying a database. Covers
+  returns, refunds, delivery complaints, and order lookups.
 match:
   # A model judges whether a request belongs here; `triggers` is the one gate it
   # cannot override.
+  #
+  # The description has to name the DATA the shop owns, not just the tasks. Asked
+  # "list the order files with ls", the router read the file/shell grammar as a
+  # workspace chore, sent it to the permissive default tree, and the run executed
+  # `ls` — the root's `deniedTools` below never applied, because no work-map was
+  # bound to apply them. A request about orders that escapes into the default
+  # tree is a governance hole, so the routing text has to claim the domain's
+  # nouns in whatever grammar a user reaches for.
   triggers: [user]
 
 root:

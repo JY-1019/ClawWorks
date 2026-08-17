@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseWorkflowBundleContent } from "./bundle-io.js";
 import { parseWorkflowTreeContent } from "./tree-io.js";
+import { collectWorkflowTreeWarnings } from "./tree-warnings.js";
 import type { WorkflowNodeDefinition } from "./types.js";
 
 const EXAMPLES_DIR = join(process.cwd(), "examples", "enterprise");
@@ -76,6 +77,35 @@ describe("shipped enterprise example trees", () => {
       }
       expect(result.ok).toBe(true);
     }
+  });
+
+  it("never ships a step that declares a capability its tool scope cannot reach", () => {
+    // Regression, and a large one: 31 of the 32 actions across these examples were
+    // unreachable. Every step declared them, the digest handed them to the model,
+    // and the gate refused every call — "does not allow ontology writes; a step
+    // must name invoke_action in its allowedTools". A live run on the incident
+    // example answered by INVENTING an incident id, because the action that would
+    // have created one was advertised but denied. Import-time schema validation
+    // could not see it: each tree is shape-valid, just unable to do what it says.
+    const offenders: string[] = [];
+    for (const file of exampleFiles()) {
+      const content = readFileSync(join(EXAMPLES_DIR, file), "utf8");
+      const trees = file.endsWith(BUNDLE_SUFFIX)
+        ? (() => {
+            const parsed = parseWorkflowBundleContent(content, "yaml");
+            return parsed.ok ? parsed.bundle.trees : [];
+          })()
+        : (() => {
+            const parsed = parseWorkflowTreeContent(content, "yaml");
+            return parsed.ok ? [parsed.tree] : [];
+          })();
+      for (const tree of trees) {
+        for (const warning of collectWorkflowTreeWarnings(tree)) {
+          offenders.push(`${file}: ${warning.path} — ${warning.message}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("ships a bundle whose tools, skills, and knowledge all resolve on a stock install", () => {
