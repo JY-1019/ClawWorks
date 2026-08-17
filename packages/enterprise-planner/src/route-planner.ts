@@ -39,8 +39,26 @@ type WorkflowTreeDefinition = PlannableTree;
 
 /** Trees this small are cheaper to run whole than to ask a model about. */
 const MIN_NODES_TO_PLAN = 5;
-/** Keep the candidate digest bounded: it is prompt-cache-sensitive prefix text. */
+/**
+ * Keep the candidate digest bounded: it is prompt-cache-sensitive prefix text.
+ * One budget per line KIND, because the two carry different weight.
+ *
+ * A node line is one of many — a 40-node tree renders 40 of them — and it only
+ * has to separate siblings the model already sees in context, so 120 chars is
+ * enough and the total stays bounded.
+ *
+ * A tree line is one per candidate and is the ONLY thing that decides whether a
+ * request enters that work-map at all. Since keywords retired, this description
+ * IS the routing signal, so truncating it discards the domain cue authors write
+ * it for — and they write it last, after the summary sentence, which is exactly
+ * what a short budget cuts. The support-desk example lost 298 of its 417 chars
+ * this way, silently reverting the "either voice" routing fix it documents, and
+ * the golden fixture lost the clause claiming order lookups; a request phrased
+ * as `ls` then escaped into the permissive default tree with exec wide open.
+ * Bounded, not unbounded: a runaway description would still balloon the prefix.
+ */
 const SUMMARY_MAX_CHARS = 120;
+const TREE_SUMMARY_MAX_CHARS = 600;
 
 /**
  * What the injected planner must return. Three outcomes, kept distinct because
@@ -116,12 +134,12 @@ const planDecisionSchema = z.object({
   rationale: z.string().optional(),
 });
 
-function shorten(text: string | undefined): string {
+function shorten(text: string | undefined, maxChars = SUMMARY_MAX_CHARS): string {
   if (!text) {
     return "";
   }
   const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > SUMMARY_MAX_CHARS ? `${flat.slice(0, SUMMARY_MAX_CHARS - 1)}…` : flat;
+  return flat.length > maxChars ? `${flat.slice(0, maxChars - 1)}…` : flat;
 }
 
 function walk(
@@ -170,7 +188,7 @@ export function buildRouteCandidateDigest(tree: WorkflowTreeDefinition): string 
 export function buildPlanCandidateDigest(trees: readonly WorkflowTreeDefinition[]): string {
   return trees
     .map((tree) => {
-      const summary = shorten(tree.description);
+      const summary = shorten(tree.description, TREE_SUMMARY_MAX_CHARS);
       return [
         `# ${tree.id} — ${tree.name}${summary ? `: ${summary}` : ""}`,
         buildRouteCandidateDigest(tree),

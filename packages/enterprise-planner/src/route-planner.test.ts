@@ -120,6 +120,44 @@ describe("buildPlanCandidateDigest", () => {
     // A tree without one still renders cleanly (no dangling separator).
     expect(digest).toContain("# clawworks.assist — General assistance\n");
   });
+
+  it("keeps a tree description whole past the budget a node line gets", () => {
+    // Authors put the summary sentence first and the DOMAIN CUE last — the
+    // clause naming which requests belong here. A 120-char budget cut exactly
+    // that tail: the shipped support-desk description lost 298 of its 417
+    // chars, silently reverting the "either voice" routing fix it documents,
+    // and an order request phrased as `ls` escaped into the permissive default
+    // tree with exec ungoverned. So the tree line gets its own larger budget.
+    const cue = "belongs here even when phrased as reading a file or running ls";
+    const description = `${"Order support for a small retail shop. ".repeat(6)}${cue}.`;
+    expect(description.length).toBeGreaterThan(200);
+    const digest = buildPlanCandidateDigest([{ ...TREE, description }, DEFAULT_TREE]);
+    expect(digest).toContain(cue);
+  });
+
+  it("still bounds a runaway tree description", () => {
+    // Bounded, not unbounded: the digest is prompt-cache-sensitive prefix text,
+    // so one pathological description must not balloon every planning call.
+    const digest = buildPlanCandidateDigest([
+      { ...TREE, description: "x".repeat(5_000) },
+      DEFAULT_TREE,
+    ]);
+    expect(digest).toContain("…");
+    expect(digest.length).toBeLessThan(2_000);
+  });
+
+  it("keeps node descriptions short, so a wide tree cannot balloon the prompt", () => {
+    // The tree budget is per candidate; the node budget is paid once per node,
+    // and a 40-node tree renders 40 of them. Raising both would be the actual
+    // prompt-size problem the bound exists to prevent.
+    const long = `Node summary. ${"detail ".repeat(60)}`;
+    const digest = buildRouteCandidateDigest({
+      ...TREE,
+      root: { ...TREE.root, description: long, children: [] },
+    });
+    expect(digest).toContain("…");
+    expect(digest.length).toBeLessThan(300);
+  });
 });
 
 describe("selectWorkflowPlan", () => {
