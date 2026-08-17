@@ -38,6 +38,7 @@ import {
   type EnterpriseTreeStoreOptions,
   type WorkflowTreeSourceFormat,
 } from "./tree-store.sqlite.js";
+import { collectWorkflowTreeWarnings, type WorkflowTreeWarning } from "./tree-warnings.js";
 import {
   WORKFLOW_BUNDLE_SCHEMA,
   WORKFLOW_BUNDLE_SCHEMA_VERSION,
@@ -185,6 +186,13 @@ export type WorkflowBundleImportResult =
       requiredTools: string[];
       /** Skill ids the imported trees declare, so the recipient can spot any it lacks. */
       requiredSkills: string[];
+      /**
+       * Capabilities a step declares that its own tool scope can never reach, so
+       * the recipient learns the work-map is partly inert BEFORE a run spends a
+       * turn on a declaration the gate refuses. Derived from the trees, like the
+       * manifests above — a stale exported array must not be able to hide one.
+       */
+      warnings: WorkflowTreeWarning[];
       /**
        * Policy ids the bundle carried that this deployment does NOT configure.
        *
@@ -405,8 +413,10 @@ export function importWorkflowBundle(
   // And for MCP: an attachment naming a server the recipient never registered is
   // inert, so the import has to name them rather than look complete.
   const requiredMcpServers = new Set<string>();
+  const warnings: WorkflowTreeWarning[] = [];
   for (const tree of bundle.trees) {
     const existing = getWorkflowTreeRegistryEntry(tree.id, options);
+    warnings.push(...collectWorkflowTreeWarnings(tree));
     for (const tool of collectReferencedToolGlobs(tree)) {
       requiredTools.add(tool);
     }
@@ -446,6 +456,7 @@ export function importWorkflowBundle(
     requiredTools: [...requiredTools].toSorted(),
     requiredSkills: [...requiredSkills].toSorted(),
     requiredMcpServers: [...requiredMcpServers].toSorted(),
+    warnings,
     ...comparePolicies(bundle, params.config),
   };
 }

@@ -31,6 +31,10 @@ import {
   getWorkflowTreeRegistrySnapshot,
 } from "../enterprise/tree-registry.js";
 import type { WorkflowTreeSourceFormat } from "../enterprise/tree-store.sqlite.js";
+import {
+  collectWorkflowTreeWarnings,
+  type WorkflowTreeWarning,
+} from "../enterprise/tree-warnings.js";
 import type { GovernancePolicy } from "../enterprise/types.js";
 import { writeTextAtomic } from "../infra/json-files.js";
 import { redactSecrets } from "../logging/redact.js";
@@ -80,6 +84,28 @@ function printValidationIssues(
   runtime.error(`Invalid ${subject} (${issues.length} issue(s)):`);
   for (const issue of issues) {
     runtime.error(`  - ${issue.path || "(root)"}: ${issue.message}`);
+  }
+}
+
+/**
+ * Report capabilities a step declares but can never reach. Never fatal: the tree
+ * is valid and will load, it just cannot do part of what it says, and only the
+ * author can choose between granting the tool and dropping the declaration.
+ */
+function printWorkflowWarnings(
+  warnings: readonly WorkflowTreeWarning[],
+  runtime: RuntimeEnv,
+): void {
+  if (warnings.length === 0) {
+    return;
+  }
+  runtime.log(
+    theme.warn(
+      `${warnings.length} unreachable capability warning(s) — the model is shown these, the gate refuses them:`,
+    ),
+  );
+  for (const warning of warnings) {
+    runtime.log(`  - ${warning.path}: ${warning.message}`);
   }
 }
 
@@ -140,6 +166,7 @@ export function enterpriseTreesValidateCommand(filePath: string, runtime: Runtim
   runtime.log(
     `${theme.success("Valid")}: ${result.tree.id}@${result.tree.version} — ${result.tree.name} (${countWorkflowTreeNodes(result.tree.root)} node(s))`,
   );
+  printWorkflowWarnings(collectWorkflowTreeWarnings(result.tree), runtime);
 }
 
 export function enterpriseTreesImportCommand(filePath: string, runtime: RuntimeEnv): void {
@@ -160,6 +187,7 @@ export function enterpriseTreesImportCommand(filePath: string, runtime: RuntimeE
         ? "Imported (overrides built-in tree)"
         : "Updated";
   runtime.log(`${action}: ${result.tree.id}@${result.tree.version} — ${result.tree.name}`);
+  printWorkflowWarnings(collectWorkflowTreeWarnings(result.tree), runtime);
   runtime.log(theme.muted(GATEWAY_RELOAD_HINT));
 }
 
@@ -295,6 +323,7 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
   for (const foundationId of result.foundations) {
     runtime.log(`Imported knowledge foundation: ${foundationId}`);
   }
+  printWorkflowWarnings(result.warnings, runtime);
   // Policies are operator config, so importing one behind their back would be
   // wrong — but importing the work-map WITHOUT saying its rules are absent would
   // hand them a governed-looking tree that enforces less than the sender's.
