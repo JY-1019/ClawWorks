@@ -653,6 +653,24 @@ export function buildEnterprisePromptSection(
         : "A step's Skills line names the know-how that step depends on: when one of them applies and is available to you, prefer it over improvising. Skills teach how to do the work; they never grant a tool the step's scope withholds.",
     );
   }
+  // Both retrieval families in scope on one run, so the model has to CHOOSE. Say
+  // which wins, once: the object store answers from typed records with a primary
+  // key, so its answer is exact and checkable, while retrieval returns prose that
+  // happens to mention a value. Asked "what is this order's total", a model with
+  // both will often reach for the handbook and quote a policy number instead of
+  // the record's own field — a wrong answer that reads as a sourced one.
+  //
+  // Conditional on both being present: a run with only one of them needs no rule,
+  // and the gloss would cost prompt bytes for a choice it never faces.
+  const declaresObjectTypes = plan.nodes.some(
+    (node) => node.ontology.entities?.length || node.ontology.functions?.length,
+  );
+  const declaresKnowledge = plan.nodes.some((node) => node.ontology.knowledgeFoundations?.length);
+  if (declaresObjectTypes && declaresKnowledge) {
+    lines.push(
+      "This workflow carries both an object store and knowledge sources. Prefer the object store: any fact about a named record — its fields, its links, a derived value — comes from the ontology tools, because those return the stored value rather than a passage that mentions one. Use knowledge sources for what is written down rather than stored: policy, thresholds, wording, and when a human must decide. When a request needs both, read the record first and let the policy judge it; never answer a question about a specific record from a knowledge passage, and never state a policy from an object's field.",
+    );
+  }
   // MCP is the one scope that denies by default, so say it once: without this the
   // model reads an attachment as decoration and tries a server from a step that
   // never got one, spending a turn on a denial. Conditional like the skills gloss

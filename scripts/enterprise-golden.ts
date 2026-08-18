@@ -1052,6 +1052,121 @@ async function main(): Promise<number> {
     }
   }
 
+  // ---- The one work-map that carries BOTH retrieval families, so the model has
+  // to CHOOSE between them. Every other example gives it one way to look
+  // something up, which is why tool SELECTION had no fixture at all: the two
+  // runnable bundles seed no objects, and the two trees that do seed objects
+  // cannot inline the foundations they name, so their `knowledge_search` returns
+  // nothing. Both halves have to resolve on the same run or the choice is fake.
+  {
+    const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
+    const { createKnowledgeSearchTool } =
+      await import("../src/agents/tools/knowledge-search-tool.js");
+    const BOTH_TREE_ID = "acme.orders-handbook";
+    const BOTH_FOUNDATION_ID = "acme.orders-handbook";
+    const bundlePath = path.resolve("examples/enterprise/orders-handbook.clawworks-bundle.yaml");
+    const both = importWorkflowBundle({
+      content: readFileSync(bundlePath, "utf8"),
+      format: "yaml",
+    });
+    record(
+      "the ontology+knowledge bundle imports cleanly",
+      both.ok,
+      both.ok ? BOTH_TREE_ID : JSON.stringify(both.issues),
+    );
+    if (both.ok) {
+      expectEqual("it declares no unreachable capability", both.warnings, []);
+      expectEqual("its handbook ships inline", both.foundations, [BOTH_FOUNDATION_ID]);
+      invalidateWorkflowTreeRegistry();
+
+      // The deciding step holds both, so this is where the rule has to hold.
+      const runId = "golden-both";
+      const mediation = await beginEnterpriseRun({
+        runId,
+        prompt: "SO-3002 환불 가능해?",
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: BOTH_TREE_ID,
+          routes: ["shop.decide"],
+          rationale: "both",
+        }),
+      });
+
+      // BOTH tools answer on the same step. If either half were inert the model
+      // would have no choice to make and the precedence rule would be untestable.
+      const objects = await createSearchObjectsTool({ runId }).execute("b1", {
+        entity: "order",
+        limit: 50,
+      });
+      const objectText = JSON.stringify(objects);
+      record(
+        "the store answers on the deciding step",
+        ["SO-3001", "SO-3002", "SO-3003"].every((id) => objectText.includes(id)),
+        objectText.slice(0, 100),
+      );
+      const passage = await createKnowledgeSearchTool({ runId }).execute("b2", {
+        query: "refund approval threshold",
+      });
+      const passageText = JSON.stringify(passage);
+      record(
+        "the handbook answers on that same step",
+        passageText.includes("$200") && passageText.includes(BOTH_FOUNDATION_ID),
+        passageText.slice(0, 100),
+      );
+
+      // The two sources deliberately DISAGREE: the handbook's written threshold
+      // is $200, the order's own derived cap is 150. A reply that quotes 200 for
+      // SO-3002 has answered a record question from a policy passage — the exact
+      // confusion the fixture exists to catch, and it is only detectable because
+      // the numbers differ.
+      const computed = await createComputeFunctionTool({ runId }).execute("b3", {
+        function: "auto-refundable-amount",
+        objectId: "SO-3002",
+      });
+      expectEqual(
+        "the record's derived cap is not the handbook's number",
+        (computed as { details?: { value?: unknown } }).details?.value,
+        150,
+      );
+
+      // The rule itself, in the prompt. It is what makes the model prefer the
+      // store for a record fact; without it the two sources are equal in the
+      // digest and the wrong one wins whenever it reads more fluently.
+      const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
+      record(
+        "the digest tells the model the store wins for a record fact",
+        digest.includes("Prefer the object store") &&
+          digest.includes(
+            "never answer a question about a specific record from a knowledge passage",
+          ),
+        digest.includes("Prefer the object store")
+          ? "precedence rule present"
+          : "both sources offered with nothing to rank them",
+      );
+      endEnterpriseRun({ runId, status: "completed" });
+
+      // Conditional, so a work-map with only one family pays no prompt bytes for
+      // a choice it never faces.
+      const oneId = "golden-one-family";
+      const one = await beginEnterpriseRun({
+        runId: oneId,
+        prompt: "ORD-5002 확인",
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: TREE_ID,
+          routes: ["golden.investigate"],
+          rationale: "one",
+        }),
+      });
+      record(
+        "a work-map with no knowledge source is not given the rule",
+        !(one.kind === "mediated" ? one.promptSection : "").includes("Prefer the object store"),
+        "golden.orders carries objects only, so the ranking is inert there",
+      );
+      endEnterpriseRun({ runId: oneId, status: "completed" });
+    }
+  }
+
   printSummary();
   return checks.every((check) => check.ok) ? 0 : 1;
 }
