@@ -57,6 +57,26 @@ trees:
       ontology:
         # Shell stays out of every step: this desk reads records, not machines.
         deniedTools: [exec, process, browser]
+        # A root allow-list, and it must be a SUPERSET of every child scope, because
+        # allowedTools is an independent gate at each node on the root→active path.
+        # The MCP globs belong here for a second reason: whether the server is handed
+        # to the harness AT ALL is decided run-wide before any step is active, so a
+        # sibling step that narrows without them withholds the server for the whole
+        # run. Attaching it on shop.escalate is what then limits WHICH step may call
+        # it; this list only makes it reachable at launch.
+        allowedTools:
+          [
+            message,
+            search_objects,
+            get_neighbors,
+            compute_function,
+            knowledge_search,
+            invoke_action,
+            "acme-tracker__*",
+            "mcp__acme-tracker__*",
+            "acme_tracker__*",
+            "mcp__acme_tracker__*",
+          ]
         entities:
           - id: customer
             title: Customer
@@ -189,7 +209,28 @@ trees:
             # status or the rule that forced the handoff. A step cannot promise
             # an expectedOutput its scope withholds the facts for.
             # No invoke_action: handing off is not a write.
-            allowedTools: [message, search_objects, knowledge_search]
+            # The MCP globs sit beside the plain tools because a native harness
+            # (Codex, the Claude CLI) reports a tool call with no origin, so a step
+            # that narrows its tools has to name the server's tools too — every
+            # spelling, since the harness picks which one it exposes (OpenClaw maps
+            # punctuation to `-`, Codex to `_`, either may carry an `mcp__` prefix).
+            allowedTools:
+              [
+                message,
+                search_objects,
+                knowledge_search,
+                "acme-tracker__*",
+                "mcp__acme-tracker__*",
+                "acme_tracker__*",
+                "mcp__acme_tracker__*",
+              ]
+            # The ONLY step that may reach the tracker. Attaching it here also turns
+            # MCP governance on for the whole work-map (plan.ts: a tree that never
+            # mentions MCP does not govern it), which is what makes the tracker
+            # denied on lookup, policy, and decide rather than quietly callable from
+            # every step. Register a server named `acme-tracker` under mcp.servers
+            # to resolve it; until then the MCP tab shows it unregistered.
+            mcpServers: [acme-tracker]
             knowledgeFoundations: [acme.orders-handbook]
             skills: [summarize]
             expectedOutput: A handoff note naming the order and the rule that forced it.
