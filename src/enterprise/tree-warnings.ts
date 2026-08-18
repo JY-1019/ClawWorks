@@ -1,17 +1,22 @@
 /**
  * Non-fatal authoring checks for a workflow tree: capabilities a step DECLARES
- * that its own tool scope can never reach.
+ * that no run could ever reach.
  *
- * These are separate from schema validation because they are not shape errors —
- * every tree here parses, imports, and runs. They are work-maps that cannot do
- * what they say, and the runtime cannot tell the difference: the digest hands
- * the model a step's `Actions:` list, the model calls one, and the gate refuses
- * it. The turn is spent arguing with a declaration nobody could honor.
+ * These are not shape errors — every tree here parses, imports, and runs. They
+ * are work-maps that cannot do what they say, and the runtime cannot tell the
+ * difference: the digest hands the model a step's `Actions:` list, the model
+ * calls one, and the gate refuses it. The turn is spent arguing with a
+ * declaration nobody could honor. Every shipped example carried it: 31 of the 32
+ * declared actions were unreachable, and a live run answered by INVENTING an
+ * incident id because the action that would have created one was advertised and
+ * then denied.
  *
- * That is not hypothetical. Every shipped example carried it: 31 of the 32
- * declared actions across them were unreachable, and a live run on the incident
- * example answered by INVENTING an incident id, because the action that would
- * have created one was advertised but denied.
+ * WHAT MAKES THIS SUBTLE. A declaration is inherited DOWN, but the gate judges
+ * the root→ACTIVE path, and runs are active on leaves. So an action declared on
+ * an interior node is reachable when some executable leaf beneath it supplies
+ * the grant — judging the declaring node's own path alone reports working
+ * work-maps as broken. Every check therefore asks: does ANY executable leaf path
+ * through this node admit the capability?
  *
  * Warnings, never errors. An operator's already-imported work-map must keep
  * loading, and only the author can decide whether the fix is to grant the tool
@@ -27,63 +32,91 @@ export type WorkflowTreeWarning = {
 };
 
 /**
- * Does every allow-list on this root→node path admit `toolName`?
- *
- * Mirrors the gate's PASS 2 (governance.ts): an allow-list is an INTERSECTION
- * across the whole path, so an ancestor that narrows without naming the tool
- * closes it for every descendant, no matter what the leaf grants. A node with
- * no list narrows nothing.
- *
- * Deliberately ignores the core floor and `deniedTools`: the floor never covers
- * the tools checked here, and a denial can only make the answer more negative.
+ * The literal opt-ins that let a step perform an ontology WRITE
+ * (runtime.ts ONTOLOGY_WRITE_OPT_INS). Set membership, NOT glob matching: a
+ * scope of `invoke_*` satisfies the ordinary tool gate and is still refused
+ * here, so the linter has to compare the same way or it blesses a dead action.
  */
-function pathAdmitsTool(path: readonly WorkflowNodeDefinition[], toolName: string): boolean {
-  for (const node of path) {
-    const allow = node.ontology?.allowedTools;
-    if (allow?.length && !isToolAllowedByPolicyName(toolName, { allow: [...allow] })) {
-      return false;
-    }
-  }
-  return true;
+const WRITE_OPT_INS = new Set(["invoke_action", "group:enterprise-write"]);
+
+type Path = readonly WorkflowNodeDefinition[];
+
+function allowList(node: WorkflowNodeDefinition): readonly string[] | undefined {
+  const allow = node.ontology?.allowedTools;
+  // An empty list neither narrows nor grants — the gate tests `allow?.length` on
+  // both sides, so treating [] as a narrowing would invent a denial.
+  return allow?.length ? allow : undefined;
 }
 
-/**
- * Under `capabilityGrants: "explicit"`, silence denies: some level has to NAME
- * the tool. Without it, a tree whose steps declare no allow-lists at all would
- * look permissive here and deny at runtime.
- */
-function pathNamesTool(path: readonly WorkflowNodeDefinition[], toolName: string): boolean {
+/** PASS 1: an explicit denial anywhere on the path outranks every allow. */
+function pathDenies(path: Path, toolName: string): boolean {
   return path.some((node) => {
-    const allow = node.ontology?.allowedTools;
-    return Boolean(allow?.length && isToolAllowedByPolicyName(toolName, { allow: [...allow] }));
+    const deny = node.ontology?.deniedTools;
+    if (!deny?.length) {
+      return false;
+    }
+    return !isToolAllowedByPolicyName(toolName, { deny: [...deny] });
   });
 }
 
-function canUseTool(
-  path: readonly WorkflowNodeDefinition[],
-  toolName: string,
-  grantsExplicitly: boolean,
-): boolean {
-  if (!pathAdmitsTool(path, toolName)) {
+/** PASS 2: allow-lists INTERSECT across the path; a node with none narrows nothing. */
+function pathAdmits(path: Path, toolName: string): boolean {
+  return path.every((node) => {
+    const allow = allowList(node);
+    return !allow || isToolAllowedByPolicyName(toolName, { allow: [...allow] });
+  });
+}
+
+/** PASS 3: under explicit grants, silence denies — some level must NAME it. */
+function pathNames(path: Path, toolName: string): boolean {
+  return path.some((node) => {
+    const allow = allowList(node);
+    return Boolean(allow) && isToolAllowedByPolicyName(toolName, { allow: [...(allow ?? [])] });
+  });
+}
+
+/** The ontology write opt-in: literal, and existential over the path. */
+function pathOptsIntoWrites(path: Path): boolean {
+  return path.some((node) =>
+    (node.ontology?.allowedTools ?? []).some((tool) =>
+      WRITE_OPT_INS.has(tool.trim().toLowerCase()),
+    ),
+  );
+}
+
+function canUseTool(path: Path, toolName: string, grantsExplicitly: boolean): boolean {
+  if (pathDenies(path, toolName) || !pathAdmits(path, toolName)) {
     return false;
   }
-  return grantsExplicitly ? pathNamesTool(path, toolName) : true;
+  return grantsExplicitly ? pathNames(path, toolName) : true;
+}
+
+/** Can this path perform an ontology write? Both gates, in the runtime's order. */
+function canWrite(path: Path, grantsExplicitly: boolean): boolean {
+  return pathOptsIntoWrites(path) && canUseTool(path, "invoke_action", grantsExplicitly);
 }
 
 /**
- * The primary-key property of each object type this node can address: its own
- * declarations merged with every ancestor's, which is how governance merges the
- * root→node path. Entities are declared by the domain that owns them, so a
- * node's own list is rarely the whole scope.
+ * Every root→leaf path that can be ACTIVE while this node's declarations apply.
+ * A leaf contributes its own path; an interior node contributes one path per
+ * descendant leaf, because the run executes on leaves and inherits downward.
  */
-function primaryKeysInScope(path: readonly WorkflowNodeDefinition[]): Map<string, string> {
-  const keys = new Map<string, string>();
-  for (const node of path) {
+function executablePaths(path: Path): Path[] {
+  const node = path[path.length - 1];
+  const children = node?.children ?? [];
+  if (children.length === 0) {
+    return [path];
+  }
+  return children.flatMap((child) => executablePaths([...path, child]));
+}
+
+/** Primary key per object type declared on these nodes; null when it has none. */
+function primaryKeys(nodes: readonly WorkflowNodeDefinition[]): Map<string, string | null> {
+  const keys = new Map<string, string | null>();
+  for (const node of nodes) {
     for (const entity of node.ontology?.entities ?? []) {
-      const primaryKey = entity.properties?.find((property) => property.primaryKey);
-      if (primaryKey) {
-        keys.set(entity.id, primaryKey.id);
-      }
+      const key = entity.properties?.find((property) => property.primaryKey);
+      keys.set(entity.id, key?.id ?? null);
     }
   }
   return keys;
@@ -92,30 +125,33 @@ function primaryKeysInScope(path: readonly WorkflowNodeDefinition[]): Map<string
 /** Collect every unreachable-capability warning in one tree. */
 export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): WorkflowTreeWarning[] {
   const warnings: WorkflowTreeWarning[] = [];
-  const grantsExplicitly = tree.capabilityGrants === "explicit";
+  const explicit = tree.capabilityGrants === "explicit";
 
-  const visit = (node: WorkflowNodeDefinition, ancestors: readonly WorkflowNodeDefinition[]) => {
-    const path = [...ancestors, node];
+  const visit = (node: WorkflowNodeDefinition, ancestors: Path) => {
+    const path: Path = [...ancestors, node];
     const ontology = node.ontology;
-    const primaryKeys = primaryKeysInScope(path);
+    const paths = executablePaths(path);
+    // Object types reachable from here: the scope chain above plus whatever the
+    // subtree adds, since the active path runs through one of those leaves.
+    const keys = primaryKeys(paths.flat());
 
     const actions = ontology?.actions ?? [];
-    if (actions.length > 0 && !canUseTool(path, "invoke_action", grantsExplicitly)) {
+    if (actions.length > 0 && !paths.some((candidate) => canWrite(candidate, explicit))) {
       warnings.push({
         path: `node.${node.id}.ontology.actions`,
         message:
           `step "${node.id}" declares ${actions.length === 1 ? "action" : "actions"} ` +
-          `${actions.map((action) => `"${action.id}"`).join(", ")} but its tool scope cannot ` +
-          `reach invoke_action, so the model is shown an action every call will refuse. ` +
-          `Add invoke_action to this step's ontology.allowedTools (and to every ancestor ` +
-          `that narrows tools), or drop the declaration.`,
+          `${actions.map((action) => `"${action.id}"`).join(", ")} but no step that runs under it ` +
+          `can perform an ontology write, so the model is shown an action every call will refuse. ` +
+          `Name invoke_action literally in ontology.allowedTools here or on a step beneath it ` +
+          `(a glob such as invoke_* does not opt into writes), keep every ancestor's allow-list ` +
+          `from excluding it, and do not deny it — or drop the declaration.`,
       });
     }
 
     for (const action of actions) {
       // The effects ARE the write scope (ontology-actions.ts): invoke_action
-      // refuses an action that declares none, so such an action can only ever
-      // be an instruction the model cannot carry out.
+      // refuses an action that declares none.
       const writes = (action.effects ?? []).filter((effect) => effect.kind !== "read");
       if (writes.length === 0) {
         warnings.push({
@@ -126,23 +162,32 @@ export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): Workf
             `effect, or describe the work in the step's description instead of as an action.`,
         });
       }
-      // A create effect mints a NEW object, so the call has to be able to name
-      // it. Without the target type's primary key among the parameters there is
-      // no id to write under and every invocation fails validation — an action
-      // that only LOOKS executable.
       const parameterIds = new Set((action.parameters ?? []).map((parameter) => parameter.id));
+      // EVERY write kind, not just create: planEffect resolves and validates the
+      // target's primary key before it branches on the kind, so an update or a
+      // delete without it fails exactly as a create does.
       for (const effect of writes) {
-        if (effect.kind !== "create") {
+        if (!keys.has(effect.entity)) {
+          continue; // Declared on a sibling branch; the schema checks effects tree-wide.
+        }
+        const primaryKey = keys.get(effect.entity) ?? null;
+        if (primaryKey === null) {
+          warnings.push({
+            path: `node.${node.id}.ontology.actions.${action.id}.effects`,
+            message:
+              `action "${action.id}" on step "${node.id}" ${effect.kind}s a "${effect.entity}", but ` +
+              `that object type declares no primaryKey, so no action can address an instance of it ` +
+              `and every invocation fails. Give "${effect.entity}" a primaryKey property.`,
+          });
           continue;
         }
-        const primaryKey = primaryKeys.get(effect.entity);
-        if (primaryKey && !parameterIds.has(primaryKey)) {
+        if (!parameterIds.has(primaryKey)) {
           warnings.push({
             path: `node.${node.id}.ontology.actions.${action.id}.parameters`,
             message:
-              `action "${action.id}" on step "${node.id}" creates a "${effect.entity}" but takes ` +
-              `no "${primaryKey}" parameter, so no call can name the object it creates and every ` +
-              `invocation fails validation. Add { id: ${primaryKey}, type: id, required: true }.`,
+              `action "${action.id}" on step "${node.id}" ${effect.kind}s a "${effect.entity}" but ` +
+              `takes no "${primaryKey}" parameter, so no call can name the object it writes and ` +
+              `every invocation fails validation. Add { id: ${primaryKey}, type: id, required: true }.`,
           });
         }
       }
@@ -150,13 +195,13 @@ export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): Workf
 
     if (
       (ontology?.knowledgeFoundations?.length ?? 0) > 0 &&
-      !canUseTool(path, "knowledge_search", grantsExplicitly)
+      !paths.some((candidate) => canUseTool(candidate, "knowledge_search", explicit))
     ) {
       warnings.push({
         path: `node.${node.id}.ontology.knowledgeFoundations`,
         message:
-          `step "${node.id}" attaches a knowledge foundation but its tool scope cannot reach ` +
-          `knowledge_search, so nothing on this step can retrieve from it.`,
+          `step "${node.id}" attaches a knowledge foundation but no step that runs under it can ` +
+          `reach knowledge_search, so nothing there can retrieve from it.`,
       });
     }
 

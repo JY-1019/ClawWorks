@@ -99,13 +99,13 @@ function printWorkflowWarnings(
   if (warnings.length === 0) {
     return;
   }
-  runtime.log(
+  runtime.error(
     theme.warn(
       `${warnings.length} unreachable capability warning(s) — the model is shown these, the gate refuses them:`,
     ),
   );
   for (const warning of warnings) {
-    runtime.log(`  - ${warning.path}: ${warning.message}`);
+    runtime.error(`  - ${warning.path}: ${warning.message}`);
   }
 }
 

@@ -138,15 +138,18 @@ describe("collectWorkflowTreeWarnings", () => {
     expect(warnings.map((w) => w.path)).toEqual(["node.root.ontology.knowledgeFoundations"]);
   });
 
-  it("under explicit grants, silence denies even with no narrowing list anywhere", () => {
-    // Without capabilityGrants:"explicit" this tree is fine — nothing narrows, so
-    // invoke_action passes. Explicit grants invert that: some level must NAME it.
+  it("an ontology write always needs an explicit opt-in, explicit grants or not", () => {
+    // Not a capabilityGrants question: activePathAllowsWrites (runtime.ts) demands
+    // a literal invoke_action / group:enterprise-write somewhere on the path in
+    // EVERY mode, so a tree that narrows nothing still cannot write.
     const root = {
       id: "root",
       title: "Root",
       ontology: { actions: [{ id: "settle", effects: WRITE_EFFECT }] },
     };
-    expect(collectWorkflowTreeWarnings(tree(root))).toEqual([]);
+    expect(collectWorkflowTreeWarnings(tree(root)).map((w) => w.path)).toEqual([
+      "node.root.ontology.actions",
+    ]);
     expect(
       collectWorkflowTreeWarnings(tree(root, { capabilityGrants: "explicit" })).map((w) => w.path),
     ).toEqual(["node.root.ontology.actions"]);
@@ -218,43 +221,150 @@ describe("collectWorkflowTreeWarnings", () => {
     ).toEqual([]);
   });
 
-  it("does not demand a primary key for an update-only action", () => {
-    // update/delete address an object that already exists; only create mints one.
+  it("rejects a glob for the write opt-in, which is literal set membership", () => {
+    // `invoke_*` satisfies the ordinary tool gate, but ONTOLOGY_WRITE_OPT_INS is
+    // a Set lookup (runtime.ts), so the runtime still refuses the write.
+    // Blessing the glob here would certify an action that can never run.
+    const warnings = collectWorkflowTreeWarnings(
+      tree({
+        id: "root",
+        title: "Root",
+        ontology: {
+          allowedTools: ["invoke_*"],
+          actions: [{ id: "settle", effects: WRITE_EFFECT }],
+        },
+      }),
+    );
+    expect(warnings.map((w) => w.path)).toEqual(["node.root.ontology.actions"]);
+  });
+
+  it("accepts group:enterprise-write as the opt-in", () => {
     expect(
       collectWorkflowTreeWarnings(
         tree({
           id: "root",
           title: "Root",
           ontology: {
-            entities: [{ id: "claim", properties: [{ id: "id", type: "id", primaryKey: true }] }],
-            allowedTools: ["invoke_action"],
-            actions: [
-              {
-                id: "triage",
-                parameters: [{ id: "status", type: "string", required: true }],
-                effects: [{ entity: "claim", kind: "update" }],
-              },
-            ],
+            allowedTools: ["group:enterprise-write"],
+            actions: [{ id: "settle", effects: WRITE_EFFECT }],
           },
         }),
       ),
     ).toEqual([]);
   });
 
-  it("accepts a glob that covers invoke_action rather than the literal name", () => {
-    // Scopes are matched with the sandbox tool-policy rules, so an author who
-    // wrote a pattern must not be warned about a tool the gate will allow.
+  it("does not warn when a DESCENDANT leaf supplies the write opt-in", () => {
+    // Declarations inherit down and runs execute on leaves, so an action on an
+    // interior node is reachable from any leaf beneath it that opts in. Judging
+    // the declaring node's own path alone reported working work-maps as broken.
     expect(
       collectWorkflowTreeWarnings(
+        tree(
+          {
+            id: "orders",
+            title: "Orders",
+            ontology: {
+              entities: [{ id: "order", properties: [{ id: "id", type: "id", primaryKey: true }] }],
+              actions: [
+                {
+                  id: "create-order",
+                  parameters: [{ id: "id", type: "id", required: true }],
+                  effects: [{ entity: "order", kind: "create" }],
+                },
+              ],
+            },
+            children: [
+              {
+                id: "orders.create",
+                title: "Create",
+                ontology: { allowedTools: ["invoke_action"] },
+              },
+            ],
+          },
+          { capabilityGrants: "explicit" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("warns when NO leaf beneath the declaring node opts in", () => {
+    const warnings = collectWorkflowTreeWarnings(
+      tree({
+        id: "orders",
+        title: "Orders",
+        ontology: {
+          entities: [{ id: "order", properties: [{ id: "id", type: "id", primaryKey: true }] }],
+          actions: [
+            {
+              id: "create-order",
+              parameters: [{ id: "id", type: "id", required: true }],
+              effects: [{ entity: "order", kind: "create" }],
+            },
+          ],
+        },
+        children: [
+          { id: "orders.read", title: "Read", ontology: { allowedTools: ["search_objects"] } },
+        ],
+      }),
+    );
+    expect(warnings.map((w) => w.path)).toEqual(["node.orders.ontology.actions"]);
+  });
+
+  it("warns when a denial takes the write opt-in back", () => {
+    // PASS 1 outranks every allow, so naming the tool and denying it is still dead.
+    const warnings = collectWorkflowTreeWarnings(
+      tree({
+        id: "root",
+        title: "Root",
+        ontology: {
+          allowedTools: ["invoke_action"],
+          deniedTools: ["invoke_action"],
+          actions: [{ id: "settle", effects: WRITE_EFFECT }],
+        },
+      }),
+    );
+    expect(warnings.map((w) => w.path)).toEqual(["node.root.ontology.actions"]);
+  });
+
+  it("demands the primary key for update and delete, not only create", () => {
+    // planEffect resolves the target's primary key before it branches on kind,
+    // so an update or a delete without it fails exactly as a create does.
+    for (const kind of ["update", "delete"] as const) {
+      const warnings = collectWorkflowTreeWarnings(
         tree({
           id: "root",
           title: "Root",
           ontology: {
-            allowedTools: ["invoke_*"],
-            actions: [{ id: "settle", effects: WRITE_EFFECT }],
+            entities: [
+              { id: "claim", properties: [{ id: "claim-id", type: "id", primaryKey: true }] },
+            ],
+            allowedTools: ["invoke_action"],
+            actions: [
+              {
+                id: "touch",
+                parameters: [{ id: "status", type: "string", required: true }],
+                effects: [{ entity: "claim", kind }],
+              },
+            ],
           },
         }),
-      ),
-    ).toEqual([]);
+      );
+      expect(warnings.map((w) => w.path)).toEqual(["node.root.ontology.actions.touch.parameters"]);
+    }
+  });
+
+  it("warns when the written object type declares no primaryKey at all", () => {
+    const warnings = collectWorkflowTreeWarnings(
+      tree({
+        id: "root",
+        title: "Root",
+        ontology: {
+          entities: [{ id: "note", properties: [{ id: "body", type: "string" }] }],
+          allowedTools: ["invoke_action"],
+          actions: [{ id: "jot", effects: [{ entity: "note", kind: "create" }] }],
+        },
+      }),
+    );
+    expect(warnings.map((w) => w.path)).toEqual(["node.root.ontology.actions.jot.effects"]);
   });
 });
