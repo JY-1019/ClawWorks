@@ -14,12 +14,13 @@ id: golden.orders
 version: 1.0.0
 name: Order support
 description: >-
-  Orders, customers, tickets, and refunds for a small retail shop: look one up,
-  list them, investigate what went wrong, then refund or hand it to a human.
-  This shop keeps that data in the work-map's own object store, never in files
-  or a shell, so a request to list or check orders belongs here even when it is
-  phrased as reading a file, running `ls`, or querying a database. Covers
-  returns, refunds, delivery complaints, and order lookups.
+  Look up a NAMED order, customer, ticket, or refund record and act on that one
+  record: list them, read its history, refund it, or hand it to a human. The
+  records live in this work-map's own object store, never in files or a shell,
+  so a request to list or check orders belongs here even when it is phrased as
+  reading a file, running `ls`, or querying a database. Not for policy questions
+  ("what is the refund limit", "how should I handle a case like this") — those
+  are the support desk's handbook, not this shop's records.
 match:
   # A model judges whether a request belongs here; `triggers` is the one gate it
   # cannot override.
@@ -146,7 +147,15 @@ root:
       title: Resolve or refund
       description: Issue a refund within the limit, or reply with the outcome.
       ontology:
-        allowedTools: [invoke_action, message]
+        # Reads, then the write. The planner may cut STRAIGHT to this leaf — a
+        # refund request routes here without passing triage or investigate — so a
+        # scope of [invoke_action, message] left it unable to read the order it
+        # was about to refund, and it answered that it could not check the limit.
+        # A step has to be able to honor its own constraint: `refund-cap` below
+        # is unjudgeable without $total and the derived value. get_neighbors is
+        # deliberately still absent — walking the graph is investigate's job, and
+        # its absence is what proves the scope moves with the active step.
+        allowedTools: [search_objects, compute_function, invoke_action, message]
         actions:
           - id: issue-refund
             title: Issue a refund

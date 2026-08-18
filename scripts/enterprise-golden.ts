@@ -249,8 +249,12 @@ async function main(): Promise<number> {
       false,
     );
     expectEqual(
+      // get_neighbors, not search_objects: resolve reads the order and computes
+      // the cap it must not exceed, so it carries both of those. Walking the
+      // graph stays investigate's job, which is what still proves the scope
+      // MOVES with the active step rather than accumulating.
       "after advancing, the previous step's tool is closed",
-      evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.requiresApproval ?? false,
+      evaluateEnterpriseToolCall({ runId, toolName: "get_neighbors" })?.requiresApproval ?? false,
       true,
     );
     // ---- 5b. The declared action executes through the PRODUCTION tool and

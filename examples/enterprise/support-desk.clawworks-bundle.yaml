@@ -31,11 +31,13 @@ trees:
     version: 1.0.0
     name: Support desk (runnable example)
     description: >-
-      Settle a customer support case from the handbook: refunds, returns,
-      delivery complaints, and when to escalate. Covers both voices the desk
-      hears it in — the customer's own message, and a support agent asking how
-      to handle one — because the work is identical either way: the handbook
-      decides, or a human does. Example work-map whose tool scopes, declared
+      Refund, return, delivery-complaint and escalation POLICY, answered from the
+      support handbook: what the limit is, what to do about a case, when a human
+      must decide, and how to word the reply. Both voices belong here — the
+      customer's own message, and a support agent asking how to handle one —
+      because the work is identical either way: the handbook decides, or a human
+      does. Take any question about what the rule IS, or what SHOULD be done,
+      even when it names an order. Example work-map whose tool scopes, declared
       skill, and knowledge foundation all resolve on a stock install.
     match:
       # A model judges whether a request belongs here, so the name, description,
