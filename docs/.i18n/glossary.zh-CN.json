@@ -1250,5 +1250,13 @@
   {
     "source": "Worktree Authoring",
     "target": "Worktree 编写"
+  },
+  {
+    "source": "Enterprise Live Routing Grid",
+    "target": "企业实时路由用例表"
+  },
+  {
+    "source": "Enterprise Worktree Remaining Features",
+    "target": "企业 Worktree 待办功能"
   }
 ]

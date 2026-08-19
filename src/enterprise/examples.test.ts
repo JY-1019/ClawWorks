@@ -1,16 +1,74 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { buildPlanCandidateDigest } from "@openclaw/enterprise-planner";
 import { describe, expect, it } from "vitest";
 import { parseWorkflowBundleContent } from "./bundle-io.js";
-import { parseWorkflowTreeContent } from "./tree-io.js";
 import { collectWorkflowTreeWarnings } from "./tree-warnings.js";
-import type { WorkflowNodeDefinition } from "./types.js";
+import type { WorkflowNodeDefinition, WorkflowTreeDefinition } from "./types.js";
 
+/**
+ * `examples/enterprise/` ships ONE work-map on purpose.
+ *
+ * There used to be six, each demonstrating a single axis with the others switched
+ * off, and the combination an operator actually deploys — thirty steps, four MCP
+ * servers, six corpora and nine ontology writes constraining each other at once —
+ * was the one shape none of them had. These tests hold the surviving example to
+ * that bar: scale, per-domain ontology scoping, deny-by-default grants, and a
+ * self-contained import.
+ */
 const EXAMPLES_DIR = join(process.cwd(), "examples", "enterprise");
-const BUNDLE_SUFFIX = "-bundle.yaml";
+const EXAMPLE_FILE = "financial-operations.clawworks-bundle.yaml";
+const TREE_ID = "acme.financial-operations";
 
-function exampleFiles(): string[] {
-  return readdirSync(EXAMPLES_DIR).filter((file) => file.endsWith(".yaml"));
+/** Every MCP server the example attaches, and the ONLY steps allowed to reach it. */
+const MCP_ATTACHMENTS: Record<string, string[]> = {
+  "acme-screening": [
+    "finops.customer.onboarding.kyc-review.screening",
+    "finops.risk.monitoring.investigation.link-analysis",
+  ],
+  "acme-tracker": ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
+  "acme-ledger": ["finops.claims.settlement.payment"],
+  "acme-filing": ["finops.reporting.regulatory.sar-filing"],
+};
+
+/** Every corpus, and the domain roots that may grant it. A corpus is not owned by one domain. */
+const KNOWLEDGE_REACH: Record<string, string[]> = {
+  "acme.kyc-manual": ["finops.customer"],
+  "acme.aml-policy": ["finops.risk", "finops.reporting"],
+  "acme.claims-handbook": ["finops.claims"],
+  "acme.credit-policy": ["finops.risk"],
+  "acme.regulatory-code": ["finops.reporting"],
+  "acme.privacy-standard": ["finops.customer", "finops.risk", "finops.claims"],
+};
+
+function parseExample(): WorkflowTreeDefinition {
+  const parsed = parseWorkflowBundleContent(
+    readFileSync(join(EXAMPLES_DIR, EXAMPLE_FILE), "utf8"),
+    "yaml",
+  );
+  if (!parsed.ok) {
+    throw new Error(
+      `${EXAMPLE_FILE} failed to validate: ${JSON.stringify(parsed.issues, null, 2)}`,
+    );
+  }
+  const tree = parsed.bundle.trees[0];
+  if (!tree) {
+    throw new Error(`${EXAMPLE_FILE} carries no tree`);
+  }
+  return tree;
+}
+
+function parseBundle() {
+  const parsed = parseWorkflowBundleContent(
+    readFileSync(join(EXAMPLES_DIR, EXAMPLE_FILE), "utf8"),
+    "yaml",
+  );
+  if (!parsed.ok) {
+    throw new Error(
+      `${EXAMPLE_FILE} failed to validate: ${JSON.stringify(parsed.issues, null, 2)}`,
+    );
+  }
+  return parsed.bundle;
 }
 
 function walk(node: WorkflowNodeDefinition, depth: number): { count: number; maxDepth: number } {
@@ -26,6 +84,20 @@ function walk(node: WorkflowNodeDefinition, depth: number): { count: number; max
 
 function flatten(node: WorkflowNodeDefinition): WorkflowNodeDefinition[] {
   return [node, ...(node.children ?? []).flatMap(flatten)];
+}
+
+/** Root→node id path, so a check can ask which domain a step sits under. */
+function pathsByNode(root: WorkflowNodeDefinition): Map<string, string[]> {
+  const paths = new Map<string, string[]>();
+  const visit = (node: WorkflowNodeDefinition, ancestors: string[]): void => {
+    const path = [...ancestors, node.id];
+    paths.set(node.id, path);
+    for (const child of node.children ?? []) {
+      visit(child, path);
+    }
+  };
+  visit(root, []);
+  return paths;
 }
 
 type NodeScope = { entities: Set<string>; relationships: Set<string> };
@@ -59,136 +131,112 @@ function scopesByNode(root: WorkflowNodeDefinition): Map<string, NodeScope> {
   return scopes;
 }
 
-describe("shipped enterprise example trees", () => {
-  it("every example under examples/enterprise validates", () => {
-    const files = exampleFiles();
-    expect(files.length).toBeGreaterThan(0);
-    for (const file of files) {
-      const content = readFileSync(join(EXAMPLES_DIR, file), "utf8");
-      // A bundle is a tree PLUS its inlined knowledge, so it needs the bundle
-      // schema. Route on the filename suffix rather than skipping unknown
-      // shapes: a mis-named bundle then fails this test loudly instead of
-      // going unvalidated.
-      const result = file.endsWith(BUNDLE_SUFFIX)
-        ? parseWorkflowBundleContent(content, "yaml")
-        : parseWorkflowTreeContent(content, "yaml");
-      if (!result.ok) {
-        throw new Error(`${file} failed to validate: ${JSON.stringify(result.issues, null, 2)}`);
-      }
-      expect(result.ok).toBe(true);
-    }
+describe("the shipped enterprise example", () => {
+  it("is the only one, and it validates", () => {
+    // One example, deliberately. A second file here means somebody added an axis
+    // demo beside the work-map that already carries every axis — fold it in.
+    expect(readdirSync(EXAMPLES_DIR).filter((file) => file.endsWith(".yaml"))).toEqual([
+      EXAMPLE_FILE,
+    ]);
+    expect(parseExample().id).toBe(TREE_ID);
   });
 
-  it("never ships a step that declares a capability its tool scope cannot reach", () => {
-    // Regression, and a large one: 31 of the 32 actions across these examples were
+  it("never declares a capability its own tool scope cannot reach", () => {
+    // Regression, and a large one: 31 of the 32 actions across the old examples were
     // unreachable. Every step declared them, the digest handed them to the model,
     // and the gate refused every call — "does not allow ontology writes; a step
-    // must name invoke_action in its allowedTools". A live run on the incident
-    // example answered by INVENTING an incident id, because the action that would
-    // have created one was advertised but denied. Import-time schema validation
-    // could not see it: each tree is shape-valid, just unable to do what it says.
-    const offenders: string[] = [];
-    for (const file of exampleFiles()) {
-      const content = readFileSync(join(EXAMPLES_DIR, file), "utf8");
-      const trees = file.endsWith(BUNDLE_SUFFIX)
-        ? (() => {
-            const parsed = parseWorkflowBundleContent(content, "yaml");
-            return parsed.ok ? parsed.bundle.trees : [];
-          })()
-        : (() => {
-            const parsed = parseWorkflowTreeContent(content, "yaml");
-            return parsed.ok ? [parsed.tree] : [];
-          })();
-      for (const tree of trees) {
-        for (const warning of collectWorkflowTreeWarnings(tree)) {
-          offenders.push(`${file}: ${warning.path} — ${warning.message}`);
-        }
-      }
-    }
-    expect(offenders).toEqual([]);
+    // must name invoke_action in its allowedTools". A live run answered by
+    // INVENTING an incident id, because the action that would have created one was
+    // advertised and then denied. Import-time schema validation could not see it:
+    // the tree is shape-valid, just unable to do what it says.
+    expect(collectWorkflowTreeWarnings(parseExample())).toEqual([]);
   });
 
-  it("ships a bundle whose tools, skills, and knowledge all resolve on a stock install", () => {
-    // The tree examples declare all three axes but none of them runs as shipped:
-    // a tree cannot carry knowledge, and the skills they name are ids no install
-    // provides. This bundle is the one an operator can import and actually run,
-    // so guard each axis — an example that quietly goes inert reads to an
+  it("imports self-contained: every corpus inlined, every skill bundled here", () => {
+    // A tree cannot carry knowledge, so an example that names a foundation it does
+    // not inline retrieves nothing on the recipient's deployment, and a skill id no
+    // install provides is a dependency nobody can resolve. Both failures read to an
     // operator as the enterprise layer being broken.
-    const bundles = exampleFiles().filter((file) => file.endsWith(BUNDLE_SUFFIX));
-    expect(bundles.length).toBeGreaterThan(0);
-    for (const file of bundles) {
-      const parsed = parseWorkflowBundleContent(
-        readFileSync(join(EXAMPLES_DIR, file), "utf8"),
-        "yaml",
-      );
-      if (!parsed.ok) {
-        throw new Error(`${file} failed to validate: ${JSON.stringify(parsed.issues, null, 2)}`);
-      }
-      const bundle = parsed.bundle;
-      const nodes = bundle.trees.flatMap((tree) => flatten(tree.root));
+    const bundle = parseBundle();
+    const nodes = bundle.trees.flatMap((tree) => flatten(tree.root));
 
-      // Tools: at least one step narrows scope rather than inheriting allow-all.
-      expect(nodes.some((node) => node.ontology?.allowedTools?.length)).toBe(true);
-
-      // Knowledge: referenced AND inlined with content, so `knowledge_search`
-      // returns snippets right after import instead of silently finding nothing.
-      const referenced = new Set(
-        nodes.flatMap((node) => node.ontology?.knowledgeFoundations ?? []),
-      );
-      expect(referenced.size).toBeGreaterThan(0);
-      for (const foundation of bundle.knowledgeFoundations) {
-        expect(referenced, `${file} inlines an unreferenced foundation`).toContain(foundation.id);
-        expect(
-          foundation.snippets.length,
-          `${file}: ${foundation.id} has no content`,
-        ).toBeGreaterThan(0);
-      }
-      expect(
-        bundle.knowledgeFoundations.map((foundation) => foundation.id).toSorted(),
-        `${file} references a foundation it does not inline`,
-      ).toEqual([...referenced].toSorted());
-
-      // Skills: every declared name must be a skill this repo actually bundles,
-      // or the dependency is unresolvable for anyone who imports the example.
-      const declared = nodes.flatMap((node) => node.ontology?.skills ?? []);
-      expect(declared.length).toBeGreaterThan(0);
-      for (const name of declared) {
-        expect(
-          existsSync(join(process.cwd(), "skills", name, "SKILL.md")),
-          `${file} declares skill "${name}", which this repo does not bundle`,
-        ).toBe(true);
-      }
+    const referenced = new Set(nodes.flatMap((node) => node.ontology?.knowledgeFoundations ?? []));
+    expect(bundle.knowledgeFoundations.map((foundation) => foundation.id).toSorted()).toEqual(
+      [...referenced].toSorted(),
+    );
+    for (const foundation of bundle.knowledgeFoundations) {
+      expect(foundation.snippets.length, `${foundation.id} has no content`).toBeGreaterThan(0);
     }
+
+    // Bundled here AND needing no external binary. A skill whose `requires.bins`
+    // is missing on the host is filtered out of the run, so an example that
+    // declares one has its skills axis inert on exactly the machines it is meant
+    // to demonstrate on — which is how `summarize` sat in five shipped examples
+    // while resolving on almost none of them.
+    const declared = [...new Set(nodes.flatMap((node) => node.ontology?.skills ?? []))];
+    expect(declared.length).toBeGreaterThan(0);
+    expect(
+      declared.toSorted().map((name) => {
+        const file = join(process.cwd(), "skills", name, "SKILL.md");
+        if (!existsSync(file)) {
+          return `MISSING:${name}`;
+        }
+        return /"bins"\s*:\s*\[[^\]]/.test(readFileSync(file, "utf8")) ? `NEEDS-BIN:${name}` : name;
+      }),
+    ).toEqual(["taskflow", "taskflow-inbox-triage"]);
+
+    // The servers are the one thing a bundle cannot carry — transport and
+    // credentials are deployment configuration — so the manifest has to name them.
+    expect([...(bundle.requiredMcpServers ?? [])].toSorted()).toEqual(
+      Object.keys(MCP_ATTACHMENTS).toSorted(),
+    );
   });
 
-  it("keeps the financial-operations tree at route-finding scale", () => {
+  it("keeps its whole routing description inside the planner's digest budget", () => {
+    // Since keywords retired, the tree description IS the routing signal, and the
+    // candidate digest truncates it. Authors write the summary first and the
+    // DOMAIN CUE last — the clause naming which requests belong here — so a
+    // description over budget loses exactly the half that decides routing, and a
+    // governed request escapes into the permissive default tree. Assert against
+    // the real digest rather than a character count, so the budget can move
+    // without this silently going stale.
+    // Node lines in the ROUTE digest are truncated on purpose and are not what
+    // this guards; only the tree line decides whether a request enters at all.
+    const tree = parseExample();
+    expect(buildPlanCandidateDigest([tree])).toContain(tree.description);
+  });
+
+  it("stays at route-finding scale", () => {
     // This fixture exists to make route selection a real problem: a shallow or
     // small tree would let any planner look correct. Guard the scale so a future
     // edit cannot quietly shrink it back into a toy.
-    const content = readFileSync(join(EXAMPLES_DIR, "financial-operations.clawworks.yaml"), "utf8");
-    const result = parseWorkflowTreeContent(content, "yaml");
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    const { count, maxDepth } = walk(result.tree.root, 0);
-    expect(result.tree.id).toBe("acme.financial-operations");
+    const tree = parseExample();
+    const { count, maxDepth } = walk(tree.root, 0);
     expect(count).toBeGreaterThanOrEqual(40);
     expect(maxDepth).toBeGreaterThanOrEqual(5);
     // The four top-level domains are what make cross-domain confusion possible.
-    expect(result.tree.root.children).toHaveLength(4);
+    expect(tree.root.children).toHaveLength(4);
+    // And the confusable pairs the tree was built around: a planner that cannot
+    // tell these apart drags a whole domain into the run.
+    const ids = new Set(flatten(tree.root).map((node) => node.id));
+    for (const [a, b] of [
+      ["finops.risk.monitoring.alert-triage", "finops.claims.intake.triage"],
+      ["finops.risk.underwriting.decision", "finops.claims.adjudication.decision"],
+      ["finops.risk.monitoring.investigation", "finops.claims.adjudication.fraud-review"],
+      ["finops.risk.monitoring.sar-filing", "finops.reporting.regulatory.sar-filing"],
+      ["finops.customer.onboarding.risk-rating", "finops.risk.underwriting.scoring"],
+      ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
+    ]) {
+      expect(ids, `${a} is missing`).toContain(a);
+      expect(ids, `${b} is missing`).toContain(b);
+    }
   });
 
-  it("declares a Palantir-style ontology: typed object properties, link cardinality, action effects", () => {
-    const content = readFileSync(join(EXAMPLES_DIR, "financial-operations.clawworks.yaml"), "utf8");
-    const result = parseWorkflowTreeContent(content, "yaml");
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+  it("declares a Palantir-style ontology: typed properties, link cardinality, action effects", () => {
+    const tree = parseExample();
     // Object types are declared by the domain that owns them, not at the root,
     // so look tree-wide rather than at root.ontology.
-    const nodes = flatten(result.tree.root);
+    const nodes = flatten(tree.root);
     const entities = nodes.flatMap((node) => node.ontology?.entities ?? []);
     const relationships = nodes.flatMap((node) => node.ontology?.relationships ?? []);
     const claim = entities.find((entity) => entity.id === "claim");
@@ -211,13 +259,8 @@ describe("shipped enterprise example trees", () => {
     // nodes resolved to one identical scope — the node inspector showed the same
     // graph everywhere and the documented sibling isolation was not demonstrated
     // at all (docs/concepts/clawworks-enterprise.md, "the typed object model").
-    const content = readFileSync(join(EXAMPLES_DIR, "financial-operations.clawworks.yaml"), "utf8");
-    const result = parseWorkflowTreeContent(content, "yaml");
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    const scopes = scopesByNode(result.tree.root);
+    const tree = parseExample();
+    const scopes = scopesByNode(tree.root);
     const signatures = new Set(
       [...scopes.values()].map((scope) =>
         JSON.stringify([[...scope.entities].toSorted(), [...scope.relationships].toSorted()]),
@@ -226,25 +269,19 @@ describe("shipped enterprise example trees", () => {
     expect(signatures.size).toBeGreaterThanOrEqual(5);
 
     // The root declares no object types: one that lived here would be addressable
-    // from all 40 steps, which is the collapse this test guards.
-    expect(result.tree.root.ontology?.entities ?? []).toHaveLength(0);
-    expect(result.tree.root.ontology?.relationships ?? []).toHaveLength(0);
+    // from all 30 steps, which is the collapse this test guards.
+    expect(tree.root.ontology?.entities ?? []).toHaveLength(0);
+    expect(tree.root.ontology?.relationships ?? []).toHaveLength(0);
   });
 
   it("keeps sibling domains unable to address each other's object types", () => {
-    const content = readFileSync(join(EXAMPLES_DIR, "financial-operations.clawworks.yaml"), "utf8");
-    const result = parseWorkflowTreeContent(content, "yaml");
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    const scopes = scopesByNode(result.tree.root);
+    const scopes = scopesByNode(parseExample().root);
     // Each case is a confusable pair the tree was built around: the step must
     // reach its own types and must NOT reach the sibling's.
     const cases = [
       {
         node: "finops.claims.settlement.payment",
-        reaches: ["payment", "claim"],
+        reaches: ["payment", "claim", "policy"],
         blocked: ["sar", "credit-report", "alert"],
       },
       {
@@ -255,22 +292,22 @@ describe("shipped enterprise example trees", () => {
       {
         node: "finops.risk.underwriting.scoring",
         reaches: ["credit-report", "customer"],
-        blocked: ["claim", "payment", "sar"],
+        blocked: ["claim", "payment", "sar", "alert"],
       },
       {
         node: "finops.customer.onboarding.account-opening",
-        reaches: ["account", "customer"],
+        reaches: ["account", "customer", "document"],
         blocked: ["claim", "alert", "payment"],
       },
       {
-        node: "finops.reporting.regulatory",
+        node: "finops.reporting.regulatory.sar-filing",
         reaches: ["regulatory-report", "sar"],
         blocked: ["payment", "policy", "credit-report"],
       },
-      // Same domain, one level apart: monitoring cannot see underwriting's bureau data.
+      // Same domain, one branch apart: monitoring cannot see underwriting's bureau data.
       {
         node: "finops.risk.monitoring.investigation.link-analysis",
-        reaches: ["customer", "account"],
+        reaches: ["customer", "account", "transaction"],
         blocked: ["credit-report"],
       },
     ];
@@ -292,15 +329,10 @@ describe("shipped enterprise example trees", () => {
     // The schema only checks that an effect's entity is declared SOMEWHERE in the
     // tree, so a mis-scoped action passes import and then cannot resolve its own
     // object type at runtime. This closes that gap for the shipped example.
-    const content = readFileSync(join(EXAMPLES_DIR, "financial-operations.clawworks.yaml"), "utf8");
-    const result = parseWorkflowTreeContent(content, "yaml");
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    const scopes = scopesByNode(result.tree.root);
+    const tree = parseExample();
+    const scopes = scopesByNode(tree.root);
     const unresolved: string[] = [];
-    for (const node of flatten(result.tree.root)) {
+    for (const node of flatten(tree.root)) {
       const scope = scopes.get(node.id);
       for (const action of node.ontology?.actions ?? []) {
         for (const effect of action.effects ?? []) {
@@ -311,5 +343,115 @@ describe("shipped enterprise example trees", () => {
       }
     }
     expect(unresolved).toEqual([]);
+  });
+
+  it("grants capabilities explicitly, and keeps the write opt-in off every ancestor", () => {
+    const tree = parseExample();
+    expect(tree.capabilityGrants).toBe("explicit");
+    const nodes = flatten(tree.root);
+    const writers = nodes.filter((node) => node.ontology?.actions?.length);
+    expect(writers.length).toBeGreaterThanOrEqual(5);
+
+    // `invoke_action` is EXISTENTIAL over the root→step path
+    // (runtime.ts explicitlyAllowsOntologyWrites), so naming it on an interior
+    // node hands write consent to every step beneath it. Only leaves may.
+    const interiorWriters = nodes
+      .filter((node) => node.children?.length)
+      .filter((node) => (node.ontology?.allowedTools ?? []).includes("invoke_action"))
+      .map((node) => node.id);
+    expect(interiorWriters).toEqual([]);
+    // And every step that declares an action opts in LITERALLY: a glob such as
+    // `invoke_*` satisfies the ordinary tool gate and is still refused as a write.
+    for (const node of writers) {
+      expect(
+        node.ontology?.allowedTools ?? [],
+        `${node.id} declares an action without naming invoke_action`,
+      ).toContain("invoke_action");
+    }
+  });
+
+  it("attaches each MCP server to exactly the steps meant to reach it", () => {
+    // MCP is the one family that denies by default, so an attachment is the whole
+    // grant. A stray one is not a style problem: it hands a step the ledger, the
+    // screening provider, or the regulator's portal.
+    const nodes = flatten(parseExample().root);
+    const attached = new Map<string, string[]>();
+    for (const node of nodes) {
+      for (const server of node.ontology?.mcpServers ?? []) {
+        attached.set(server, [...(attached.get(server) ?? []), node.id]);
+      }
+    }
+    expect([...attached.keys()].toSorted()).toEqual(Object.keys(MCP_ATTACHMENTS).toSorted());
+    for (const [server, steps] of Object.entries(MCP_ATTACHMENTS)) {
+      expect(attached.get(server)?.toSorted(), `${server} is attached elsewhere`).toEqual(
+        steps.toSorted(),
+      );
+    }
+
+    // Every attaching step also names the server's tools in all four spellings. The
+    // attachment alone is enough for the embedded runtime, which reads each tool's
+    // registration; a native harness (Codex, the Claude CLI) reports a tool call
+    // with no MCP origin, so there the call is judged as an ordinary tool and the
+    // globs are what admit it. OpenClaw maps punctuation to `-`, Codex to `_`, and
+    // either may carry the `mcp__` prefix.
+    for (const node of nodes) {
+      for (const server of node.ontology?.mcpServers ?? []) {
+        const folded = server.replaceAll("-", "_");
+        for (const glob of [
+          `${server}__*`,
+          `mcp__${server}__*`,
+          `${folded}__*`,
+          `mcp__${folded}__*`,
+        ]) {
+          expect(
+            node.ontology?.allowedTools ?? [],
+            `${node.id} attaches ${server} but a native harness could not call it`,
+          ).toContain(glob);
+        }
+      }
+    }
+  });
+
+  it("scopes each corpus to the domains that may query it", () => {
+    // Knowledge narrows the same way tools do: each node with a non-empty list is
+    // an independent gate, so a corpus is reachable only where some node on the
+    // path names it and no node on the path drops it. A corpus granted at the root
+    // would be queryable from all 30 steps, which is what this guards.
+    const tree = parseExample();
+    expect(tree.root.ontology?.knowledgeFoundations ?? []).toHaveLength(0);
+    const paths = pathsByNode(tree.root);
+    const byId = new Map(flatten(tree.root).map((node) => [node.id, node]));
+    const granting = new Map<string, Set<string>>();
+    for (const [nodeId, path] of paths) {
+      for (const foundation of byId.get(nodeId)?.ontology?.knowledgeFoundations ?? []) {
+        // Attribute the grant to the DOMAIN it sits under, which is what the
+        // isolation claim is actually about.
+        const domain = path[1] ?? nodeId;
+        granting.set(foundation, (granting.get(foundation) ?? new Set()).add(domain));
+      }
+    }
+    expect([...granting.keys()].toSorted()).toEqual(Object.keys(KNOWLEDGE_REACH).toSorted());
+    for (const [foundation, domains] of Object.entries(KNOWLEDGE_REACH)) {
+      expect([...(granting.get(foundation) ?? [])].toSorted(), `${foundation} reach`).toEqual(
+        domains.toSorted(),
+      );
+    }
+
+    // A step that narrows can only ever be a SUBSET of what its ancestors grant:
+    // adding an id an ancestor does not name makes it unqueryable, so the
+    // declaration reads as a grant and behaves as nothing.
+    const unreachable: string[] = [];
+    const visit = (node: WorkflowNodeDefinition, inherited: string[] | null): void => {
+      const declared = node.ontology?.knowledgeFoundations ?? [];
+      if (inherited && declared.some((id) => !inherited.includes(id))) {
+        unreachable.push(node.id);
+      }
+      const next = declared.length ? declared : inherited;
+      for (const child of node.children ?? []) {
+        visit(child, next);
+      }
+    };
+    visit(tree.root, null);
+    expect(unreachable).toEqual([]);
   });
 });

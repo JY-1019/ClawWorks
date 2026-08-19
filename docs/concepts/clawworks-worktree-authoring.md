@@ -107,7 +107,8 @@ what turns a definition into something a run actually walks.
 ## Envelope fields
 
 Every object in the schema is **strict**: an unknown key is a validation error,
-not something ignored. A typo like `descripton` fails the import with a path.
+not something ignored. Misspell `description` and the import fails with a path to
+the offending key rather than dropping it.
 
 | Field              | Required | Type                        | Notes                                                                                    |
 | ------------------ | -------- | --------------------------- | ---------------------------------------------------------------------------------------- |
@@ -968,18 +969,28 @@ change lands as a revision, so version history can restore an earlier shape.
 Hand-authored files and UI edits are interchangeable as long as you export
 before editing the file again.
 
-Shipped examples to read or import live in the source repository under
-`examples/enterprise/`: `golden-orders.clawworks.yaml` for a fully seeded object
-model, `incident-response.clawworks.yaml` for a broad ontology, and
-`support-desk.clawworks-bundle.yaml` for a bundle whose tools, skill, and
-knowledge all resolve on a stock install.
+One shipped example lives in the source repository, at
+`examples/enterprise/financial-operations.clawworks-bundle.yaml`. It is a bundle,
+so it imports and runs as-is: 46 nodes across four domains — 30 of them
+executable steps — a seeded object model per domain, six inlined knowledge
+corpora, four MCP servers, nine ontology writes, and `capabilityGrants: explicit`
+throughout. Read it for the shape of a
+real work-map rather than for a minimal one — every binding in it is load-bearing,
+and the comments say which failure each one exists to prevent. The only thing it
+cannot ship is the four MCP servers themselves; register them under `mcp.servers`
+and the attachments resolve.
 
 ## Before you import
 
 - `schemaVersion` is the number `1`, not `"1"`.
 - Every node id is unique, dotted, and lowercase.
-- The root's `allowedTools` is the union of what every leaf needs, because
-  allow-lists intersect down the path.
+- Every ancestor's `allowedTools` is a superset of what its leaves need, because
+  allow-lists intersect down the path. Under `capabilityGrants: explicit` this
+  pulls against write isolation: `invoke_action` on a node is consent for every
+  step beneath it, so a root that lists it lets the whole tree write. Either put
+  the union on the root and accept that, or grant nothing there and let each step
+  name what it needs — which is what the shipped example does, at the cost of a
+  step-less runtime (ACP) reaching only its opening step's grants.
 - Anything a step must never touch is in `deniedTools`, not merely left out.
 - `invoke_action` (or `group:enterprise-write`) is named literally wherever an
   action must run, and every writing action takes its target's primary key as a

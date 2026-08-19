@@ -51,10 +51,10 @@ const MIN_NODES_TO_PLAN = 5;
  * request enters that work-map at all. Since keywords retired, this description
  * IS the routing signal, so truncating it discards the domain cue authors write
  * it for — and they write it last, after the summary sentence, which is exactly
- * what a short budget cuts. The support-desk example lost 298 of its 417 chars
- * this way, silently reverting the "either voice" routing fix it documents, and
- * the golden fixture lost the clause claiming order lookups; a request phrased
- * as `ls` then escaped into the permissive default tree with exec wide open.
+ * what a short budget cuts. A shipped work-map lost 298 of its 417 chars this
+ * way, silently reverting the routing fix its description documents, along with
+ * the clause claiming its own record lookups; a request phrased as `ls` then
+ * escaped into the permissive default tree with exec wide open.
  * Bounded, not unbounded: a runaway description would still balloon the prefix.
  */
 const SUMMARY_MAX_CHARS = 120;

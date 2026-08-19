@@ -159,33 +159,32 @@ Imported trees override built-in trees with the same id; removing the import
 restores the built-in. A running gateway loads trees at startup, so restart it
 after imports or removals.
 
-A fuller example with a complete ontology (entities, relationships, actions,
-constraints, and tool/knowledge scopes across a multi-step tree) lives in the
-source repository at `examples/enterprise/incident-response.clawworks.yaml`. From
-a source checkout, import it with:
+One worked example ships in the source repository, and it is a bundle rather than
+a tree so that every governed axis is live on import: a tree cannot carry its own
+knowledge, so `knowledge_search` on one retrieves nothing until you register its
+foundations yourself. From a source checkout:
 
 ```bash
-pnpm openclaw enterprise trees import examples/enterprise/incident-response.clawworks.yaml
-```
-
-That example, like the other tree files, is a declaration rather than something
-that runs as shipped: a tree cannot carry its own knowledge, so `knowledge_search`
-retrieves nothing until you register `acme.runbooks` yourself, and its
-placeholder skills (`incident-triage`, `runbook-execution`) are ids no install
-provides — only `summarize` resolves, because that one ships with ClawWorks.
-
-For an example where all three governed axes are live, import the bundle
-instead. It inlines its knowledge foundation and declares only a bundled skill,
-so nothing else has to be configured:
-
-```bash
-pnpm openclaw enterprise bundle import examples/enterprise/support-desk.clawworks-bundle.yaml
+pnpm openclaw enterprise bundle import examples/enterprise/financial-operations.clawworks-bundle.yaml
 pnpm openclaw gateway restart
 ```
 
 The restart is required: a running gateway holds its tree registry for the life
 of the process, so an import made from the CLI is not visible to the Control UI
 or to runs until it reloads.
+
+It is a regulated financial-services operation under governance — customer
+lifecycle, financial-crime risk, claims, and regulatory reporting — at the scale
+where the bindings actually constrain each other: 46 nodes across 30 executable
+steps, depth 5, so route selection is a real problem, an object model declared per
+domain so claims cannot address a `sar`, six inlined corpora with one shared
+across two domains and two locked to a single domain, four MCP servers attached to
+the steps that need them and denied everywhere else, nine ontology writes, and
+`capabilityGrants: explicit` so every one of those is deny-by-default. The one
+thing a bundle cannot carry is the MCP servers themselves — their transport and
+credentials are deployment configuration — so register `acme-screening`,
+`acme-ledger`, `acme-tracker` and `acme-filing` under `mcp.servers` and the
+attachments resolve. Everything else runs on a stock install.
 
 Then open Enterprise and select the work-map on Worktree. The Tools and Skills
 screens list the catalog for the gateway's default agent — tools resolve against
@@ -237,7 +236,7 @@ A work-map decides how its steps get capabilities at all:
 ```yaml
 schema: clawworks.workflow-tree
 schemaVersion: 1
-id: acme.incident-response
+id: acme.financial-operations
 capabilityGrants: explicit
 ```
 

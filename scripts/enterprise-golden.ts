@@ -1,16 +1,27 @@
 /**
  * Golden checks for the enterprise execution layer.
  *
- * WHY THIS EXISTS. The prose test cases ask a human to type a request naming an
- * order or a claim and then eyeball the reply. That cannot separate "the layer
- * works" from "the model happened to answer well", and the shipped examples seed
- * no instances, so the ids in those prompts referred to nothing.
+ * WHY THIS EXISTS. The prose test cases ask a human to type a request naming a
+ * claim or an alert and then eyeball the reply. That cannot separate "the layer
+ * works" from "the model happened to answer well".
  *
  * So this runs the REAL mediation path — the same `beginEnterpriseRun` and tool
- * gate production uses — against a fixture that ships seeded data
- * (`examples/enterprise/golden-orders.clawworks.yaml`), with the planner INJECTED
- * rather than called. No model, no network, no reliance on the machine having
- * planner credentials, and the same answer every run.
+ * gate production uses — against the SHIPPED example
+ * (`examples/enterprise/financial-operations.clawworks-bundle.yaml`), with the
+ * planner INJECTED rather than called. No model, no network, no reliance on the
+ * machine having planner credentials, and the same answer every run.
+ *
+ * The fixture and the example are the same file on purpose. A separate golden
+ * fixture drifts from what an operator actually imports, and the old split let
+ * five of the six shipped examples ship broken — declaring actions no run could
+ * call and foundations no run could query — while the golden lane stayed green
+ * against a seventh file nobody deployed. Every id, tool scope, attachment and
+ * seeded row asserted below is one an operator gets.
+ *
+ * Three small work-maps are still built INLINE at the end, for semantics one tree
+ * cannot carry: the inherited (non-explicit) grant mode, a root tool grant
+ * inherited by a step that grants none, and the CLI overlay's plugin/attachment
+ * filter order.
  *
  * It is hermetic: `OPENCLAW_STATE_DIR` points at a fresh temp dir, so it never
  * reads or writes the operator's real state database.
@@ -56,10 +67,36 @@ function printSummary(): void {
   console.log(`\n  ${checks.length - failed.length}/${checks.length} checks passed`);
 }
 
-const FIXTURE = path.resolve("examples/enterprise/golden-orders.clawworks.yaml");
-const TREE_ID = "golden.orders";
+const FIXTURE = path.resolve("examples/enterprise/financial-operations.clawworks-bundle.yaml");
+const TREE_ID = "acme.financial-operations";
+const FOUNDATIONS = [
+  "acme.kyc-manual",
+  "acme.aml-policy",
+  "acme.claims-handbook",
+  "acme.credit-policy",
+  "acme.regulatory-code",
+  "acme.privacy-standard",
+];
+
+/**
+ * The four servers the example attaches, plus one the operator registered and no
+ * step attaches. Only a REGISTERED server is gated, so leaving the spare out
+ * would let the isolation checks pass on the tool scope alone.
+ */
+const MCP_CONFIG = {
+  mcp: {
+    servers: {
+      "acme-screening": { command: "npx" },
+      "acme-ledger": { command: "npx" },
+      "acme-tracker": { command: "npx" },
+      "acme-filing": { command: "npx" },
+      "other-tracker": { command: "npx" },
+    },
+  },
+};
 
 async function main(): Promise<number> {
+  const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
   const { importWorkflowTreeContent } = await import("../src/enterprise/tree-io.js");
   const { invalidateWorkflowTreeRegistry, listWorkflowTreeRegistryEntries } =
     await import("../src/enterprise/tree-registry.js");
@@ -67,6 +104,7 @@ async function main(): Promise<number> {
     await import("../src/enterprise/run-mediation.js");
   const { evaluateEnterpriseToolCall, getEnterpriseActiveRun, completeEnterpriseStep } =
     await import("../src/enterprise/runtime.js");
+  const { resolveEnterpriseKnowledge } = await import("../src/enterprise/knowledge.js");
   const { searchOntologyObjects } = await import("../src/enterprise/object-store.sqlite.js");
   const {
     createComputeFunctionTool,
@@ -74,16 +112,44 @@ async function main(): Promise<number> {
     createInvokeActionTool,
     createSearchObjectsTool,
   } = await import("../src/agents/tools/ontology-tools.js");
+  const { createKnowledgeSearchTool } =
+    await import("../src/agents/tools/knowledge-search-tool.js");
 
-  // ---- 1. The fixture imports, and its seeded instances land in the store.
-  const imported = importWorkflowTreeContent({
+  /** One MCP call at the run's active step, under the embedded runtime's spelling. */
+  const mcpVerdict = (runId: string, server: string, tool: string) =>
+    evaluateEnterpriseToolCall({
+      runId,
+      toolName: `${server}__${tool}`,
+      mcpTool: { serverName: server, safeServerName: server, toolName: tool },
+    });
+
+  /** Open a mediated run on one route of the shipped example. */
+  const openRun = (runId: string, prompt: string, routes: string[]) =>
+    beginEnterpriseRun({
+      runId,
+      prompt,
+      config: MCP_CONFIG as never,
+      routePlanner: async () => ({
+        kind: "decided" as const,
+        treeId: TREE_ID,
+        routes,
+        rationale: "golden",
+      }),
+    });
+
+  // ---- 1. The shipped example imports, and everything it promises arrives with
+  // it: the six corpora inlined and registered, no dangling reference, and no
+  // step declaring a capability its own scope refuses.
+  const imported = importWorkflowBundle({
     content: readFileSync(FIXTURE, "utf8"),
     format: "yaml",
   });
   record(
-    "fixture imports cleanly",
+    "the shipped example imports cleanly",
     imported.ok,
-    imported.ok ? TREE_ID : JSON.stringify(imported.issues),
+    imported.ok
+      ? imported.trees.map((tree) => tree.id).join(", ")
+      : JSON.stringify(imported.issues),
   );
   if (!imported.ok) {
     // Print what was captured before bailing: a silent non-zero exit gives CI
@@ -91,68 +157,102 @@ async function main(): Promise<number> {
     printSummary();
     return 1;
   }
+  expectEqual("its six corpora ship inline and register", imported.foundations, FOUNDATIONS);
+  // A referenced-but-not-inlined id means the recipient has to configure it
+  // separately; for a self-contained example that is a broken promise.
+  expectEqual("it leaves no foundation unconfigured", imported.missingFoundations, []);
+  expectEqual("it declares no unreachable capability", imported.warnings, []);
+  expectEqual(
+    "it names the MCP servers an operator must register",
+    [...(imported.requiredMcpServers ?? [])].toSorted(),
+    ["acme-filing", "acme-ledger", "acme-screening", "acme-tracker"],
+  );
+  // A skill whose `requires.bins` is missing on the host is filtered out of the
+  // run, which would make the skills axis inert on exactly the machines this
+  // example is meant to demonstrate on.
+  expectEqual(
+    "its declared skills are bundled here and need no external binary",
+    imported.requiredSkills.toSorted().map((name) => {
+      const file = path.resolve("skills", name, "SKILL.md");
+      if (!existsSync(file)) {
+        return `MISSING:${name}`;
+      }
+      return /"bins"\s*:\s*\[[^\]]/.test(readFileSync(file, "utf8")) ? `NEEDS-BIN:${name}` : name;
+    }),
+    ["taskflow", "taskflow-inbox-triage"],
+  );
   invalidateWorkflowTreeRegistry();
 
-  // ---- The seeded data is reachable THROUGH THE PRODUCTION TOOLS. Calling the
-  // store and the expression evaluator directly would stay green even if the
-  // tools' active-step scoping, argument adapters, or result mapping broke.
+  // ---- 2. The seeded data is reachable THROUGH THE PRODUCTION TOOLS, from the
+  // step that owns it. Calling the store and the expression evaluator directly
+  // would stay green even if the tools' active-step scoping, argument adapters,
+  // or result mapping broke.
   {
     const runId = "golden-reads";
-    await beginEnterpriseRun({
-      runId,
-      prompt: "ORD-5002 조사",
-      routePlanner: async () => ({
-        kind: "decided",
-        treeId: TREE_ID,
-        // investigate is the step that declares all three read tools.
-        routes: ["golden.investigate"],
-        rationale: "reads",
-      }),
-    });
+    await openRun(runId, "AC-2002 거래 검토", [
+      "finops.risk.monitoring.investigation.transaction-review",
+    ]);
 
     const search = await createSearchObjectsTool({ runId }).execute("g1", {
-      entity: "order",
+      entity: "transaction",
       limit: 50,
     });
     const searchText = JSON.stringify(search);
     record(
-      "search_objects returns the seeded orders",
-      ["ORD-5001", "ORD-5002", "ORD-5003"].every((id) => searchText.includes(id)),
+      "search_objects returns the seeded transactions",
+      ["TX-4001", "TX-4002", "TX-4003"].every((id) => searchText.includes(id)),
       searchText.slice(0, 110),
     );
 
     const neighbors = await createGetNeighborsTool({ runId }).execute("g2", {
-      entity: "ticket",
-      objectId: "TKT-77",
+      entity: "account",
+      objectId: "AC-2002",
     });
     const neighborText = JSON.stringify(neighbors);
     record(
-      "get_neighbors traverses a seeded link to its order",
-      neighborText.includes("ORD-5002") && neighborText.includes("concerns"),
+      "get_neighbors walks the seeded links off an account",
+      neighborText.includes("TX-4001") &&
+        neighborText.includes("TX-4002") &&
+        neighborText.includes("account-books-transaction"),
       neighborText.slice(0, 110),
     );
 
     const computed = await createComputeFunctionTool({ runId }).execute("g3", {
-      function: "auto-refundable-amount",
-      objectId: "ORD-5002",
+      function: "alert-priority",
+      objectId: "AL-6002",
     });
-    // Compare the payload's number, not the rendered text: a regression to 1200
-    // or 2000 would still contain "200" as a substring.
-    const computedValue = (computed as { details?: { value?: unknown } }).details?.value;
+    // Compare the payload's value, not the rendered text: a band that regressed
+    // to "not urgent" would still contain "urgent" as a substring.
     expectEqual(
-      "compute_function caps the refundable amount at the limit",
-      // ORD-5002 totals 310 and the expression is min($total, 200).
-      computedValue,
-      200,
+      "compute_function bands the alert from its stored score",
+      // AL-6002 scores 88, and the expression bands 80+ as urgent.
+      (computed as { details?: { value?: unknown } }).details?.value,
+      "urgent",
+    );
+
+    // Sibling isolation, through the tool an agent would actually call. `payment`
+    // is declared one branch away under finops.claims.settlement, so this step
+    // cannot address it at all — the ontology, not just the tool scope, is what
+    // stops a monitoring step from reading claim money.
+    const offBranch = await createSearchObjectsTool({ runId }).execute("g4", {
+      entity: "payment",
+      limit: 5,
+    });
+    const offBranchText = JSON.stringify(offBranch);
+    record(
+      "a sibling domain's object type is not addressable here",
+      offBranchText.includes("not in the ontology of this workflow step") &&
+        !offBranchText.includes("PM-7101"),
+      offBranchText.slice(0, 140),
     );
     endEnterpriseRun({ runId, status: "completed" });
   }
 
-  // ---- 2. No planner: the DEFAULT tree governs, not this work-map.
+  // ---- 3. No planner: the DEFAULT tree governs, not this work-map.
   // A request nothing can judge must not inherit a work-map's tool scope.
   {
     const runId = "golden-unplanned";
-    const mediation = await beginEnterpriseRun({ runId, prompt: "주문 ORD-5002 환불해줘" });
+    const mediation = await beginEnterpriseRun({ runId, prompt: "CL-6101 지급해줘" });
     expectEqual(
       "no planner -> default tree governs",
       mediation.kind === "mediated"
@@ -166,68 +266,84 @@ async function main(): Promise<number> {
     endEnterpriseRun({ runId, status: "completed" });
   }
 
-  // ---- 3. Planner picks the work-map and a route: only that branch is planned.
+  // ---- 4. A planner route narrows a 46-node work-map to the branches it chose,
+  // the digest carries exactly those steps, and the tool gate follows the ACTIVE
+  // one.
   {
     const runId = "golden-routed";
-    const mediation = await beginEnterpriseRun({
-      runId,
-      prompt: "TKT-77 티켓 확인하고 ORD-5002 환불 처리해줘",
-      routePlanner: async () => ({
-        kind: "decided",
-        treeId: TREE_ID,
-        routes: ["golden.triage", "golden.resolve"],
-        rationale: "golden",
-      }),
-    });
-    const planned =
-      mediation.kind === "mediated" ? mediation.plan.nodes.map((node) => node.nodeId) : [];
-    expectEqual("planner route narrows to the chosen branches", planned.toSorted(), [
-      "golden",
-      "golden.resolve",
-      "golden.triage",
+    const mediation = await openRun(runId, "CL-6101 접수 분류하고 지급 처리해줘", [
+      "finops.claims.intake.triage",
+      "finops.claims.settlement.payment",
     ]);
+    const plan = mediation.kind === "mediated" ? mediation.plan : null;
     expectEqual(
-      "matchedBy records the model chose",
-      mediation.kind === "mediated" ? mediation.plan.matchedBy : null,
-      "planner",
+      "the route keeps the chosen branches and the ancestors that govern them",
+      plan?.nodes.map((node) => node.nodeId),
+      [
+        // Ancestors are kept on purpose: governance merges every ontology down the
+        // root→active path, so dropping one would drop the tool ceiling, the object
+        // types and the corpora it declares.
+        "finops",
+        "finops.claims",
+        "finops.claims.intake",
+        "finops.claims.intake.triage",
+        "finops.claims.settlement",
+        "finops.claims.settlement.payment",
+      ],
     );
+    expectEqual("matchedBy records the model chose", plan?.matchedBy, "planner");
+    // The attachments follow the route too: the claims escalation step attaches
+    // acme-tracker, and this route never enters it, so the server is not handed to
+    // a subprocess that has no per-step gate. This is the route-level UNION; what a
+    // hookless runtime actually receives is narrower, and section 8 pins that.
+    expectEqual("only the routed branch's MCP attachments travel", plan?.mcpAttachments, [
+      "acme-ledger",
+    ]);
+    // Same for the skill catalog under explicit grants.
+    expectEqual("the skill catalog is narrowed to the route", plan?.grantedSkills, [
+      "taskflow-inbox-triage",
+    ]);
 
     // The digest the model sees must match what the gate enforces. It renders
     // step TITLES, so an unrouted step leaking in would tell the model to do work
     // its tools are about to refuse.
     const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
-    const routedInDigest =
-      digest.includes("Triage the request") && digest.includes("Resolve or refund");
-    const unroutedLeaked = digest.includes("Hand off to a human");
+    const routedInDigest = digest.includes("Triage the claim") && digest.includes("Pay the claim");
+    const unroutedLeaked =
+      digest.includes("Dispose of the case") || digest.includes("Screen against the watchlists");
     record(
       "digest carries exactly the routed steps",
       routedInDigest && !unroutedLeaked,
       unroutedLeaked
         ? "an unrouted step leaked into the digest"
         : routedInDigest
-          ? `${digest.length} chars, escalate omitted`
+          ? `${digest.length} chars, 28 unrouted steps omitted`
           : "a routed step is missing from the digest",
     );
     // The seeded types have to reach the model too, or it cannot name a real id.
-    const declaresOrder = digest.includes("order (id*");
-    const declaresTicket = digest.includes("ticket (id*");
+    const declaresClaim = digest.includes("claim (claim-id*");
+    const declaresPayment = digest.includes("payment (payment-id*");
     record(
-      "digest declares the seeded object types",
-      declaresOrder && declaresTicket,
-      // Name both halves: a detail that says "order + ticket declared" next to a
+      "digest declares the seeded object types of both branches",
+      declaresClaim && declaresPayment,
+      // Name both halves: a detail that says "claim + payment declared" next to a
       // FAIL hides which one actually went missing.
-      `order=${declaresOrder} ticket=${declaresTicket}`,
+      `claim=${declaresClaim} payment=${declaresPayment}`,
     );
 
-    // ---- 4. The tool gate follows the ACTIVE step, inheriting the root denial.
-    // Mediation already opened the run on its first routed leaf: golden.triage.
+    // Mediation already opened the run on its first routed leaf.
+    expectEqual(
+      "the run opens on the first routed step",
+      plan?.activeNodeId,
+      "finops.claims.intake.triage",
+    );
     // "blocked" alone would stay green if inheritance regressed, because the leaf
-    // excludes exec through its own allowedTools too. The reason names the step
-    // that decided, so assert it is the ROOT.
+    // excludes exec through its own allow-list too. The reason names the step that
+    // decided, so assert it is the ROOT.
     const execVerdict = evaluateEnterpriseToolCall({ runId, toolName: "exec" });
     record(
-      "root denial is inherited by the step",
-      Boolean(execVerdict?.blocked) && execVerdict?.decision.reason.includes('step "golden"'),
+      "the root's hard denial is inherited by the step",
+      Boolean(execVerdict?.blocked) && execVerdict?.decision.reason.includes('step "finops"'),
       execVerdict?.decision.reason ?? "no verdict",
     );
     expectEqual(
@@ -235,40 +351,63 @@ async function main(): Promise<number> {
       evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.blocked ?? false,
       false,
     );
+    // The core floor, on a step whose allow-list never mentions it. Under
+    // deny-by-default, silence must not take away the ability to answer or to look
+    // at anything — see CORE_FLOOR_TOOLS.
     expectEqual(
-      "a later step's tool is not allowed yet",
-      evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" })?.blocked ?? false,
-      true,
+      "the core floor survives deny-by-default",
+      evaluateEnterpriseToolCall({ runId, toolName: "memory_search" })?.decision.effect ?? "none",
+      "allow",
+    );
+    // A write from a step that never opted in is REFUSED, not raised as an
+    // approval: an action the step cannot honor is a declaration bug, and a human
+    // waving it through would let the model write from a scope that forbids it.
+    const writeVerdict = evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" });
+    record(
+      "a write from a step that does not opt in is refused outright",
+      writeVerdict?.decision.effect === "deny" &&
+        writeVerdict.decision.reason.includes("does not allow ontology writes"),
+      writeVerdict?.decision.reason ?? "no verdict",
     );
 
     // ---- 5. Advancing the step moves the scope with it.
-    completeEnterpriseStep({ runId }); // advances to golden.resolve
+    completeEnterpriseStep({ runId }); // advances to finops.claims.settlement.payment
     expectEqual(
-      "after advancing, the next step's tool is allowed",
+      "after advancing, the run stands on the next routed step",
+      getEnterpriseActiveRun(runId)?.plan.activeNodeId,
+      "finops.claims.settlement.payment",
+    );
+    expectEqual(
+      "after advancing, the write step may write",
       evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" })?.blocked ?? false,
       false,
     );
     expectEqual(
-      // get_neighbors, not search_objects: resolve reads the order and computes
-      // the cap it must not exceed, so it carries both of those. Walking the
-      // graph stays investigate's job, which is what still proves the scope
-      // MOVES with the active step rather than accumulating.
+      // get_neighbors, not search_objects: the payment step reads the claim it is
+      // about to settle and computes the cap it must not exceed, so it carries
+      // both of those. Walking the graph stays the earlier step's job, which is
+      // what proves the scope MOVES rather than accumulating.
       "after advancing, the previous step's tool is closed",
       evaluateEnterpriseToolCall({ runId, toolName: "get_neighbors" })?.requiresApproval ?? false,
       true,
     );
-    // ---- 5b. The declared action executes through the PRODUCTION tool and
-    // writes its object. Calling the store helper directly would skip the tool's
-    // own argument adapter and scope resolution, so a regression that broke the
+
+    // ---- 6. The declared action executes through the PRODUCTION tool and writes
+    // its object. Calling the store helper directly would skip the tool's own
+    // argument adapter and scope resolution, so a regression that broke the
     // wired-up tool would still leave this green.
     //
     // A `create` effect also needs the target type's primary key among the
     // action's parameters; without it every invocation fails validation, and a
     // fixture that only LOOKS executable lets the ontology path rot unnoticed.
-    const invokeAction = createInvokeActionTool({ runId });
-    const invoked = await invokeAction.execute("golden-call", {
-      action: "issue-refund",
-      args: { id: "REF-9100", "order-id": "ORD-5002", amount: 42 },
+    const invoked = await createInvokeActionTool({ runId }).execute("golden-call", {
+      action: "issue-claim-payment",
+      args: {
+        "payment-id": "PM-7199",
+        "claim-id": "CL-6101",
+        "paid-amount": 1800,
+        status: "settled",
+      },
     });
     const invokedText = JSON.stringify(invoked);
     record(
@@ -276,26 +415,596 @@ async function main(): Promise<number> {
       !invokedText.includes('"error"'),
       invokedText.slice(0, 120),
     );
-    const refunds = searchOntologyObjects({ treeId: TREE_ID, entity: "refund", limit: 50 });
     expectEqual(
-      "the refund it created is readable",
-      refunds.map((row) => row.objectId).toSorted(),
-      ["REF-9001", "REF-9100"],
+      "the payment it created is readable",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "payment", limit: 50 })
+        .map((row) => row.objectId)
+        .toSorted(),
+      ["PM-7101", "PM-7199"],
+    );
+    // Both effects, and neither crossed into the other. An action writes only what
+    // it declares, so a payment-only version would leave the claim `submitted`
+    // forever; a shared `amount` property would have let the paid figure overwrite
+    // the claim's own. That is why `payment` calls its column `paid-amount`.
+    expectEqual(
+      "paying settles the claim without rewriting the amount it was filed for",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "claim", limit: 50 })
+        .filter((row) => row.objectId === "CL-6101")
+        .map((row) => `${row.properties.status}:${row.properties.amount}`),
+      ["settled:1800"],
     );
     endEnterpriseRun({ runId, status: "completed" });
   }
 
-  // ---- 6. A run-level deny blocks the run BEFORE any model contact, even
+  // ---- 7. The two UPDATE actions, against the drafts the fixture seeds. A
+  // create effect refuses an id that already exists (ontology-actions.ts), so a
+  // work-map whose only write for an existing record is a create leaves the model
+  // no move but inventing a second one. Both of these write onto the seeded row
+  // and merge over it, which is also what proves the stored properties an update
+  // does not name survive.
+  {
+    const sarId = "golden-sar-update";
+    await openRun(sarId, "CS-7001 보고서 작성", ["finops.risk.monitoring.sar-filing"]);
+    const drafted = await createInvokeActionTool({ runId: sarId }).execute("sar-call", {
+      action: "draft-sar",
+      args: { "sar-id": "SR-8001", narrative: "Structuring across TX-4001 and TX-4002." },
+    });
+    record(
+      "the drafting action writes onto the report the case already carries",
+      !JSON.stringify(drafted).includes('"error"'),
+      JSON.stringify(drafted).slice(0, 120),
+    );
+    expectEqual(
+      "the narrative lands and the case link survives the merge",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "sar", limit: 10 }).map((row) => [
+        row.objectId,
+        row.properties["case-id"],
+        row.properties.narrative,
+      ]),
+      [["SR-8001", "CS-7001", "Structuring across TX-4001 and TX-4002."]],
+    );
+    endEnterpriseRun({ runId: sarId, status: "completed" });
+
+    const filingId = "golden-filing-update";
+    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.sar-filing"]);
+    await createInvokeActionTool({ runId: filingId }).execute("file-call", {
+      action: "file-regulatory-report",
+      args: { "report-id": "RP-9102", status: "filed" },
+    });
+    expectEqual(
+      "submitting the return moves its status without rewriting its period",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "regulatory-report", limit: 10 })
+        .map((row) => `${row.objectId}:${row.properties.period}:${row.properties.status}`)
+        .toSorted(),
+      ["RP-9101:2026-Q2:filed", "RP-9102:2026-Q3:filed"],
+    );
+    endEnterpriseRun({ runId: filingId, status: "completed" });
+  }
+
+  // ---- 8. MCP: four servers, and the attachment is the whole grant. Both
+  // directions matter on every one of them — the step that attaches may call it,
+  // and its siblings may not, even though nothing in their tool scope says so.
+  {
+    // The ledger step. One branch away from the two steps that reach the screening
+    // provider, and the only step in 30 that can move money.
+    const ledgerId = "golden-mcp-ledger";
+    await openRun(ledgerId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
+    expectEqual(
+      "the payment step may call the ledger it attached",
+      mcpVerdict(ledgerId, "acme-ledger", "transfer")?.decision.effect,
+      "allow",
+    );
+    // Any tool of the attached server, not just a named one: the attachment grants
+    // the server, and requiring the tool names too would make attaching in the UI
+    // insufficient.
+    expectEqual(
+      "the attachment covers the server's other tools too",
+      mcpVerdict(ledgerId, "acme-ledger", "anything")?.decision.effect,
+      "allow",
+    );
+    const crossDomain = mcpVerdict(ledgerId, "acme-screening", "lookup");
+    record(
+      "a server another domain attached is denied here",
+      Boolean(crossDomain?.blocked) && crossDomain.decision.reason.includes("is not attached"),
+      crossDomain?.decision.reason ?? "no verdict",
+    );
+    expectEqual(
+      "a registered server no step attaches is denied everywhere",
+      mcpVerdict(ledgerId, "other-tracker", "create_issue")?.blocked ?? false,
+      true,
+    );
+    endEnterpriseRun({ runId: ledgerId, status: "completed" });
+
+    // The same server, attached in a SECOND domain. An attachment is per-step: the
+    // onboarding screening step reaching it says nothing about this one.
+    const screeningId = "golden-mcp-screening";
+    await openRun(screeningId, "AC-2002 상대방 확인", [
+      "finops.risk.monitoring.investigation.link-analysis",
+    ]);
+    expectEqual(
+      "the same server is reachable from the other domain that attached it",
+      mcpVerdict(screeningId, "acme-screening", "lookup")?.decision.effect,
+      "allow",
+    );
+    expectEqual(
+      "and the ledger is not reachable from there",
+      mcpVerdict(screeningId, "acme-ledger", "transfer")?.blocked ?? false,
+      true,
+    );
+    endEnterpriseRun({ runId: screeningId, status: "completed" });
+
+    // The immediate SIBLING of an attaching step. This is the case a tool-scope
+    // check cannot catch: adjudicate sits under the same parent as the screening
+    // step and inherits everything except the attachment.
+    const siblingId = "golden-mcp-sibling";
+    await openRun(siblingId, "CU-1002 심사 판정", [
+      "finops.customer.onboarding.kyc-review.adjudicate",
+    ]);
+    expectEqual(
+      "the run stands on the sibling that attaches nothing",
+      getEnterpriseActiveRun(siblingId)?.plan.activeNodeId,
+      "finops.customer.onboarding.kyc-review.adjudicate",
+    );
+    expectEqual(
+      "an attaching step's sibling still cannot reach the server",
+      mcpVerdict(siblingId, "acme-screening", "lookup")?.blocked ?? false,
+      true,
+    );
+    endEnterpriseRun({ runId: siblingId, status: "completed" });
+
+    // A denial outranks the attachment. The dispute step attaches the tracker and
+    // then takes ONE destructive operation back — refused outright rather than
+    // raised as an approval, because writing a `deniedTools` entry is a decision.
+    const disputeId = "golden-mcp-denied-op";
+    await openRun(disputeId, "TX-4003 분쟁 접수", ["finops.customer.servicing.dispute"]);
+    expectEqual(
+      "the attached tracker's ordinary operations run",
+      mcpVerdict(disputeId, "acme-tracker", "create_issue")?.decision.effect,
+      "allow",
+    );
+    const takenBack = mcpVerdict(disputeId, "acme-tracker", "delete_issue");
+    record(
+      "a denied operation is refused even on the step that attached the server",
+      takenBack?.decision.effect === "deny" &&
+        takenBack.decision.reason.includes("ontology.deniedTools"),
+      takenBack?.decision.reason ?? "no verdict",
+    );
+    endEnterpriseRun({ runId: disputeId, status: "completed" });
+
+    // What a HOOKLESS runtime actually receives, which is not the route's union.
+    // The server is handed to the subprocess ONCE, before it connects, and nothing
+    // judges its calls afterwards — so it is admitted only when EVERY executable
+    // path in the plan grants it whole. A route that pairs the ledger step with any
+    // sibling therefore withholds the ledger outright rather than handing a
+    // hookless run a server one of its steps must never reach. That is the safe
+    // direction and it costs a real capability, so both halves are pinned here: an
+    // example whose per-step isolation only worked on the embedded runtime would be
+    // a much weaker claim than it reads as.
+    const { enterpriseRunAttachedMcpServers } = await import("../src/enterprise/active-runs.js");
+    const soloId = "golden-mcp-native-solo";
+    await openRun(soloId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
+    expectEqual(
+      "a route that is only the ledger step hands the ledger over at launch",
+      [...(enterpriseRunAttachedMcpServers(soloId, []) ?? ["<not governed>"])],
+      ["acme-ledger"],
+    );
+    endEnterpriseRun({ runId: soloId, status: "completed" });
+
+    const mixedId = "golden-mcp-native-mixed";
+    await openRun(mixedId, "CL-6101 분류 후 지급", [
+      "finops.claims.intake.triage",
+      "finops.claims.settlement.payment",
+    ]);
+    expectEqual(
+      "adding a step that must not reach it withholds it from the whole run",
+      [...(enterpriseRunAttachedMcpServers(mixedId, []) ?? ["<not governed>"])],
+      [],
+    );
+    endEnterpriseRun({ runId: mixedId, status: "completed" });
+
+    // And the sharper half of the same rule: a server carrying ANY per-operation
+    // denial is never handed to a hookless runtime at all. `deniedTools` is read
+    // TREE-WIDE, and a native harness renames tools by rules OpenClaw cannot
+    // invert, so `acme-tracker__delete_issue` costs the tracker on EVERY route —
+    // including this one, which is the tracker's other attaching step and denies
+    // nothing itself. That price is the reason the example says so at the denial.
+    const trackerId = "golden-mcp-native-partial-deny";
+    await openRun(trackerId, "CL-6102 사람에게 넘겨줘", ["finops.claims.intake.escalation"]);
+    expectEqual(
+      "a partially denied server is withheld from a hookless run on every route",
+      [...(enterpriseRunAttachedMcpServers(trackerId, []) ?? ["<not governed>"])],
+      [],
+    );
+    endEnterpriseRun({ runId: trackerId, status: "completed" });
+
+    // The control: same shape, no per-operation denial, so it is handed over.
+    // Without this the check above would pass on any bug that withheld everything.
+    const filingId = "golden-mcp-native-undenied";
+    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.sar-filing"]);
+    expectEqual(
+      "a server with no operation denied is still handed over",
+      [...(enterpriseRunAttachedMcpServers(filingId, []) ?? ["<not governed>"])],
+      ["acme-filing"],
+    );
+    endEnterpriseRun({ runId: filingId, status: "completed" });
+  }
+
+  // ---- 9. Knowledge: six corpora, each scoped to the steps that may query it.
+  // This is the only shipped path where `knowledge_search` returns anything
+  // without the operator standing up a retrieval server first — a tree cannot
+  // carry knowledge, which is why the example is a bundle.
+  {
+    // The claims desk. Its handbook answers; the AML policy the risk domain holds
+    // is skipped rather than queried, because model-supplied targeting is a
+    // narrowing and never an authority.
+    const claimsId = "golden-knowledge-claims";
+    await openRun(claimsId, "CL-6102 지급 권한", ["finops.claims.settlement.authority"]);
+    const hit = await createKnowledgeSearchTool({ runId: claimsId }).execute("k1", {
+      query: "settlement authority approver",
+    });
+    const hitText = JSON.stringify(hit);
+    record(
+      "knowledge_search answers from the corpus the step was granted",
+      hitText.includes("$5,000") && hitText.includes("acme.claims-handbook"),
+      hitText.slice(0, 150),
+    );
+    expectEqual(
+      "a corpus another domain holds is skipped, not queried",
+      (
+        await resolveEnterpriseKnowledge({
+          runId: claimsId,
+          query: "structuring threshold",
+          foundations: ["acme.aml-policy"],
+        })
+      ).skipped.map((entry) => entry.foundationId),
+      ["acme.aml-policy"],
+    );
+
+    // The two sources deliberately DISAGREE. The handbook's written figure is the
+    // DESK's authority ($5,000); this claim's own derived cap is 2,500. A reply
+    // that quotes 5,000 for CL-6102 has answered a record question from a policy
+    // passage — the exact confusion this fixture exists to catch, and it is only
+    // detectable because the numbers differ.
+    const cap = await createComputeFunctionTool({ runId: claimsId }).execute("k2", {
+      function: "auto-payable-amount",
+      objectId: "CL-6102",
+    });
+    expectEqual(
+      "the record's derived cap is not the handbook's number",
+      (cap as { details?: { value?: unknown } }).details?.value,
+      2500,
+    );
+    endEnterpriseRun({ runId: claimsId, status: "completed" });
+
+    // The cross-domain corpus. acme.aml-policy is granted to the whole risk domain
+    // AND to reporting, so the filing step answers from it and from the regulatory
+    // code — a corpus is granted to the steps that need it, not owned by a domain.
+    const filingId = "golden-knowledge-filing";
+    await openRun(filingId, "분기 신고 준비", ["finops.reporting.regulatory.sar-filing"]);
+    expectEqual(
+      "a step granted two corpora answers from both",
+      [
+        ...new Set(
+          (
+            await resolveEnterpriseKnowledge({
+              runId: filingId,
+              query: "suspicious activity report disposition",
+            })
+          ).snippets.map((snippet) => snippet.foundationId),
+        ),
+      ].toSorted(),
+      ["acme.aml-policy", "acme.regulatory-code"],
+    );
+    endEnterpriseRun({ runId: filingId, status: "completed" });
+
+    // The other half of the rule: a grant made by an ANCESTOR reaches a step that
+    // names no corpus of its own. Every other step here narrows; coverage-check is
+    // the one that inherits.
+    const inheritId = "golden-knowledge-inherited";
+    await openRun(inheritId, "CL-6102 보장 범위", ["finops.claims.adjudication.coverage-check"]);
+    expectEqual(
+      "a step that names no corpus inherits its domain's grant",
+      [
+        ...new Set(
+          (
+            await resolveEnterpriseKnowledge({ runId: inheritId, query: "coverage limit policy" })
+          ).snippets.map((snippet) => snippet.foundationId),
+        ),
+      ],
+      ["acme.claims-handbook"],
+    );
+    expectEqual(
+      "including the second corpus that domain granted",
+      [
+        ...new Set(
+          (
+            await resolveEnterpriseKnowledge({ runId: inheritId, query: "data minimization" })
+          ).snippets.map((snippet) => snippet.foundationId),
+        ),
+      ],
+      ["acme.privacy-standard"],
+    );
+    endEnterpriseRun({ runId: inheritId, status: "completed" });
+
+    // The step that actually sends customer data to an outside provider holds the
+    // standard that says how much may go, and its sibling — which never leaves the
+    // building — does not. A step cannot cite a rule its own path narrows away, so
+    // an expectedOutput that names one is only honest if the corpus reaches it.
+    const outboundId = "golden-knowledge-outbound";
+    await openRun(outboundId, "CU-1002 워치리스트 대조", [
+      "finops.customer.onboarding.kyc-review.screening",
+    ]);
+    expectEqual(
+      "the step that sends data outside can read the rule that bounds it",
+      [
+        ...new Set(
+          (
+            await resolveEnterpriseKnowledge({
+              runId: outboundId,
+              query: "account number external service",
+            })
+          ).snippets.map((snippet) => snippet.foundationId),
+        ),
+      ].toSorted(),
+      ["acme.kyc-manual", "acme.privacy-standard"],
+    );
+    endEnterpriseRun({ runId: outboundId, status: "completed" });
+
+    const inboundId = "golden-knowledge-inbound";
+    await openRun(inboundId, "CU-1002 심사 판정", [
+      "finops.customer.onboarding.kyc-review.adjudicate",
+    ]);
+    expectEqual(
+      "its sibling, which sends nothing, is narrowed back off that corpus",
+      (
+        await resolveEnterpriseKnowledge({
+          runId: inboundId,
+          query: "external service",
+          foundations: ["acme.privacy-standard"],
+        })
+      ).skipped.map((entry) => entry.foundationId),
+      ["acme.privacy-standard"],
+    );
+    endEnterpriseRun({ runId: inboundId, status: "completed" });
+
+    // A step must be able to read the rule its own title rests on. The
+    // underwriting branch is the case that proves it: the risk domain's AML corpus
+    // covers alerts, structuring and SARs and says nothing about approval bands,
+    // so a decision step holding only that could not decide anything the root's
+    // no-invented-policy constraint permits.
+    const creditId = "golden-knowledge-credit";
+    await openRun(creditId, "CU-1002 여신 판단", ["finops.risk.underwriting.decision"]);
+    expectEqual(
+      "the underwriting step reads the corpus its decision rests on",
+      [
+        ...new Set(
+          (
+            await resolveEnterpriseKnowledge({
+              runId: creditId,
+              query: "subprime applicant declined exception",
+            })
+          ).snippets.map((snippet) => snippet.foundationId),
+        ),
+      ],
+      ["acme.credit-policy"],
+    );
+    expectEqual(
+      "and the credit corpus stops at that branch",
+      (
+        await resolveEnterpriseKnowledge({
+          runId: creditId,
+          query: "coverage limit",
+          foundations: ["acme.claims-handbook"],
+        })
+      ).skipped.map((entry) => entry.foundationId),
+      ["acme.claims-handbook"],
+    );
+    endEnterpriseRun({ runId: creditId, status: "completed" });
+
+    const monitorId = "golden-knowledge-monitoring";
+    await openRun(monitorId, "AL-6002 분류", ["finops.risk.monitoring.alert-triage"]);
+    expectEqual(
+      "a sibling branch of the same domain never sees it",
+      (
+        await resolveEnterpriseKnowledge({
+          runId: monitorId,
+          query: "approval bands",
+          foundations: ["acme.credit-policy"],
+        })
+      ).skipped.map((entry) => entry.foundationId),
+      ["acme.credit-policy"],
+    );
+    endEnterpriseRun({ runId: monitorId, status: "completed" });
+
+    // A step that drops knowledge_search cannot retrieve at all, even though its
+    // ancestors still scope a corpus to it. The two gates are independent.
+    const noRetrievalId = "golden-knowledge-closed";
+    await openRun(noRetrievalId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
+    expectEqual(
+      "a step without knowledge_search cannot retrieve, whatever it was granted",
+      evaluateEnterpriseToolCall({ runId: noRetrievalId, toolName: "knowledge_search" })
+        ?.requiresApproval ?? false,
+      true,
+    );
+    endEnterpriseRun({ runId: noRetrievalId, status: "completed" });
+  }
+
+  // ---- 10. Skills. A declared skill travels with the work-map, is named under its
+  // step in the digest as a preference, narrows the run's catalog under explicit
+  // grants — and must never widen the step's tool scope, because guidance that
+  // grants capability is not guidance.
+  {
+    const { collectReferencedSkills } = await import("../src/enterprise/tree-references.js");
+    const entry = listWorkflowTreeRegistryEntries().find((row) => row.tree.id === TREE_ID);
+    const declaredSkills = entry ? collectReferencedSkills(entry.tree) : [];
+    expectEqual("the work-map's declared skills travel with it", declaredSkills, [
+      "taskflow",
+      "taskflow-inbox-triage",
+    ]);
+
+    const runId = "golden-skills";
+    const mediation = await openRun(runId, "AL-6002 경보 분류", [
+      "finops.risk.monitoring.alert-triage",
+    ]);
+    const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
+    record(
+      "a declared skill reaches the model digest",
+      digest.includes("Skills: taskflow-inbox-triage"),
+      digest.includes("taskflow-inbox-triage")
+        ? "rendered under its step"
+        : "the declaration never reached the prompt, so it cannot change a turn",
+    );
+    // The names alone are trivia; the one-time gloss says what to do with them.
+    // It must stay a PREFERENCE and must restate containment — an instruction to
+    // load would be unexecutable on a step whose scope withholds `read`.
+    record(
+      "the digest says what to do with a declared skill, without ordering an unexecutable load",
+      digest.includes("prefer it over improvising") &&
+        digest.includes("never grant a tool the step's scope withholds") &&
+        !/load (those|these) skills/i.test(digest),
+      /load (those|these) skills/i.test(digest)
+        ? "the digest orders a skill load the step's tool scope cannot perform"
+        : digest.includes("prefer it over improvising")
+          ? "preference gloss present with the containment clause"
+          : "skills are named but nothing tells the model what to do with them",
+    );
+    // alert-triage declares the skill AND a five-tool allow-list. If declaring ever
+    // started granting tools, this is the assertion that would catch it.
+    expectEqual(
+      "declaring a skill does not widen the step's tool scope",
+      evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" })?.blocked ?? false,
+      true,
+    );
+    // Under explicit grants the catalog follows the ROUTE, so a run that never
+    // enters the branches declaring `summarize` is not offered it.
+    expectEqual(
+      "the run's skill catalog is only what this route reaches",
+      getEnterpriseActiveRun(runId)?.plan.grantedSkills,
+      ["taskflow-inbox-triage"],
+    );
+    endEnterpriseRun({ runId, status: "completed" });
+
+    // The instructions themselves, inlined. The claims escalation step declares
+    // `taskflow` and never grants `read`, so this is the case that would otherwise
+    // be unreachable: with the body in the prompt the step needs no tool to use it.
+    const inlinedId = "golden-skill-instructions";
+    const inlined = await beginEnterpriseRun({
+      runId: inlinedId,
+      prompt: "CL-6102 사람에게 넘겨줘",
+      config: MCP_CONFIG as never,
+      routePlanner: async () => ({
+        kind: "decided",
+        treeId: TREE_ID,
+        routes: ["finops.claims.intake.escalation"],
+        rationale: "inline",
+      }),
+      // The runner's already-resolved set; the real one comes from the session
+      // skills snapshot. Pointing at the repo's own bundled SKILL.md keeps this
+      // honest — it is the same file a run would load.
+      availableSkills: [
+        {
+          name: "taskflow",
+          filePath: path.resolve("skills", "taskflow", "SKILL.md"),
+          baseDir: path.resolve("skills", "taskflow"),
+        },
+      ],
+    });
+    const inlinedDigest = inlined.kind === "mediated" ? inlined.promptSection : "";
+    record(
+      "a declared skill's instructions are inlined into the digest",
+      inlinedDigest.includes("Skill instructions for the steps above (taskflow):") &&
+        inlinedDigest.includes("### taskflow"),
+      inlinedDigest.includes("### taskflow")
+        ? "body carried in the prompt, so the step needs no read to use it"
+        : "only the name reached the prompt; the model would still have to open the file",
+    );
+    record(
+      "the inlined body is the SKILL.md content, not its frontmatter",
+      // The metadata block is where the emoji and the install recipe live, so its
+      // absence is what proves the frontmatter was stripped rather than inlined.
+      inlinedDigest.includes("# TaskFlow") && !inlinedDigest.includes('"emoji"'),
+      inlinedDigest.includes("# TaskFlow")
+        ? "frontmatter stripped, body kept"
+        : "the body did not survive frontmatter stripping",
+    );
+    // Containment: naming a skill must not hand the step a tool it lacks.
+    expectEqual(
+      "inlining instructions does not widen the step's tool scope",
+      evaluateEnterpriseToolCall({ runId: inlinedId, toolName: "read" })?.decision.effect ?? "none",
+      // `read` is on the core floor, so it stays available — but only because the
+      // floor says so, not because a skill declaration granted it.
+      "allow",
+    );
+    endEnterpriseRun({ runId: inlinedId, status: "completed" });
+
+    // A step can only surface a skill the AGENT already has: the work-map
+    // declaration narrows the runner's set, it can never add to it.
+    const unknownId = "golden-skill-unknown";
+    const unknown = await beginEnterpriseRun({
+      runId: unknownId,
+      prompt: "CL-6102 사람에게 넘겨줘",
+      config: MCP_CONFIG as never,
+      routePlanner: async () => ({
+        kind: "decided",
+        treeId: TREE_ID,
+        routes: ["finops.claims.intake.escalation"],
+        rationale: "unknown",
+      }),
+      availableSkills: [],
+    });
+    const unknownDigest = unknown.kind === "mediated" ? unknown.promptSection : "";
+    record(
+      "a skill the agent does not have is named but never inlined",
+      unknownDigest.includes("Skills: taskflow") &&
+        !unknownDigest.includes("Skill instructions for the steps above"),
+      unknownDigest.includes("Skill instructions for the steps above")
+        ? "instructions appeared for a skill the agent does not have"
+        : "declaration shown, nothing fabricated",
+    );
+
+    // What a plugin-owned harness asks core before it narrows its own surface: the
+    // Codex app-server turns off Codex's native skills block on the strength of
+    // this answer, and that wire shape lives in the plugin.
+    const { resolveRunSkillGrant } = await import("../src/agents/enterprise-skill-scope.js");
+    expectEqual(
+      "a harness asking core gets this run's skill grant",
+      resolveRunSkillGrant({ runId: unknownId }),
+      ["taskflow"],
+    );
+    expectEqual(
+      "and gets nothing to narrow for a run no work-map governs",
+      resolveRunSkillGrant({ runId: "golden-not-a-run" }),
+      null,
+    );
+    // The same question for a tool the harness never dispatches. Codex's web_search
+    // is hosted (the model host runs it), so no PreToolUse hook can reach it and the
+    // per-call gate never sees the call — the launch decision is the only place the
+    // work-map's scope can still apply.
+    const { enterpriseRunAdmitsHostedTool } = await import("../src/enterprise/active-runs.js");
+    expectEqual(
+      "a hosted tool no step grants is withheld before the harness starts",
+      enterpriseRunAdmitsHostedTool(unknownId, "web_search"),
+      false,
+    );
+    expectEqual(
+      "and nothing is withheld from a run no work-map governs",
+      enterpriseRunAdmitsHostedTool("golden-not-a-run", "web_search"),
+      true,
+    );
+    endEnterpriseRun({ runId: unknownId, status: "completed" });
+  }
+
+  // ---- 11. A run-level deny blocks the run BEFORE any model contact, even
   // though that same precheck withholds the planner.
   {
     const runId = "golden-denied";
     let deniedPlannerCalls = 0;
     const mediation = await beginEnterpriseRun({
       runId,
-      prompt: "ORD-5002 환불해줘",
+      prompt: "CL-6101 지급해줘",
       config: {
         enterprise: {
-          governance: { policies: [{ id: "deny.golden", effect: "deny", trees: ["golden.*"] }] },
+          governance: { policies: [{ id: "deny.finops", effect: "deny", trees: ["acme.*"] }] },
         },
       } as never,
       routePlanner: async () => {
@@ -310,7 +1019,7 @@ async function main(): Promise<number> {
     expectEqual("the denied prompt never reaches the planner", deniedPlannerCalls, 0);
   }
 
-  // ---- 7. Built-in example trees never govern; only imports do.
+  // ---- 12. Built-in example trees never govern; only imports do.
   {
     const ids = listWorkflowTreeRegistryEntries().map((entry) => entry.tree.id);
     record(
@@ -325,7 +1034,7 @@ async function main(): Promise<number> {
     let offered: string[] = [];
     const mediation = await beginEnterpriseRun({
       runId,
-      prompt: "고객 지원 티켓 절차대로 환불 처리해줘",
+      prompt: "고객 지원 티켓 절차대로 처리해줘",
       routePlanner: async ({ trees }) => {
         offered = trees.map((tree) => tree.id);
         return { kind: "decided", treeId: "clawworks.support", routes: [], rationale: "support" };
@@ -346,644 +1055,195 @@ async function main(): Promise<number> {
     endEnterpriseRun({ runId, status: "completed" });
   }
 
-  // ---- 8. A declared skill REACHES THE MODEL, in the advisory lane. It travels
-  // with the work-map, shows up in the operator surfaces, and is named under its
-  // step in the run digest as a preference — but it must never widen the step's
-  // tool scope, because guidance that grants capability is not guidance. The
-  // rendering is unconditional: whether the skill can actually be opened depends
-  // on the dispatching runtime, which the plan cannot see. These checks pin both
-  // halves so neither can drift without being noticed.
+  // ---- 13. The INHERITED grant mode, which the shipped example cannot carry: a
+  // work-map declares one mode or the other, and the example is explicit. Built
+  // inline because the point is a tree where a step scopes nothing and therefore
+  // allows everything — the opposite of every step in the example.
   {
-    const { collectReferencedSkills } = await import("../src/enterprise/tree-references.js");
-    const entry = listWorkflowTreeRegistryEntries().find((row) => row.tree.id === TREE_ID);
-    const declaredSkills = entry ? collectReferencedSkills(entry.tree) : [];
-    expectEqual("the work-map's declared skills travel with it", declaredSkills, [
-      "summarize",
-      "taskflow-inbox-triage",
-    ]);
-    // Resolve whatever the FIXTURE declares, not a name repeated here: a check
-    // against a constant stays green when the fixture drifts to an id nothing
-    // provides, which is the exact regression worth catching. A dangling skill
-    // is unresolvable for anyone who imports the work-map and is invisible at
-    // runtime — only the operator surfaces show it.
-    const unbundled = declaredSkills.filter(
-      (name) => !existsSync(path.resolve("skills", name, "SKILL.md")),
-    );
-    record(
-      "every declared skill is one this repo actually bundles",
-      declaredSkills.length > 0 && unbundled.length === 0,
-      declaredSkills.length === 0
-        ? "the fixture declares no skills, so this proves nothing"
-        : unbundled.length > 0
-          ? `no SKILL.md for: ${unbundled.join(", ")}`
-          : declaredSkills.map((name) => `skills/${name}/SKILL.md`).join(", "),
-    );
-
-    const runId = "golden-skills";
-    const mediation = await beginEnterpriseRun({
-      runId,
-      prompt: "TKT-77 티켓 분류해줘",
-      routePlanner: async () => ({
-        kind: "decided",
-        treeId: TREE_ID,
-        routes: ["golden.triage"],
-        rationale: "skills",
-      }),
-    });
-    const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
-    record(
-      "a declared skill reaches the model digest",
-      digest.includes("Skills: taskflow-inbox-triage"),
-      digest.includes("taskflow-inbox-triage")
-        ? "rendered under its step"
-        : "the declaration never reached the prompt, so it cannot change a turn",
-    );
-    // The names alone are trivia; the one-time gloss says what to do with them.
-    // It must stay a PREFERENCE and must restate containment — an instruction to
-    // load would be unexecutable on a step whose scope withholds `read`, which is
-    // every skills-bearing step in the shipped examples.
-    record(
-      "the digest says what to do with a declared skill, without ordering an unexecutable load",
-      digest.includes("prefer it over improvising") &&
-        digest.includes("never grant a tool the step's scope withholds") &&
-        !/load (those|these) skills/i.test(digest),
-      /load (those|these) skills/i.test(digest)
-        ? "the digest orders a skill load the step's tool scope cannot perform"
-        : digest.includes("prefer it over improvising")
-          ? "preference gloss present with the containment clause"
-          : "skills are named but nothing tells the model what to do with them",
-    );
-    // golden.triage declares the skill AND a two-tool allow-list. If declaring
-    // ever started granting tools, this is the assertion that would catch it.
-    expectEqual(
-      "declaring a skill does not widen the step's tool scope",
-      evaluateEnterpriseToolCall({ runId, toolName: "invoke_action" })?.blocked ?? false,
-      true,
-    );
-    endEnterpriseRun({ runId, status: "completed" });
-
-    // ---- The instructions themselves, inlined. golden.escalate declares
-    // `summarize` and withholds `read`, so this is the case that used to be
-    // unreachable: with the body in the prompt the step needs no tool to use it.
-    const inlinedId = "golden-skill-instructions";
-    const inlined = await beginEnterpriseRun({
-      runId: inlinedId,
-      prompt: "사람에게 넘겨줘",
-      routePlanner: async () => ({
-        kind: "decided",
-        treeId: TREE_ID,
-        routes: ["golden.escalate"],
-        rationale: "inline",
-      }),
-      // The runner's already-resolved set; the real one comes from the session
-      // skills snapshot. Pointing at the repo's own bundled SKILL.md keeps this
-      // honest — it is the same file a run would load.
-      availableSkills: [
-        {
-          name: "summarize",
-          filePath: path.resolve("skills", "summarize", "SKILL.md"),
-          baseDir: path.resolve("skills", "summarize"),
-        },
-      ],
-    });
-    const inlinedDigest = inlined.kind === "mediated" ? inlined.promptSection : "";
-    record(
-      "a declared skill's instructions are inlined into the digest",
-      inlinedDigest.includes("Skill instructions for the steps above (summarize):") &&
-        inlinedDigest.includes("### summarize"),
-      inlinedDigest.includes("### summarize")
-        ? "body carried in the prompt, so the step needs no read to use it"
-        : "only the name reached the prompt; the model would still have to open the file",
-    );
-    record(
-      "the inlined body is the SKILL.md content, not its frontmatter",
-      inlinedDigest.includes("# Summarize") && !inlinedDigest.includes("homepage:"),
-      inlinedDigest.includes("# Summarize")
-        ? "frontmatter stripped, body kept"
-        : "the body did not survive frontmatter stripping",
-    );
-    // Containment: naming a skill must not hand the step a tool it lacks.
-    expectEqual(
-      "inlining instructions does not widen the step's tool scope",
-      evaluateEnterpriseToolCall({ runId: inlinedId, toolName: "read" })?.requiresApproval ?? false,
-      true,
-    );
-    endEnterpriseRun({ runId: inlinedId, status: "completed" });
-
-    // A step can only surface a skill the AGENT already has: the work-map
-    // declaration narrows the runner's set, it can never add to it.
-    const unknownId = "golden-skill-unknown";
-    const unknown = await beginEnterpriseRun({
-      runId: unknownId,
-      prompt: "사람에게 넘겨줘",
-      routePlanner: async () => ({
-        kind: "decided",
-        treeId: TREE_ID,
-        routes: ["golden.escalate"],
-        rationale: "unknown",
-      }),
-      availableSkills: [],
-    });
-    const unknownDigest = unknown.kind === "mediated" ? unknown.promptSection : "";
-    record(
-      "a skill the agent does not have is named but never inlined",
-      unknownDigest.includes("Skills: summarize") &&
-        !unknownDigest.includes("Skill instructions for the steps above"),
-      unknownDigest.includes("Skill instructions for the steps above")
-        ? "instructions appeared for a skill the agent does not have"
-        : "declaration shown, nothing fabricated",
-    );
-    endEnterpriseRun({ runId: unknownId, status: "completed" });
-
-    // Rendering is UNCONDITIONAL, including on a step whose scope withholds
-    // `read`. Whether a skill can be opened depends on the dispatching runtime
-    // (embedded reads SKILL.md, claude-cli resolves natively, ACP drops the
-    // digest) and the plan cannot see which — so gating would guess and silently
-    // drop an operator's declaration. golden.escalate is exactly that step.
-    const noReadId = "golden-skills-noread";
-    const noRead = await beginEnterpriseRun({
-      runId: noReadId,
-      prompt: "사람에게 넘겨줘",
-      routePlanner: async () => ({
-        kind: "decided",
-        treeId: TREE_ID,
-        routes: ["golden.escalate"],
-        rationale: "no-read",
-      }),
-    });
-    const noReadDigest = noRead.kind === "mediated" ? noRead.promptSection : "";
-    record(
-      "a step that declares a skill names it even without read in scope",
-      noReadDigest.includes("Skills: summarize"),
-      noReadDigest.includes("Skills:")
-        ? "declared and rendered; loadability is the runtime's business"
-        : "the declaration was dropped, which no plan-level fact can justify",
-    );
-    endEnterpriseRun({ runId: noReadId, status: "completed" });
-  }
-
-  // ---- 9. Knowledge foundations, through the bundle an operator actually
-  // imports. A tree cannot carry knowledge, so this is the only shipped path
-  // where `knowledge_search` returns anything without the operator standing up a
-  // retrieval server first — which makes it the only one a golden check can
-  // cover end to end.
-  {
-    const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
-    const { createKnowledgeSearchTool } =
-      await import("../src/agents/tools/knowledge-search-tool.js");
-    const BUNDLE_TREE_ID = "acme.support-desk";
-    const FOUNDATION_ID = "acme.support-desk-handbook";
-    const bundlePath = path.resolve("examples/enterprise/support-desk.clawworks-bundle.yaml");
-    const bundle = importWorkflowBundle({
-      content: readFileSync(bundlePath, "utf8"),
-      format: "yaml",
-    });
-    record(
-      "the shipped bundle imports cleanly",
-      bundle.ok,
-      bundle.ok ? bundle.trees.map((tree) => tree.id).join(", ") : JSON.stringify(bundle.issues),
-    );
-    if (bundle.ok) {
-      expectEqual("its knowledge foundation is inlined and registered", bundle.foundations, [
-        FOUNDATION_ID,
-      ]);
-      // A referenced-but-not-inlined id means the recipient has to configure it
-      // separately; for a self-contained example that is a broken promise.
-      expectEqual("it leaves no foundation unconfigured", bundle.missingFoundations, []);
-      invalidateWorkflowTreeRegistry();
-
-      const runId = "golden-knowledge";
-      await beginEnterpriseRun({
-        runId,
-        prompt: "환불 한도가 얼마야?",
-        routePlanner: async () => ({
-          kind: "decided",
-          treeId: BUNDLE_TREE_ID,
-          routes: ["desk.answer"],
-          rationale: "knowledge",
-        }),
-      });
-      const knowledge = createKnowledgeSearchTool({ runId });
-
-      const hit = await knowledge.execute("k1", { query: "refund limit approval" });
-      const hitText = JSON.stringify(hit);
-      record(
-        "knowledge_search returns the inlined corpus on a scoped step",
-        hitText.includes("$200") && hitText.includes(FOUNDATION_ID),
-        hitText.slice(0, 140),
-      );
-
-      // Model-supplied targeting is a narrowing, never an authority: an id the
-      // step does not allow must be reported as skipped rather than queried.
-      const offScope = await knowledge.execute("k2", {
-        query: "refund limit",
-        foundations: ["acme.not-in-this-scope"],
-      });
-      const offScopeText = JSON.stringify(offScope);
-      record(
-        "an out-of-scope foundation is skipped, not queried",
-        offScopeText.includes("acme.not-in-this-scope") && offScopeText.includes('"snippets":[]'),
-        offScopeText.slice(0, 140),
-      );
-      endEnterpriseRun({ runId, status: "completed" });
-
-      // The escalation step drops knowledge_search from its allow-list, so the
-      // tool gate closes it even though the root still scopes the foundation.
-      const escalateRunId = "golden-knowledge-escalate";
-      await beginEnterpriseRun({
-        runId: escalateRunId,
-        prompt: "사람에게 넘겨줘",
-        routePlanner: async () => ({
-          kind: "decided",
-          treeId: BUNDLE_TREE_ID,
-          routes: ["desk.escalate"],
-          rationale: "escalate",
-        }),
-      });
-      // Walk to the escalation leaf. A planner route names the branch but does not
-      // move the run into it: the active leaf advances with executed turns, so
-      // without these the assertions below would judge the FIRST leaf instead.
-      completeEnterpriseStep({ runId: escalateRunId });
-      completeEnterpriseStep({ runId: escalateRunId });
-      expectEqual(
-        "a step that drops knowledge_search cannot retrieve at all",
-        evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "knowledge_search" })
-          ?.requiresApproval ?? false,
-        true,
-      );
-      expectEqual(
-        "that same step keeps the tool it does allow",
-        evaluateEnterpriseToolCall({ runId: escalateRunId, toolName: "message" })?.blocked ?? false,
-        false,
-      );
-      endEnterpriseRun({ runId: escalateRunId, status: "completed" });
-
-      // MCP is the only scope that denies by default, so both directions matter:
-      // the step that attaches the server may call it, and its siblings may not —
-      // even though the root's allow-list would otherwise pass the tool.
-      const mcpRunId = "golden-mcp";
-      await beginEnterpriseRun({
-        runId: mcpRunId,
-        prompt: "사람에게 넘겨줘",
-        // BOTH registered: only a registered server is gated, so leaving
-        // other-tracker out would have the isolation check below pass on the tool
-        // scope alone — green even if one attachment granted every server.
-        config: {
-          mcp: {
-            servers: { "acme-tracker": { command: "npx" }, "other-tracker": { command: "npx" } },
-          },
-        },
-        // Names the tree, like every other run here: two trees are imported, and
-        // without a planner this would bind whichever one wins the fallback.
-        // The `routes` are inert for THIS fixture and deliberately so: selection
-        // skips the planner entirely on a tree this small ("not worth a model
-        // call"), so the plan keeps all four nodes and the walk below moves leaf
-        // by leaf. Do not read the route as choosing the step under test.
-        routePlanner: async () => ({
-          kind: "decided",
-          treeId: BUNDLE_TREE_ID,
-          routes: ["desk.escalate"],
-          rationale: "escalate",
-        }),
-      });
-      // Name the step this asserts against: if a route ever narrows this tree to
-      // the escalation leaf, the check below would silently start testing the step
-      // that DOES attach the server and pass for the wrong reason.
-      expectEqual(
-        "the run starts on the triage step, which attaches nothing",
-        getEnterpriseActiveRun(mcpRunId)?.plan.activeNodeId,
-        "desk.triage",
-      );
-      expectEqual(
-        "the first step, which attaches nothing, cannot reach the server",
-        evaluateEnterpriseToolCall({
-          runId: mcpRunId,
-          toolName: "acme-tracker__create_issue",
-          mcpTool: {
-            serverName: "acme-tracker",
-            safeServerName: "acme-tracker",
-            toolName: "create_issue",
-          },
-        })?.blocked ?? false,
-        true,
-      );
-      // Walk to desk.escalate, the one step the example attaches the server to.
-      completeEnterpriseStep({ runId: mcpRunId });
-      completeEnterpriseStep({ runId: mcpRunId });
-      expectEqual(
-        "the step that attaches an MCP server may call it",
-        evaluateEnterpriseToolCall({
-          runId: mcpRunId,
-          toolName: "acme-tracker__create_issue",
-          mcpTool: {
-            serverName: "acme-tracker",
-            safeServerName: "acme-tracker",
-            toolName: "create_issue",
-          },
-        })?.blocked ?? false,
-        false,
-      );
-      // The attachment grants THAT server, not MCP in general.
-      expectEqual(
-        "a server no step attached is still denied on the same step",
-        evaluateEnterpriseToolCall({
-          runId: mcpRunId,
-          toolName: "other-tracker__create_issue",
-          mcpTool: {
-            serverName: "other-tracker",
-            safeServerName: "other-tracker",
-            toolName: "create_issue",
-          },
-        })?.blocked ?? false,
-        true,
-      );
-      // Any tool of the attached server, not just the one named above. (That the
-      // ATTACHMENT alone grants an embedded call, with no tool-scope entry, is
-      // covered by governance.test.ts — this example also carries the globs a
-      // native backend needs, so it cannot prove that here.)
-      expectEqual(
-        "the attached server's other tools are callable from that step",
-        JSON.stringify(
-          evaluateEnterpriseToolCall({
-            runId: mcpRunId,
-            toolName: "acme-tracker__anything",
-            mcpTool: {
-              serverName: "acme-tracker",
-              safeServerName: "acme-tracker",
-              toolName: "anything",
-            },
-          })?.decision.effect,
-        ),
-        JSON.stringify("allow"),
-      );
-      endEnterpriseRun({ runId: mcpRunId, status: "completed" });
-    }
-  }
-
-  // ---- The SHIPPED explicit-grants example, end to end. An operator can import
-  // this file as-is, so what it promises has to be what the runtime does: all
-  // four families deny-by-default, and its knowledge foundation inlined so the
-  // import needs nothing else.
-  {
-    const EXPLICIT_BUNDLE_TREE_ID = "acme.explicit-grants";
-    const EXPLICIT_FOUNDATION_ID = "acme.research-handbook";
-    const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
-    const examplePath = path.resolve("examples/enterprise/explicit-grants.clawworks-bundle.yaml");
-    const exampleBundle = importWorkflowBundle({
-      content: readFileSync(examplePath, "utf8"),
-      format: "yaml",
-    });
-    record(
-      "the shipped explicit-grants example imports cleanly",
-      exampleBundle.ok,
-      exampleBundle.ok ? EXPLICIT_BUNDLE_TREE_ID : JSON.stringify(exampleBundle.issues),
-    );
-    if (exampleBundle.ok) {
-      // Self-contained: an example that names a foundation it does not carry
-      // would retrieve nothing on the recipient's deployment.
-      expectEqual("its knowledge foundation ships inline", exampleBundle.foundations, [
-        EXPLICIT_FOUNDATION_ID,
-      ]);
-      expectEqual("it leaves no foundation unconfigured", exampleBundle.missingFoundations, []);
-      // The skill it declares has to be one this repo bundles AND one that needs
-      // no external binary: a skill whose `requires.bins` is missing on the host
-      // is filtered out of the run, which would make the example's skills axis
-      // inert on exactly the machines it is meant to demonstrate on.
-      expectEqual(
-        "its declared skill is bundled here and needs no external binary",
-        exampleBundle.requiredSkills.map((name) => {
-          const file = path.resolve("skills", name, "SKILL.md");
-          if (!existsSync(file)) {
-            return `MISSING:${name}`;
-          }
-          return /"bins"\s*:\s*\[[^\]]/.test(readFileSync(file, "utf8"))
-            ? `NEEDS-BIN:${name}`
-            : name;
-        }),
-        ["taskflow-inbox-triage"],
-      );
-      expectEqual(
-        "it names the MCP server an operator must register",
-        [...(exampleBundle.requiredMcpServers ?? [])],
-        ["acme-tracker"],
-      );
-      invalidateWorkflowTreeRegistry();
-
-      const exampleRunId = "golden-example-explicit";
-      await beginEnterpriseRun({
-        runId: exampleRunId,
-        prompt: "check the handbook",
-        config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } },
-        routePlanner: async () => ({
-          kind: "decided",
-          treeId: EXPLICIT_BUNDLE_TREE_ID,
-          routes: [],
-          rationale: "example",
-        }),
-      });
-      const examplePlan = getEnterpriseActiveRun(exampleRunId)?.plan;
-      expectEqual(
-        "the example run grants capabilities explicitly",
-        examplePlan?.capabilityGrants,
-        "explicit",
-      );
-      // TOOLS: the active step (research.gather) grants `knowledge_search` and
-      // nothing else, so the root's wider floor does NOT widen it back — the
-      // intersection still applies under explicit grants. (Root-grant
-      // inheritance itself is proven below, on a step that grants none.)
-      expectEqual(
-        "the example's reading step may search the handbook",
-        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "knowledge_search" })
-          ?.blocked ?? false,
-        false,
-      );
-      // Both halves of what the floor means, on the one step that exercises it.
-      // The read-only phase DENIES message explicitly, and a denial overrules the
-      // floor — leaving it out of the allow-list would only have made it
-      // approvable, which is the distinction the example exists to teach.
-      expectEqual(
-        "the read-only step's explicit denial overrules the core floor",
-        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "message" })?.decision.effect ??
-          "none",
-        "deny",
-      );
-      expectEqual(
-        "but the floor still covers reading there, unlisted and undenied",
-        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "memory_search" })?.decision
-          .effect ?? "none",
-        "allow",
-      );
-      expectEqual(
-        "a tool the example never grants still cannot just run",
-        evaluateEnterpriseToolCall({ runId: exampleRunId, toolName: "exec" })?.requiresApproval ??
-          false,
-        true,
-      );
-      // SKILLS: exactly what the steps attach, nothing else.
-      expectEqual(
-        "the example run's skill catalog is its declared skill",
-        examplePlan?.grantedSkills,
-        ["taskflow-inbox-triage"],
-      );
-      // KNOWLEDGE: the fourth family. The reading step attaches the handbook, so
-      // it retrieves; nothing else in the deployment is reachable from it.
-      const { resolveEnterpriseKnowledge } = await import("../src/enterprise/knowledge.js");
-      const granted = await resolveEnterpriseKnowledge({
-        runId: exampleRunId,
-        // A term that really appears in the inlined snippets: retrieval scores the
-        // snippet TEXT, not its title.
-        query: "handbook ticket",
-      });
-      expectEqual(
-        "the example's granted foundation answers a search",
-        // Unique ids: one query can match several snippets of the same corpus.
-        [...new Set(granted.snippets.map((snippet) => snippet.foundationId))],
-        [EXPLICIT_FOUNDATION_ID],
-      );
-      expectEqual(
-        "and a search aimed at a foundation it never granted is skipped",
-        (
-          await resolveEnterpriseKnowledge({
-            runId: exampleRunId,
-            query: "handbook ticket",
-            foundations: ["acme.support-desk-handbook"],
-          })
-        ).skipped.map((entry) => entry.foundationId),
-        ["acme.support-desk-handbook"],
-      );
-      // MCP: the tracker is registered here, but the FIRST step attaches nothing.
-      expectEqual(
-        "the example's first step cannot reach the tracker it registered",
-        evaluateEnterpriseToolCall({
-          runId: exampleRunId,
-          toolName: "acme-tracker__create_issue",
-          mcpTool: {
-            serverName: "acme-tracker",
-            safeServerName: "acme-tracker",
-            toolName: "create_issue",
-          },
-        })?.blocked ?? false,
-        true,
-      );
-      endEnterpriseRun({ runId: exampleRunId, status: "completed" });
-    }
-  }
-
-  // ---- A work-map that grants capabilities explicitly, through the real path.
-  // Written here rather than shipped as an example: the examples deliberately
-  // carry the inherited semantics, and this needs a tree where a step grants
-  // nothing to prove that silence denies.
-  {
-    const EXPLICIT_TREE_ID = "golden.explicit";
-    const explicitTree = {
+    const INHERITED_TREE_ID = "golden.inherited";
+    const inheritedTree = {
       schema: "clawworks.workflow-tree",
       schemaVersion: 1,
-      id: EXPLICIT_TREE_ID,
+      id: INHERITED_TREE_ID,
       version: "1.0.0",
-      name: "Explicit grants",
-      description: "Work-map that grants tools, skills, and MCP servers per step.",
-      match: { triggers: ["user"], priority: 50 },
-      capabilityGrants: "explicit",
+      name: "Inherited grants",
+      description: "Work-map that narrows within what an ancestor allowed.",
+      match: { triggers: ["user"], priority: 70 },
       root: {
-        id: "grant",
+        id: "inherit",
         title: "Handle the request",
-        ontology: { allowedTools: ["message"], skills: ["desk-intake"] },
+        description: "Root scope.",
+        ontology: {
+          allowedTools: ["search_objects", "compute_function", "message"],
+          entities: [
+            {
+              id: "widget",
+              properties: [
+                { id: "widget-id", type: "id", primaryKey: true },
+                { id: "price", type: "number", required: true },
+              ],
+            },
+          ],
+          objects: [{ entity: "widget", properties: { "widget-id": "WG-1", price: 40 } }],
+        },
         children: [
           {
-            id: "grant.narrow",
-            title: "Work within the root grant",
-            ontology: { skills: ["ticket-triage"] },
+            id: "inherit.open",
+            title: "Scope nothing",
+            description: "A step that declares no tools of its own.",
+          },
+          {
+            id: "inherit.narrow",
+            title: "Narrow to replying",
+            description: "A step that narrows within the root's list.",
+            ontology: { allowedTools: ["message"] },
           },
         ],
       },
     };
-    const importedExplicit = importWorkflowTreeContent({
-      content: JSON.stringify(explicitTree),
+    const importedInherited = importWorkflowTreeContent({
+      content: JSON.stringify(inheritedTree),
       format: "json",
     });
     record(
-      "an explicit-grants work-map imports cleanly",
-      importedExplicit.ok,
-      importedExplicit.ok ? EXPLICIT_TREE_ID : JSON.stringify(importedExplicit.issues),
+      "an inherited-grants work-map imports cleanly",
+      importedInherited.ok,
+      importedInherited.ok ? INHERITED_TREE_ID : JSON.stringify(importedInherited.issues),
     );
-    if (importedExplicit.ok) {
+    if (importedInherited.ok) {
       invalidateWorkflowTreeRegistry();
-      const explicitRunId = "golden-explicit";
+      const runId = "golden-inherited";
+      const mediation = await beginEnterpriseRun({
+        runId,
+        prompt: "look at WG-1",
+        routePlanner: async () => ({
+          kind: "decided",
+          treeId: INHERITED_TREE_ID,
+          routes: [],
+          rationale: "inherited",
+        }),
+      });
+      expectEqual(
+        "the run opens on the step that scopes nothing",
+        getEnterpriseActiveRun(runId)?.plan.activeNodeId,
+        "inherit.open",
+      );
+      expectEqual(
+        "under inherited grants, a step that scopes nothing keeps the root's list",
+        evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.blocked ?? false,
+        false,
+      );
+      expectEqual(
+        "and is still bounded by it",
+        evaluateEnterpriseToolCall({ runId, toolName: "exec" })?.requiresApproval ?? false,
+        true,
+      );
+      // The precedence gloss is CONDITIONAL, so a work-map with only one retrieval
+      // family pays no prompt bytes for a choice it never faces. This tree carries
+      // objects and no corpus, which is the case the shipped example cannot show —
+      // every route through it inherits a domain's knowledge grant.
+      record(
+        "a work-map with no knowledge source is not given the store-vs-corpus rule",
+        !(mediation.kind === "mediated" ? mediation.promptSection : "").includes(
+          "Prefer the object store",
+        ),
+        "objects only, so the ranking would be inert",
+      );
+      completeEnterpriseStep({ runId }); // advances to inherit.narrow
+      expectEqual(
+        "a step that narrows drops what it left out",
+        evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.requiresApproval ??
+          false,
+        true,
+      );
+      expectEqual(
+        "and keeps what it named",
+        evaluateEnterpriseToolCall({ runId, toolName: "message" })?.blocked ?? false,
+        false,
+      );
+      endEnterpriseRun({ runId, status: "completed" });
+    }
+  }
+
+  // ---- 14. A ROOT tool grant inherited by a step that grants none of its own.
+  // Inline, because the shipped example's root deliberately grants no tools: the
+  // ontology write opt-in is existential over the root→step path, so an
+  // `invoke_action` there would hand write consent to all 30 steps.
+  {
+    const ROOT_GRANT_TREE_ID = "golden.root-grant";
+    const rootGrantTree = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: ROOT_GRANT_TREE_ID,
+      version: "1.0.0",
+      name: "Root grant",
+      description: "Explicit work-map whose root carries the grant its steps rely on.",
+      match: { triggers: ["user"], priority: 80 },
+      capabilityGrants: "explicit",
+      root: {
+        id: "grant",
+        title: "Handle the request",
+        description: "Root scope.",
+        ontology: { allowedTools: ["knowledge_search"], skills: ["taskflow-inbox-triage"] },
+        children: [
+          {
+            id: "grant.narrow",
+            title: "Work within the root grant",
+            description: "A step that attaches nothing of its own.",
+            ontology: { skills: ["taskflow"] },
+          },
+        ],
+      },
+    };
+    const importedRootGrant = importWorkflowTreeContent({
+      content: JSON.stringify(rootGrantTree),
+      format: "json",
+    });
+    record(
+      "a root-grant work-map imports cleanly",
+      importedRootGrant.ok,
+      importedRootGrant.ok ? ROOT_GRANT_TREE_ID : JSON.stringify(importedRootGrant.issues),
+    );
+    if (importedRootGrant.ok) {
+      invalidateWorkflowTreeRegistry();
+      const runId = "golden-root-grant";
       await beginEnterpriseRun({
-        runId: explicitRunId,
+        runId,
         prompt: "handle this",
         // Registered but never attached: the point of the check below.
         config: { mcp: { servers: { "acme-tracker": { command: "npx" } } } },
         routePlanner: async () => ({
           kind: "decided",
-          treeId: EXPLICIT_TREE_ID,
+          treeId: ROOT_GRANT_TREE_ID,
           routes: ["grant.narrow"],
-          rationale: "explicit",
+          rationale: "root-grant",
         }),
       });
       expectEqual(
         "a tool the root grants is callable from a step that grants none of its own",
-        evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "message" })?.blocked ?? false,
+        evaluateEnterpriseToolCall({ runId, toolName: "knowledge_search" })?.blocked ?? false,
         false,
       );
       expectEqual(
         "a tool no step grants cannot just run, even though no list excludes it",
-        evaluateEnterpriseToolCall({ runId: explicitRunId, toolName: "exec" })?.requiresApproval ??
-          false,
+        evaluateEnterpriseToolCall({ runId, toolName: "exec" })?.requiresApproval ?? false,
         true,
       );
       expectEqual(
-        "the run's skill catalog is narrowed to what its steps attach",
-        getEnterpriseActiveRun(explicitRunId)?.plan.grantedSkills,
-        ["desk-intake", "ticket-triage"],
+        "the skill catalog is the union of the path, root included",
+        getEnterpriseActiveRun(runId)?.plan.grantedSkills,
+        ["taskflow", "taskflow-inbox-triage"],
       );
       expectEqual(
-        "a registered MCP server is denied to a work-map that attaches none",
-        evaluateEnterpriseToolCall({
-          runId: explicitRunId,
-          toolName: "acme-tracker__create_issue",
-          mcpTool: {
-            serverName: "acme-tracker",
-            safeServerName: "acme-tracker",
-            toolName: "create_issue",
-          },
-        })?.blocked ?? false,
+        "explicit grants govern MCP even when the work-map attaches nothing",
+        mcpVerdict(runId, "acme-tracker", "create_issue")?.blocked ?? false,
         true,
       );
-      // What a plugin-owned harness asks core before it narrows its own surface:
-      // the Codex app-server turns off Codex's native skills block on the
-      // strength of this answer, and that wire shape lives in the plugin.
-      const { resolveRunSkillGrant } = await import("../src/agents/enterprise-skill-scope.js");
-      expectEqual(
-        "a harness asking core gets this run's skill grant",
-        resolveRunSkillGrant({ runId: explicitRunId }),
-        ["desk-intake", "ticket-triage"],
-      );
-      expectEqual(
-        "and gets nothing to narrow for a run no work-map governs",
-        resolveRunSkillGrant({ runId: "golden-not-a-run" }),
-        null,
-      );
-      // The same question for a tool the harness never dispatches. Codex's
-      // web_search is hosted (the model host runs it), so no PreToolUse hook can
-      // reach it and the per-call gate above never sees the call — the launch
-      // decision is the only place the work-map's scope can still apply.
-      const { enterpriseRunAdmitsHostedTool } = await import("../src/enterprise/active-runs.js");
-      expectEqual(
-        "a hosted tool no step grants is withheld before the harness starts",
-        enterpriseRunAdmitsHostedTool(explicitRunId, "web_search"),
-        false,
-      );
-      expectEqual(
-        "and nothing is withheld from a run no work-map governs",
-        enterpriseRunAdmitsHostedTool("golden-not-a-run", "web_search"),
-        true,
-      );
-      endEnterpriseRun({ runId: explicitRunId, status: "completed" });
+      endEnterpriseRun({ runId, status: "completed" });
     }
   }
 
-  // ---- The CLI overlay resolves the PLUGIN half before attachments. A plugin
+  // ---- 15. The CLI overlay resolves the PLUGIN half before attachments. A plugin
   // server the run's ceiling rejects must not take a legitimately attached one
   // with it: the two collide only after sanitization, and the denial below names
   // the plugin's raw key, which no spelling of the attached server matches.
@@ -995,7 +1255,7 @@ async function main(): Promise<number> {
       id: ORDER_TREE_ID,
       version: "1.0.0",
       name: "MCP filter order",
-      match: { triggers: ["user"], priority: 60 },
+      match: { triggers: ["user"], priority: 90 },
       root: {
         id: "order",
         title: "Handle the request",
@@ -1049,121 +1309,6 @@ async function main(): Promise<number> {
         [],
       );
       endEnterpriseRun({ runId: orderRunId, status: "completed" });
-    }
-  }
-
-  // ---- The one work-map that carries BOTH retrieval families, so the model has
-  // to CHOOSE between them. Every other example gives it one way to look
-  // something up, which is why tool SELECTION had no fixture at all: the two
-  // runnable bundles seed no objects, and the two trees that do seed objects
-  // cannot inline the foundations they name, so their `knowledge_search` returns
-  // nothing. Both halves have to resolve on the same run or the choice is fake.
-  {
-    const { importWorkflowBundle } = await import("../src/enterprise/bundle-io.js");
-    const { createKnowledgeSearchTool } =
-      await import("../src/agents/tools/knowledge-search-tool.js");
-    const BOTH_TREE_ID = "acme.orders-handbook";
-    const BOTH_FOUNDATION_ID = "acme.orders-handbook";
-    const bundlePath = path.resolve("examples/enterprise/orders-handbook.clawworks-bundle.yaml");
-    const both = importWorkflowBundle({
-      content: readFileSync(bundlePath, "utf8"),
-      format: "yaml",
-    });
-    record(
-      "the ontology+knowledge bundle imports cleanly",
-      both.ok,
-      both.ok ? BOTH_TREE_ID : JSON.stringify(both.issues),
-    );
-    if (both.ok) {
-      expectEqual("it declares no unreachable capability", both.warnings, []);
-      expectEqual("its handbook ships inline", both.foundations, [BOTH_FOUNDATION_ID]);
-      invalidateWorkflowTreeRegistry();
-
-      // The deciding step holds both, so this is where the rule has to hold.
-      const runId = "golden-both";
-      const mediation = await beginEnterpriseRun({
-        runId,
-        prompt: "SO-3002 환불 가능해?",
-        routePlanner: async () => ({
-          kind: "decided",
-          treeId: BOTH_TREE_ID,
-          routes: ["shop.decide"],
-          rationale: "both",
-        }),
-      });
-
-      // BOTH tools answer on the same step. If either half were inert the model
-      // would have no choice to make and the precedence rule would be untestable.
-      const objects = await createSearchObjectsTool({ runId }).execute("b1", {
-        entity: "order",
-        limit: 50,
-      });
-      const objectText = JSON.stringify(objects);
-      record(
-        "the store answers on the deciding step",
-        ["SO-3001", "SO-3002", "SO-3003"].every((id) => objectText.includes(id)),
-        objectText.slice(0, 100),
-      );
-      const passage = await createKnowledgeSearchTool({ runId }).execute("b2", {
-        query: "refund approval threshold",
-      });
-      const passageText = JSON.stringify(passage);
-      record(
-        "the handbook answers on that same step",
-        passageText.includes("$200") && passageText.includes(BOTH_FOUNDATION_ID),
-        passageText.slice(0, 100),
-      );
-
-      // The two sources deliberately DISAGREE: the handbook's written threshold
-      // is $200, the order's own derived cap is 150. A reply that quotes 200 for
-      // SO-3002 has answered a record question from a policy passage — the exact
-      // confusion the fixture exists to catch, and it is only detectable because
-      // the numbers differ.
-      const computed = await createComputeFunctionTool({ runId }).execute("b3", {
-        function: "auto-refundable-amount",
-        objectId: "SO-3002",
-      });
-      expectEqual(
-        "the record's derived cap is not the handbook's number",
-        (computed as { details?: { value?: unknown } }).details?.value,
-        150,
-      );
-
-      // The rule itself, in the prompt. It is what makes the model prefer the
-      // store for a record fact; without it the two sources are equal in the
-      // digest and the wrong one wins whenever it reads more fluently.
-      const digest = mediation.kind === "mediated" ? mediation.promptSection : "";
-      record(
-        "the digest tells the model the store wins for a record fact",
-        digest.includes("Prefer the object store") &&
-          digest.includes(
-            "never answer a question about a specific record from a knowledge passage",
-          ),
-        digest.includes("Prefer the object store")
-          ? "precedence rule present"
-          : "both sources offered with nothing to rank them",
-      );
-      endEnterpriseRun({ runId, status: "completed" });
-
-      // Conditional, so a work-map with only one family pays no prompt bytes for
-      // a choice it never faces.
-      const oneId = "golden-one-family";
-      const one = await beginEnterpriseRun({
-        runId: oneId,
-        prompt: "ORD-5002 확인",
-        routePlanner: async () => ({
-          kind: "decided",
-          treeId: TREE_ID,
-          routes: ["golden.investigate"],
-          rationale: "one",
-        }),
-      });
-      record(
-        "a work-map with no knowledge source is not given the rule",
-        !(one.kind === "mediated" ? one.promptSection : "").includes("Prefer the object store"),
-        "golden.orders carries objects only, so the ranking is inert there",
-      );
-      endEnterpriseRun({ runId: oneId, status: "completed" });
     }
   }
 

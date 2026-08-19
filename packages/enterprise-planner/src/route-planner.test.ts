@@ -124,10 +124,10 @@ describe("buildPlanCandidateDigest", () => {
   it("keeps a tree description whole past the budget a node line gets", () => {
     // Authors put the summary sentence first and the DOMAIN CUE last — the
     // clause naming which requests belong here. A 120-char budget cut exactly
-    // that tail: the shipped support-desk description lost 298 of its 417
-    // chars, silently reverting the "either voice" routing fix it documents,
-    // and an order request phrased as `ls` escaped into the permissive default
-    // tree with exec ungoverned. So the tree line gets its own larger budget.
+    // that tail: a shipped work-map's description lost 298 of its 417 chars,
+    // silently reverting the routing fix it documents, and a record request
+    // phrased as `ls` escaped into the permissive default tree with exec
+    // ungoverned. So the tree line gets its own larger budget.
     const cue = "belongs here even when phrased as reading a file or running ls";
     const description = `${"Order support for a small retail shop. ".repeat(6)}${cue}.`;
     expect(description.length).toBeGreaterThan(200);
