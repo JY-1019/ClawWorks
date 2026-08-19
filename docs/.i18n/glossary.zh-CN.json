@@ -1246,5 +1246,9 @@
   {
     "source": "ClawWorks assistant",
     "target": "ClawWorks assistant"
+  },
+  {
+    "source": "Worktree Authoring",
+    "target": "Worktree 编写"
   }
 ]

@@ -58,6 +58,9 @@ current shape.
 A workflow tree is a versioned, importable definition. Each node is a step; leaf
 nodes are the executable steps a run advances through.
 
+The field-by-field format reference, in YAML and JSON, is
+[Worktree Authoring](/concepts/clawworks-worktree-authoring).
+
 ```yaml
 schema: clawworks.workflow-tree
 schemaVersion: 1
@@ -917,6 +920,7 @@ event log of run lifecycle plus governance decisions.
 
 ## Related
 
+- [Worktree Authoring](/concepts/clawworks-worktree-authoring)
 - [`openclaw enterprise` CLI](/cli/enterprise)
 - [LightRAG knowledge plugin](/plugins/reference/lightrag)
 - [Agent loop](/concepts/agent-loop)

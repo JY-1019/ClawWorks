@@ -27,7 +27,8 @@ openclaw enterprise trees remove <treeId>
 
 - Definition files use YAML or JSON with the versioned
   `schema: clawworks.workflow-tree` envelope. `validate` prints path-scoped
-  issues without importing.
+  issues without importing. The full format reference is
+  [Worktree Authoring](/concepts/clawworks-worktree-authoring).
 - Imported trees override built-in trees with the same id; removing the
   import restores the built-in definition.
 - A running gateway loads tree definitions at startup; restart it after

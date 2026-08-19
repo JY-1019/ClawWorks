@@ -1181,6 +1181,7 @@
                   "concepts/context-engine",
                   "concepts/agent-workspace",
                   "concepts/clawworks-enterprise",
+                  "concepts/clawworks-worktree-authoring",
                   "concepts/soul",
                   "concepts/oauth",
                   "start/bootstrapping",
