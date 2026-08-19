@@ -36,9 +36,11 @@ trees:
       must decide, and how to word the reply. Both voices belong here — the
       customer's own message, and a support agent asking how to handle one —
       because the work is identical either way: the handbook decides, or a human
-      does. Take any question about what the rule IS, or what SHOULD be done,
-      even when it names an order. Example work-map whose tool scopes, declared
-      skill, and knowledge foundation all resolve on a stock install.
+      does. Scope stays on the SUPPORT DESK's own subjects — refunds, returns,
+      delivery complaints, escalation — including when a request names an order;
+      it does not cover research sourcing rules, citation policy, or another
+      team's handbook. Example work-map whose tool scopes, declared skill, and
+      knowledge foundation all resolve on a stock install.
     match:
       # A model judges whether a request belongs here, so the name, description,
       # and step titles are what earn it one. `triggers` is the hard gate on
