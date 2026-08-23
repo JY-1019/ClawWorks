@@ -1,7 +1,8 @@
 ---
-summary: "ClawWorks is a multi-channel gateway for AI agents that runs on any OS."
+summary: "ClawWorks is a multi-channel gateway for AI agents with an ontology-driven governance layer."
 read_when:
   - Introducing ClawWorks to newcomers
+  - Deciding whether governed work-maps fit your use case
 title: "ClawWorks"
 ---
 
@@ -25,7 +26,7 @@ title: "ClawWorks"
 > _"EXFOLIATE! EXFOLIATE!"_ — A space lobster, probably
 
 <p align="center">
-  <strong>Any OS gateway for AI agents across Discord, Google Chat, iMessage, Matrix, Microsoft Teams, Signal, Slack, Telegram, WhatsApp, Zalo, and more.</strong><br />
+  <strong>Any OS gateway for AI agents across Discord, Google Chat, iMessage, Matrix, Microsoft Teams, Signal, Slack, Telegram, WhatsApp, Zalo, and more — with every run bound to a work-map, gated by policy, and written to an audit trace.</strong><br />
   Send a message, get an agent response from your pocket. Run one Gateway across built-in channels, bundled channel plugins, WebChat, and mobile nodes.
 </p>
 
@@ -39,20 +40,26 @@ title: "ClawWorks"
   <Card title="Open the Control UI" href="/web/control-ui" icon="layout-dashboard">
     Launch the browser dashboard for chat, config, and sessions.
   </Card>
+  <Card title="Govern a run" href="/concepts/clawworks-enterprise" icon="shield-check">
+    Bind steps to tools, skills, and knowledge with work-maps.
+  </Card>
 </Columns>
 
 ## What is ClawWorks?
 
 ClawWorks is a **self-hosted gateway** that connects your favorite chat apps and channel surfaces — built-in channels plus bundled or external channel plugins such as Discord, Google Chat, iMessage, Matrix, Microsoft Teams, Signal, Slack, Telegram, WhatsApp, Zalo, and more — to AI coding agents. You run a single Gateway process on your own machine (or a server), and it becomes the bridge between your messaging apps and an always-available AI assistant.
 
-**Who is it for?** Developers and power users who want a personal AI assistant they can message from anywhere — without giving up control of their data or relying on a hosted service.
+On top of that gateway, ClawWorks adds an **ontology-driven governance layer**. Instead of free-running, an agent advances through a **work-map** — a versioned tree of steps, where each step declares the tools, skills, MCP servers, and knowledge foundations it may reach. Governance policies gate those requests, and every lifecycle and denial decision is written to an inspectable run trace.
+
+**Who is it for?** Developers and power users who want a personal AI assistant they can message from anywhere — without giving up control of their data or relying on a hosted service. And teams who need an agent to act on real systems while staying able to answer *which step was this run on, what was it allowed to touch, and what got denied*.
 
 **What makes it different?**
 
 - **Self-hosted**: runs on your hardware, your rules
 - **Multi-channel**: one Gateway serves built-in channels plus bundled or external channel plugins simultaneously
 - **Agent-native**: built for coding agents with tool use, sessions, memory, and multi-agent routing
-- **Open source**: MIT licensed, community-driven
+- **Governed**: work-maps, per-step explicit grants, policy gates, and audited run traces — on the execution path, not beside it
+- **Open source**: MIT licensed, built on [OpenClaw](https://github.com/openclaw/openclaw)
 
 **What do you need?** Node 24 (recommended), or Node 22 LTS (`22.19+`) for compatibility, an API key from your chosen provider, and 5 minutes. For best quality and security, use the strongest latest-generation model available.
 
@@ -61,7 +68,8 @@ ClawWorks is a **self-hosted gateway** that connects your favorite chat apps and
 ```mermaid
 flowchart LR
   A["Chat apps + plugins"] --> B["Gateway"]
-  B --> C["ClawWorks agent"]
+  B --> G0["Governance layer<br/>work-map + policy"]
+  G0 --> C["ClawWorks agent"]
   B --> D["CLI"]
   B --> E["Web Control UI"]
   B --> F["macOS app"]
@@ -90,6 +98,12 @@ The Gateway is the single source of truth for sessions, routing, and channel con
   </Card>
   <Card title="Mobile nodes" icon="smartphone" href="/nodes">
     Pair iOS and Android nodes for Canvas, camera, and voice-enabled workflows.
+  </Card>
+  <Card title="Governed work-maps" icon="shield-check" href="/concepts/clawworks-enterprise">
+    Per-step tool, skill, and knowledge grants with policy gates and run traces.
+  </Card>
+  <Card title="Knowledge foundations" icon="library" href="/concepts/clawworks-enterprise">
+    Governed retrieval via `knowledge_search`, with foundation targeting and citations.
   </Card>
 </Columns>
 
