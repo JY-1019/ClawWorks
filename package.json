@@ -1,17 +1,26 @@
 {
   "name": "openclaw",
-  "version": "2026.6.10",
-  "description": "Multi-channel AI gateway with extensible messaging integrations",
+  "version": "0.1.0-beta.1",
+  "clawworks": {
+    "channel": "beta",
+    "upstream": {
+      "repository": "openclaw/openclaw",
+      "version": "2026.6.10",
+      "commit": "6dccb61e567cee41a09c51ba124024efcf1e81e8",
+      "branchedAt": "2026-06-28"
+    }
+  },
+  "description": "Governed AI operations: ontology-driven work-maps, policy gates, and audited run traces on a multi-channel agent gateway",
   "keywords": [],
-  "homepage": "https://github.com/openclaw/openclaw#readme",
+  "homepage": "https://github.com/JY-1019/ClawWorks#readme",
   "bugs": {
-    "url": "https://github.com/openclaw/openclaw/issues"
+    "url": "https://github.com/JY-1019/ClawWorks/issues"
   },
   "license": "MIT",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/openclaw/openclaw.git"
+    "url": "git+https://github.com/JY-1019/ClawWorks.git"
   },
   "bin": {
     "openclaw": "openclaw.mjs"

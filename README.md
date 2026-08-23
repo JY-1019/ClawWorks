@@ -282,6 +282,36 @@ quoted verbatim, not a miss.
 - **[Live Canvas](https://docs.openclaw.ai/platforms/mac/canvas)** — agent-driven visual workspace with A2UI
 - **[Companion apps](https://docs.openclaw.ai/platforms)** — Windows Hub, macOS menu bar app, iOS/Android nodes
 
+## Versioning
+
+ClawWorks tracks **its own semantic version**, independent of the calendar releases it derives
+from. The current line is `0.1.0-beta.1`.
+
+**Beta means:** the governance surfaces — work-maps, grants, policies, traces — are usable and
+covered by the enterprise golden checks, but the work-map schema and gateway methods may still
+change between beta releases. Pin an exact version if you depend on them.
+
+The upstream fork point is recorded in `package.json`, so which OpenClaw release this is built
+on is never ambiguous:
+
+```jsonc
+{
+  "version": "0.1.0-beta.1",
+  "clawworks": {
+    "channel": "beta",
+    "upstream": {
+      "repository": "openclaw/openclaw",
+      "version": "2026.6.10",
+      "commit": "6dccb61e567cee41a09c51ba124024efcf1e81e8",
+      "branchedAt": "2026-06-28",
+    },
+  },
+}
+```
+
+The package `name` stays `openclaw` — see [Built on OpenClaw](#built-on-openclaw) for why those
+identifiers are frozen.
+
 ## Security
 
 ClawWorks connects to real messaging surfaces. Treat inbound DMs as **untrusted input**.
