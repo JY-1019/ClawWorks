@@ -345,6 +345,18 @@ describe("the shipped enterprise example", () => {
     expect(unresolved).toEqual([]);
   });
 
+  it("gives every step that writes a role prompt saying what to gather first", () => {
+    // `guidance` is the one advisory field an operator types themselves, and the
+    // write steps are where its absence costs most: the tool scope says the step
+    // MAY call `invoke_action`, and nothing else tells the model which parameters
+    // have to be real before it does. A writer without one is the example failing
+    // to demonstrate the field on the steps that need it.
+    const tree = parseExample();
+    const writers = flatten(tree.root).filter((node) => node.ontology?.actions?.length);
+    const unguided = writers.filter((node) => !node.ontology?.guidance).map((node) => node.id);
+    expect(unguided).toEqual([]);
+  });
+
   it("grants capabilities explicitly, and keeps the write opt-in off every ancestor", () => {
     const tree = parseExample();
     expect(tree.capabilityGrants).toBe("explicit");

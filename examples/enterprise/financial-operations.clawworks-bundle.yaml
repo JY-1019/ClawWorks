@@ -49,6 +49,14 @@
 #   skills           two bundled skills, declared on four steps, each skill in two
 #                    different domains. Under explicit grants the run's skill
 #                    catalog is narrowed to whatever the ROUTE reaches.
+#   role prompts     `guidance` on fourteen steps — every one of the nine that
+#                    writes, plus the five where two sources or two sibling steps
+#                    could disagree. It is the field an operator types into the
+#                    node inspector, and the one thing here that GRANTS nothing:
+#                    it reaches the model as instruction in the step digest, and
+#                    where it and the tool scope conflict, the scope wins. Every
+#                    write step uses it for the same rule — say what has to be
+#                    gathered before the write, and stop rather than invent it.
 #
 # WHAT AN OPERATOR STILL HAS TO SUPPLY
 # ------------------------------------
@@ -301,6 +309,12 @@ trees:
                         # The step that actually sends customer data outside, so it
                         # holds the standard that says how much may go.
                         knowledgeFoundations: [acme.kyc-manual, acme.privacy-standard]
+                        guidance: >-
+                          Send only what the privacy standard allows — the applicant's
+                          name and jurisdiction, never the whole record. The service
+                          returns candidate matches, not a verdict: report what came
+                          back and leave the judgement to the adjudication step beside
+                          this one.
                         expectedOutput: The screening verdict, the list version, and what was sent.
                     - id: finops.customer.onboarding.kyc-review.adjudicate
                       title: Adjudicate the review
@@ -358,6 +372,11 @@ trees:
                           - The KYC review cleared and the risk rating is recorded.
                         effects:
                           - { entity: account, kind: create, description: Books the new account. }
+                    guidance: >-
+                      Gather all four parameters from the steps above before calling:
+                      the new account id, the customer it belongs to, the product, and
+                      the opening status. Never invent an id to satisfy the call — name
+                      the missing one and stop.
                     expectedOutput: The new account id, or the reason it was not opened.
                     audit: true
 
@@ -379,6 +398,10 @@ trees:
                           - { id: tier, type: string }
                         effects:
                           - { entity: customer, kind: update, description: Rewrites the stored profile. }
+                    guidance: >-
+                      Read the customer's current record first, then write only the
+                      fields the request actually names. An omitted parameter leaves
+                      that field alone, while a guessed one overwrites something real.
                     expectedOutput: What changed, on which customer id.
                     audit: true
 
@@ -435,6 +458,10 @@ trees:
                           - The balance is zero and no dispute is open.
                         effects:
                           - { entity: account, kind: update, description: Marks the account closed. }
+                    guidance: >-
+                      Check the account's standing before closing it: the balance
+                      settled and no dispute open. Closing is not reversible from this
+                      step, so if either is unproven, report which and stop.
                     expectedOutput: The account id and its new status.
                     audit: true
 
@@ -584,6 +611,11 @@ trees:
                     # the tool scope above, and under explicit grants it also
                     # NARROWS the run's skill catalog to what the route reaches.
                     skills: [taskflow-inbox-triage]
+                    guidance: >-
+                      Take each alert's queue band from its derived value rather than
+                      re-reading the score and judging it yourself. The claims domain
+                      bands its own work the same way, and the two must not disagree
+                      about what urgent means.
                     expectedOutput: The alerts worth working, banded, with the rule each fired on.
 
                 - id: finops.risk.monitoring.investigation
@@ -654,6 +686,11 @@ trees:
                                   - The evidence step recorded what the disposition rests on.
                                 effects:
                                   - { entity: investigation-case, kind: update, description: Records the outcome. }
+                            guidance: >-
+                              Close the case only against evidence already recorded on
+                              it. If the evidence step has not run, say so and stop — a
+                              disposition written from the alert alone is a case file
+                              nobody can defend.
                             expectedOutput: The case id, its disposition, and whether a SAR follows.
                             audit: true
 
@@ -684,6 +721,10 @@ trees:
                           - The report was found through the case's own link, not guessed.
                         effects:
                           - { entity: sar, kind: update, description: Records the narrative. }
+                    guidance: >-
+                      This step drafts the narrative and stops there. Filing it is a
+                      reporting step with its own regulator-facing server, and sending
+                      it from here would leave the filing itself untraced.
                     constraints:
                       - id: no-tipping-off
                         description: Never tell the customer a report was considered or filed.
@@ -760,6 +801,11 @@ trees:
                           - { id: risk-rating, type: string, required: true }
                         effects:
                           - { entity: customer, kind: update, description: Stores the decision and rating. }
+                    guidance: >-
+                      Record the decision the scoring step reached, together with the
+                      lending band it rested on. Do not re-derive the band here: the
+                      derived value on the credit report is the one the credit policy is
+                      written against.
                     expectedOutput: The decision, the rating stored, and what drove it.
                     audit: true
 
@@ -879,6 +925,10 @@ trees:
                     # them, and a route into only one of the two domains grants only
                     # that one — under explicit grants the catalog follows the route.
                     skills: [taskflow-inbox-triage]
+                    guidance: >-
+                      Route on the claim's derived triage band. It already folds the
+                      fraud score and the amount together, so a hand-made judgement here
+                      contradicts the band every later step reads.
                     expectedOutput: The claim id, its band, and what put it there.
 
                 - id: finops.claims.intake.evidence
@@ -964,6 +1014,11 @@ trees:
                           - Coverage was checked and the fraud review did not refer it.
                         effects:
                           - { entity: claim, kind: update, description: Records the adjudicated outcome. }
+                    guidance: >-
+                      Decide only once both the coverage check and the fraud review have
+                      answered. Their outcomes are the inputs to this write, and a
+                      decision recorded without one of them is one the audit trail
+                      cannot explain.
                     expectedOutput: The claim id, the decision, and the handbook section behind it.
                     audit: true
 
@@ -1085,6 +1140,11 @@ trees:
                         effects:
                           - { entity: payment, kind: create, description: Records the money leaving. }
                           - { entity: claim, kind: update, description: Marks the claim settled. }
+                    guidance: >-
+                      The authority step beside this one decides whether the desk may
+                      pay and up to what cap. Move exactly that amount on the ledger and
+                      then record the payment; if the two figures disagree, report the
+                      gap instead of paying the smaller one.
                     constraints:
                       - id: one-payment-per-claim
                         description: A claim settles once; check for an existing payment before issuing another.
@@ -1203,6 +1263,11 @@ trees:
                           - Every SAR in the period is drafted and disposed.
                         effects:
                           - { entity: regulatory-report, kind: update, description: Records the submission. }
+                    guidance: >-
+                      File the report the risk domain drafted — do not rewrite it here.
+                      Check the deadline in the regulatory code before sending, and
+                      record what went and when, because that record is the only proof
+                      the deadline was met.
                     expectedOutput: The filing reference, the period it covers, and the deadline it met.
                     audit: true
 
@@ -1228,6 +1293,10 @@ trees:
               ontology:
                 allowedTools: [search_objects, get_neighbors, knowledge_search, message]
                 knowledgeFoundations: [acme.regulatory-code]
+                guidance: >-
+                  Answer from what the run trace and the records actually show. Where a
+                  step never ran or a record was never read, say that rather than
+                  reconstructing what probably happened.
                 expectedOutput: The record, its recorded decisions, and the rule each cited.
 
 # =========================================================================

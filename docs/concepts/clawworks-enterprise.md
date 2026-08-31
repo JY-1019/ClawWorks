@@ -179,12 +179,12 @@ where the bindings actually constrain each other: 46 nodes across 30 executable
 steps, depth 5, so route selection is a real problem, an object model declared per
 domain so claims cannot address a `sar`, six inlined corpora with one shared
 across two domains and two locked to a single domain, four MCP servers attached to
-the steps that need them and denied everywhere else, nine ontology writes, and
-`capabilityGrants: explicit` so every one of those is deny-by-default. The one
-thing a bundle cannot carry is the MCP servers themselves — their transport and
-credentials are deployment configuration — so register `acme-screening`,
-`acme-ledger`, `acme-tracker` and `acme-filing` under `mcp.servers` and the
-attachments resolve. Everything else runs on a stock install.
+the steps that need them and denied everywhere else, nine ontology writes, and `capabilityGrants: explicit`
+so every one of those is deny-by-default. The one thing a bundle cannot carry is
+the MCP servers themselves — their transport and credentials are deployment
+configuration — so register `acme-screening`, `acme-ledger`, `acme-tracker` and
+`acme-filing` under `mcp.servers` and the attachments resolve. Everything else
+runs on a stock install.
 
 Then open Enterprise and select the work-map on Worktree. The Tools and Skills
 screens list the catalog for the gateway's default agent — tools resolve against
@@ -561,6 +561,28 @@ misread: a server no step attaches (registered, unreachable) and an attachment
 naming a server config does not register (inert — nothing launches under that
 name).
 
+With `operator.admin` the same screen registers one. **Register an MCP server**
+takes either half of the form:
+
+- _Type it_ — a name plus one transport: a command with space-separated
+  arguments, or an `http(s)` URL with the transport named explicitly.
+- _Paste JSON_ — the snippet the server's own docs publish. An `mcpServers`
+  block (Claude Desktop and most vendor docs), a `servers` block (VS Code), an
+  OpenClaw `mcp.servers` block, or a bare name-to-server map are all accepted,
+  and everything travelling with the entry — `env`, `headers`, `cwd`,
+  `toolFilter`, TLS, OAuth — is written through untouched. Several servers in one
+  snippet register together, or none of them do: a name that collides with an
+  already-registered server refuses the whole paste rather than registering half
+  of it. A `"type"` alias is rewritten to OpenClaw's `transport` field, the same
+  rewrite `openclaw mcp add` applies. A URL entry that names no transport is
+  registered as `streamable-http` and the preview says so — an unset transport is
+  read as SSE by the embedded runtime and as streamable HTTP by Codex, so one
+  entry would otherwise dial two different servers.
+
+Either way the screen writes the same `mcp.servers` config draft the Settings MCP
+screen writes and leaves Save/Publish to it; registering does not attach the
+server to any step.
+
 Only servers an operator registered under `mcp.servers` are gated this way. A
 server a plugin contributes arrives with that plugin's tool surface and cannot be
 attached here — the Enterprise MCP screen does not register it, so requiring an
@@ -776,7 +798,39 @@ is registered.
 
 Foundations are registered by adapter plugins. The bundled
 [LightRAG plugin](/plugins/reference/lightrag) exposes one or more LightRAG API
-servers:
+servers.
+
+The Knowledge screen registers one without hand-editing config. With
+`operator.admin`, **Connect a knowledge source** offers a form built from the
+adapter's own config schema: the foundation id and server URL every adapter
+declares, plus whatever else it defines — the adapter's enum values become
+selects, its field descriptions become the help text, and a field the gateway
+redacts is masked. Leaving an optional field blank writes nothing, so the
+adapter's own default stands. Submitting appends the entry to that plugin's
+`foundations` list and sets its `enabled` flag, then leaves Save/Publish to the
+config controller; nothing is retrievable until the config is published and the
+adapter loads it.
+
+Every source that plugin's config declares is listed below the form with **Edit**
+and **Remove**, and the ones not yet saved are marked. Editing rewrites the entry
+at its own position: values the form does not render survive, and a stored
+credential comes back blank and marked unchanged, because the gateway redacts it
+on the way out and swaps the real value back in on save.
+
+Removing is refused when a _later_ source still holds a stored credential. The
+gateway matches redacted values by array position, so deleting an entry would
+shift the next one into a slot whose stored key is not theirs; the screen names
+the source in the way instead of silently mismatching a credential. Edit that
+source and re-enter its secret first. The config editor is **not** an
+alternative: it saves through the same positional restoration path and carries
+the identical hazard.
+
+Which plugins the screen offers is discovered from the config schema, not from a
+built-in list: any plugin whose config declares a `foundations` array of objects
+with a string `id` and a string `serverUrl` is offered, so a third-party
+knowledge adapter following the same shape gets this form with no core change.
+
+The config the form writes is the same block you can write by hand:
 
 ```jsonc
 {
@@ -868,6 +922,17 @@ event log of run lifecycle plus governance decisions.
     object instances of each addressable type (served by `enterprise.objects.list`,
     which fails closed on a tree whose definition did not load and only returns
     instances of types the current definition still addresses).
+    With `operator.admin` the whole of that node's ontology is editable in place —
+    object types and their fields, links, the **actions** `invoke_action` may run
+    (each with its effects and parameters), and the **derived values**
+    `compute_function` evaluates. The two verbs carry checks the import does not:
+    an effect resolves against the step's own root-to-node path and a write effect
+    needs the type's identity field, and a function's expression is parsed and its
+    property reads checked against what the step can address — so a definition the
+    importer would accept but the runtime could not resolve is refused at the
+    field. An action with no create/update/delete effect is flagged, because the
+    write path refuses to run one. Seeded `objects` and `links` are still authored
+    by importing the work-map.
   - _History_ lists recent runs and shows a per-execution inspector with the plan
     steps, their ontology scope, and the governance trace.
   - Continuing an interrupted run happens there too. An execution that ended part
@@ -893,6 +958,10 @@ event log of run lifecycle plus governance decisions.
     A run still going, one attached to no session, one that finished no step, and
     one that finished its whole route are all refused with that reason.
 
+  - _Knowledge_ lists every registered foundation with its kind, connection
+    status, and the steps that reference it, manages documents for the ones this
+    deployment administers, and — with `operator.admin` — registers a new one
+    from an adapter plugin's config (see [Knowledge foundations](#knowledge-foundations)).
   - _Tools_ and _Skills_ are catalogs: every tool the gateway exposes (grouped as
     the runtime groups them, `tools.catalog`) and every installed skill with its
     eligibility (`skills.status`). They browse what exists; neither is scoped to a

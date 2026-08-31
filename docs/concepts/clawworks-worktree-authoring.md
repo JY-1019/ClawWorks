@@ -240,11 +240,11 @@ satisfy this, and it doubles as the planner's per-node signal.
 Every field is optional. The block splits into three lanes, and mixing them up
 is the most common authoring mistake:
 
-| Lane               | Fields                                                                  | Enforced?                                                                            |
-| ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Enforced scope** | `allowedTools`, `deniedTools`, `mcpServers`, `knowledgeFoundations`     | Yes. The per-call gate reads these.                                                  |
-| **Advisory**       | `contextHints`, `guidance`, `expectedOutput`, `skills`, `constraints`   | No. Rendered into the digest; enforcement wins on conflict.                          |
-| **Object model**   | `entities`, `relationships`, `actions`, `functions`, `objects`, `links` | Partly. Shapes are enforced at import; `actions.effects` is the write authorization. |
+| Lane               | Fields                                                                  | Enforced?                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Enforced scope** | `allowedTools`, `deniedTools`, `mcpServers`, `knowledgeFoundations`     | Yes. The per-call gate reads these.                                                                                                                     |
+| **Advisory**       | `contextHints`, `guidance`, `expectedOutput`, `skills`, `constraints`   | No. Rendered into the digest; enforcement wins on conflict.                                                                                             |
+| **Object model**   | `entities`, `relationships`, `actions`, `functions`, `objects`, `links` | Partly. Shapes are enforced at import; `actions.effects` is the write authorization. All but `objects`/`links` are editable per node in the Control UI. |
 
 Plus `audit: true`, which records a trace event for every tool decision under
 the node, including default allows.
