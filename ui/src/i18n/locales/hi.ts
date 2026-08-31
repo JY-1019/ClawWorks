@@ -4,6 +4,8 @@ import type { TranslationMap } from "../lib/types.ts";
 
 export const hi: TranslationMap = {
   common: {
+    configRawUnparsed:
+      "The raw config does not parse yet, so the form cannot be shown. Fix the text or undo the edit first.",
     health: "स्वास्थ्य",
     ok: "ठीक है",
     yes: "हाँ",
@@ -157,8 +159,75 @@ export const hi: TranslationMap = {
   knowledge: {
     title: "ज्ञान आधार",
     subtitle: "पुनर्प्राप्ति स्रोत जिन्हें knowledge_search टूल क्वेरी कर सकता है।",
+    registeredTitle: "Registered",
+    registeredSubtitle:
+      "What the gateway has loaded. A configured source appears here once the config is published.",
+    statSources: "Sources",
+    statRemote: "Remote",
+    statReferenced: "Referenced by a step",
     empty: "कोई ज्ञान आधार पंजीकृत नहीं है।",
-    emptyHint: "एक एडाप्टर प्लगइन सक्षम करें (उदाहरण के लिए LightRAG) ताकि एक पंजीकृत हो सके।",
+    emptyHint: "Connect a retrieval server below, or import a work-map bundle that carries one.",
+    register: {
+      title: "Connect a knowledge source",
+      subtitle:
+        "Point an adapter plugin at an external retrieval server. It becomes queryable by knowledge_search once the config is published and a workflow step allows it.",
+      add: "Connect a source",
+      addTitle: "New source",
+      editTitle: "Edit source",
+      edit: "संपादित करें",
+      remove: "हटाएँ",
+      saveEntry: "Update source",
+      configured: "Configured in {adapter}",
+      notSaved: "Not saved",
+      secretUnchanged: "Unchanged",
+      secretReplaceHint: "Stored and hidden. Type here only to replace it.",
+      removeTitle: "Remove {id}?",
+      removeBody:
+        "This drops the source from the adapter's config. Steps that name it stop retrieving once the config is published. The server itself is untouched.",
+      removeBlocked:
+        "Cannot remove this one while {ids} still holds a stored credential: the gateway matches credentials by position, so removing would hand it the wrong key. Edit that source and re-enter its secret first — the config editor saves through the same restore path and has the same hazard.",
+      entryMissing:
+        "This source changed on the gateway while the form was open. Close and reopen it so you are editing the current entry — saving now could pair the new credential with the old address.",
+      fieldRequired: "This adapter needs every required field filled in.",
+      fieldInvalid:
+        "One of the values does not match what this adapter accepts. Check the field's allowed values, length, or format and try again.",
+      idLocked:
+        "Fixed once registered: workflow steps name this exact id, and nothing migrates them. Remove the source and add it again to change it.",
+      schemaOmitted:
+        "The gateway left some plugin config schemas out of its response because installed extensions exceeded its size budget ({plugins}), so an installed knowledge adapter may not be listed here. Configure it in the config editor, or reduce the number of installed extensions.",
+      noAdapters:
+        "No installed plugin can register a knowledge foundation. Install a knowledge adapter plugin (the bundled LightRAG plugin is one) and reload this screen.",
+      id: "Foundation id",
+      serverUrl: "Server URL",
+      optional: "(वैकल्पिक)",
+      adapterDefault: "Adapter default",
+      secretHint: "Stored in config. Use ${ENV_VAR} to read it from the environment instead.",
+      submit: "Config में जोड़ें",
+      pending: "Added to the config draft for {adapter}, not saved yet",
+      discard: "Discard",
+      unsaved:
+        "These sources exist only in this browser until the config is saved. Publishing reloads the adapter so they become queryable.",
+      save: "सहेजें",
+      publish: "सहेजें और प्रकाशित करें",
+      publishing: "Publishing…",
+      idInvalid:
+        "Enter a dotted lowercase id (for example acme.support-kb): segments of a-z, 0-9, and dashes separated by single dots. A workflow step names this exact string.",
+      idTaken:
+        "A foundation with that id is already registered. Retrieval resolves an id to one source, so the second entry would shadow the first.",
+      urlEmpty: "Enter the retrieval server's URL.",
+      urlInvalid: "Enter an http:// or https:// URL.",
+      adapterMissing: "That adapter is no longer available. Reload this screen and try again.",
+      pluginsDisabled:
+        "Plugins are turned off for this gateway (plugins.enabled is false), so no adapter would load. Turn them on in the config editor first.",
+      pluginDenied:
+        "The {plugin} plugin is on this gateway's plugins.deny list, so it will not load however its own entry is configured. Remove it from the deny list first.",
+      waitingForConfig: "Waiting for the gateway config before a source can be added.",
+      configInvalid:
+        "The config file could not be parsed, so adding a source here would overwrite it. Fix it in the config editor first.",
+      configSaving: "A config save is in flight; anything added now would be discarded.",
+      rawDraftPending:
+        "The config editor has unsaved raw text. Switch it back to form mode before adding a source here.",
+    },
     kindLocal: "स्थानीय",
     kindRemote: "रिमोट",
     kindLocalTitle: "यह डिप्लॉयमेंट इस सर्वर के दस्तावेज़ों का प्रबंधन करता है।",
@@ -235,7 +304,18 @@ export const hi: TranslationMap = {
       add: "सर्वर पंजीकृत करें",
       disabled: "अक्षम",
       unattached: "किसी भी चरण से जुड़ा नहीं है",
-      unsaved: "यह पंजीकरण तब तक केवल आपके ब्राउज़र में है जब तक आप इसे config में सहेज नहीं लेते।",
+      edit: "संपादित करें",
+      enable: "सक्षम करें",
+      disable: "अक्षम करें",
+      remove: "हटाएँ",
+      removeTitle: "{name} हटाएँ?",
+      removeBody:
+        "This drops the server from config. Steps that attach it lose it, and their attachments become inert. The server itself is untouched.",
+      statServers: "Servers",
+      statEnabled: "सक्षम",
+      statRemote: "Remote",
+      statAttached: "Reachable from a step",
+      unsaved: "Changes here are only in your browser until you save them to config.",
       waitingForConfig: "Gateway कॉन्फ़िग लोड हो रहा है; यह आने के बाद पंजीकरण उपलब्ध होगा।",
       configSaving:
         "कॉन्फ़िग सेव हो रहा है। कृपया इसके पूरा होने तक प्रतीक्षा करें — अभी रजिस्टर किया गया सर्वर सेव किया गया कॉन्फ़िग रीलोड होने पर हटा दिया जाएगा।",
@@ -249,17 +329,86 @@ export const hi: TranslationMap = {
     },
     mcpDraft: {
       title: "एक MCP सर्वर पंजीकृत करें",
-      subtitle:
-        "इसे नाम दें और एक transport चुनें। Headers, environment, TLS, और OAuth की सेटिंग MCP settings स्क्रीन में करें।",
+      subtitle: "Type a name and one transport, or paste the JSON the server's own docs publish.",
+      editTitle: "Edit {name}",
+      saveEntry: "Update server",
+      oauth: "Authenticate with OAuth",
+      oauthHint:
+        "For a server that runs its own OAuth flow. After publishing, sign in with openclaw mcp login <name> — that authenticates the embedded runtime only. A Codex-backed run keeps its own MCP OAuth store and has to be signed in through Codex separately.",
+      headers: "Request headers",
+      headersHint:
+        "Sent with every call. This is how most hosted servers take an API key or bearer token. Values are stored in config and hidden after saving.",
+      headerAdd: "Add header",
+      headerName: "Header",
+      headerValue: "Value",
+      headerRemove: "हटाएँ",
+      headerUnchanged: "Unchanged",
+      headerNameEmpty: "A header value needs a header name; name it or remove the row.",
+      headerNameInvalid:
+        "A header name can only use letters, digits, and !#$%&'*+-.^_`|~ — the server refuses to start on anything else.",
+      headerNameDuplicate:
+        "Two rows name the same header. HTTP header names ignore case, so keep one row per header.",
+      headerNameLocked:
+        "Stored headers keep their name. Remove the row and add it again to rename it.",
+      nameLocked:
+        "Fixed once registered: workflow steps attach this exact name, and it is also where stored headers are kept. Remove the server and register it again to rename it.",
+      urlStored: "Stored and hidden. Type here only to replace it.",
+      entryChanged:
+        "This server changed on the gateway while the form was open. Close and reopen it so you are editing the current entry — saving now could pair the new credential with the old address.",
+      transportUnset:
+        "Pick a transport before saving. This server never named one, and the two runtimes read that differently.",
+      sseCodexWarning:
+        "SSE is dialed by the embedded runtime only. A Codex-backed run receives this server without its transport and dials it as streamable HTTP, so an SSE-only endpoint will fail there. Prefer streamable-http if any step running on Codex attaches it.",
+      transportUnsetHint:
+        "This server does not name a transport. OpenClaw dials it as SSE and Codex dials it as streamable HTTP, so pick the one it actually speaks before saving.",
+      jsonNameMismatch:
+        "That snippet does not contain “{name}”, so it would register new servers and leave this one behind. Paste a snippet that names it, or cancel and register the others separately.",
+      modeFields: "Type it",
+      modeJson: "Paste JSON",
       name: "नाम",
       command: "Command",
       args: "Arguments (स्पेस से अलग करें)",
       url: "URL",
+      json: "Server JSON",
+      jsonHint:
+        "Paste a vendor snippet as published: an mcpServers or servers block, an OpenClaw mcp.servers block, or a bare name-to-server map. Environment, headers, working directory, and TLS travel with it. Several servers in one snippet register together.",
+      jsonAssumedTransport:
+        "Registered as {transport}: the snippet named no transport, and an unset one is read differently by each runtime.",
+      jsonEmpty: "Paste the server JSON first.",
+      jsonInvalid: "That is not valid JSON: {detail}",
+      jsonNotServers:
+        "No MCP servers in that snippet. Paste an mcpServers or servers block, or a bare name-to-server map.",
+      jsonNoServers: "That snippet declares no servers.",
+      jsonEntryNotObject: "“{name}” is not a server object.",
+      jsonEntryUrlInvalid:
+        "“{name}” has a URL the runtime could not dial; MCP over HTTP needs http:// or https://.",
+      jsonEntryTransportInvalid:
+        "“{name}” names a transport that cannot serve a URL. Use streamable-http or sse, or give it a command instead.",
+      jsonEntryNameDuplicate:
+        "Two servers in that snippet resolve to the name “{name}” once trimmed. Give each one its own name.",
+      jsonEntryAliasUnknown:
+        "“{name}” declares a transport type OpenClaw does not support. Use stdio, http, streamable-http, or sse.",
+      jsonEntryRedacted:
+        "“{name}” still carries a hidden placeholder from a redacted config. Paste the real value, or edit the existing server instead of registering a copy.",
+      jsonEntryHeaderInvalid:
+        "“{name}” has an HTTP header name the server cannot send: use letters, digits, and -_.  only, and do not repeat a name in different capitalization.",
+      jsonEntryFieldInvalid:
+        "“{name}” has a field ClawWorks cannot store: args must be a list of strings, and env and headers must map names to text, numbers, or true/false. Fix the snippet and paste it again.",
+      jsonEntryNameBlank:
+        "That snippet has a server with a blank name. A server needs a name to be attached to a step or reached from the CLI.",
+      jsonEntryTransportConflict:
+        "“{name}” mixes a command with URL-only fields (or the reverse). Codex refuses such an entry, so it would register here and fail to load. Keep only the fields its transport uses.",
+      jsonEntryLaunchless:
+        "“{name}” names neither a command nor a URL, so nothing could launch it.",
       submit: "Config में जोड़ें",
       nameEmpty: "सर्वर का नाम दर्ज करें।",
       nameTaken: "इस नाम का सर्वर पहले से पंजीकृत है; कोई अन्य नाम चुनें।",
+      nameTakenNamed:
+        "“{name}” is already registered. Nothing was added — rename it in the snippet, or remove the existing server first.",
       nameUnsupported:
         "यह नाम config editor में संग्रहीत नहीं किया जा सकता। कोई अन्य नाम चुनें (constructor, prototype, और __proto__ आरक्षित हैं)।",
+      nameUnsupportedNamed:
+        "“{name}” cannot be stored in the config editor (constructor, prototype, and __proto__ are reserved).",
       launchMissing: "सर्वर लॉन्च करने के लिए एक कमांड या URL दर्ज करें।",
       urlInvalid: "http:// या https:// URL दर्ज करें; MCP over HTTP किसी और चीज़ से कनेक्ट नहीं कर सकता।",
     },
@@ -283,6 +432,7 @@ export const hi: TranslationMap = {
       "इसके अंतर्गत एक उप-चरण जोड़ें। इससे वर्क-मैप का आकार बदलता है, न कि यह चरण क्या कॉल कर सकता है।",
     entryDraft: {
       add: "जोड़ें",
+      cancel: "रद्द करें",
       removeTitle: "इस चरण से {entry} अलग करें",
       none: "अभी तक कोई घोषित नहीं।",
       scopeNarrowingApproval:
@@ -327,6 +477,90 @@ export const hi: TranslationMap = {
         "चयनित वर्क-मैप लोड नहीं हुआ, इसलिए नीचे दिए गए चरण Gateway द्वारा लौटाई गई फ़ॉलबैक परिभाषा से आए हैं: {message}। enforce मोड में विफल वर्क-मैप लोड होने तक किसी चीज़ को नियंत्रित नहीं करता।",
       treeUnavailable:
         "चयनित वर्क-मैप लोड नहीं हो सका, इसलिए कोई स्टेप उपयोग नहीं दिखाया गया है: {message}।",
+    },
+    ontologyEditor: {
+      title: "Object types",
+      scopeNote:
+        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+      addEntity: "Add object type",
+      addProperty: "Add field",
+      removeEntity: "हटाएँ",
+      removeEntityTitle: "Remove the {entity} object type from this step",
+      removePropertyTitle: "Remove the {property} field",
+      removeLinkTitle: "Remove the {link} link",
+      noProperties: "No fields yet.",
+      links: "Links",
+      noLinks: "No links declared yet.",
+      titleLabel: "Display name (optional)",
+      typeLabel: "Type",
+      primaryKeyLabel: "Identifies an instance",
+      primaryKeyMark: "(identity)",
+      fromLabel: "From",
+      toLabel: "प्रति",
+      cardinalityLabel: "Cardinality",
+      save: "सहेजें",
+      actions: "कार्रवाइयाँ",
+      actionsNote:
+        "Typed operations the model runs with invoke_action. The effects are the authorization: an action may only touch the object types they name, in the way they name.",
+      addAction: "Add action",
+      removeActionTitle: "Remove the {action} action from this step",
+      addEffect: "Add effect",
+      addParameter: "Add parameter",
+      noEffects: "No effects yet.",
+      noParameters: "No parameters yet.",
+      incompleteActionDetail:
+        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+      removeEffectTitle: "Remove the {kind} effect on {entity}",
+      removeParameterTitle: "Remove the {parameter} parameter",
+      requiredLabel: "आवश्यक",
+      requiredMark: "(required)",
+      effectEntityLabel: "Object type",
+      effectKindLabel: "Effect",
+      functions: "Derived values",
+      noFunctions: "No derived values declared yet.",
+      removeFunctionTitle: "Remove the {function} derived value",
+      functionEntityLabel: "Computed over",
+      expressionLabel: "एक्सप्रेशन",
+      returnsLabel: "Returns",
+      idLabel: {
+        entity: "Object type id",
+        property: "Field id",
+        relationship: "Link id",
+        action: "Action id",
+        "action-parameter": "Parameter id",
+        function: "Derived value id",
+      },
+      error: {
+        "invalid-id":
+          "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
+        "endpoint-missing": "A link needs an object type at both ends.",
+        "duplicate-entry": "That id is already declared on this step.",
+        "entity-not-found": "That object type is not in this step's scope.",
+        "entity-in-use": "A link still points at this object type. Remove the link first.",
+        "entity-referenced":
+          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+        "property-in-use":
+          "A derived value or a write action on this work-map still needs this field. Change it first.",
+        "seeded-data-in-use":
+          "Seeded objects or links in this work-map still depend on this. Those records come from the imported work-map, so change them there first.",
+        "primary-key-taken":
+          "This object type already has a field that identifies an instance, and it can only have one.",
+        "action-not-found": "That action is no longer declared on this step.",
+        "effect-needs-identity":
+          "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
+        "expression-invalid": "That expression does not parse.",
+        "expression-property-unknown":
+          "The expression reads a field this object type does not have in this step's scope.",
+        "expression-type-invalid":
+          "The expression does not type-check against this object type's fields.",
+        "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "create-required-unreachable":
+          "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
+        "effect-target-taken":
+          "This action already writes that object type. Both effects would land on the same object, which the write path refuses, so give the second one its own action.",
+        "parameter-type-conflict":
+          "This parameter names a field of an object type the action writes, but declares a different type. No value could satisfy both, so the call would always fail.",
+      },
     },
     guidanceEditor: {
       title: "भूमिका प्रॉम्प्ट",
@@ -382,6 +616,21 @@ export const hi: TranslationMap = {
     activeStep: "सक्रिय चरण: {node}",
     executionCount: "इस रन के {count} निष्पादन",
     stepsTitle: "चरण",
+    resume: "Continue this run",
+    resumeHint:
+      "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
+    resumeRequested:
+      "Waiting. The next request in this session that routes to this work-map continues this run. It stays armed until then, and applies only once.",
+    resumeRefusedRunning: "This run is still going, so there is nothing to continue.",
+    resumeRefusedNoSession:
+      "This run is not attached to a session, so there is no conversation to continue it in.",
+    resumeRefusedNoSteps:
+      "This run finished no step, so continuing it would open exactly where a new run does.",
+    resumeRefusedRouteComplete:
+      "This run finished every step of its route, so there is nothing left to continue.",
+    resumeRefusedRotated:
+      "This conversation has been reset since the run, so there is no thread left to continue it in.",
+    resumeRefusedNotFound: "This run is no longer on record.",
     traceTitle: "गवर्नेंस ट्रेस",
     noTrace: "इस निष्पादन के लिए कोई गवर्नेंस इवेंट रिकॉर्ड नहीं हुआ।",
     allowedTools: "अनुमति: {tools}",

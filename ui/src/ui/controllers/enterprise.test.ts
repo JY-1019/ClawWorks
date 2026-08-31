@@ -25,8 +25,11 @@ import {
   cancelEnterpriseBindingPicker,
   openEnterpriseBindingPicker,
   setEnterpriseBindingPickerCustom,
+  addEnterpriseMcpHeader,
   beginEnterpriseMcpDraft,
+  beginEnterpriseMcpEdit,
   editEnterpriseMcpDraft,
+  editEnterpriseMcpHeader,
   submitAddEnterpriseNode,
   submitEnterpriseMcpDraft,
   submitEnterpriseBindingPicker,
@@ -1981,6 +1984,84 @@ describe("enterprise MCP registration", () => {
     expect(state.enterpriseMcpDraft?.error).toBe("name-unsupported");
   });
 
+  it("registers every server in a pasted snippet", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      mode: "json",
+      json: JSON.stringify({
+        mcpServers: {
+          github: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+          remote: { type: "http", url: "https://mcp.acme.dev" },
+        },
+      }),
+    });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: (name, server) => written.push([name, server]),
+    });
+
+    expect(written).toEqual([
+      ["github", { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] }],
+      ["remote", { url: "https://mcp.acme.dev", transport: "streamable-http" }],
+    ]);
+    expect(state.enterpriseMcpDraft).toBeNull();
+  });
+
+  it("registers none of a snippet when one name is already taken", () => {
+    // A paste is one unit: half-registering it would leave the operator
+    // believing the server the collision hid is there too.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      mode: "json",
+      json: JSON.stringify({
+        mcpServers: { fresh: { command: "a" }, github: { command: "b" } },
+      }),
+    });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["github"],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("name-taken");
+    expect(state.enterpriseMcpDraft?.errorDetail).toBe("github");
+  });
+
+  it("names the snippet entry it refused", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      mode: "json",
+      json: JSON.stringify({ mcpServers: { broken: { note: "todo" } } }),
+    });
+
+    submitEnterpriseMcpDraft(state, { existingNames: [], apply: () => undefined });
+
+    expect(state.enterpriseMcpDraft?.error).toBe("json-entry-launchless");
+    expect(state.enterpriseMcpDraft?.errorDetail).toBe("broken");
+  });
+
+  it("clears a stale error detail when the paste is edited", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, { mode: "json", json: "{ nope" });
+    submitEnterpriseMcpDraft(state, { existingNames: [], apply: () => undefined });
+    expect(state.enterpriseMcpDraft?.error).toBe("json-invalid");
+
+    editEnterpriseMcpDraft(state, { json: JSON.stringify({ mcpServers: {} }) });
+
+    expect(state.enterpriseMcpDraft?.error).toBeNull();
+    expect(state.enterpriseMcpDraft?.errorDetail).toBeUndefined();
+  });
+
   it("refuses a registration with no transport", () => {
     const { state } = createState();
     beginEnterpriseMcpDraft(state);
@@ -2198,5 +2279,571 @@ describe("toggleEnterpriseCapabilityGrants", () => {
     await toggleEnterpriseCapabilityGrants(state);
 
     expect(request).not.toHaveBeenCalled();
+  });
+});
+
+describe("remote MCP servers", () => {
+  const REDACTED = "__OPENCLAW_REDACTED__";
+
+  it("writes headers and OAuth so a hosted server can be reached", () => {
+    // Without one of these the typed half could only ever register servers that
+    // need no auth at all.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "acme-remote",
+      transport: "streamable-http",
+      url: "https://mcp.acme.dev",
+      oauth: true,
+    });
+    addEnterpriseMcpHeader(state);
+    editEnterpriseMcpHeader(state, 0, { name: "X-Api-Key", value: "secret" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: (name, server) => written.push([name, server]),
+    });
+
+    expect(written).toEqual([
+      [
+        "acme-remote",
+        {
+          url: "https://mcp.acme.dev",
+          transport: "streamable-http",
+          headers: { "X-Api-Key": "secret" },
+          auth: "oauth",
+        },
+      ],
+    ]);
+  });
+
+  it("refuses a header value with no header name", () => {
+    // It would reach nothing and be dropped on save, looking configured.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "acme-remote",
+      transport: "sse",
+      url: "https://mcp.acme.dev",
+    });
+    addEnterpriseMcpHeader(state);
+    editEnterpriseMcpHeader(state, 0, { value: "secret" });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("header-name-empty");
+  });
+
+  it("seeds an edit from the registered entry without exposing a stored header", () => {
+    const { state } = createState();
+
+    beginEnterpriseMcpEdit(state, {
+      name: "acme-remote",
+      server: {
+        url: "https://mcp.acme.dev",
+        transport: "sse",
+        headers: { Authorization: REDACTED },
+        auth: "oauth",
+      },
+    });
+
+    expect(state.enterpriseMcpDraft).toMatchObject({
+      editing: "acme-remote",
+      name: "acme-remote",
+      transport: "sse",
+      url: "https://mcp.acme.dev",
+      oauth: true,
+      headers: [{ name: "Authorization", value: "", stored: true }],
+    });
+  });
+
+  it("opens on the canonical transport when a stale `type` alias disagrees", () => {
+    // resolveMcpTransportConfig gives `transport` precedence and reads `type`
+    // only when it is absent (src/agents/mcp-transport-config.ts). Reading both
+    // at once opened this entry on SSE; saving any unrelated field then drops
+    // `type` and writes that back as canonical, changing the endpoint protocol.
+    const { state } = createState();
+
+    beginEnterpriseMcpEdit(state, {
+      name: "acme-remote",
+      server: { url: "https://mcp.acme.dev", transport: "streamable-http", type: "sse" },
+    });
+
+    expect(state.enterpriseMcpDraft).toMatchObject({ transport: "streamable-http" });
+  });
+
+  it("falls back to the `type` alias only when no transport is declared", () => {
+    const { state } = createState();
+
+    beginEnterpriseMcpEdit(state, {
+      name: "acme-legacy",
+      server: { url: "https://mcp.acme.dev", type: "sse" },
+    });
+
+    expect(state.enterpriseMcpDraft).toMatchObject({ transport: "sse" });
+  });
+
+  it("keeps a stored header when the operator does not retype it", () => {
+    // The browser was never given the value; writing the sentinel back is what
+    // lets the gateway swap the real one in on save.
+    const { state } = createState();
+    const server = {
+      url: "https://mcp.acme.dev",
+      transport: "sse",
+      headers: { Authorization: REDACTED },
+      toolFilter: { include: ["search"] },
+    };
+    beginEnterpriseMcpEdit(state, { name: "acme-remote", server });
+    editEnterpriseMcpDraft(state, { url: "https://mcp2.acme.dev" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written).toEqual([
+      [
+        "acme-remote",
+        {
+          url: "https://mcp2.acme.dev",
+          transport: "sse",
+          headers: { Authorization: REDACTED },
+          // Settings this form does not render survive the edit.
+          toolFilter: { include: ["search"] },
+        },
+      ],
+    ]);
+  });
+
+  it("replaces a stored header once the operator types into it", () => {
+    const { state } = createState();
+    const server = {
+      url: "https://mcp.acme.dev",
+      transport: "sse",
+      headers: { Authorization: REDACTED },
+    };
+    beginEnterpriseMcpEdit(state, { name: "acme-remote", server });
+    editEnterpriseMcpHeader(state, 0, { value: "Bearer new" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written[0]?.[1].headers).toEqual({ Authorization: "Bearer new" });
+  });
+
+  it("clears the other transport's launch when an edit switches transport", () => {
+    // Leaving both behind would make a command-bearing entry resolve as stdio
+    // however the URL is labelled.
+    const { state } = createState();
+    beginEnterpriseMcpEdit(state, { name: "local", server: { command: "./serve", args: ["--x"] } });
+    editEnterpriseMcpDraft(state, { transport: "streamable-http", url: "https://mcp.acme.dev" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: { command: "./serve", args: ["--x"] },
+      apply: (name, server) => written.push([name, server]),
+    });
+
+    expect(written).toEqual([
+      ["local", { url: "https://mcp.acme.dev", transport: "streamable-http" }],
+    ]);
+  });
+
+  it("keeps the registered name on an edit rather than offering a rename", () => {
+    // The name is the key steps attach by AND the redaction lookup path, so a
+    // rename would strand every attachment and orphan any stored header.
+    const { state } = createState();
+    const server = { command: "./serve" };
+    beginEnterpriseMcpEdit(state, { name: "local", server });
+    editEnterpriseMcpDraft(state, { name: "renamed" });
+    const written: string[] = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: server,
+      apply: (name) => written.push(name),
+    });
+
+    expect(written).toEqual(["local"]);
+    expect(state.enterpriseMcpDraft).toBeNull();
+  });
+});
+
+describe("editing an MCP server preserves what the form does not own", () => {
+  const REDACTED = "__OPENCLAW_REDACTED__";
+
+  it("keeps an entry that declared no transport unresolved until the operator picks", () => {
+    // OpenClaw reads an unset transport as SSE and Codex reads a bare URL as
+    // streamable HTTP, so writing either on the operator's behalf repoints the
+    // server for one of them.
+    const { state } = createState();
+    const server = { url: "https://mcp.acme.dev" };
+    beginEnterpriseMcpEdit(state, { name: "acme-remote", server });
+    expect(state.enterpriseMcpDraft?.transport).toBe("unset");
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: server,
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("transport-unset");
+  });
+
+  it("reads the type alias as the transport it already resolves to", () => {
+    const { state } = createState();
+    beginEnterpriseMcpEdit(state, {
+      name: "acme-remote",
+      server: { url: "https://mcp.acme.dev", type: "sse" },
+    });
+
+    expect(state.enterpriseMcpDraft?.transport).toBe("sse");
+  });
+
+  it("writes an untouched argument array back verbatim", () => {
+    // Round-tripping through a space-joined string would split
+    // ["--label", "hello world"] into three arguments.
+    const { state } = createState();
+    const server = { command: "./serve", args: ["--label", "hello world"] };
+    beginEnterpriseMcpEdit(state, { name: "local", server });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written).toEqual([["local", { command: "./serve", args: ["--label", "hello world"] }]]);
+  });
+
+  it("splits the argument field once the operator actually edits it", () => {
+    const { state } = createState();
+    const server = { command: "./serve", args: ["--a"] };
+    beginEnterpriseMcpEdit(state, { name: "local", server });
+    editEnterpriseMcpDraft(state, { args: "--a --b" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written[0]?.[1].args).toEqual(["--a", "--b"]);
+  });
+
+  it("keeps a redacted URL rather than demanding the whole secret be retyped", () => {
+    const { state } = createState();
+    const server = { url: REDACTED, transport: "sse" };
+    beginEnterpriseMcpEdit(state, { name: "acme-remote", server });
+    expect(state.enterpriseMcpDraft?.urlStored).toBe(true);
+    addEnterpriseMcpHeader(state);
+    editEnterpriseMcpHeader(state, 0, { name: "X-Tenant", value: "acme" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written[0]?.[1].url).toBe(REDACTED);
+  });
+
+  it("refuses to move a stored header to another name", () => {
+    // The gateway restores the sentinel by header key, so a rename would write a
+    // reserved value at a path holding nothing.
+    const { state } = createState();
+    beginEnterpriseMcpEdit(state, {
+      name: "acme-remote",
+      server: {
+        url: "https://mcp.acme.dev",
+        transport: "sse",
+        headers: { Authorization: REDACTED },
+      },
+    });
+
+    editEnterpriseMcpHeader(state, 0, { name: "X-Api-Key" });
+
+    expect(state.enterpriseMcpDraft?.headers[0]).toEqual({
+      name: "Authorization",
+      value: "",
+      stored: true,
+      savedValue: REDACTED,
+    });
+  });
+
+  it("refuses a pasted snippet that would leave the edited server behind", () => {
+    const { state } = createState();
+    const server = { command: "./serve" };
+    beginEnterpriseMcpEdit(state, { name: "local", server });
+    editEnterpriseMcpDraft(state, {
+      mode: "json",
+      json: JSON.stringify({ mcpServers: { other: { command: "./other" } } }),
+    });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: server,
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("json-name-mismatch");
+  });
+});
+
+describe("switching an MCP transport clears the other shape's fields", () => {
+  it("drops env and cwd when a stdio server becomes an HTTP one", () => {
+    // OpenClaw ignores the leftovers, but its Codex projection copies them and
+    // Codex rejects env/cwd on a URL transport, so the server would fail to
+    // initialize for Codex-backed runs.
+    const { state } = createState();
+    const server = {
+      command: "./serve",
+      env: { TOKEN: "x" },
+      cwd: "/srv",
+      toolFilter: { include: ["a"] },
+    };
+    beginEnterpriseMcpEdit(state, { name: "local", server });
+    editEnterpriseMcpDraft(state, { transport: "streamable-http", url: "https://mcp.acme.dev" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written).toEqual([
+      [
+        "local",
+        {
+          url: "https://mcp.acme.dev",
+          transport: "streamable-http",
+          // Settings that belong to neither transport still survive.
+          toolFilter: { include: ["a"] },
+        },
+      ],
+    ]);
+  });
+
+  it("drops HTTP-only fields when an HTTP server becomes stdio", () => {
+    const { state } = createState();
+    const server = {
+      url: "https://mcp.acme.dev",
+      transport: "sse",
+      sslVerify: false,
+      oauth: { scope: "read" },
+    };
+    beginEnterpriseMcpEdit(state, { name: "remote", server });
+    editEnterpriseMcpDraft(state, { transport: "stdio", command: "./serve" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["remote"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written).toEqual([["remote", { command: "./serve" }]]);
+  });
+});
+
+describe("MCP header rows", () => {
+  it("refuses two rows naming the same header, ignoring case", () => {
+    // HTTP header names are case-insensitive, so collapsing them into a record
+    // would keep whichever came last and leave the sent value ambiguous.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "remote",
+      transport: "sse",
+      url: "https://mcp.acme.dev",
+    });
+    addEnterpriseMcpHeader(state);
+    editEnterpriseMcpHeader(state, 0, { name: "Authorization", value: "a" });
+    addEnterpriseMcpHeader(state);
+    editEnterpriseMcpHeader(state, 1, { name: "authorization", value: "b" });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("header-name-duplicate");
+  });
+});
+
+describe("an MCP edit is pinned to the entry it opened on", () => {
+  it("refuses when the registered server changed under the form", () => {
+    // Another admin repointing the same name rotates its header too. Staging
+    // this draft's URL with the stored-value sentinel would let config.set
+    // restore the NEW secret against the OLD address.
+    const { state } = createState();
+    beginEnterpriseMcpEdit(state, {
+      name: "acme-remote",
+      server: {
+        url: "https://a.dev",
+        transport: "sse",
+        headers: { Authorization: "__OPENCLAW_REDACTED__" },
+      },
+    });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: {
+        url: "https://b.dev",
+        transport: "sse",
+        headers: { Authorization: "__OPENCLAW_REDACTED__" },
+      },
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("entry-changed");
+  });
+});
+
+describe("MCP headers the text form cannot represent", () => {
+  it("writes a scalar header back rather than blanking it", () => {
+    // Config allows boolean and number headers; rendering one as "" and saving
+    // an unrelated change would silently rewrite it.
+    const { state } = createState();
+    const server = {
+      url: "https://mcp.acme.dev",
+      transport: "sse",
+      headers: { "X-Retries": 3, "X-Debug": true },
+    };
+    beginEnterpriseMcpEdit(state, { name: "acme-remote", server });
+    editEnterpriseMcpDraft(state, { url: "https://mcp2.acme.dev" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: server,
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    expect(written[0]?.[1].headers).toEqual({ "X-Retries": 3, "X-Debug": true });
+  });
+});
+
+describe("MCP header names the server would refuse", () => {
+  it("rejects a name outside the HTTP token grammar", () => {
+    // The config schema accepts any string, but the MCP SDK builds a Headers
+    // from these and throws, so Save would succeed and the server would not start.
+    for (const name of ["Authorization:", "Bad Header", "X\u00e9"]) {
+      const { state } = createState();
+      beginEnterpriseMcpDraft(state);
+      editEnterpriseMcpDraft(state, {
+        name: "remote",
+        transport: "sse",
+        url: "https://mcp.acme.dev",
+      });
+      addEnterpriseMcpHeader(state);
+      editEnterpriseMcpHeader(state, 0, { name, value: "x" });
+
+      submitEnterpriseMcpDraft(state, { existingNames: [], apply: () => undefined });
+
+      expect(state.enterpriseMcpDraft?.error).toBe("header-name-invalid");
+    }
+  });
+});
+
+describe("a JSON-mode edit is pinned like the typed one", () => {
+  it("refuses a paste when the registered entry changed under the form", () => {
+    // A paste can carry a redaction sentinel too, so bypassing the check would
+    // combine the latest secret with a stale URL.
+    const { state } = createState();
+    beginEnterpriseMcpEdit(state, { name: "local", server: { command: "./serve" } });
+    editEnterpriseMcpDraft(state, {
+      mode: "json",
+      json: JSON.stringify({ mcpServers: { local: { command: "./other" } } }),
+    });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["local"],
+      existingServer: { command: "./changed" },
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("entry-changed");
+  });
+});
+
+describe("MCP header names that collide with Object prototype keys", () => {
+  it("stores a header literally named __proto__", () => {
+    // Assignment would invoke the legacy setter and drop it while the form
+    // closed as though it had been saved. It is a valid HTTP field name.
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      name: "remote",
+      transport: "sse",
+      url: "https://mcp.acme.dev",
+    });
+    addEnterpriseMcpHeader(state);
+    editEnterpriseMcpHeader(state, 0, { name: "__proto__", value: "x" });
+    const written: Array<[string, Record<string, unknown>]> = [];
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: [],
+      apply: (name, entry) => written.push([name, entry]),
+    });
+
+    const headers = written[0]?.[1].headers as Record<string, unknown>;
+    expect(Object.hasOwn(headers, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(headers, "__proto__")?.value).toBe("x");
+  });
+});
+
+describe("a blank command is not a stdio launch", () => {
+  it("opens such an entry as the HTTP server the resolver treats it as", () => {
+    // The embedded resolver ignores a blank command; seeding stdio would hide
+    // the URL and auth fields and then fail as launch-missing.
+    const { state } = createState();
+
+    beginEnterpriseMcpEdit(state, {
+      name: "remote",
+      server: { command: "   ", url: "https://mcp.acme.dev", transport: "sse" },
+    });
+
+    expect(state.enterpriseMcpDraft?.transport).toBe("sse");
+    expect(state.enterpriseMcpDraft?.url).toBe("https://mcp.acme.dev");
   });
 });

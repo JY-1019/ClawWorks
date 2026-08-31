@@ -1,4 +1,5 @@
 // Control UI controller manages config gateway state.
+import JSON5 from "json5";
 import { applyMergePatch } from "../../../../src/config/merge-patch.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ConfigSchemaResponse, ConfigSnapshot, ConfigUiHints } from "../types.ts";
@@ -272,6 +273,48 @@ function syncConfigDraft(state: ConfigState, nextForm: Record<string, unknown>) 
   state.configForm = nextForm;
   state.configRaw = nextRaw;
   state.configFormDirty = nextRaw !== originalRaw;
+}
+
+/**
+ * Switch the config editor between the form and the raw text.
+ *
+ * Leaving RAW reconciles the text back into the form, because a save serializes
+ * the FORM (`serializeFormForSubmit`) — and every screen that writes config has
+ * its own Save button, so an operator who edited raw, switched back, and saved
+ * from the MCP or Knowledge screen would submit the pre-edit form and lose the
+ * raw edits with no warning.
+ *
+ * Text that does not parse keeps the editor in raw mode rather than discarding
+ * it: only the operator can decide what a half-finished edit should become.
+ */
+export function setConfigFormMode(state: ConfigState, mode: "form" | "raw"): boolean {
+  if (mode === state.configFormMode) {
+    return true;
+  }
+  if (mode === "form") {
+    // Always, not only while the shared dirty flag is set: restoring the raw text
+    // to its original clears that flag while `configForm` still holds an earlier
+    // form edit, so a guard on it would skip the parse and let a later save
+    // silently reintroduce the change the operator just reverted.
+    const parsed = parseConfigRaw(state.configRaw);
+    if (!parsed) {
+      return false;
+    }
+    state.configForm = parsed;
+  }
+  state.configFormMode = mode;
+  return true;
+}
+
+function parseConfigRaw(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON5.parse(raw);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function saveConfig(state: ConfigState): Promise<boolean> {

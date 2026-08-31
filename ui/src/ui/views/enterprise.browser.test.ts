@@ -69,6 +69,48 @@ const TREE: EnterpriseTreeDetail = {
   ],
 } as EnterpriseTreeDetail;
 
+/** A work-map whose child step declares both AIP verbs over an inherited type. */
+const VERB_TREE: EnterpriseTreeDetail = {
+  ...TREE,
+  nodes: [
+    {
+      ...TREE.nodes[0],
+      ontology: {
+        allowedTools: ["message"],
+        entities: [
+          {
+            id: "claim",
+            properties: [
+              { id: "claim-id", type: "id", primaryKey: true },
+              { id: "amount", type: "number" },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      ...TREE.nodes[1],
+      ontology: {
+        actions: [
+          {
+            id: "approve",
+            effects: [{ entity: "claim", kind: "update" }],
+            // The identity parameter is what makes the action callable: without
+            // it planEffect cannot name the object the write touches.
+            parameters: [
+              { id: "claim-id", type: "id", required: true },
+              { id: "rationale", type: "string" },
+            ],
+          },
+        ],
+        functions: [
+          { id: "doubled", entity: "claim", expression: "$amount * 2", returns: "number" },
+        ],
+      },
+    },
+  ],
+} as EnterpriseTreeDetail;
+
 function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps {
   return {
     section: "tools",
@@ -84,9 +126,17 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     configSaving: false,
     configApplying: false,
     onBeginMcpDraft: () => undefined,
+    onBeginMcpEdit: () => undefined,
     onEditMcpDraft: () => undefined,
+    onEditMcpHeader: () => undefined,
+    onAddMcpHeader: () => undefined,
     onCancelMcpDraft: () => undefined,
     onSubmitMcpDraft: () => undefined,
+    onToggleMcpServer: () => undefined,
+    mcpRemoveConfirm: null,
+    onRequestRemoveMcpServer: () => undefined,
+    onCancelRemoveMcpServer: () => undefined,
+    onConfirmRemoveMcpServer: () => undefined,
     onSaveConfig: () => undefined,
     onApplyConfig: () => undefined,
     runs: [],
@@ -155,6 +205,10 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     onRemoveOntologyEntity: () => undefined,
     onRemoveOntologyProperty: () => undefined,
     onRemoveOntologyRelationship: () => undefined,
+    onRemoveOntologyAction: () => undefined,
+    onRemoveOntologyActionEffect: () => undefined,
+    onRemoveOntologyActionParameter: () => undefined,
+    onRemoveOntologyFunction: () => undefined,
     onBindingPickerQuery: () => undefined,
     onBindingPickerCustom: () => undefined,
     onToggleBindingPickerValue: () => undefined,
@@ -835,6 +889,216 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(container.querySelectorAll(".ontology-group").length).toBeGreaterThan(0);
   });
 
+  it("renders the AIP verbs the model can call, with the effects that authorize them", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: VERB_TREE.id,
+        treeDetail: VERB_TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Actions");
+    expect(text).toContain("update claim");
+    expect(text).toContain("rationale: string");
+    expect(text).toContain("Derived values");
+    // The expression, not just the id: it is what the function actually computes.
+    expect(text).toContain("$amount * 2");
+  });
+
+  it("keeps the callout until a write effect also has its identity parameter", () => {
+    // `validateParameters` refuses an undeclared key while `planEffect` requires
+    // it, so an action with a write effect and no key parameter is still
+    // uncallable — clearing the warning there would call it finished halfway.
+    const keyless = {
+      ...VERB_TREE,
+      nodes: VERB_TREE.nodes.map((node) =>
+        node.id === "support.triage"
+          ? {
+              ...node,
+              ontology: {
+                ...node.ontology,
+                actions: [
+                  {
+                    id: "approve",
+                    effects: [{ entity: "claim", kind: "update" }],
+                    parameters: [{ id: "rationale", type: "string" }],
+                  },
+                ],
+              },
+            }
+          : node,
+      ),
+    } as EnterpriseTreeDetail;
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: keyless.id,
+        treeDetail: keyless,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").toContain("cannot be called yet");
+  });
+
+  it("flags an effect on a type only a sibling branch declares", () => {
+    // The import validates effects tree-wide, but no scope this action executes
+    // in ever contains that type, so planEffect refuses every call.
+    const siblingOnly = {
+      ...VERB_TREE,
+      nodes: [
+        ...VERB_TREE.nodes.map((node) =>
+          node.id === "support.triage"
+            ? {
+                ...node,
+                ontology: {
+                  ...node.ontology,
+                  actions: [
+                    {
+                      id: "approve",
+                      effects: [{ entity: "invoice", kind: "update" }],
+                      parameters: [{ id: "invoice-id", type: "id", required: true }],
+                    },
+                  ],
+                },
+              }
+            : node,
+        ),
+        {
+          id: "support.billing",
+          parentId: "support",
+          depth: 1,
+          title: "Billing",
+          ontology: {
+            entities: [
+              { id: "invoice", properties: [{ id: "invoice-id", type: "id", primaryKey: true }] },
+            ],
+          },
+        },
+      ],
+    } as EnterpriseTreeDetail;
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: siblingOnly.id,
+        treeDetail: siblingOnly,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").toContain("cannot be called yet");
+  });
+
+  it("keeps the callout when a create leaves a required property unparameterized", () => {
+    // planEffect refuses a create that leaves any required property unset, and
+    // only a parameter can supply one — so the action fails every call.
+    const requiredMissing = {
+      ...VERB_TREE,
+      nodes: VERB_TREE.nodes.map((node) => {
+        if (node.id === "support") {
+          return {
+            ...node,
+            ontology: {
+              ...node.ontology,
+              entities: [
+                {
+                  id: "claim",
+                  properties: [
+                    { id: "claim-id", type: "id", primaryKey: true },
+                    { id: "amount", type: "number", required: true },
+                  ],
+                },
+              ],
+            },
+          };
+        }
+        return node.id === "support.triage"
+          ? {
+              ...node,
+              ontology: {
+                ...node.ontology,
+                actions: [
+                  {
+                    id: "open",
+                    effects: [{ entity: "claim", kind: "create" }],
+                    parameters: [{ id: "claim-id", type: "id", required: true }],
+                  },
+                ],
+              },
+            }
+          : node;
+      }),
+    } as EnterpriseTreeDetail;
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: requiredMissing.id,
+        treeDetail: requiredMissing,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").toContain("cannot be called yet");
+  });
+
+  it("clears the callout once the identity parameter is declared", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: VERB_TREE.id,
+        treeDetail: VERB_TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").not.toContain("cannot be called yet");
+  });
+
+  it("calls out an action that declares no write effect, since the write path refuses it", () => {
+    const readOnly = {
+      ...VERB_TREE,
+      nodes: VERB_TREE.nodes.map((node) =>
+        node.id === "support.triage"
+          ? { ...node, ontology: { ...node.ontology, actions: [{ id: "approve" }] } }
+          : node,
+      ),
+    } as EnterpriseTreeDetail;
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: readOnly.id,
+        treeDetail: readOnly,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").toContain("cannot be called yet");
+  });
+
+  it("seeds an effect form from the object types the step can actually address", () => {
+    const opened: unknown[] = [];
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: VERB_TREE.id,
+        treeDetail: VERB_TREE,
+        selectedNodeId: "support.triage",
+        onOntologyDraft: (draft) => opened.push(draft),
+      }),
+    );
+    const addEffect = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Add effect",
+    );
+    expect(addEffect).toBeDefined();
+    addEffect?.click();
+    expect(opened).toEqual([
+      {
+        kind: "action-effect",
+        nodeId: "support.triage",
+        actionId: "approve",
+        entity: "claim",
+        effectKind: "update",
+      },
+    ]);
+  });
+
   it("opens one ontology form at a time and reports the id contract", () => {
     const opened: unknown[] = [];
     const container = renderInto(
@@ -1296,5 +1560,397 @@ describe("enterprise Worktree step bindings (browser)", () => {
       createProps({ section: "worktree", selectedTreeId: TREE.id, treeDetail: TREE }),
     );
     expect(container.textContent ?? "").not.toContain("ontology.allowedTools");
+  });
+});
+
+describe("enterprise MCP registration form (browser)", () => {
+  function draft(overrides: Partial<NonNullable<EnterpriseProps["mcpDraft"]>> = {}) {
+    return {
+      editing: null,
+      editingSnapshot: null,
+      mode: "fields" as const,
+      name: "",
+      transport: "stdio" as const,
+      command: "",
+      args: "",
+      argsOriginal: null,
+      url: "",
+      urlStored: false,
+      headers: [],
+      oauth: false,
+      json: "",
+      error: null,
+      ...overrides,
+    };
+  }
+
+  it("offers both halves of the form", () => {
+    const container = renderInto(createProps({ section: "mcp", canEdit: true, mcpDraft: draft() }));
+
+    expect(container.textContent).toContain("Type it");
+    expect(container.textContent).toContain("Paste JSON");
+    // The typed half is the default, so its fields are the ones on screen.
+    expect(container.textContent).toContain("Command");
+    expect(container.querySelector("textarea")).toBeNull();
+  });
+
+  it("previews what a pasted snippet would register", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: draft({
+          mode: "json",
+          json: JSON.stringify({
+            mcpServers: {
+              github: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+              remote: { url: "https://mcp.acme.dev" },
+            },
+          }),
+        }),
+      }),
+    );
+
+    expect(container.querySelector("textarea")).not.toBeNull();
+    expect(container.textContent).toContain("github");
+    expect(container.textContent).toContain("remote");
+    // The transport the import DECIDED is named, because the paste did not.
+    expect(container.textContent).toContain("Registered as streamable-http");
+  });
+
+  it("says nothing about a half-typed paste", () => {
+    // Flagging every keystroke as a parse error would be noise; the refusal is
+    // the submit path's to report.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: draft({ mode: "json", json: "{ mcp" }),
+      }),
+    );
+
+    expect(container.querySelector(".callout.danger")).toBeNull();
+  });
+
+  it("names the snippet entry a refusal was about", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: draft({
+          mode: "json",
+          json: "{}",
+          error: "json-entry-launchless",
+          errorDetail: "broken",
+        }),
+      }),
+    );
+
+    expect(container.textContent).toContain("broken");
+  });
+});
+
+describe("enterprise MCP registry controls (browser)", () => {
+  const SERVER = {
+    name: "acme-remote",
+    enabled: true,
+    transport: "http" as const,
+    auth: "oauth",
+    launch: "https://mcp.acme.dev",
+    toolFilter: false,
+    parallel: false,
+    tls: null,
+  };
+
+  it("summarizes the registry and offers per-server controls to an admin", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpServers: [SERVER],
+        mcpServersKnown: true,
+      }),
+    );
+
+    expect(container.textContent).toContain("Servers");
+    expect(container.textContent).toContain("Remote");
+    expect(container.textContent).toContain("Edit");
+    expect(container.textContent).toContain("Disable");
+    expect(container.textContent).toContain("Remove");
+    // The auth mode is on the row, because it is what makes a hosted server
+    // reachable and is otherwise invisible until a call fails.
+    expect(container.textContent).toContain("oauth");
+  });
+
+  it("shows no controls to a read-only operator", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: false,
+        mcpServers: [SERVER],
+        mcpServersKnown: true,
+      }),
+    );
+
+    expect(container.textContent).not.toContain("Disable");
+    expect(container.textContent).not.toContain("Remove");
+  });
+
+  it("offers header and OAuth fields once the transport is remote", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: {
+          editing: "acme-remote",
+          editingSnapshot: null,
+          mode: "fields",
+          name: "acme-remote",
+          transport: "streamable-http",
+          command: "",
+          args: "",
+          argsOriginal: null,
+          url: "https://mcp.acme.dev",
+          urlStored: false,
+          headers: [{ name: "Authorization", value: "", stored: true }],
+          oauth: false,
+          json: "",
+          error: null,
+        },
+      }),
+    );
+
+    expect(container.textContent).toContain("Edit acme-remote");
+    expect(container.textContent).toContain("Request headers");
+    expect(container.textContent).toContain("Authenticate with OAuth");
+    // A stored header reads as unchanged rather than as dots standing in for a
+    // value the browser was never given.
+    const value = container.querySelector('input[type="password"]');
+    expect(value?.getAttribute("placeholder")).toBe("Unchanged");
+    expect((value as HTMLInputElement | null)?.value).toBe("");
+  });
+
+  it("keeps auth fields off a stdio server, which takes credentials from env", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: {
+          editing: null,
+          editingSnapshot: null,
+          mode: "fields",
+          name: "",
+          transport: "stdio",
+          command: "",
+          args: "",
+          argsOriginal: null,
+          url: "",
+          urlStored: false,
+          headers: [],
+          oauth: false,
+          json: "",
+          error: null,
+        },
+      }),
+    );
+
+    expect(container.textContent).not.toContain("Request headers");
+  });
+
+  it("names the server a removal would drop", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpServers: [SERVER],
+        mcpServersKnown: true,
+        mcpRemoveConfirm: "acme-remote",
+      }),
+    );
+
+    expect(container.textContent).toContain("Remove acme-remote?");
+    expect(container.textContent).toContain("their attachments become inert");
+  });
+});
+
+describe("enterprise MCP summary accuracy (browser)", () => {
+  function statValue(container: HTMLElement, label: string): string | undefined {
+    return [...container.querySelectorAll(".stat")]
+      .find((tile) => tile.querySelector(".stat-label")?.textContent?.trim() === label)
+      ?.querySelector(".stat-value")
+      ?.textContent?.trim();
+  }
+
+  it("excludes launchless entries from Remote and disabled ones from Reachable", () => {
+    // An `invalid` row is a schema-valid entry with no launch rather than an
+    // HTTP server, and both runtimes drop disabled servers before
+    // materialization — so neither belongs in the count it would inflate.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpServersKnown: true,
+        enterpriseMode: "enforce",
+        treeDetail: {
+          id: "acme.support",
+          version: "1",
+          source: "imported",
+          name: "Support",
+          capabilityGrants: "explicit",
+          nodes: [
+            {
+              id: "root",
+              title: "Root",
+              parentId: null,
+              depth: 0,
+              ontology: { mcpServers: ["off", "live"] },
+            },
+          ],
+        },
+        mcpServers: [
+          {
+            name: "off",
+            enabled: false,
+            transport: "http",
+            auth: null,
+            launch: "https://off.dev",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+          {
+            name: "live",
+            enabled: true,
+            transport: "http",
+            auth: null,
+            launch: "https://live.dev",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+          {
+            name: "broken",
+            enabled: true,
+            transport: "invalid",
+            auth: null,
+            launch: "missing transport",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+        ],
+      }),
+    );
+
+    expect(statValue(container, "Servers")).toBe("3");
+    expect(statValue(container, "Enabled")).toBe("2");
+    // Remote describes transport kind, so the disabled HTTP server counts and
+    // the launchless one does not.
+    expect(statValue(container, "Remote")).toBe("2");
+    // Reachable describes what a step can actually call: `off` is attached but
+    // disabled, so only `live` counts.
+    expect(statValue(container, "Reachable from a step")).toBe("1");
+  });
+});
+
+describe("SSE transport warning (browser)", () => {
+  function sseDraft(transport: "sse" | "streamable-http") {
+    return {
+      editing: null,
+      editingSnapshot: null,
+      mode: "fields" as const,
+      name: "remote",
+      transport,
+      command: "",
+      args: "",
+      argsOriginal: null,
+      url: "https://mcp.acme.dev",
+      urlStored: false,
+      headers: [],
+      oauth: false,
+      json: "",
+      error: null,
+    };
+  }
+
+  it("warns that a Codex-backed run cannot dial an SSE-only server", () => {
+    // The Codex projection copies the URL without the transport, and Codex
+    // dials every URL-only server as streamable HTTP.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: sseDraft("sse"),
+      }),
+    );
+
+    expect(container.textContent).toContain("dialed by the embedded runtime only");
+  });
+
+  it("says nothing about it for streamable-http", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: sseDraft("streamable-http"),
+      }),
+    );
+
+    expect(container.textContent).not.toContain("dialed by the embedded runtime only");
+  });
+});
+
+describe("MCP import preview caveats (browser)", () => {
+  function importDraft(json: string) {
+    return {
+      editing: null,
+      editingSnapshot: null,
+      mode: "json" as const,
+      name: "",
+      transport: "stdio" as const,
+      command: "",
+      args: "",
+      argsOriginal: null,
+      url: "",
+      urlStored: false,
+      headers: [],
+      oauth: false,
+      json,
+      error: null,
+    };
+  }
+
+  it("warns about an explicitly declared sse transport, not only an assumed one", () => {
+    // A snippet that says sse outright assumes nothing, so a preview keyed on
+    // the assumed-transport field would attach it to a Codex step in silence.
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: importDraft(
+          JSON.stringify({ mcpServers: { remote: { url: "https://a.dev", transport: "sse" } } }),
+        ),
+      }),
+    );
+
+    expect(container.textContent).toContain("dialed by the embedded runtime only");
+  });
+
+  it("carries the OAuth login caveat into the pasted half", () => {
+    const container = renderInto(
+      createProps({
+        section: "mcp",
+        canEdit: true,
+        mcpDraft: importDraft(
+          JSON.stringify({
+            mcpServers: {
+              remote: { url: "https://a.dev", transport: "streamable-http", auth: "oauth" },
+            },
+          }),
+        ),
+      }),
+    );
+
+    expect(container.textContent).toContain("openclaw mcp login");
   });
 });

@@ -10,6 +10,7 @@ import {
   resetConfigPendingChanges,
   runUpdate,
   saveConfig,
+  setConfigFormMode,
   stageDefaultAgentConfigEntry,
   stageConfigPreset,
   updateMcpServerEnabled,
@@ -1203,5 +1204,45 @@ describe("runUpdate", () => {
     expect(state.pendingUpdateExpectedVersion).toBeNull();
     expect(state.pendingUpdateHandoff).toBe(true);
     expect(state.updateStatusBanner).toBeNull();
+  });
+});
+
+describe("setConfigFormMode", () => {
+  function stateWith(overrides: Partial<ConfigState>): ConfigState {
+    return {
+      configFormMode: "raw",
+      configForm: {},
+      configRaw: "{}",
+      configFormDirty: false,
+      ...overrides,
+    } as ConfigState;
+  }
+
+  it("folds the raw text back into the form when leaving raw mode", () => {
+    // A save serializes the FORM, and every screen has its own Save button — so
+    // an unreconciled switch would submit the pre-edit form and drop the edits.
+    const state = stateWith({ configRaw: '{ "enterprise": { "mode": "observe" } }' });
+    expect(setConfigFormMode(state, "form")).toBe(true);
+    expect(state.configForm).toEqual({ enterprise: { mode: "observe" } });
+    expect(state.configFormMode).toBe("form");
+  });
+
+  it("parses even when the shared dirty flag is clear", () => {
+    // Restoring the raw text to its original clears that flag while the form
+    // still holds an earlier edit; skipping the parse there would let a later
+    // save reintroduce the change the operator reverted.
+    const state = stateWith({
+      configRaw: '{ "enterprise": { "mode": "enforce" } }',
+      configForm: { enterprise: { mode: "observe" } },
+      configFormDirty: false,
+    });
+    expect(setConfigFormMode(state, "form")).toBe(true);
+    expect(state.configForm).toEqual({ enterprise: { mode: "enforce" } });
+  });
+
+  it("stays in raw mode when the text does not parse", () => {
+    const state = stateWith({ configRaw: "{ not json" });
+    expect(setConfigFormMode(state, "form")).toBe(false);
+    expect(state.configFormMode).toBe("raw");
   });
 });

@@ -34,18 +34,22 @@ import type {
   EnterpriseTreeConfirm,
   EnterpriseTreeEditFormat,
 } from "../controllers/enterprise.ts";
+import { parseMcpServerImport } from "../controllers/mcp-server-import.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import {
   collectNodeOntologyGraph,
+  declaredExecutableEntityIds,
   declaredNodePathEntityIds,
   collectOntologyGraph,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
 import {
   ONTOLOGY_CARDINALITIES,
+  ONTOLOGY_EFFECT_KINDS,
   ONTOLOGY_VALUE_TYPES,
   type NodeOntologyListField,
   type OntologyCardinalityName,
+  type OntologyEffectKindName,
   type OntologyValueTypeName,
 } from "./enterprise-tree-edit.ts";
 import type { McpServerRow } from "./mcp.ts";
@@ -139,6 +143,16 @@ export type EnterpriseProps = {
     nodeId: string,
     link: { id: string; from: string; to: string },
   ) => void;
+  onRemoveOntologyAction: (nodeId: string, actionId: string) => void;
+  onRemoveOntologyActionEffect: (
+    nodeId: string,
+    effect: { actionId: string; entity: string; kind: OntologyEffectKindName },
+  ) => void;
+  onRemoveOntologyActionParameter: (
+    nodeId: string,
+    parameter: { actionId: string; parameterId: string },
+  ) => void;
+  onRemoveOntologyFunction: (nodeId: string, functionId: string) => void;
   onBindingPickerQuery: (query: string) => void;
   onBindingPickerCustom: (value: string) => void;
   onToggleBindingPickerValue: (value: string) => void;
@@ -183,9 +197,18 @@ export type EnterpriseProps = {
   configSaving: boolean;
   configApplying: boolean;
   onBeginMcpDraft: () => void;
-  onEditMcpDraft: (patch: Partial<Omit<EnterpriseMcpDraft, "error">>) => void;
+  onBeginMcpEdit: (name: string) => void;
+  onEditMcpDraft: (patch: Partial<Omit<EnterpriseMcpDraft, "error" | "errorDetail">>) => void;
+  onEditMcpHeader: (index: number, patch: { name?: string; value?: string } | null) => void;
+  onAddMcpHeader: () => void;
   onCancelMcpDraft: () => void;
   onSubmitMcpDraft: () => void;
+  onToggleMcpServer: (name: string, enabled: boolean) => void;
+  /** Server whose removal is awaiting confirmation, or null. */
+  mcpRemoveConfirm: string | null;
+  onRequestRemoveMcpServer: (name: string) => void;
+  onCancelRemoveMcpServer: () => void;
+  onConfirmRemoveMcpServer: () => void;
   onSaveConfig: () => void;
   onApplyConfig: () => void;
   /** Which enterprise surface to render; chosen by the active sidebar tab. */
@@ -1175,7 +1198,7 @@ function renderEnterpriseMcp(props: EnterpriseProps): TemplateResult {
             </button>`
           : nothing}
       </div>
-      ${renderCatalogUsageScope(props)}
+      ${renderCatalogUsageScope(props)}${renderMcpSummary(props, usage, governed)}
       <div class="muted" style="margin-top: 8px;">
         ${governed
           ? t("enterprise.mcpTab.attachHint")
@@ -1192,14 +1215,14 @@ function renderEnterpriseMcp(props: EnterpriseProps): TemplateResult {
           </div>`
         : nothing}
       ${props.canEdit && props.mcpDraft ? renderMcpDraft(props, props.mcpDraft) : nothing}
-      ${props.canEdit ? renderMcpConfigActions(props) : nothing}
+      ${renderMcpRemoveConfirm(props)} ${props.canEdit ? renderMcpConfigActions(props) : nothing}
       ${props.mcpServers.length === 0 && attachedOnly.length === 0
         ? html`<div class="muted" style="margin-top: 12px;">
             ${props.mcpServersKnown ? t("enterprise.mcpTab.empty") : t("common.loading")}
           </div>`
         : html`<div class="list" style="margin-top: 12px;">
             ${props.mcpServers.map((server) =>
-              renderMcpServerRow(server, usage, usageLabel, governed),
+              renderMcpServerRow({ props, server, usage, usageLabel, governed }),
             )}
             ${attachedOnly.map((name) => renderUnregisteredMcpRow(name, usage, usageLabel))}
           </div>`}
@@ -1207,34 +1230,146 @@ function renderEnterpriseMcp(props: EnterpriseProps): TemplateResult {
   `;
 }
 
-/** One registered server: how it launches, and which steps may call it. */
-function renderMcpServerRow(
-  server: McpServerRow,
+/**
+ * The registry at a glance: how many servers exist, how many are live, and how
+ * many a governed work-map can actually reach.
+ *
+ * Only claimed once config has answered — an empty registry before then is not
+ * evidence of zero — and the reach tile only when attachment is enforced, since
+ * an ungoverned work-map reaches all of them.
+ */
+function renderMcpSummary(
+  props: EnterpriseProps,
   usage: Map<string, CatalogUsage[]>,
-  usageLabel: string | null,
   governed: boolean,
-): TemplateResult {
-  const attachments = usage.get(server.name);
-  return html`<div class="list-item list-item-stacked">
-    <div class="list-main">
-      <div class="list-title">
-        <code>${server.name}</code>
-        <span class="chip">${server.transport}</span>
-        ${server.enabled
-          ? nothing
-          : html`<span class="chip chip-warn">${t("enterprise.mcpTab.disabled")}</span>`}
-        <!-- Registered and unattached is the default state, not an error, but it
-          is the one an operator misreads as "available", so it is labelled — and
-          only when the work-map actually governs attachments, or the label would
-          claim a restriction that is not being enforced. -->
-        ${governed && !attachments?.length
-          ? html`<span class="chip">${t("enterprise.mcpTab.unattached")}</span>`
-          : nothing}
+): TemplateResult | typeof nothing {
+  if (!props.mcpServersKnown) {
+    return nothing;
+  }
+  const enabled = props.mcpServers.filter((server) => server.enabled).length;
+  // `invalid` is a schema-valid entry with no launch, not an HTTP server, so it
+  // is not remote — counting it would overstate what this gateway can dial.
+  const remote = props.mcpServers.filter((server) => server.transport === "http").length;
+  const tiles = [
+    { label: t("enterprise.mcpTab.statServers"), value: props.mcpServers.length },
+    { label: t("enterprise.mcpTab.statEnabled"), value: enabled },
+    { label: t("enterprise.mcpTab.statRemote"), value: remote },
+    ...(governed
+      ? [
+          {
+            label: t("enterprise.mcpTab.statAttached"),
+            // Attached AND runnable. A disabled or launchless server is dropped
+            // before materialization on both the embedded and Codex paths, so
+            // counting it as reachable would promise a step something it cannot
+            // call.
+            value: props.mcpServers.filter(
+              (server) =>
+                server.enabled &&
+                server.transport !== "invalid" &&
+                (usage.get(server.name)?.length ?? 0) > 0,
+            ).length,
+          },
+        ]
+      : []),
+  ];
+  return html`<div class="form-grid" style="margin-top: 16px;">
+    ${tiles.map(
+      (tile) => html`<div class="stat">
+        <div class="stat-label">${tile.label}</div>
+        <div class="stat-value">${String(tile.value)}</div>
+      </div>`,
+    )}
+  </div>`;
+}
+
+/** One registered server: how it launches, which steps may call it, and its controls. */
+function renderMcpServerRow(params: {
+  props: EnterpriseProps;
+  server: McpServerRow;
+  usage: Map<string, CatalogUsage[]>;
+  usageLabel: string | null;
+  governed: boolean;
+}): TemplateResult {
+  const { props, server, usageLabel, governed } = params;
+  const attachments = params.usage.get(server.name);
+  const editing = props.mcpDraft?.editing === server.name;
+  const blocked = props.mcpRegisterBlockedReason;
+  return html`<div class="list-item list-item-stacked ${editing ? "list-item-selected" : ""}">
+    <div class="row" style="justify-content: space-between; gap: 12px; align-items: flex-start;">
+      <div class="list-main">
+        <div class="list-title">
+          <code>${server.name}</code>
+          <span class="chip">${server.transport}</span>
+          ${server.auth ? html`<span class="chip">${server.auth}</span>` : nothing}
+          ${server.enabled
+            ? nothing
+            : html`<span class="chip chip-warn">${t("enterprise.mcpTab.disabled")}</span>`}
+          <!-- Registered and unattached is the default state, not an error, but it
+            is the one an operator misreads as "available", so it is labelled — and
+            only when the work-map actually governs attachments, or the label would
+            claim a restriction that is not being enforced. -->
+          ${governed && !attachments?.length
+            ? html`<span class="chip">${t("enterprise.mcpTab.unattached")}</span>`
+            : nothing}
+        </div>
+        <div class="list-sub">${server.launch}</div>
+        ${renderCatalogUsage(attachments, usageLabel)}
       </div>
-      <div class="list-sub">${server.launch}</div>
-      ${renderCatalogUsage(attachments, usageLabel)}
+      ${props.canEdit
+        ? html`<div class="row" style="gap: 8px;">
+            <button
+              class="btn btn--sm"
+              ?disabled=${blocked !== null}
+              title=${blocked ?? ""}
+              @click=${() => props.onToggleMcpServer(server.name, !server.enabled)}
+            >
+              ${server.enabled ? t("enterprise.mcpTab.disable") : t("enterprise.mcpTab.enable")}
+            </button>
+            <button
+              class="btn btn--sm"
+              ?disabled=${blocked !== null}
+              title=${blocked ?? ""}
+              @click=${() => props.onBeginMcpEdit(server.name)}
+            >
+              ${t("enterprise.mcpTab.edit")}
+            </button>
+            <button
+              class="btn btn--sm danger"
+              ?disabled=${blocked !== null}
+              title=${blocked ?? ""}
+              @click=${() => props.onRequestRemoveMcpServer(server.name)}
+            >
+              ${t("enterprise.mcpTab.remove")}
+            </button>
+          </div>`
+        : nothing}
     </div>
   </div>`;
+}
+
+/** Removing a registered server is destructive and takes its attachments with it. */
+function renderMcpRemoveConfirm(props: EnterpriseProps): TemplateResult | typeof nothing {
+  const name = props.mcpRemoveConfirm;
+  if (!name) {
+    return nothing;
+  }
+  const title = t("enterprise.mcpTab.removeTitle", { name });
+  return html`<openclaw-modal-dialog
+    label=${title}
+    description=${t("enterprise.mcpTab.removeBody")}
+    @modal-cancel=${props.onCancelRemoveMcpServer}
+  >
+    <div class="card">
+      <div class="card-title">${title}</div>
+      <div class="card-sub">${t("enterprise.mcpTab.removeBody")}</div>
+      <div class="row" style="justify-content: flex-end; gap: 8px; margin-top: 12px;">
+        <button class="btn" @click=${props.onCancelRemoveMcpServer}>${t("common.cancel")}</button>
+        <button class="btn danger" @click=${props.onConfirmRemoveMcpServer}>
+          ${t("enterprise.mcpTab.remove")}
+        </button>
+      </div>
+    </div>
+  </openclaw-modal-dialog>`;
 }
 
 /**
@@ -1292,88 +1427,149 @@ const MCP_DRAFT_PLACEHOLDER = {
   command: "npx",
   args: "-y @modelcontextprotocol/server-github",
   url: "https://mcp.example.com/sse",
+  headerName: "Authorization",
+  headerValue: "Bearer …",
+  // The envelope vendors publish, so the field the operator pastes into shows
+  // the shape it accepts rather than describing it in prose.
+  json: `{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_TOKEN": "\${GITHUB_TOKEN}" }\n    }\n  }\n}`,
 } as const;
 
 /** i18n message for a rejected MCP registration. */
-function mcpDraftErrorMessage(error: NonNullable<EnterpriseMcpDraft["error"]>): string {
+function mcpDraftErrorMessage(draft: EnterpriseMcpDraft): string {
+  const error = draft.error;
+  if (error === null) {
+    return "";
+  }
+  // The detail is the only thing that points at a line: a multi-server snippet
+  // names which server was refused, and a parse failure carries the parser's
+  // own message. Both are values, not translatable text, so they are passed in.
+  const detail = draft.errorDetail ?? "";
   const messages: Record<NonNullable<EnterpriseMcpDraft["error"]>, string> = {
     "name-empty": t("enterprise.mcpDraft.nameEmpty"),
     "url-invalid": t("enterprise.mcpDraft.urlInvalid"),
-    "name-taken": t("enterprise.mcpDraft.nameTaken"),
-    "name-unsupported": t("enterprise.mcpDraft.nameUnsupported"),
+    "name-taken": detail
+      ? t("enterprise.mcpDraft.nameTakenNamed", { name: detail })
+      : t("enterprise.mcpDraft.nameTaken"),
+    "name-unsupported": detail
+      ? t("enterprise.mcpDraft.nameUnsupportedNamed", { name: detail })
+      : t("enterprise.mcpDraft.nameUnsupported"),
     "launch-missing": t("enterprise.mcpDraft.launchMissing"),
+    "header-name-empty": t("enterprise.mcpDraft.headerNameEmpty"),
+    "header-name-duplicate": t("enterprise.mcpDraft.headerNameDuplicate"),
+    "header-name-invalid": t("enterprise.mcpDraft.headerNameInvalid"),
+    "transport-unset": t("enterprise.mcpDraft.transportUnset"),
+    "entry-changed": t("enterprise.mcpDraft.entryChanged"),
+    "json-name-mismatch": t("enterprise.mcpDraft.jsonNameMismatch", { name: detail }),
+    "json-empty": t("enterprise.mcpDraft.jsonEmpty"),
+    "json-invalid": t("enterprise.mcpDraft.jsonInvalid", { detail }),
+    "json-not-servers": t("enterprise.mcpDraft.jsonNotServers"),
+    "json-no-servers": t("enterprise.mcpDraft.jsonNoServers"),
+    "json-name-unsupported": t("enterprise.mcpDraft.nameUnsupportedNamed", { name: detail }),
+    "json-entry-not-object": t("enterprise.mcpDraft.jsonEntryNotObject", { name: detail }),
+    "json-entry-launchless": t("enterprise.mcpDraft.jsonEntryLaunchless", { name: detail }),
+    "json-entry-url-invalid": t("enterprise.mcpDraft.jsonEntryUrlInvalid", { name: detail }),
+    "json-entry-transport-invalid": t("enterprise.mcpDraft.jsonEntryTransportInvalid", {
+      name: detail,
+    }),
+    "json-entry-transport-conflict": t("enterprise.mcpDraft.jsonEntryTransportConflict", {
+      name: detail,
+    }),
+    "json-entry-name-blank": t("enterprise.mcpDraft.jsonEntryNameBlank"),
+    "json-entry-name-duplicate": t("enterprise.mcpDraft.jsonEntryNameDuplicate", { name: detail }),
+    "json-entry-alias-unknown": t("enterprise.mcpDraft.jsonEntryAliasUnknown", { name: detail }),
+    "json-entry-field-invalid": t("enterprise.mcpDraft.jsonEntryFieldInvalid", { name: detail }),
+    "json-entry-header-invalid": t("enterprise.mcpDraft.jsonEntryHeaderInvalid", { name: detail }),
+    "json-entry-redacted": t("enterprise.mcpDraft.jsonEntryRedacted", { name: detail }),
   };
   return messages[error];
 }
 
 /**
- * The registration form: a name plus one transport. Deliberately the two shapes
- * `openclaw mcp add` takes and nothing more — headers, env, TLS, and OAuth stay
- * with the config editor rather than growing a second, partial config surface here.
+ * What a pasted snippet would register, before it is registered.
+ *
+ * The paste is the one registration path where the operator cannot see what
+ * they are agreeing to — the envelope hides how many servers are in it, and the
+ * transport of a URL-only entry is decided by the import rather than read from
+ * the text. Both belong on screen before Register, not in the list afterwards.
+ */
+function renderMcpImportPreview(json: string): TemplateResult | typeof nothing {
+  const parsed = parseMcpServerImport(json);
+  if (parsed.kind !== "ok") {
+    // Errors are the submit path's to report: showing a parse failure under a
+    // half-typed paste would flag every keystroke as a mistake.
+    return nothing;
+  }
+  return html`<div class="list" style="margin-top: 8px;">
+    ${parsed.entries.map(
+      (entry) => html`<div class="list-item">
+        <div class="list-main">
+          <div class="list-title"><code>${entry.name}</code></div>
+          <div class="list-sub">${entry.launch}</div>
+          ${entry.assumedTransport
+            ? html`<div class="list-sub">
+                ${t("enterprise.mcpDraft.jsonAssumedTransport", {
+                  transport: entry.assumedTransport,
+                })}
+              </div>`
+            : nothing}
+          <!-- Read from the ENTRY, not from the assumed-transport field: a
+            snippet that declares sse outright assumes nothing, and would
+            otherwise be imported and attached with no warning at all. Same for a
+            pasted oauth auth mode, which the typed half explains and this did not. -->
+          ${entry.server.transport === "sse"
+            ? html`<div class="list-sub">${t("enterprise.mcpDraft.sseCodexWarning")}</div>`
+            : nothing}
+          ${entry.server.auth === "oauth"
+            ? html`<div class="list-sub">${t("enterprise.mcpDraft.oauthHint")}</div>`
+            : nothing}
+        </div>
+      </div>`,
+    )}
+  </div>`;
+}
+
+/**
+ * The registration form, in two halves.
+ *
+ * Typing a name plus one transport covers a server the operator already knows;
+ * the fields are deliberately the two shapes `openclaw mcp add` takes and
+ * nothing more. Everything richer — env, headers, TLS, OAuth, several servers at
+ * once — arrives as the JSON a vendor publishes, so it is pasted rather than
+ * retyped into a second, partial config surface.
  */
 function renderMcpDraft(props: EnterpriseProps, draft: EnterpriseMcpDraft): TemplateResult {
-  const stdio = draft.transport === "stdio";
   return html`
     <section class="card" style="margin-top: 12px;">
-      <div class="card-title">${t("enterprise.mcpDraft.title")}</div>
-      <div class="muted" style="margin-top: 4px;">${t("enterprise.mcpDraft.subtitle")}</div>
-      <label class="field" style="margin-top: 12px;">
-        <span>${t("enterprise.mcpDraft.name")}</span>
-        <input
-          type="text"
-          .value=${draft.name}
-          placeholder=${MCP_DRAFT_PLACEHOLDER.name}
-          @input=${(event: Event) =>
-            props.onEditMcpDraft({ name: (event.target as HTMLInputElement).value })}
-        />
-      </label>
-      <div class="chip-row" style="margin-top: 8px;">
-        ${(["stdio", "streamable-http", "sse"] as const).map(
-          (transport) => html`<button
-            type="button"
-            class="chip ${draft.transport === transport ? "list-item-selected" : ""}"
-            @click=${() => props.onEditMcpDraft({ transport })}
-          >
-            ${transport}
-          </button>`,
-        )}
+      <div class="card-title">
+        ${draft.editing
+          ? t("enterprise.mcpDraft.editTitle", { name: draft.editing })
+          : t("enterprise.mcpDraft.title")}
       </div>
-      ${stdio
-        ? html`
-            <label class="field" style="margin-top: 8px;">
-              <span>${t("enterprise.mcpDraft.command")}</span>
-              <input
-                type="text"
-                .value=${draft.command}
-                placeholder=${MCP_DRAFT_PLACEHOLDER.command}
-                @input=${(event: Event) =>
-                  props.onEditMcpDraft({ command: (event.target as HTMLInputElement).value })}
-              />
-            </label>
-            <label class="field" style="margin-top: 8px;">
-              <span>${t("enterprise.mcpDraft.args")}</span>
-              <input
-                type="text"
-                .value=${draft.args}
-                placeholder=${MCP_DRAFT_PLACEHOLDER.args}
-                @input=${(event: Event) =>
-                  props.onEditMcpDraft({ args: (event.target as HTMLInputElement).value })}
-              />
-            </label>
-          `
-        : html`<label class="field" style="margin-top: 8px;">
-            <span>${t("enterprise.mcpDraft.url")}</span>
-            <input
-              type="text"
-              .value=${draft.url}
-              placeholder=${MCP_DRAFT_PLACEHOLDER.url}
-              @input=${(event: Event) =>
-                props.onEditMcpDraft({ url: (event.target as HTMLInputElement).value })}
-            />
-          </label>`}
+      <div class="muted" style="margin-top: 4px;">${t("enterprise.mcpDraft.subtitle")}</div>
+      <!-- The paste half is offered for a NEW registration only. A snippet is
+        keyed by server name, so pasting one while editing either repeats the
+        entry or quietly registers a second alongside it. -->
+      ${draft.editing === null
+        ? html`<div class="chip-row" style="margin-top: 12px;">
+            ${(["fields", "json"] as const).map(
+              (mode) => html`<button
+                type="button"
+                class="chip ${draft.mode === mode ? "list-item-selected" : ""}"
+                @click=${() => props.onEditMcpDraft({ mode })}
+              >
+                ${mode === "fields"
+                  ? t("enterprise.mcpDraft.modeFields")
+                  : t("enterprise.mcpDraft.modeJson")}
+              </button>`,
+            )}
+          </div>`
+        : nothing}
+      ${draft.mode === "json"
+        ? renderMcpDraftJson(props, draft)
+        : renderMcpDraftFields(props, draft)}
       ${draft.error
         ? html`<div class="callout danger" style="margin-top: 8px;">
-            ${mcpDraftErrorMessage(draft.error)}
+            ${mcpDraftErrorMessage(draft)}
           </div>`
         : nothing}
       <div class="row" style="gap: 8px; margin-top: 12px;">
@@ -1387,13 +1583,191 @@ function renderMcpDraft(props: EnterpriseProps, draft: EnterpriseMcpDraft): Temp
           title=${props.mcpRegisterBlockedReason ?? ""}
           @click=${props.onSubmitMcpDraft}
         >
-          ${t("enterprise.mcpDraft.submit")}
+          ${draft.editing ? t("enterprise.mcpDraft.saveEntry") : t("enterprise.mcpDraft.submit")}
         </button>
         <button type="button" class="btn" @click=${props.onCancelMcpDraft}>
           ${t("common.cancel")}
         </button>
       </div>
     </section>
+  `;
+}
+
+/** The paste half: one snippet, and what it would register. */
+function renderMcpDraftJson(props: EnterpriseProps, draft: EnterpriseMcpDraft): TemplateResult {
+  return html`
+    <div class="muted" style="margin-top: 8px;">${t("enterprise.mcpDraft.jsonHint")}</div>
+    <label class="field" style="margin-top: 8px;">
+      <span>${t("enterprise.mcpDraft.json")}</span>
+      <textarea
+        rows="10"
+        spellcheck="false"
+        .value=${draft.json}
+        placeholder=${MCP_DRAFT_PLACEHOLDER.json}
+        @input=${(event: Event) =>
+          props.onEditMcpDraft({ json: (event.target as HTMLTextAreaElement).value })}
+      ></textarea>
+    </label>
+    ${renderMcpImportPreview(draft.json)}
+  `;
+}
+
+/** The typed half: a name plus one transport. */
+function renderMcpDraftFields(props: EnterpriseProps, draft: EnterpriseMcpDraft): TemplateResult {
+  const stdio = draft.transport === "stdio";
+  return html`
+    <label class="field" style="margin-top: 12px;">
+      <span>${t("enterprise.mcpDraft.name")}</span>
+      <input
+        type="text"
+        ?readonly=${draft.editing !== null}
+        .value=${draft.name}
+        placeholder=${MCP_DRAFT_PLACEHOLDER.name}
+        @input=${(event: Event) =>
+          props.onEditMcpDraft({ name: (event.target as HTMLInputElement).value })}
+      />
+      ${draft.editing !== null
+        ? html`<span class="field-help">${t("enterprise.mcpDraft.nameLocked")}</span>`
+        : nothing}
+    </label>
+    <div class="chip-row" style="margin-top: 8px;">
+      ${(["stdio", "streamable-http", "sse"] as const).map(
+        (transport) => html`<button
+          type="button"
+          class="chip ${draft.transport === transport ? "list-item-selected" : ""}"
+          @click=${() => props.onEditMcpDraft({ transport })}
+        >
+          ${transport}
+        </button>`,
+      )}
+    </div>
+    <!-- The seeded entry named no transport. Neither value can be assumed on its
+      behalf: OpenClaw reads an unset one as SSE and Codex reads a bare URL as
+      streamable HTTP, so saving either would repoint the server for one of them.
+      The operator resolves it, and the submit refuses until they do. -->
+    ${draft.transport === "unset"
+      ? html`<div class="callout" style="margin-top: 8px;">
+          ${t("enterprise.mcpDraft.transportUnsetHint")}
+        </div>`
+      : nothing}
+    <!-- SSE works on the embedded runtime but not everywhere. The Codex
+      projection copies the URL without the transport, and Codex dials every
+      URL-only server as streamable HTTP, so an SSE-only endpoint attached to a
+      Codex-backed step fails. Warned rather than blocked: SSE is a legitimate
+      choice for a deployment that does not route through Codex. -->
+    ${draft.transport === "sse"
+      ? html`<div class="callout" style="margin-top: 8px;">
+          ${t("enterprise.mcpDraft.sseCodexWarning")}
+        </div>`
+      : nothing}
+    ${stdio
+      ? html`
+          <label class="field" style="margin-top: 8px;">
+            <span>${t("enterprise.mcpDraft.command")}</span>
+            <input
+              type="text"
+              .value=${draft.command}
+              placeholder=${MCP_DRAFT_PLACEHOLDER.command}
+              @input=${(event: Event) =>
+                props.onEditMcpDraft({ command: (event.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="field" style="margin-top: 8px;">
+            <span>${t("enterprise.mcpDraft.args")}</span>
+            <input
+              type="text"
+              .value=${draft.args}
+              placeholder=${MCP_DRAFT_PLACEHOLDER.args}
+              @input=${(event: Event) =>
+                props.onEditMcpDraft({ args: (event.target as HTMLInputElement).value })}
+            />
+          </label>
+        `
+      : html`<label class="field" style="margin-top: 8px;">
+            <span>${t("enterprise.mcpDraft.url")}</span>
+            <input
+              type="text"
+              .value=${draft.url}
+              placeholder=${draft.urlStored
+                ? t("enterprise.mcpDraft.headerUnchanged")
+                : MCP_DRAFT_PLACEHOLDER.url}
+              @input=${(event: Event) =>
+                props.onEditMcpDraft({ url: (event.target as HTMLInputElement).value })}
+            />
+            ${draft.urlStored
+              ? html`<span class="field-help">${t("enterprise.mcpDraft.urlStored")}</span>`
+              : nothing}
+          </label>
+          ${renderMcpDraftAuth(props, draft)}`}
+  `;
+}
+
+/**
+ * How a remote server authenticates.
+ *
+ * Only for the HTTP transports: a stdio server runs here and takes its
+ * credentials from `env`, which the paste half carries. A server someone else
+ * hosts needs either a header (an API key, a bearer token) or the runtime's
+ * OAuth flow, and without one of those the typed half could only ever reach
+ * servers that need no auth at all.
+ */
+function renderMcpDraftAuth(props: EnterpriseProps, draft: EnterpriseMcpDraft): TemplateResult {
+  return html`
+    <label class="field checkbox" style="margin-top: 10px;">
+      <input
+        type="checkbox"
+        .checked=${draft.oauth}
+        @change=${(event: Event) =>
+          props.onEditMcpDraft({ oauth: (event.target as HTMLInputElement).checked })}
+      />
+      <span>${t("enterprise.mcpDraft.oauth")}</span>
+    </label>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.mcpDraft.oauthHint")}</div>
+    <div class="row" style="justify-content: space-between; margin-top: 12px;">
+      <span class="label">${t("enterprise.mcpDraft.headers")}</span>
+      <button type="button" class="btn btn--sm" @click=${props.onAddMcpHeader}>
+        ${t("enterprise.mcpDraft.headerAdd")}
+      </button>
+    </div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.mcpDraft.headersHint")}</div>
+    <!-- Name and value carry aria-labels rather than visible ones: repeating
+      "Header"/"Value" down every row is noise, and the placeholders already say
+      what each column is. -->
+    ${draft.headers.map(
+      (row, index) => html`<div class="mcp-header-row">
+        <!-- A stored header's name is fixed: the gateway restores the redacted
+          value by key, so a rename would write a reserved sentinel at a path
+          holding nothing and be refused at save. Remove the row to rename it. -->
+        <input
+          type="text"
+          aria-label=${t("enterprise.mcpDraft.headerName")}
+          ?readonly=${row.stored}
+          title=${row.stored ? t("enterprise.mcpDraft.headerNameLocked") : ""}
+          .value=${row.name}
+          placeholder=${MCP_DRAFT_PLACEHOLDER.headerName}
+          @input=${(event: Event) =>
+            props.onEditMcpHeader(index, { name: (event.target as HTMLInputElement).value })}
+        />
+        <input
+          type="password"
+          autocomplete="off"
+          aria-label=${t("enterprise.mcpDraft.headerValue")}
+          .value=${row.value}
+          placeholder=${row.stored
+            ? t("enterprise.mcpDraft.headerUnchanged")
+            : MCP_DRAFT_PLACEHOLDER.headerValue}
+          @input=${(event: Event) =>
+            props.onEditMcpHeader(index, { value: (event.target as HTMLInputElement).value })}
+        />
+        <button
+          type="button"
+          class="btn btn--sm"
+          @click=${() => props.onEditMcpHeader(index, null)}
+        >
+          ${t("enterprise.mcpDraft.headerRemove")}
+        </button>
+      </div>`,
+    )}
   `;
 }
 
@@ -2504,9 +2878,10 @@ function renderOntologyChip(
  * inspector is narrow, and a form per row would leave half-typed state behind
  * whenever the operator moved on.
  *
- * Actions and derived values stay import-only for now: they carry an expression
- * language of their own, which needs its own editor rather than a text field
- * that produces definitions the import rejects.
+ * Actions and derived values are edited here too, and they carry checks the
+ * importer does not: both resolve against the RUNNING node's path, so a form
+ * that only satisfied the tree-wide schema would save a definition that fails
+ * mid-run (see addNodeOntologyActionEffect / addNodeOntologyFunction).
  */
 function renderNodeOntologyEditor(
   node: EnterpriseTreeNode,
@@ -2514,9 +2889,17 @@ function renderNodeOntologyEditor(
 ): TemplateResult | typeof nothing {
   const entities = node.ontology.entities ?? [];
   const relationships = node.ontology.relationships ?? [];
-  // A node may declare only LINKS, inheriting every endpoint from an ancestor —
-  // valid and common, so an empty local entity list is not an empty section.
-  if (!props.canEdit && entities.length === 0 && relationships.length === 0) {
+  const actions = node.ontology.actions ?? [];
+  const functions = node.ontology.functions ?? [];
+  // A node may declare only LINKS, or only an action over types an ancestor gave
+  // it — valid and common, so an empty local entity list is not an empty section.
+  if (
+    !props.canEdit &&
+    entities.length === 0 &&
+    relationships.length === 0 &&
+    actions.length === 0 &&
+    functions.length === 0
+  ) {
     return nothing;
   }
   // Edit access can be lost while a form is open (a reconnect with only
@@ -2533,9 +2916,15 @@ function renderNodeOntologyEditor(
   const scopeEntityIds = props.treeDetail
     ? declaredNodePathEntityIds(props.treeDetail, node.id)
     : entities.map((entity) => entity.id);
+  // The AIP verbs reach further than a link does: they execute at whatever node
+  // is active below here, so a type a DESCENDANT declares is addressable and the
+  // splicers accept it. Offering only the path would hide exactly those.
+  const verbEntityIds = props.treeDetail
+    ? declaredExecutableEntityIds(props.treeDetail, node.id)
+    : scopeEntityIds;
   return html`
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.ontologyEditor.title")}</div>
-    <div class="muted" style="margin-top: 4px;">${t("enterprise.ontologyEditor.subtitle")}</div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.ontologyEditor.scopeNote")}</div>
     ${entities.map((entity) => {
       const properties = entity.properties ?? [];
       const propertyDraft =
@@ -2643,6 +3032,8 @@ function renderNodeOntologyEditor(
           : nothing}
       </div>
     </section>
+    ${renderNodeOntologyActions(node, actions, verbEntityIds, draft, props)}
+    ${renderNodeOntologyFunctions(node, functions, verbEntityIds, draft, props)}
     ${props.canEdit
       ? html`<div class="row" style="margin-top: 8px;">
           <button
@@ -2660,26 +3051,377 @@ function renderNodeOntologyEditor(
   `;
 }
 
+/**
+ * The step's ACTIONS: what `invoke_action` may run here.
+ *
+ * One group per action, mirroring an object type and its fields, because an
+ * action is built the same way — declared, then given the effects that authorize
+ * it and the parameters it accepts. An action with no write effect is called out
+ * rather than left looking complete: the write path refuses it
+ * (src/enterprise/ontology-actions.ts), so it is a half-finished declaration, not
+ * a read-only one an operator chose.
+ */
+function renderNodeOntologyActions(
+  node: EnterpriseTreeNode,
+  actions: NonNullable<EnterpriseTreeNode["ontology"]["actions"]>,
+  scopeEntityIds: readonly string[],
+  draft: EnterpriseOntologyDraft | null,
+  props: EnterpriseProps,
+): TemplateResult | typeof nothing {
+  if (!props.canEdit && actions.length === 0) {
+    return nothing;
+  }
+  // Identity field per object type this step's actions can REACH: its own path,
+  // plus every descendant, since an action is in scope at each of them and
+  // resolves at whichever node is active. A type declared only on a sibling
+  // branch is absent here on purpose — no scope under this step ever contains
+  // it, so an effect naming one can never execute. Built once per node.
+  const entityKeys = executableEntityKeys(props.treeDetail, node.id);
+  return html`
+    <div class="card-title" style="margin-top: 16px;">
+      ${t("enterprise.ontologyEditor.actions")}
+    </div>
+    <div class="muted" style="margin-top: 4px;">${t("enterprise.ontologyEditor.actionsNote")}</div>
+    ${actions.map((action) => {
+      const effects = action.effects ?? [];
+      const parameters = action.parameters ?? [];
+      const callable = actionIsCallable(effects, parameters, entityKeys);
+      const actionDraft =
+        (draft?.kind === "action-effect" || draft?.kind === "action-parameter") &&
+        draft.actionId === action.id
+          ? draft
+          : null;
+      return html`
+        <section class="ontology-group" style="margin-top: 8px;">
+          <header class="ontology-group__head">
+            <span class="ontology-group__title"
+              >${action.title ? `${action.title} — ${action.id}` : action.id}</span
+            >
+            ${props.canEdit
+              ? html`${scopeEntityIds.length >= 1
+                    ? html`<button
+                        type="button"
+                        class="btn"
+                        ?disabled=${props.treeSaving}
+                        @click=${() =>
+                          props.onOntologyDraft({
+                            kind: "action-effect",
+                            nodeId: node.id,
+                            actionId: action.id,
+                            entity: scopeEntityIds[0] ?? "",
+                            effectKind: "update",
+                          })}
+                      >
+                        ${t("enterprise.ontologyEditor.addEffect")}
+                      </button>`
+                    : // With no object type in scope the form could only collect an
+                      // empty select and save `endpoint-missing`, whose message is
+                      // about links. The function editor already guards this way.
+                      nothing}
+                  <button
+                    type="button"
+                    class="btn"
+                    ?disabled=${props.treeSaving}
+                    @click=${() =>
+                      props.onOntologyDraft({
+                        kind: "action-parameter",
+                        nodeId: node.id,
+                        actionId: action.id,
+                        id: "",
+                        type: "string",
+                        required: false,
+                      })}
+                  >
+                    ${t("enterprise.ontologyEditor.addParameter")}
+                  </button>
+                  ${renderOntologyChip(
+                    t("enterprise.ontologyEditor.removeEntity"),
+                    t("enterprise.ontologyEditor.removeActionTitle", { action: action.id }),
+                    props,
+                    () => props.onRemoveOntologyAction(node.id, action.id),
+                  )}`
+              : nothing}
+          </header>
+          <div class="ontology-group__body">
+            ${effects.length === 0
+              ? html`<div class="muted">${t("enterprise.ontologyEditor.noEffects")}</div>`
+              : html`<div class="chip-row">
+                  ${effects.map((effect) =>
+                    renderOntologyChip(
+                      `${effect.kind} ${effect.entity}`,
+                      t("enterprise.ontologyEditor.removeEffectTitle", {
+                        kind: effect.kind,
+                        entity: effect.entity,
+                      }),
+                      props,
+                      () =>
+                        props.onRemoveOntologyActionEffect(node.id, {
+                          actionId: action.id,
+                          entity: effect.entity,
+                          kind: effect.kind,
+                        }),
+                    ),
+                  )}
+                </div>`}
+            ${callable
+              ? nothing
+              : html`<div class="callout">
+                  ${t("enterprise.ontologyEditor.incompleteActionDetail")}
+                </div>`}
+            ${parameters.length === 0
+              ? html`<div class="muted">${t("enterprise.ontologyEditor.noParameters")}</div>`
+              : html`<div class="chip-row">
+                  ${parameters.map((parameter) =>
+                    renderOntologyChip(
+                      `${parameter.id}: ${parameter.type}${
+                        parameter.required ? ` ${t("enterprise.ontologyEditor.requiredMark")}` : ""
+                      }`,
+                      t("enterprise.ontologyEditor.removeParameterTitle", {
+                        parameter: parameter.id,
+                      }),
+                      props,
+                      () =>
+                        props.onRemoveOntologyActionParameter(node.id, {
+                          actionId: action.id,
+                          parameterId: parameter.id,
+                        }),
+                    ),
+                  )}
+                </div>`}
+            ${actionDraft ? renderOntologyDraftForm(actionDraft, scopeEntityIds, props) : nothing}
+          </div>
+        </section>
+      `;
+    })}
+    ${props.canEdit
+      ? html`<div class="row" style="margin-top: 8px;">
+          <button
+            type="button"
+            class="btn"
+            ?disabled=${props.treeSaving}
+            @click=${() =>
+              props.onOntologyDraft({ kind: "action", nodeId: node.id, id: "", title: "" })}
+          >
+            ${t("enterprise.ontologyEditor.addAction")}
+          </button>
+        </div>`
+      : nothing}
+    ${draft?.kind === "action" ? renderOntologyDraftForm(draft, scopeEntityIds, props) : nothing}
+  `;
+}
+
+/**
+ * Identity field per object type an action declared at `nodeId` can reach.
+ *
+ * The union over this node's own scope and every descendant's, because the
+ * runtime resolves at whichever node is active — so a type a descendant declares
+ * is reachable, while a sibling branch's is not, however tree-wide the import
+ * validated it. `undefined` marks a reachable type that declares no primaryKey,
+ * which is a different failure from being unreachable.
+ */
+function executableEntityKeys(
+  tree: EnterpriseTreeDetail | null,
+  nodeId: string,
+): Map<string, { primaryKey?: string; required: string[] }> {
+  const keys = new Map<string, { primaryKey?: string; required: string[] }>();
+  if (!tree) {
+    return keys;
+  }
+  const subtree = new Set([nodeId]);
+  // Parents precede children in the flat node list, so one forward pass closes
+  // the descendant set without walking the tree per node.
+  for (const candidate of tree.nodes) {
+    if (candidate.parentId && subtree.has(candidate.parentId)) {
+      subtree.add(candidate.id);
+    }
+  }
+  const parents = new Set(tree.nodes.map((candidate) => candidate.parentId));
+  const leaves = [...subtree].filter((id) => !parents.has(id));
+  // Required properties are TREE-wide, matching `collectTreeRequiredProperties`
+  // (src/enterprise/ontology-runtime.ts): the runtime unions them across the
+  // whole definition, so a property optional on this branch and required on a
+  // sibling still has to be supplied by a create here.
+  const treeRequired = new Map<string, Set<string>>();
+  for (const candidate of tree.nodes) {
+    for (const entity of candidate.ontology.entities ?? []) {
+      const required = treeRequired.get(entity.id) ?? new Set<string>();
+      for (const property of entity.properties ?? []) {
+        if (property.required) {
+          required.add(property.id);
+        }
+      }
+      treeRequired.set(entity.id, required);
+    }
+  }
+  const perLeaf = (leaves.length > 0 ? leaves : [nodeId]).map((id) => {
+    const shapes = new Map<string, { primaryKey?: string; required: string[] }>();
+    for (const entity of collectNodeOntologyGraph(tree, id).entities) {
+      shapes.set(entity.id, {
+        primaryKey: entity.properties?.find((property) => property.primaryKey)?.id,
+        // `planEffect` refuses a create that leaves any required property unset,
+        // and only a parameter can supply one — so an action missing that
+        // parameter fails every call exactly as a missing key does.
+        required: [...(treeRequired.get(entity.id) ?? [])],
+      });
+    }
+    return shapes;
+  });
+  const [first, ...rest] = perLeaf;
+  if (!first) {
+    return keys;
+  }
+  // INTERSECTED, not unioned: the action is inherited into every leaf and
+  // planEffect refuses it at whichever one cannot address the type, so a shape
+  // only one branch declares must not clear the warning. `required` is unioned
+  // within the kept types — a property required on any leaf still has to be
+  // supplied there.
+  for (const [entityId, shape] of first) {
+    if (!rest.every((scope) => scope.has(entityId))) {
+      continue;
+    }
+    const others = rest.map((scope) => scope.get(entityId));
+    keys.set(entityId, {
+      // Every leaf must be able to address it; one without a key breaks there.
+      primaryKey:
+        shape.primaryKey && others.every((other) => other?.primaryKey === shape.primaryKey)
+          ? shape.primaryKey
+          : undefined,
+      required: [
+        ...new Set([...shape.required, ...others.flatMap((other) => other?.required ?? [])]),
+      ],
+    });
+  }
+  return keys;
+}
+
+/**
+ * Can `invoke_action` actually run this action?
+ *
+ * The same three conditions `collectWorkflowTreeWarnings` reports
+ * (src/enterprise/tree-warnings.ts): it needs a write effect, every written type
+ * needs an identity field, and the action needs a parameter naming that field —
+ * `validateParameters` refuses an undeclared key while `planEffect` requires it,
+ * so an action missing any of them saves and then fails on every call. Flagging
+ * only the missing write effect would clear the warning halfway through building
+ * one, which is exactly when it is still uncallable.
+ */
+function actionIsCallable(
+  effects: readonly { entity: string; kind: string }[],
+  parameters: readonly { id: string }[],
+  entityKeys: ReadonlyMap<string, { primaryKey?: string; required: string[] }>,
+): boolean {
+  const writes = effects.filter((effect) => effect.kind !== "read");
+  if (writes.length === 0) {
+    return false;
+  }
+  const declared = new Set(parameters.map((parameter) => parameter.id));
+  return writes.every((effect) => {
+    // Absent means UNREACHABLE — declared only on a sibling branch — so no scope
+    // this action executes in can address it and planEffect refuses every call.
+    // That is a broken action, not one to excuse.
+    const shape = entityKeys.get(effect.entity);
+    if (!shape?.primaryKey || !declared.has(shape.primaryKey)) {
+      return false;
+    }
+    // Only a CREATE has to supply the rest: an update writes the properties it
+    // names onto an object that already satisfies its own type.
+    return effect.kind !== "create" || shape.required.every((id) => declared.has(id));
+  });
+}
+
+/**
+ * The step's derived values: what `compute_function` may evaluate here.
+ *
+ * One row each rather than a group per function — a function has no sub-parts to
+ * add — with the expression on its own line, because expressions are long and a
+ * chip that carried one would push the inspector sideways.
+ *
+ * The Add button needs an object type in scope: every function is an expression
+ * OVER one, so offering the form with an empty select would only ever collect a
+ * definition the splicer refuses.
+ */
+function renderNodeOntologyFunctions(
+  node: EnterpriseTreeNode,
+  functions: NonNullable<EnterpriseTreeNode["ontology"]["functions"]>,
+  scopeEntityIds: readonly string[],
+  draft: EnterpriseOntologyDraft | null,
+  props: EnterpriseProps,
+): TemplateResult | typeof nothing {
+  if (!props.canEdit && functions.length === 0) {
+    return nothing;
+  }
+  return html`
+    <section class="ontology-group" style="margin-top: 8px;">
+      <header class="ontology-group__head">
+        <span class="ontology-group__title">${t("enterprise.ontologyEditor.functions")}</span>
+        ${props.canEdit && scopeEntityIds.length >= 1
+          ? html`<button
+              type="button"
+              class="btn"
+              ?disabled=${props.treeSaving}
+              @click=${() =>
+                props.onOntologyDraft({
+                  kind: "function",
+                  nodeId: node.id,
+                  id: "",
+                  title: "",
+                  entity: scopeEntityIds[0] ?? "",
+                  expression: "",
+                  returns: "number",
+                })}
+            >
+              ${t("enterprise.entryDraft.add")}
+            </button>`
+          : nothing}
+      </header>
+      <div class="ontology-group__body">
+        ${functions.length === 0
+          ? html`<div class="muted">${t("enterprise.ontologyEditor.noFunctions")}</div>`
+          : functions.map(
+              (fn) => html`
+                <div>
+                  <div class="chip-row">
+                    ${renderOntologyChip(
+                      `${fn.id}(${fn.entity}) → ${fn.returns}`,
+                      t("enterprise.ontologyEditor.removeFunctionTitle", { function: fn.id }),
+                      props,
+                      () => props.onRemoveOntologyFunction(node.id, fn.id),
+                    )}
+                  </div>
+                  <code class="muted">${fn.expression}</code>
+                </div>
+              `,
+            )}
+        ${draft?.kind === "function"
+          ? renderOntologyDraftForm(draft, scopeEntityIds, props)
+          : nothing}
+      </div>
+    </section>
+  `;
+}
+
 /** The open ontology form. One shape per kind, one submit path. */
 function renderOntologyDraftForm(
   draft: EnterpriseOntologyDraft,
   entityIds: readonly string[],
   props: EnterpriseProps,
 ): TemplateResult {
-  const idLabel = t(`enterprise.ontologyEditor.idLabel.${draft.kind}`);
   return html`
     <div class="node-structure" style="margin-top: 8px;">
-      <label class="field">
-        <span class="muted">${idLabel}</span>
-        <input
-          class="input"
-          .value=${draft.id}
-          ?disabled=${props.treeSaving}
-          @input=${(event: Event) =>
-            props.onEditOntologyDraft({ id: (event.target as HTMLInputElement).value })}
-        />
-      </label>
-      ${draft.kind === "entity"
+      ${draft.kind === "action-effect"
+        ? // An effect names an object type and a verb; it has no id of its own.
+          nothing
+        : html`<label class="field">
+            <span class="muted">${t(`enterprise.ontologyEditor.idLabel.${draft.kind}`)}</span>
+            <input
+              class="input"
+              .value=${draft.id}
+              ?disabled=${props.treeSaving}
+              @input=${(event: Event) =>
+                props.onEditOntologyDraft({ id: (event.target as HTMLInputElement).value })}
+            />
+          </label>`}
+      ${draft.kind === "entity" || draft.kind === "action" || draft.kind === "function"
         ? html`<label class="field">
             <span class="muted">${t("enterprise.ontologyEditor.titleLabel")}</span>
             <input
@@ -2691,37 +3433,95 @@ function renderOntologyDraftForm(
             />
           </label>`
         : nothing}
+      ${draft.kind === "property" || draft.kind === "action-parameter"
+        ? renderValueTypeSelect(
+            t("enterprise.ontologyEditor.typeLabel"),
+            draft.type,
+            props,
+            (type) => props.onEditOntologyDraft({ type }),
+          )
+        : nothing}
       ${draft.kind === "property"
         ? html`<label class="field">
-              <span class="muted">${t("enterprise.ontologyEditor.typeLabel")}</span>
+            <input
+              type="checkbox"
+              .checked=${draft.primaryKey}
+              ?disabled=${props.treeSaving}
+              @change=${(event: Event) =>
+                props.onEditOntologyDraft({
+                  primaryKey: (event.target as HTMLInputElement).checked,
+                })}
+            />
+            <span class="muted">${t("enterprise.ontologyEditor.primaryKeyLabel")}</span>
+          </label>`
+        : nothing}
+      ${draft.kind === "action-parameter"
+        ? html`<label class="field">
+            <input
+              type="checkbox"
+              .checked=${draft.required}
+              ?disabled=${props.treeSaving}
+              @change=${(event: Event) =>
+                props.onEditOntologyDraft({
+                  required: (event.target as HTMLInputElement).checked,
+                })}
+            />
+            <span class="muted">${t("enterprise.ontologyEditor.requiredLabel")}</span>
+          </label>`
+        : nothing}
+      ${draft.kind === "action-effect"
+        ? html`${renderEntitySelect(
+              t("enterprise.ontologyEditor.effectEntityLabel"),
+              draft.entity,
+              entityIds,
+              props,
+              (value) => props.onEditOntologyDraft({ entity: value }),
+            )}
+            <label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.effectKindLabel")}</span>
               <select
                 class="input"
-                .value=${draft.type}
+                .value=${draft.effectKind}
                 ?disabled=${props.treeSaving}
                 @change=${(event: Event) =>
                   props.onEditOntologyDraft({
-                    type: (event.target as HTMLSelectElement).value as OntologyValueTypeName,
+                    effectKind: (event.target as HTMLSelectElement).value as OntologyEffectKindName,
                   })}
               >
-                ${ONTOLOGY_VALUE_TYPES.map(
-                  (type) => html`<option value=${type} ?selected=${type === draft.type}>
-                    ${type}
+                ${ONTOLOGY_EFFECT_KINDS.map(
+                  (kind) => html`<option value=${kind} ?selected=${kind === draft.effectKind}>
+                    ${kind}
                   </option>`,
                 )}
               </select>
-            </label>
+            </label>`
+        : nothing}
+      ${draft.kind === "function"
+        ? html`${renderEntitySelect(
+              t("enterprise.ontologyEditor.functionEntityLabel"),
+              draft.entity,
+              entityIds,
+              props,
+              (value) => props.onEditOntologyDraft({ entity: value }),
+            )}
             <label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.expressionLabel")}</span>
               <input
-                type="checkbox"
-                .checked=${draft.primaryKey}
+                class="input"
+                .value=${draft.expression}
                 ?disabled=${props.treeSaving}
-                @change=${(event: Event) =>
+                @input=${(event: Event) =>
                   props.onEditOntologyDraft({
-                    primaryKey: (event.target as HTMLInputElement).checked,
+                    expression: (event.target as HTMLInputElement).value,
                   })}
               />
-              <span class="muted">${t("enterprise.ontologyEditor.primaryKeyLabel")}</span>
-            </label>`
+            </label>
+            ${renderValueTypeSelect(
+              t("enterprise.ontologyEditor.returnsLabel"),
+              draft.returns,
+              props,
+              (returns) => props.onEditOntologyDraft({ returns }),
+            )}`
         : nothing}
       ${draft.kind === "relationship"
         ? html`${renderEntitySelect(
@@ -2781,6 +3581,29 @@ function renderOntologyDraftForm(
       </div>
     </div>
   `;
+}
+
+/** The value-type picker, shared by a field, an action parameter, and a function's return. */
+function renderValueTypeSelect(
+  label: string,
+  value: OntologyValueTypeName,
+  props: EnterpriseProps,
+  onChange: (value: OntologyValueTypeName) => void,
+): TemplateResult {
+  return html`<label class="field">
+    <span class="muted">${label}</span>
+    <select
+      class="input"
+      .value=${value}
+      ?disabled=${props.treeSaving}
+      @change=${(event: Event) =>
+        onChange((event.target as HTMLSelectElement).value as OntologyValueTypeName)}
+    >
+      ${ONTOLOGY_VALUE_TYPES.map(
+        (type) => html`<option value=${type} ?selected=${type === value}>${type}</option>`,
+      )}
+    </select>
+  </label>`;
 }
 
 function renderEntitySelect(

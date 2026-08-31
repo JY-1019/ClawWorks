@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { EnterpriseTreeDetail } from "../../../../packages/gateway-protocol/src/index.js";
-import { collectOntologyGraph, nodeObjectEntityIds } from "./enterprise-ontology-graph.ts";
+import { t } from "../../i18n/index.ts";
+import { ONTOLOGY_EDIT_REASONS_REPORTED } from "../controllers/enterprise.ts";
+import {
+  collectOntologyGraph,
+  declaredExecutableEntityIds,
+  nodeObjectEntityIds,
+} from "./enterprise-ontology-graph.ts";
 
 type TreeNode = EnterpriseTreeDetail["nodes"][number];
 
@@ -180,5 +186,77 @@ describe("nodeObjectEntityIds", () => {
     );
     // The path merge folds the later primaryKey in, so the node scope sees it.
     expect(result).toEqual(["claim"]);
+  });
+});
+
+describe("ontology editor refusal strings", () => {
+  // `t` returns the KEY when a string is missing, which is exactly what the
+  // operator would read, so these assert against the lookup the view performs
+  // rather than the shape of the bundle.
+  const unresolved = (key: string) => t(key) === key;
+
+  it("has a message for every refusal the editor can actually show", () => {
+    // Both render sites key off the reason, so a reason added without its string
+    // puts the raw key in front of the operator. Iterated from the list the
+    // splicers return rather than a copy, which is what keeps this true as
+    // reasons are added.
+    const missing = ONTOLOGY_EDIT_REASONS_REPORTED.filter((reason) =>
+      unresolved(`enterprise.ontologyEditor.error.${reason}`),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("has an id label for every form that collects one", () => {
+    // Same contract for `enterprise.ontologyEditor.idLabel.<kind>`. An effect is
+    // the one draft with no id of its own, and the form skips the field for it.
+    const kinds = [
+      "entity",
+      "property",
+      "relationship",
+      "action",
+      "action-parameter",
+      "function",
+    ] as const;
+    const missing = kinds.filter((kind) => unresolved(`enterprise.ontologyEditor.idLabel.${kind}`));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("declaredExecutableEntityIds", () => {
+  it("offers a type a descendant declares when it is the only leaf", () => {
+    const detail = tree([
+      node("root", {}),
+      node("root.settle", {}, 1),
+      { ...node("root.settle.pay", { entities: [{ id: "payment" }] }, 2), parentId: "root.settle" },
+      { ...node("root.other", { entities: [{ id: "audit" }] }, 1), parentId: "root" },
+    ] as TreeNode[]);
+    expect(declaredExecutableEntityIds(detail, "root.settle")).toEqual(["payment"]);
+  });
+
+  it("intersects across leaves, since a one-branch type fails on the others", () => {
+    // The declaration is inherited into every leaf, so a type only one branch
+    // declares resolves there and is refused everywhere else — offering it would
+    // hand the operator a choice guaranteed to come back entity-not-found.
+    const detail = tree([
+      node("root", { entities: [{ id: "claim" }] }),
+      { ...node("root.settle", {}, 1), parentId: "root" },
+      {
+        ...node("root.settle.pay", { entities: [{ id: "payment" }] }, 2),
+        parentId: "root.settle",
+      },
+      { ...node("root.settle.recover", {}, 2), parentId: "root.settle" },
+    ] as TreeNode[]);
+    expect(declaredExecutableEntityIds(detail, "root.settle")).toEqual(["claim"]);
+  });
+
+  it("omits a sibling branch's type, which no scope below this node contains", () => {
+    const detail = tree([
+      node("root", { entities: [{ id: "claim" }] }),
+      { ...node("root.settle", {}, 1), parentId: "root" },
+      { ...node("root.other", { entities: [{ id: "audit" }] }, 1), parentId: "root" },
+    ] as TreeNode[]);
+    const ids = declaredExecutableEntityIds(detail, "root.settle");
+    expect(ids).toContain("claim");
+    expect(ids).not.toContain("audit");
   });
 });

@@ -82,6 +82,51 @@ export function declaredNodePathEntityIds(tree: EnterpriseTreeDetail, nodeId: st
   return ids;
 }
 
+/**
+ * Object types a declaration made at `nodeId` can address when it RUNS.
+ *
+ * The INTERSECTION across every executable leaf below this node, because the
+ * declaration is inherited into all of them and `resolveActiveOntologyScope`
+ * merges the path of whichever one is active. A type only one branch declares
+ * therefore resolves on that branch and fails on the others, which is exactly
+ * what the splicers refuse — offering it here would hand the operator a choice
+ * guaranteed to come back `entity-not-found`.
+ *
+ * DECLARED ones only, matching `declaredNodePathEntityIds`: the graph
+ * synthesizes endpoints for a legacy link that names an undeclared type, and
+ * offering one would produce a save the splicer refuses.
+ */
+export function declaredExecutableEntityIds(tree: EnterpriseTreeDetail, nodeId: string): string[] {
+  const subtree = new Set([nodeId]);
+  // Parents precede children in the flat list, so one forward pass closes it.
+  for (const candidate of tree.nodes) {
+    if (candidate.parentId && subtree.has(candidate.parentId)) {
+      subtree.add(candidate.id);
+    }
+  }
+  const hasChildren = new Set(
+    tree.nodes.map((candidate) => candidate.parentId).filter((id) => id !== null),
+  );
+  // A node with no children below it IS the leaf; that keeps a leaf step's own
+  // picker working rather than collapsing to nothing.
+  const leaves = [...subtree].filter((id) => !hasChildren.has(id));
+  const perLeaf = (leaves.length > 0 ? leaves : [nodeId]).map(
+    (id) =>
+      new Set(
+        nodePathTo(tree, id)
+          .flatMap((node) => node.ontology.entities ?? [])
+          .map((entity) => entity.id),
+      ),
+  );
+  const [first, ...rest] = perLeaf;
+  if (!first) {
+    return [];
+  }
+  // Ordered by the first leaf's path — ancestors before its own declarations —
+  // so the picker reads outside-in rather than in set order.
+  return [...first].filter((id) => rest.every((scope) => scope.has(id)));
+}
+
 function mergeOntologyNodes(nodes: readonly EnterpriseTreeNode[]): OntologyGraph {
   const entityById = new Map<string, OntologyEntity>();
   const relationshipByKey = new Map<string, OntologyRelationship>();

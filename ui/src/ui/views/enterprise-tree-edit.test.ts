@@ -5,11 +5,20 @@ import {
   type EditableTreeDefinition,
   insertChildNode,
   newNodeIdIssue,
+  addNodeOntologyAction,
+  addNodeOntologyActionEffect,
+  addNodeOntologyActionParameter,
   addNodeOntologyEntity,
+  addNodeOntologyFunction,
   addNodeOntologyProperty,
   addNodeOntologyRelationship,
+  removeNodeOntologyAction,
+  removeNodeOntologyActionEffect,
+  removeNodeOntologyActionParameter,
   removeNodeOntologyEntity,
   removeNodeOntologyEntry,
+  removeNodeOntologyFunction,
+  type OntologyEffectKindName,
   removeNodeOntologyProperty,
   removeNodeOntologyRelationship,
   setNodeGuidance,
@@ -1172,5 +1181,836 @@ describe("ontology editing", () => {
     addNodeOntologyProperty(original, "support.triage", "policy", { id: "number", type: "string" });
     removeNodeOntologyEntity(original, "support.triage", "adjuster");
     expect(original).toEqual(snapshot);
+  });
+});
+
+/**
+ * A step whose parent owns the object type, so the AIP verbs have to resolve
+ * through the PATH — the gap between what the importer accepts tree-wide and what
+ * the runtime can address at the node it runs at.
+ */
+function verbDefinition(): EditableTreeDefinition {
+  return {
+    schema: "clawworks.workflow-tree",
+    schemaVersion: 1,
+    id: "acme.claims",
+    version: "1.0.0",
+    name: "Claims",
+    root: {
+      id: "claims",
+      title: "Claims",
+      ontology: {
+        entities: [
+          {
+            id: "claim",
+            properties: [
+              { id: "claim-id", type: "string", primaryKey: true },
+              { id: "amount", type: "number" },
+            ],
+          },
+          { id: "note", properties: [{ id: "body", type: "string" }] },
+        ],
+      },
+      children: [
+        { id: "claims.decide", title: "Decide" },
+        { id: "claims.other", title: "Other", ontology: { entities: [{ id: "audit" }] } },
+      ],
+    },
+  };
+}
+
+function nodeOntology(tree: EditableTreeDefinition, nodeId: string) {
+  const walk = (node: { id: string; ontology?: unknown; children?: unknown[] }): unknown => {
+    if (node.id === nodeId) {
+      return node.ontology;
+    }
+    for (const child of (node.children ?? []) as { id: string; children?: unknown[] }[]) {
+      const found = walk(child);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+    return undefined;
+  };
+  return walk(tree.root) as Record<string, unknown> | undefined;
+}
+
+describe("addNodeOntologyAction", () => {
+  it("declares a bare action on a step", () => {
+    const result = addNodeOntologyAction(verbDefinition(), "claims.decide", {
+      id: "Approve-Claim",
+      title: " Approve ",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(nodeOntology(result.definition, "claims.decide")?.actions).toEqual([
+      { id: "approve-claim", title: "Approve" },
+    ]);
+  });
+
+  it("refuses an id an ancestor already declares, since the runtime maps actions by id", () => {
+    const seeded = addNodeOntologyAction(verbDefinition(), "claims", { id: "approve" });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) {
+      return;
+    }
+    expect(addNodeOntologyAction(seeded.definition, "claims.decide", { id: "approve" })).toEqual({
+      ok: false,
+      reason: "duplicate-entry",
+    });
+  });
+
+  it("refuses a malformed id at the field", () => {
+    expect(
+      addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "Approve Claim" }),
+    ).toEqual({ ok: false, reason: "invalid-id" });
+  });
+
+  it("undeclares an action, dropping the key with the last one", () => {
+    const added = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    expect(added.ok).toBe(true);
+    if (!added.ok) {
+      return;
+    }
+    const removed = removeNodeOntologyAction(added.definition, "claims.decide", "approve");
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) {
+      return;
+    }
+    expect(nodeOntology(removed.definition, "claims.decide")?.actions).toBeUndefined();
+    expect(removeNodeOntologyAction(added.definition, "claims.decide", "missing")).toEqual({
+      ok: false,
+      reason: "entry-not-found",
+    });
+  });
+});
+
+describe("action effects", () => {
+  function withAction(nodeId = "claims.decide"): EditableTreeDefinition {
+    const result = addNodeOntologyAction(verbDefinition(), nodeId, { id: "approve" });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  it("authorizes a write on a type the step inherits", () => {
+    const result = addNodeOntologyActionEffect(withAction(), "claims.decide", "approve", {
+      entity: "claim",
+      kind: "update",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(nodeOntology(result.definition, "claims.decide")?.actions).toEqual([
+      { id: "approve", effects: [{ entity: "claim", kind: "update" }] },
+    ]);
+  });
+
+  it("refuses a write on a type with no identity field", () => {
+    expect(
+      addNodeOntologyActionEffect(withAction(), "claims.decide", "approve", {
+        entity: "note",
+        kind: "update",
+      }),
+    ).toEqual({ ok: false, reason: "effect-needs-identity" });
+  });
+
+  it("allows a read on a type with no identity field", () => {
+    expect(
+      addNodeOntologyActionEffect(withAction(), "claims.decide", "approve", {
+        entity: "note",
+        kind: "read",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("refuses a type only a sibling branch declares", () => {
+    expect(
+      addNodeOntologyActionEffect(withAction(), "claims.decide", "approve", {
+        entity: "audit",
+        kind: "read",
+      }),
+    ).toEqual({ ok: false, reason: "entity-not-found" });
+  });
+
+  it("refuses the same entity and kind twice", () => {
+    const first = addNodeOntologyActionEffect(withAction(), "claims.decide", "approve", {
+      entity: "claim",
+      kind: "update",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyActionEffect(first.definition, "claims.decide", "approve", {
+        entity: "claim",
+        kind: "update",
+      }),
+    ).toEqual({ ok: false, reason: "duplicate-entry" });
+  });
+
+  it("drops the key when the last effect is withdrawn", () => {
+    const added = addNodeOntologyActionEffect(withAction(), "claims.decide", "approve", {
+      entity: "claim",
+      kind: "update",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) {
+      return;
+    }
+    const removed = removeNodeOntologyActionEffect(added.definition, "claims.decide", "approve", {
+      entity: "claim",
+      kind: "update",
+    });
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) {
+      return;
+    }
+    expect(nodeOntology(removed.definition, "claims.decide")?.actions).toEqual([{ id: "approve" }]);
+  });
+
+  it("reports an action that is no longer declared", () => {
+    expect(
+      addNodeOntologyActionEffect(verbDefinition(), "claims.decide", "approve", {
+        entity: "claim",
+        kind: "read",
+      }),
+    ).toEqual({ ok: false, reason: "action-not-found" });
+  });
+});
+
+describe("action parameters", () => {
+  function withAction(): EditableTreeDefinition {
+    const result = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  it("accepts a parameter that maps onto no property, since those reach the audit trail", () => {
+    const result = addNodeOntologyActionParameter(withAction(), "claims.decide", "approve", {
+      id: "rationale",
+      type: "string",
+      required: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(nodeOntology(result.definition, "claims.decide")?.actions).toEqual([
+      { id: "approve", parameters: [{ id: "rationale", type: "string", required: true }] },
+    ]);
+  });
+
+  it("refuses a duplicate id, which the write path would reject on every call", () => {
+    const first = addNodeOntologyActionParameter(withAction(), "claims.decide", "approve", {
+      id: "rationale",
+      type: "string",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyActionParameter(first.definition, "claims.decide", "approve", {
+        id: "rationale",
+        type: "number",
+      }),
+    ).toEqual({ ok: false, reason: "duplicate-entry" });
+  });
+
+  it("drops the key when the last parameter is removed", () => {
+    const added = addNodeOntologyActionParameter(withAction(), "claims.decide", "approve", {
+      id: "rationale",
+      type: "string",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) {
+      return;
+    }
+    const removed = removeNodeOntologyActionParameter(
+      added.definition,
+      "claims.decide",
+      "approve",
+      "rationale",
+    );
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) {
+      return;
+    }
+    expect(nodeOntology(removed.definition, "claims.decide")?.actions).toEqual([{ id: "approve" }]);
+  });
+});
+
+describe("addNodeOntologyFunction", () => {
+  it("declares a derived value over an inherited type", () => {
+    const result = addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+      id: "doubled",
+      entity: "claim",
+      expression: " $amount * 2 ",
+      returns: "number",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(nodeOntology(result.definition, "claims.decide")?.functions).toEqual([
+      { id: "doubled", entity: "claim", expression: "$amount * 2", returns: "number" },
+    ]);
+  });
+
+  it("refuses an expression that does not parse", () => {
+    expect(
+      addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+        id: "doubled",
+        entity: "claim",
+        expression: "$amount *",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "expression-invalid" });
+  });
+
+  it("refuses an expression reading a field the type does not have here", () => {
+    expect(
+      addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+        id: "doubled",
+        entity: "claim",
+        expression: "$missing * 2",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "expression-property-unknown" });
+  });
+
+  it("refuses a type only a sibling branch declares", () => {
+    expect(
+      addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+        id: "doubled",
+        entity: "audit",
+        expression: "$amount * 2",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "entity-not-found" });
+  });
+
+  it("removes a declared derived value", () => {
+    const added = addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+      id: "doubled",
+      entity: "claim",
+      expression: "$amount * 2",
+      returns: "number",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) {
+      return;
+    }
+    const removed = removeNodeOntologyFunction(added.definition, "claims.decide", "doubled");
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) {
+      return;
+    }
+    expect(nodeOntology(removed.definition, "claims.decide")?.functions).toBeUndefined();
+    expect(removeNodeOntologyFunction(added.definition, "claims.decide", "missing")).toEqual({
+      ok: false,
+      reason: "entry-not-found",
+    });
+  });
+});
+
+describe("removeNodeOntologyEntity with the verbs declared", () => {
+  it("still refuses to drop a type an action writes", () => {
+    const withAction = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    if (!withAction.ok) {
+      throw new Error(withAction.reason);
+    }
+    const withEffect = addNodeOntologyActionEffect(
+      withAction.definition,
+      "claims.decide",
+      "approve",
+      { entity: "claim", kind: "update" },
+    );
+    if (!withEffect.ok) {
+      throw new Error(withEffect.reason);
+    }
+    expect(removeNodeOntologyEntity(withEffect.definition, "claims", "claim")).toEqual({
+      ok: false,
+      reason: "entity-referenced",
+    });
+  });
+});
+
+describe("AIP verb declarations resolved against the whole branch", () => {
+  it("refuses an ancestor id a DESCENDANT already declares, which would shadow it", () => {
+    // resolveActiveOntologyScope maps actions by id along the active node's path,
+    // last one wins — so a child's declaration silently wins over one added above
+    // it, and the editor must not accept the duplicate it cannot honor.
+    const seeded = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) {
+      return;
+    }
+    expect(addNodeOntologyAction(seeded.definition, "claims", { id: "approve" })).toEqual({
+      ok: false,
+      reason: "duplicate-entry",
+    });
+  });
+
+  it("refuses a derived value id a descendant already declares", () => {
+    const seeded = addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+      id: "doubled",
+      entity: "claim",
+      expression: "$amount * 2",
+      returns: "number",
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyFunction(seeded.definition, "claims", {
+        id: "doubled",
+        entity: "claim",
+        expression: "$amount * 3",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "duplicate-entry" });
+  });
+
+  it("still allows the same id on a sibling branch, which never shares a path", () => {
+    const seeded = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) {
+      return;
+    }
+    expect(addNodeOntologyAction(seeded.definition, "claims.other", { id: "approve" }).ok).toBe(
+      true,
+    );
+  });
+
+  it("refuses an expression that yields a different type than `returns`", () => {
+    // The whole-tree import type-checks this (src/enterprise/schema.ts). Without
+    // the same check here the save is accepted and then refused tree-wide, so the
+    // operator gets a banner instead of the field that is wrong.
+    expect(
+      addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+        id: "big-claim",
+        entity: "claim",
+        expression: "$amount >= 10",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "returns-mismatch" });
+  });
+
+  it("accepts the same expression once `returns` agrees", () => {
+    expect(
+      addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+        id: "big-claim",
+        entity: "claim",
+        expression: "$amount >= 10",
+        returns: "boolean",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("refuses an expression that cannot type-check against the declared fields", () => {
+    // `claim-id` is a string and `amount` a number, so multiplying them is not a
+    // dangling reference — it is a type error the import would also reject.
+    expect(
+      addNodeOntologyFunction(verbDefinition(), "claims.decide", {
+        id: "nonsense",
+        entity: "claim",
+        expression: "$claim-id * $amount",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "expression-type-invalid" });
+  });
+});
+
+describe("action parameters that a write effect could never satisfy", () => {
+  function withApprove(): EditableTreeDefinition {
+    const result = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  function withEffect(kind: OntologyEffectKindName): EditableTreeDefinition {
+    const result = addNodeOntologyActionEffect(withApprove(), "claims.decide", "approve", {
+      entity: "claim",
+      kind,
+    });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  it("refuses a parameter typed against the property it would write", () => {
+    // validateParameters checks the value against the PARAMETER type and
+    // planEffect against the PROPERTY type, so a string `amount` targeting a
+    // numeric `claim.amount` saves and then rejects every non-null call.
+    expect(
+      addNodeOntologyActionParameter(withEffect("update"), "claims.decide", "approve", {
+        id: "amount",
+        type: "string",
+      }),
+    ).toEqual({ ok: false, reason: "parameter-type-conflict" });
+  });
+
+  it("accepts the parameter once its type agrees with the property", () => {
+    expect(
+      addNodeOntologyActionParameter(withEffect("update"), "claims.decide", "approve", {
+        id: "amount",
+        type: "number",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("still accepts a parameter that maps onto no property at all", () => {
+    // Those are inputs to the DECISION and reach the audit trail unmapped, which
+    // is exactly what the write path documents.
+    expect(
+      addNodeOntologyActionParameter(withEffect("update"), "claims.decide", "approve", {
+        id: "rationale",
+        type: "string",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("ignores a read effect, which maps no parameter onto a property", () => {
+    expect(
+      addNodeOntologyActionParameter(withEffect("read"), "claims.decide", "approve", {
+        id: "amount",
+        type: "string",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("catches the same clash when the EFFECT is added second", () => {
+    // Parameters can be declared before the effect that gives them a target, so
+    // a check on only one side would let the clash in through the other.
+    const withParameter = addNodeOntologyActionParameter(
+      withApprove(),
+      "claims.decide",
+      "approve",
+      { id: "amount", type: "string" },
+    );
+    expect(withParameter.ok).toBe(true);
+    if (!withParameter.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyActionEffect(withParameter.definition, "claims.decide", "approve", {
+        entity: "claim",
+        kind: "update",
+      }),
+    ).toEqual({ ok: false, reason: "parameter-type-conflict" });
+  });
+});
+
+describe("effects an action could never execute", () => {
+  function withApprove(): EditableTreeDefinition {
+    const result = addNodeOntologyAction(verbDefinition(), "claims.decide", { id: "approve" });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  function withEffect(
+    definition: EditableTreeDefinition,
+    entity: string,
+    kind: OntologyEffectKindName,
+  ): EditableTreeDefinition {
+    const result = addNodeOntologyActionEffect(definition, "claims.decide", "approve", {
+      entity,
+      kind,
+    });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  it("refuses a second write on an object type the action already writes", () => {
+    // Both effects resolve the same object id from the shared key argument, and
+    // invokeOntologyAction refuses an action that touches one object twice.
+    expect(
+      addNodeOntologyActionEffect(
+        withEffect(withApprove(), "claim", "update"),
+        "claims.decide",
+        "approve",
+        { entity: "claim", kind: "delete" },
+      ),
+    ).toEqual({ ok: false, reason: "effect-target-taken" });
+  });
+
+  it("still allows a read alongside a write on the same type", () => {
+    expect(
+      addNodeOntologyActionEffect(
+        withEffect(withApprove(), "claim", "update"),
+        "claims.decide",
+        "approve",
+        { entity: "claim", kind: "read" },
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("validates the identity parameter of a delete effect", () => {
+    // planEffect returns before mapping properties for a delete, but it still
+    // resolves the target through the key argument that validateParameters has
+    // already checked against the PARAMETER type.
+    expect(
+      addNodeOntologyActionParameter(
+        withEffect(withApprove(), "claim", "delete"),
+        "claims.decide",
+        "approve",
+        { id: "claim-id", type: "number" },
+      ),
+    ).toEqual({ ok: false, reason: "parameter-type-conflict" });
+  });
+
+  it("accepts a delete parameter that shares the key's runtime shape", () => {
+    // `claim-id` is declared `string`; an `id` parameter is the same value shape.
+    expect(
+      addNodeOntologyActionParameter(
+        withEffect(withApprove(), "claim", "delete"),
+        "claims.decide",
+        "approve",
+        { id: "claim-id", type: "id" },
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("does not require identical type LABELS, only the same runtime shape", () => {
+    // `string`, `date`, and `id` are all strings at runtime, so refusing the pair
+    // would reject a declaration both validations accept.
+    expect(
+      addNodeOntologyActionParameter(
+        withEffect(withApprove(), "claim", "update"),
+        "claims.decide",
+        "approve",
+        { id: "claim-id", type: "date" },
+      ).ok,
+    ).toBe(true);
+  });
+});
+
+describe("declarations that execute at a descendant, not at their owner", () => {
+  /** The target type lives BELOW the node that declares the action. */
+  function descendantDefinition(): EditableTreeDefinition {
+    return {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.claims",
+      version: "1.0.0",
+      name: "Claims",
+      root: {
+        id: "claims",
+        title: "Claims",
+        children: [
+          {
+            id: "claims.settle",
+            title: "Settle",
+            children: [
+              {
+                id: "claims.settle.pay",
+                title: "Pay",
+                ontology: {
+                  entities: [
+                    {
+                      id: "payment",
+                      properties: [
+                        { id: "payment-id", type: "id", primaryKey: true },
+                        { id: "amount", type: "number" },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          { id: "claims.other", title: "Other", ontology: { entities: [{ id: "audit" }] } },
+        ],
+      },
+    };
+  }
+
+  function withAction(nodeId: string): EditableTreeDefinition {
+    const result = addNodeOntologyAction(descendantDefinition(), nodeId, { id: "pay" });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    return result.definition;
+  }
+
+  it("accepts an effect on a type a DESCENDANT declares", () => {
+    // resolveActiveOntologyScope merges the descendant's path at the leaf where
+    // the action runs, and the import accepts the reference — so refusing it
+    // here would block a definition that executes.
+    expect(
+      addNodeOntologyActionEffect(withAction("claims.settle"), "claims.settle", "pay", {
+        entity: "payment",
+        kind: "update",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("still refuses an effect on a type only a SIBLING branch declares", () => {
+    expect(
+      addNodeOntologyActionEffect(withAction("claims.settle"), "claims.settle", "pay", {
+        entity: "audit",
+        kind: "read",
+      }),
+    ).toEqual({ ok: false, reason: "entity-not-found" });
+  });
+
+  it("accepts a derived value over a property a descendant contributes", () => {
+    expect(
+      addNodeOntologyFunction(descendantDefinition(), "claims.settle", {
+        id: "doubled",
+        entity: "payment",
+        expression: "$amount * 2",
+        returns: "number",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("still refuses a derived value reading a property nothing below declares", () => {
+    expect(
+      addNodeOntologyFunction(descendantDefinition(), "claims.settle", {
+        id: "doubled",
+        entity: "payment",
+        expression: "$missing * 2",
+        returns: "number",
+      }),
+    ).toEqual({ ok: false, reason: "expression-property-unknown" });
+  });
+
+  it("types a parameter against the descendant's property, not against nothing", () => {
+    const withEffect = addNodeOntologyActionEffect(
+      withAction("claims.settle"),
+      "claims.settle",
+      "pay",
+      { entity: "payment", kind: "update" },
+    );
+    expect(withEffect.ok).toBe(true);
+    if (!withEffect.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyActionParameter(withEffect.definition, "claims.settle", "pay", {
+        id: "amount",
+        type: "string",
+      }),
+    ).toEqual({ ok: false, reason: "parameter-type-conflict" });
+    expect(
+      addNodeOntologyActionParameter(withEffect.definition, "claims.settle", "pay", {
+        id: "amount",
+        type: "number",
+      }).ok,
+    ).toBe(true);
+  });
+});
+
+describe("relationship ids across the branch", () => {
+  it("refuses a link id a DESCENDANT already declares", () => {
+    // resolveActiveOntologyScope keys links by id root-first, so the descendant
+    // silently replaces one added above it while the inspector shows both.
+    const seeded = addNodeOntologyRelationship(verbDefinition(), "claims.decide", {
+      id: "claim-note",
+      from: "claim",
+      to: "note",
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyRelationship(seeded.definition, "claims", {
+        id: "claim-note",
+        from: "claim",
+        to: "note",
+      }),
+    ).toEqual({ ok: false, reason: "duplicate-entry" });
+  });
+
+  it("still allows the same link id on a sibling branch", () => {
+    const seeded = addNodeOntologyRelationship(verbDefinition(), "claims.decide", {
+      id: "claim-note",
+      from: "claim",
+      to: "note",
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyRelationship(seeded.definition, "claims.other", {
+        id: "claim-note",
+        from: "claim",
+        to: "note",
+      }).ok,
+    ).toBe(true);
+  });
+});
+
+describe("create effects and tree-wide required fields", () => {
+  it("refuses a create when a sibling branch requires a field this step cannot see", () => {
+    // collectTreeRequiredProperties is tree-wide, so the requirement applies to
+    // every create — and no parameter here can supply a property this branch
+    // never declares, so planEffect refuses every call.
+    const definition: EditableTreeDefinition = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.claims",
+      version: "1.0.0",
+      name: "Claims",
+      root: {
+        id: "claims",
+        title: "Claims",
+        ontology: {
+          entities: [
+            { id: "claim", properties: [{ id: "claim-id", type: "id", primaryKey: true }] },
+          ],
+        },
+        children: [
+          { id: "claims.open", title: "Open" },
+          {
+            id: "claims.audit",
+            title: "Audit",
+            ontology: {
+              entities: [
+                { id: "claim", properties: [{ id: "auditor", type: "string", required: true }] },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const withAction = addNodeOntologyAction(definition, "claims.open", { id: "open-claim" });
+    expect(withAction.ok).toBe(true);
+    if (!withAction.ok) {
+      return;
+    }
+    expect(
+      addNodeOntologyActionEffect(withAction.definition, "claims.open", "open-claim", {
+        entity: "claim",
+        kind: "create",
+      }),
+    ).toEqual({ ok: false, reason: "create-required-unreachable" });
+    // An UPDATE is fine: it writes onto an object that already satisfies its type.
+    expect(
+      addNodeOntologyActionEffect(withAction.definition, "claims.open", "open-claim", {
+        entity: "claim",
+        kind: "update",
+      }).ok,
+    ).toBe(true);
   });
 });

@@ -27,7 +27,12 @@ import {
   switchChatSession,
   switchChatSessionAndWait,
 } from "./app-render.helpers.ts";
-import { hasOperatorAdminAccess, hasOperatorWriteAccess, warnQueryToken } from "./app-settings.ts";
+import {
+  hasOperatorAdminAccess,
+  hasOperatorWriteAccess,
+  refreshKnowledgeTab,
+  warnQueryToken,
+} from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
@@ -66,6 +71,7 @@ import {
   resetConfigPendingChanges,
   runUpdate,
   saveConfig,
+  setConfigFormMode,
   stageDefaultAgentConfigEntry,
   stageConfigPreset,
   updateConfigRawValue,
@@ -136,15 +142,22 @@ import {
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
   cancelEnterpriseBindingPicker,
+  addEnterpriseMcpHeader,
   beginEnterpriseMcpDraft,
+  beginEnterpriseMcpEdit,
   cancelEnterpriseMcpDraft,
   editEnterpriseMcpDraft,
+  editEnterpriseMcpHeader,
   openEnterpriseBindingPicker,
   beginEnterpriseOntologyDraft,
   cancelEnterpriseNodeGuidance,
   cancelEnterpriseOntologyDraft,
   editEnterpriseOntologyDraft,
+  removeEnterpriseOntologyAction,
+  removeEnterpriseOntologyActionEffect,
+  removeEnterpriseOntologyActionParameter,
   removeEnterpriseOntologyEntity,
+  removeEnterpriseOntologyFunction,
   removeEnterpriseOntologyProperty,
   removeEnterpriseOntologyRelationship,
   submitEnterpriseOntologyDraft,
@@ -166,12 +179,27 @@ import {
   updateExecApprovalsFormValue,
 } from "./controllers/exec-approvals.ts";
 import {
+  entrySnapshot,
+  foundationId,
+  foundationText,
+  listKnowledgeAdapterPlugins,
+  omittedAdapterSchemaPluginIds,
+  readConfiguredFoundations,
+  type KnowledgeAdapterPlugin,
+} from "./controllers/knowledge-registration.ts";
+import {
+  beginKnowledgeDraft,
+  beginKnowledgeEdit,
   cancelKnowledgeDocumentRemoval,
+  cancelKnowledgeDraft,
+  cancelKnowledgeDraftForRemoval,
   closeKnowledgeFiles,
   confirmKnowledgeDocumentRemoval,
-  loadKnowledgeFoundations,
+  editKnowledgeDraft,
   openKnowledgeFiles,
+  removeKnowledgeFoundation,
   requestKnowledgeDocumentRemoval,
+  submitKnowledgeDraft,
   testKnowledgeFoundationConnection,
   uploadKnowledgeDocument,
 } from "./controllers/knowledge.ts";
@@ -760,30 +788,299 @@ export function readEnterpriseMode(state: AppViewState): "enforce" | "observe" |
  * it can. Both cases would silently damage config rather than fail loudly, so the
  * screen says which one is in the way instead of just disabling a button.
  */
-function enterpriseMcpRegisterBlockedReason(state: AppViewState): string | null {
+/**
+ * Why a screen that registers by writing the config draft must not write right
+ * now. Shared by the Enterprise MCP screen and the Knowledge screen: both append
+ * to the same draft, so the rule is one rule. Each maps the code to its own
+ * wording, because the thing being registered is what the operator needs named.
+ */
+type ConfigDraftBlockReason = "waiting" | "invalid" | "saving" | "raw";
+
+function configDraftBlockReason(state: AppViewState): ConfigDraftBlockReason | null {
   if (!state.configForm && !state.configSnapshot) {
-    return t("enterprise.mcpTab.waitingForConfig");
+    return "waiting";
   }
   // An unparseable config yields an EMPTY form beside the original file. Adding a
   // server to that form and saving would write the one entry over everything the
   // file still holds, so the config editor has to fix the file first.
   if (state.configValid === false) {
-    return t("enterprise.mcpTab.configInvalid");
+    return "invalid";
   }
   // A save already in flight reloads the persisted snapshot when it lands and
   // clears the dirty flag, so anything registered during that window is discarded
   // without a word.
   if (state.configSaving || state.configApplying) {
-    return t("enterprise.mcpTab.configSaving");
+    return "saving";
   }
   // Any raw mode, not just a dirty one: registering writes the FORM, and a save
   // taken in raw mode serializes that form over the raw text — dropping the
   // operator's JSON5 formatting and comments, and skipping the redaction pass a
   // form-mode save applies. Switching mode is the operator's call, not ours.
   if (state.configFormMode === "raw") {
-    return t("enterprise.mcpTab.rawDraftPending");
+    return "raw";
   }
   return null;
+}
+
+function enterpriseMcpRegisterBlockedReason(state: AppViewState): string | null {
+  const reason = configDraftBlockReason(state);
+  const messages: Record<ConfigDraftBlockReason, string> = {
+    waiting: "enterprise.mcpTab.waitingForConfig",
+    invalid: "enterprise.mcpTab.configInvalid",
+    saving: "enterprise.mcpTab.configSaving",
+    raw: "enterprise.mcpTab.rawDraftPending",
+  };
+  return reason ? t(messages[reason]) : null;
+}
+
+function knowledgeRegisterBlockedReason(state: AppViewState): string | null {
+  const reason = configDraftBlockReason(state);
+  const messages: Record<ConfigDraftBlockReason, string> = {
+    waiting: "knowledge.register.waitingForConfig",
+    invalid: "knowledge.register.configInvalid",
+    saving: "knowledge.register.configSaving",
+    raw: "knowledge.register.rawDraftPending",
+  };
+  return reason ? t(messages[reason]) : null;
+}
+
+/** The adapter Connect should open: the first one plugin policy does not deny. */
+function knowledgeDefaultAdapterId(state: AppViewState): string | null {
+  const denied = knowledgeDeniedPluginIds(state);
+  const adapters = knowledgeAdapters(state);
+  return (
+    adapters.find((adapter) => !denied.includes(adapter.pluginId))?.pluginId ??
+    adapters[0]?.pluginId ??
+    null
+  );
+}
+
+/** Plugin ids this gateway's `plugins.deny` list excludes. */
+function knowledgeDeniedPluginIds(state: AppViewState): string[] {
+  const plugins = readConfigDraft(state).plugins;
+  const policy =
+    plugins && typeof plugins === "object" && !Array.isArray(plugins)
+      ? (plugins as Record<string, unknown>)
+      : null;
+  return Array.isArray(policy?.deny)
+    ? policy.deny.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+/**
+ * Plugin policy that would keep a registered adapter from ever loading.
+ *
+ * Enabling the adapter's own entry is not enough: runtime activation checks the
+ * global switch and the deny list first, so Publish would succeed, the config
+ * would look right, and `knowledge_search` would still report the new source as
+ * unavailable with nothing on this screen explaining why.
+ *
+ * Gates ADDING only. Editing and removing are config cleanup — an administrator
+ * has to be able to retire an obsolete source without first re-enabling a plugin
+ * they deliberately turned off.
+ */
+function knowledgePluginPolicyBlock(state: AppViewState): string | null {
+  const plugins = readConfigDraft(state).plugins;
+  const policy =
+    plugins && typeof plugins === "object" && !Array.isArray(plugins)
+      ? (plugins as Record<string, unknown>)
+      : null;
+  if (policy?.enabled === false) {
+    return t("knowledge.register.pluginsDisabled");
+  }
+  const denied = knowledgeDeniedPluginIds(state);
+  if (denied.length === 0) {
+    return null;
+  }
+  // The adapter the form is ON is the one to judge. With no form open, the
+  // block only applies when EVERY adapter is denied — otherwise the Connect
+  // button would be disabled over a plugin the operator never chose, with no
+  // way to reach an allowed one.
+  const draftPlugin = state.knowledgeDraft?.pluginId;
+  if (draftPlugin) {
+    return denied.includes(draftPlugin)
+      ? t("knowledge.register.pluginDenied", { plugin: draftPlugin })
+      : null;
+  }
+  const adapters = knowledgeAdapters(state);
+  return adapters.length > 0 && adapters.every((adapter) => denied.includes(adapter.pluginId))
+    ? t("knowledge.register.pluginDenied", { plugin: adapters[0].pluginId })
+    : null;
+}
+
+/**
+ * Plugins whose config can register a knowledge foundation, per the config schema.
+ *
+ * The configured entries travel with it so the listing can see which fields the
+ * gateway actually redacted — a secret declared through a plugin's
+ * `configContracts.secretInputs` never reaches the ui hints, so observed
+ * redaction is the only signal that it is a credential.
+ */
+function knowledgeAdapters(state: AppViewState): KnowledgeAdapterPlugin[] {
+  const draftConfig = readConfigDraft(state);
+  const declared = listKnowledgeAdapterPlugins(state.configSchema, state.configUiHints);
+  const configured = Object.fromEntries(
+    declared.map((adapter) => [
+      adapter.pluginId,
+      readConfiguredFoundations(draftConfig, adapter.pluginId),
+    ]),
+  );
+  return listKnowledgeAdapterPlugins(state.configSchema, state.configUiHints, configured);
+}
+
+/**
+ * What each adapter's config declares, and which of those entries are unsaved.
+ *
+ * Matched entry-for-entry against what is on disk, not by list position. A count
+ * boundary only holds while the list is append-only: remove the first saved
+ * source and add a new one, and the newcomer inherits the removed one's slot and
+ * renders as already saved.
+ */
+/** Every `plugins.entries.*` block in a config draft, keyed by plugin id. */
+function readPluginEntries(config: Record<string, unknown>): Record<string, unknown> {
+  const plugins = config.plugins;
+  if (typeof plugins !== "object" || plugins === null || Array.isArray(plugins)) {
+    return {};
+  }
+  const entries = (plugins as Record<string, unknown>).entries;
+  return typeof entries === "object" && entries !== null && !Array.isArray(entries)
+    ? (entries as Record<string, unknown>)
+    : {};
+}
+
+function knowledgeConfiguredFoundations(
+  state: AppViewState,
+): Record<string, { foundations: Record<string, unknown>[]; pending: boolean[] }> {
+  const savedConfig = state.configFormOriginal ?? {};
+  const configured: Record<string, { foundations: Record<string, unknown>[]; pending: boolean[] }> =
+    {};
+  for (const adapter of knowledgeAdapters(state)) {
+    const foundations = readConfiguredFoundations(readConfigDraft(state), adapter.pluginId);
+    const unmatched = readConfiguredFoundations(savedConfig, adapter.pluginId).map((entry) =>
+      entrySnapshot(entry),
+    );
+    const pending = foundations.map((entry) => {
+      const at = unmatched.indexOf(entrySnapshot(entry));
+      if (at === -1) {
+        return true;
+      }
+      // Consumed, so two identical rows are not both matched by one saved entry.
+      unmatched.splice(at, 1);
+      return false;
+    });
+    configured[adapter.pluginId] = { foundations, pending };
+  }
+  return configured;
+}
+
+/** The config the registration screens read and write: the draft, or the snapshot behind it. */
+function readConfigDraft(state: AppViewState): Record<string, unknown> {
+  return (
+    state.configForm ?? ((state.configSnapshot?.config as Record<string, unknown> | null) || {})
+  );
+}
+
+/** One registered server's raw config entry, or null when the registry has no such key. */
+function readConfiguredMcpServer(
+  state: AppViewState,
+  name: string,
+): Record<string, unknown> | null {
+  const mcp = readConfigDraft(state).mcp;
+  const servers =
+    mcp && typeof mcp === "object" && !Array.isArray(mcp)
+      ? (mcp as Record<string, unknown>).servers
+      : null;
+  const server =
+    servers && typeof servers === "object" && !Array.isArray(servers)
+      ? (servers as Record<string, unknown>)[name]
+      : null;
+  return server && typeof server === "object" && !Array.isArray(server)
+    ? (server as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * Foundation ids a new or edited source may not take.
+ *
+ * Both the live registry and the unsaved config draft, because either would
+ * collide once published — minus the entry being edited, whose own id is not a
+ * clash with itself.
+ */
+function knowledgeTakenFoundationIds(
+  state: AppViewState,
+  draft: NonNullable<AppViewState["knowledgeDraft"]>,
+): string[] {
+  const configured = knowledgeConfiguredFoundations(state);
+  const own =
+    draft.editingIndex === null
+      ? null
+      : foundationId(configured[draft.pluginId]?.foundations[draft.editingIndex]?.id);
+  // Across EVERY adapter, not just the one being written. The registry is keyed
+  // by foundation id alone (registerEnterpriseKnowledgeFoundation in
+  // src/enterprise/knowledge.ts), so two plugins claiming one id means the
+  // second to load silently replaces the first and steps query the wrong
+  // backend.
+  const ids = new Set<string>();
+  for (const entry of Object.values(configured)) {
+    for (const foundation of entry.foundations) {
+      ids.add(foundationId(foundation.id));
+    }
+  }
+  // Every plugin entry in the draft, not only the adapters this screen can show.
+  // A disabled adapter — or one whose schema the gateway omitted — still holds
+  // its configured foundations, and the registry keys by id alone: letting a
+  // visible adapter claim one would make enabling the other replace it and route
+  // a work-map's steps to the wrong backend.
+  for (const pluginId of Object.keys(readPluginEntries(readConfigDraft(state)))) {
+    for (const foundation of readConfiguredFoundations(readConfigDraft(state), pluginId)) {
+      ids.add(foundationId(foundation.id));
+    }
+  }
+  // Live ids count too — they are published and would collide on reload. But a
+  // live id this draft has already REMOVED is not a collision: it is the first
+  // half of moving a source to another adapter, and treating it as taken would
+  // force the operator to publish an interval where the foundation does not
+  // exist at all. Only ids the current config still declares are dropped this
+  // way; a live id no config accounts for (a bundle foundation, one from a
+  // plugin whose schema was omitted) stays reserved, because nothing here can
+  // show it is gone.
+  const declaredBySaved = new Set<string>();
+  for (const adapter of knowledgeAdapters(state)) {
+    for (const entry of readConfiguredFoundations(
+      state.configFormOriginal ?? {},
+      adapter.pluginId,
+    )) {
+      declaredBySaved.add(foundationId(entry.id));
+    }
+  }
+  for (const foundation of state.knowledgeFoundations) {
+    if (!declaredBySaved.has(foundation.id) || ids.has(foundation.id)) {
+      ids.add(foundation.id);
+    }
+  }
+  return [...ids].filter((id) => id.length > 0 && id !== own);
+}
+
+/**
+ * The config write registration, editing, and removal all go through.
+ *
+ * Enabling the plugin travels with a NEW source only: an adapter that is
+ * installed but off registers nothing, so a source added under it would sit in
+ * config looking correct while `knowledge_search` reported it missing. An edit
+ * or a removal must not switch a deliberately-disabled adapter back on — that
+ * would activate every other source it still carries.
+ */
+function applyKnowledgeFoundations(state: AppViewState, options: { enable: boolean }) {
+  return (params: { pluginId: string; foundations: Record<string, unknown>[] }) => {
+    updateConfigFormValue(
+      state,
+      ["plugins", "entries", params.pluginId, "config", "foundations"],
+      params.foundations,
+    );
+    if (options.enable) {
+      updateConfigFormValue(state, ["plugins", "entries", params.pluginId, "enabled"], true);
+    }
+  };
 }
 
 // Each Enterprise sidebar tab renders the one enterprise view, pinned to its surface.
@@ -2106,7 +2403,14 @@ export function renderApp(state: AppViewState) {
           searchQuery: state.configSearchQuery,
           activeSection: configSelection.activeSection,
           activeSubsection: configSelection.activeSubsection,
-          onFormModeChange: (mode) => (state.configFormMode = mode),
+          // Through the controller, not a bare assignment: leaving raw mode has
+          // to fold the text back into the form or a later save from ANOTHER
+          // screen submits the pre-edit form and drops it.
+          onFormModeChange: (mode) => {
+            if (!setConfigFormMode(state, mode)) {
+              state.lastError = t("common.configRawUnparsed");
+            }
+          },
           onSearchChange: (query) => (state.configSearchQuery = query),
           onSectionChange: (section) => {
             state.configActiveSection = section;
@@ -3067,6 +3371,14 @@ export function renderApp(state: AppViewState) {
                   void removeEnterpriseOntologyProperty(state, { nodeId, entityId, propertyId }),
                 onRemoveOntologyRelationship: (nodeId, link) =>
                   void removeEnterpriseOntologyRelationship(state, { nodeId, link }),
+                onRemoveOntologyAction: (nodeId, actionId) =>
+                  void removeEnterpriseOntologyAction(state, { nodeId, actionId }),
+                onRemoveOntologyActionEffect: (nodeId, effect) =>
+                  void removeEnterpriseOntologyActionEffect(state, { nodeId, ...effect }),
+                onRemoveOntologyActionParameter: (nodeId, parameter) =>
+                  void removeEnterpriseOntologyActionParameter(state, { nodeId, ...parameter }),
+                onRemoveOntologyFunction: (nodeId, functionId) =>
+                  void removeEnterpriseOntologyFunction(state, { nodeId, functionId }),
                 onBindingPickerQuery: (query) => setEnterpriseBindingPickerQuery(state, query),
                 onBindingPickerCustom: (value) => setEnterpriseBindingPickerCustom(state, value),
                 onToggleBindingPickerValue: (value) =>
@@ -3078,10 +3390,7 @@ export function renderApp(state: AppViewState) {
                 // Registration is config, not an enterprise store: the same
                 // `mcp.servers` the Settings MCP screen shows, read from the draft
                 // so a server added here is attachable before it is published.
-                mcpServers: summarizeMcpServerRows(
-                  state.configForm ??
-                    ((state.configSnapshot?.config as Record<string, unknown> | null) || {}),
-                ),
+                mcpServers: summarizeMcpServerRows(readConfigDraft(state)),
                 mcpDraft: state.enterpriseMcpDraft,
                 // Unknown until config arrives: an empty registry before then is
                 // not evidence that a server is unregistered.
@@ -3104,7 +3413,16 @@ export function renderApp(state: AppViewState) {
                 configSaving: state.configSaving,
                 configApplying: state.configApplying,
                 onBeginMcpDraft: () => beginEnterpriseMcpDraft(state),
+                onBeginMcpEdit: (name) => {
+                  const server = readConfiguredMcpServer(state, name);
+                  if (!server) {
+                    return;
+                  }
+                  beginEnterpriseMcpEdit(state, { name, server });
+                },
                 onEditMcpDraft: (patch) => editEnterpriseMcpDraft(state, patch),
+                onEditMcpHeader: (index, patch) => editEnterpriseMcpHeader(state, index, patch),
+                onAddMcpHeader: () => addEnterpriseMcpHeader(state),
                 onCancelMcpDraft: () => cancelEnterpriseMcpDraft(state),
                 onSubmitMcpDraft: () => {
                   // Guarded here too: the button is disabled, but the state it
@@ -3113,16 +3431,46 @@ export function renderApp(state: AppViewState) {
                   if (enterpriseMcpRegisterBlockedReason(state) !== null) {
                     return;
                   }
+                  const editing = state.enterpriseMcpDraft?.editing ?? null;
+                  const existingServer = editing ? readConfiguredMcpServer(state, editing) : null;
                   submitEnterpriseMcpDraft(state, {
-                    existingNames: summarizeMcpServerRows(
-                      state.configForm ??
-                        ((state.configSnapshot?.config as Record<string, unknown> | null) || {}),
-                    ).map((server) => server.name),
+                    existingNames: summarizeMcpServerRows(readConfigDraft(state)).map(
+                      (server) => server.name,
+                    ),
+                    ...(existingServer ? { existingServer } : {}),
                     // The config controller owns every config write; this screen
                     // only decides what the new entry is.
                     apply: (name, server) =>
                       updateConfigFormValue(state, ["mcp", "servers", name], server),
                   });
+                },
+                onToggleMcpServer: (name, enabled) => {
+                  if (enterpriseMcpRegisterBlockedReason(state) !== null) {
+                    return;
+                  }
+                  // The config controller's own writer, so this screen and the
+                  // Settings MCP screen leave the same shape behind — it drops
+                  // `enabled: true` rather than writing the default back in.
+                  updateMcpServerEnabled(state, name, enabled);
+                },
+                mcpRemoveConfirm: state.enterpriseMcpRemoveConfirm,
+                onRequestRemoveMcpServer: (name) => {
+                  state.enterpriseMcpRemoveConfirm = name;
+                },
+                onCancelRemoveMcpServer: () => {
+                  state.enterpriseMcpRemoveConfirm = null;
+                },
+                onConfirmRemoveMcpServer: () => {
+                  const name = state.enterpriseMcpRemoveConfirm;
+                  state.enterpriseMcpRemoveConfirm = null;
+                  if (!name || enterpriseMcpRegisterBlockedReason(state) !== null) {
+                    return;
+                  }
+                  removeConfigFormValue(state, ["mcp", "servers", name]);
+                  // The form may have been open on the server that just went.
+                  if (state.enterpriseMcpDraft?.editing === name) {
+                    cancelEnterpriseMcpDraft(state);
+                  }
                 },
                 onSaveConfig: () => void saveConfig(state),
                 onApplyConfig: () => void applyConfig(state),
@@ -3136,22 +3484,122 @@ export function renderApp(state: AppViewState) {
                 foundations: state.knowledgeFoundations,
                 connections: state.knowledgeConnections,
                 error: state.knowledgeError,
-                onRefresh: () => void loadKnowledgeFoundations(state),
-                onTestConnection: (foundationId) =>
-                  void testKnowledgeFoundationConnection(state, foundationId),
+                // Config and its schema come too: the registration surface is
+                // built from them, so refreshing only the registry would leave
+                // adapters and configured sources stale — and a schema that
+                // failed on tab entry permanently unavailable.
+                onRefresh: () =>
+                  void refreshKnowledgeTab(state as unknown as { requestUpdate?: () => void }),
+                onTestConnection: (id) => void testKnowledgeFoundationConnection(state, id),
                 canManageFiles: hasOperatorAdminAccess(state.hello?.auth ?? null),
                 filesOpenFor: state.knowledgeFilesOpenFor,
                 documents: state.knowledgeDocuments,
                 uploadingFor: state.knowledgeUploadingFor,
                 documentConfirm: state.knowledgeDocumentConfirm,
                 documentNotice: state.knowledgeDocumentNotice,
-                onOpenFiles: (foundationId) => void openKnowledgeFiles(state, foundationId),
+                onOpenFiles: (id) => void openKnowledgeFiles(state, id),
                 onCloseFiles: () => closeKnowledgeFiles(state),
-                onUpload: (foundationId, file) =>
-                  void uploadKnowledgeDocument(state, foundationId, file),
+                onUpload: (id, file) => void uploadKnowledgeDocument(state, id, file),
                 onRequestRemove: (confirm) => requestKnowledgeDocumentRemoval(state, confirm),
                 onCancelRemove: () => cancelKnowledgeDocumentRemoval(state),
                 onConfirmRemove: () => void confirmKnowledgeDocumentRemoval(state),
+                // Registering a source writes config, which is the same
+                // admin-scoped act as uploading a document to one.
+                canRegister: hasOperatorAdminAccess(state.hello?.auth ?? null),
+                adapters: knowledgeAdapters(state),
+                adaptersKnown: state.configSchema !== null,
+                omittedAdapterSchemas: omittedAdapterSchemaPluginIds(state.configSchema),
+                defaultAdapterId: knowledgeDefaultAdapterId(state),
+                registerBlockedReason: knowledgeRegisterBlockedReason(state),
+                addBlockedReason:
+                  knowledgeRegisterBlockedReason(state) ?? knowledgePluginPolicyBlock(state),
+                draft: state.knowledgeDraft,
+                configured: knowledgeConfiguredFoundations(state),
+                configDirty: state.configFormDirty,
+                configSaving: state.configSaving,
+                configApplying: state.configApplying,
+                connected: state.connected,
+                onBeginDraft: (pluginId) => beginKnowledgeDraft(state, pluginId),
+                onEditDraft: (patch) => editKnowledgeDraft(state, patch),
+                onCancelDraft: () => cancelKnowledgeDraft(state),
+                onSubmitDraft: () => {
+                  // Guarded here too: the button is disabled, but the state it
+                  // guards (a pending raw-config draft) can change while this
+                  // form is open, and submitting would overwrite that draft.
+                  if (knowledgeRegisterBlockedReason(state) !== null) {
+                    return;
+                  }
+                  const draft = state.knowledgeDraft;
+                  if (!draft) {
+                    return;
+                  }
+                  // Policy gates NEW sources only; an edit is cleanup.
+                  if (draft.editingIndex === null && knowledgePluginPolicyBlock(state) !== null) {
+                    return;
+                  }
+                  const existingFoundations =
+                    knowledgeConfiguredFoundations(state)[draft.pluginId]?.foundations ?? [];
+                  submitKnowledgeDraft(state, {
+                    adapter: knowledgeAdapters(state).find(
+                      (adapter) => adapter.pluginId === draft.pluginId,
+                    ),
+                    existingIds: knowledgeTakenFoundationIds(state, draft),
+                    existingFoundations,
+                    // Only a new source turns the adapter on; an edit leaves a
+                    // deliberately-disabled plugin disabled.
+                    apply: applyKnowledgeFoundations(state, {
+                      enable: draft.editingIndex === null,
+                    }),
+                  });
+                },
+                onBeginEdit: (pluginId, index) => {
+                  const entry = knowledgeConfiguredFoundations(state)[pluginId]?.foundations[index];
+                  if (!entry) {
+                    return;
+                  }
+                  beginKnowledgeEdit(state, { pluginId, index, entry });
+                },
+                sourceConfirm: state.knowledgeSourceConfirm,
+                onRequestRemoveSource: (pluginId, index) => {
+                  const entry = knowledgeConfiguredFoundations(state)[pluginId]?.foundations[index];
+                  if (!entry) {
+                    return;
+                  }
+                  state.knowledgeSourceConfirm = {
+                    pluginId,
+                    index,
+                    foundationId: foundationText(entry.id),
+                  };
+                },
+                onCancelRemoveSource: () => {
+                  state.knowledgeSourceConfirm = null;
+                },
+                onConfirmRemoveSource: () => {
+                  const confirm = state.knowledgeSourceConfirm;
+                  state.knowledgeSourceConfirm = null;
+                  if (!confirm || knowledgeRegisterBlockedReason(state) !== null) {
+                    return;
+                  }
+                  const removed = removeKnowledgeFoundation({
+                    pluginId: confirm.pluginId,
+                    foundations:
+                      knowledgeConfiguredFoundations(state)[confirm.pluginId]?.foundations ?? [],
+                    index: confirm.index,
+                    expectedId: confirm.foundationId,
+                    apply: applyKnowledgeFoundations(state, { enable: false }),
+                  });
+                  // Only the form whose row went, or shifted up behind it. A
+                  // refused removal, and one after the row being edited, leave
+                  // the draft's index pointing exactly where it did.
+                  if (removed) {
+                    cancelKnowledgeDraftForRemoval(state, {
+                      pluginId: confirm.pluginId,
+                      index: confirm.index,
+                    });
+                  }
+                },
+                onSaveConfig: () => void saveConfig(state),
+                onApplyConfig: () => void applyConfig(state),
               }),
             )
           : nothing}

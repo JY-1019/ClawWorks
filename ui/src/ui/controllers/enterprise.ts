@@ -28,16 +28,27 @@ import type { GatewayBrowserClient } from "../gateway.ts";
 import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { nodeObjectEntityIds } from "../views/enterprise-ontology-graph.ts";
 import {
+  addNodeOntologyAction,
+  addNodeOntologyActionEffect,
+  addNodeOntologyActionParameter,
   addNodeOntologyEntry,
   addNodeOntologyEntity,
+  addNodeOntologyFunction,
   addNodeOntologyProperty,
   addNodeOntologyRelationship,
+  removeNodeOntologyAction,
+  removeNodeOntologyActionEffect,
+  removeNodeOntologyActionParameter,
   removeNodeOntologyEntity,
   removeNodeOntologyEntry,
+  removeNodeOntologyFunction,
   removeNodeOntologyProperty,
   removeNodeOntologyRelationship,
   setNodeGuidance,
+  ONTOLOGY_EDIT_REASONS,
   type OntologyCardinalityName,
+  type OntologyEditReason,
+  type OntologyEffectKindName,
   type OntologyValueTypeName,
   isValidEnterpriseId,
   isValidSkillName,
@@ -46,6 +57,7 @@ import {
   newNodeIdIssue,
   type NodeOntologyListField,
 } from "../views/enterprise-tree-edit.ts";
+import { parseMcpServerImport, type McpServerImportError } from "./mcp-server-import.ts";
 import {
   formatMissingOperatorReadScopeMessage,
   isMissingOperatorReadScopeError,
@@ -151,7 +163,7 @@ export type EnterpriseBindingPicker = {
 };
 
 /**
- * The "register an MCP server" form on the Enterprise MCP screen.
+ * The "register or adjust an MCP server" form on the Enterprise MCP screen.
  *
  * Registration is the same act as anywhere else in OpenClaw — one entry under
  * `mcp.servers` in config — so this form writes the config draft the Settings
@@ -160,21 +172,93 @@ export type EnterpriseBindingPicker = {
  * a step attaches it (OntologyBinding.mcpServers).
  */
 export type EnterpriseMcpDraft = {
+  /**
+   * The registered server this form rewrites, or null when it adds one. Editing
+   * is safe to do in place because `mcp.servers` is keyed by name: the gateway
+   * restores a stored header by key, not by position.
+   */
+  editing: string | null;
+  /**
+   * That server's config as it stood when this form opened, serialized.
+   *
+   * A Refresh — or another admin saving — can repoint the same server name at a
+   * new URL and rotate its header. The draft would then stage ITS url with the
+   * stored-value sentinel, and `config.set` restores that sentinel from the
+   * LATEST snapshot, sending the new credential to the old endpoint. Submit
+   * refuses unless the entry is byte-identical to what was opened.
+   */
+  editingSnapshot: string | null;
+  /**
+   * Which half of the form submits. Typing the fields is the path for a server
+   * an operator knows; `json` takes the snippet vendors actually publish, which
+   * is where the arguments and env vars a retyped entry loses live.
+   */
+  mode: "fields" | "json";
   name: string;
   /**
    * Stored verbatim as the server's `transport`. HTTP is not one transport:
    * OpenClaw resolves an entry with no `transport` as SSE
    * (src/agents/mcp-transport-config.ts) while Codex reads a bare URL as
    * streamable HTTP, so a server added here has to say which one it is.
+   *
+   * `unset` is edit-only: an entry that declared no transport keeps that
+   * ambiguity until the operator resolves it, because writing either value
+   * would change how one of the two runtimes dials a server they only came here
+   * to rename a header on.
    */
-  transport: "stdio" | "streamable-http" | "sse";
+  transport: "stdio" | "streamable-http" | "sse" | "unset";
   /** stdio: the executable to spawn. */
   command: string;
   /** stdio: whitespace-separated arguments. Anything quoted belongs in the config editor. */
   args: string;
+  /**
+   * stdio: the argument array this draft was seeded from. An untouched edit
+   * writes it back verbatim — round-tripping through a space-joined string
+   * would split `"hello world"` into two arguments.
+   */
+  argsOriginal: readonly string[] | null;
   /** http: the server URL. */
   url: string;
+  /**
+   * http: whether `url` stands in for a stored value the browser never got. A
+   * credential-bearing URL is redacted like a header, so it is blanked and
+   * written back untouched unless the operator types a replacement.
+   */
+  urlStored: boolean;
+  /**
+   * http: request headers, as ordered rows rather than a record, so a half-typed
+   * name does not collapse two rows into one while the operator is still typing.
+   * This is how a remote server is authenticated without OAuth.
+   */
+  headers: McpHeaderRow[];
+  /** http: whether the runtime should run its OAuth flow for this server. */
+  oauth: boolean;
+  /** json: the pasted snippet, parsed by parseMcpServerImport on submit. */
+  json: string;
   error: EnterpriseMcpDraftError | null;
+  /**
+   * Which value the error is about — a server name from a multi-server snippet,
+   * or the parser's own message. Without it a rejected paste names no line to fix.
+   */
+  errorDetail?: string;
+};
+
+/**
+ * One header row. `stored` marks a value the gateway redacted: the browser was
+ * never given it, so the row shows as unchanged and writes the sentinel back
+ * unless the operator types a replacement.
+ */
+export type McpHeaderRow = {
+  name: string;
+  value: string;
+  /** The row still carries its saved value, which this form is not showing. */
+  stored: boolean;
+  /**
+   * That saved value, written back verbatim while `stored` holds. Covers both a
+   * redaction sentinel and a scalar the text input cannot represent — config
+   * allows boolean and number headers, and rendering one as "" would rewrite it.
+   */
+  savedValue?: unknown;
 };
 
 export type EnterpriseMcpDraftError =
@@ -182,25 +266,141 @@ export type EnterpriseMcpDraftError =
   | "name-taken"
   | "name-unsupported"
   | "launch-missing"
-  | "url-invalid";
+  | "url-invalid"
+  | "header-name-empty"
+  | "header-name-duplicate"
+  | "header-name-invalid"
+  | "transport-unset"
+  | "entry-changed"
+  | "json-name-mismatch"
+  | McpServerImportError;
+
+/**
+ * A valid HTTP field name (RFC 7230 token). The config schema accepts any
+ * string, but the MCP SDK builds a `Headers` from these and throws on an
+ * invalid one — so Save/Publish would succeed and the server would refuse to
+ * start, with nothing on this screen pointing at the cause.
+ */
+const HTTP_FIELD_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 /** Names the config form's path writer refuses, so the form must refuse them first. */
 const UNWRITABLE_SERVER_NAMES = new Set(["__proto__", "prototype", "constructor"]);
 
-export function beginEnterpriseMcpDraft(state: EnterpriseState) {
-  state.enterpriseMcpDraft = {
+/**
+ * The gateway replaces every stored credential with this before sending config
+ * to the browser and swaps the real value back in on save, so a header value the
+ * form never received round-trips untouched.
+ */
+const REDACTED_SENTINEL = "__OPENCLAW_REDACTED__";
+
+/**
+ * The transport an existing entry already resolves to.
+ *
+ * Canonical `transport` wins outright, and the legacy `type` alias is read only
+ * when it is absent — the precedence `resolveMcpTransportConfig` applies
+ * (src/agents/mcp-transport-config.ts). Consulting both at once would let an
+ * entry carrying `transport: "streamable-http"` alongside a stale `type: "sse"`
+ * open on SSE; saving an unrelated field then drops `type` and writes that
+ * reading back as canonical, silently changing the endpoint's protocol.
+ */
+function resolveDraftTransport(declared: string, alias: string): EnterpriseMcpDraft["transport"] {
+  const effective = declared || alias;
+  if (effective === "sse") {
+    return "sse";
+  }
+  if (effective === "streamable-http" || effective === "http") {
+    return "streamable-http";
+  }
+  return "unset";
+}
+
+function emptyMcpDraft(): EnterpriseMcpDraft {
+  return {
+    editing: null,
+    editingSnapshot: null,
+    mode: "fields",
     name: "",
     transport: "stdio",
     command: "",
     args: "",
+    argsOriginal: null,
     url: "",
+    urlStored: false,
+    headers: [],
+    oauth: false,
+    json: "",
     error: null,
+  };
+}
+
+export function beginEnterpriseMcpDraft(state: EnterpriseState) {
+  state.enterpriseMcpDraft = emptyMcpDraft();
+}
+
+/**
+ * Open the same form on a server already in `mcp.servers`.
+ *
+ * Seeded from the config draft, so a server registered but not yet saved can be
+ * corrected without publishing it first. A redacted header comes back blank with
+ * its `stored` flag set rather than as placeholder text: a masked box full of
+ * dots reads as a value the operator could edit character by character, and it
+ * cannot be.
+ */
+export function beginEnterpriseMcpEdit(
+  state: EnterpriseState,
+  params: { name: string; server: Record<string, unknown> },
+) {
+  const { server } = params;
+  // Trimmed, matching resolveStdioMcpServerLaunchConfig: the embedded resolver
+  // ignores a blank command and treats such an entry as HTTP, so seeding stdio
+  // here would hide the URL and auth fields and then fail as launch-missing.
+  const command = typeof server.command === "string" ? server.command.trim() : "";
+  // Normalized like the alias below, matching getRequestedTransport in
+  // src/agents/mcp-transport-config.ts: the runtime lowercases both, so a
+  // config spelling "SSE" must open the same draft here as "sse".
+  const declared =
+    typeof server.transport === "string" ? server.transport.trim().toLowerCase() : "";
+  const alias = typeof server.type === "string" ? server.type.trim().toLowerCase() : "";
+  const args = Array.isArray(server.args)
+    ? server.args.filter((arg): arg is string => typeof arg === "string")
+    : null;
+  const url = typeof server.url === "string" ? server.url : "";
+  const headers =
+    server.headers && typeof server.headers === "object" && !Array.isArray(server.headers)
+      ? Object.entries(server.headers as Record<string, unknown>).map(([name, value]) =>
+          // A plain string is editable text. A sentinel or a non-string scalar
+          // is not: the form shows the row as unchanged and writes the saved
+          // value straight back unless the operator types over it.
+          typeof value === "string" && value !== REDACTED_SENTINEL
+            ? { name, value, stored: false }
+            : { name, value: "", stored: true, savedValue: value },
+        )
+      : [];
+  state.enterpriseMcpDraft = {
+    ...emptyMcpDraft(),
+    editing: params.name,
+    // Serialized identity, so a refresh that repoints this name is caught even
+    // though the name itself did not move.
+    editingSnapshot: JSON.stringify(server),
+    name: params.name,
+    // A command wins however the entry is labelled, matching
+    // resolveMcpTransportConfig. Otherwise the transport this entry ALREADY
+    // resolves to, and `unset` when it declares none, so an unrelated edit
+    // cannot silently repoint the server.
+    transport: command ? "stdio" : resolveDraftTransport(declared, alias),
+    command,
+    args: args ? args.join(" ") : "",
+    argsOriginal: args,
+    url: url === REDACTED_SENTINEL ? "" : url,
+    urlStored: url === REDACTED_SENTINEL,
+    headers,
+    oauth: server.auth === "oauth",
   };
 }
 
 export function editEnterpriseMcpDraft(
   state: EnterpriseState,
-  patch: Partial<Omit<EnterpriseMcpDraft, "error">>,
+  patch: Partial<Omit<EnterpriseMcpDraft, "error" | "errorDetail">>,
 ) {
   const draft = state.enterpriseMcpDraft;
   if (!draft) {
@@ -208,7 +408,56 @@ export function editEnterpriseMcpDraft(
   }
   // Clearing the error on every edit: the operator is answering it, and a stale
   // "name taken" under a name they just changed reads as a second failure.
-  state.enterpriseMcpDraft = { ...draft, ...patch, error: null };
+  const { errorDetail: _errorDetail, ...rest } = draft;
+  state.enterpriseMcpDraft = { ...rest, ...patch, error: null };
+}
+
+/** Add, change, or drop one header row without touching the rest of the draft. */
+export function editEnterpriseMcpHeader(
+  state: EnterpriseState,
+  index: number,
+  patch: { name?: string; value?: string } | null,
+) {
+  const draft = state.enterpriseMcpDraft;
+  if (!draft) {
+    return;
+  }
+  const headers =
+    patch === null
+      ? draft.headers.filter((_row, at) => at !== index)
+      : draft.headers.map((row, at) => {
+          if (at !== index) {
+            return row;
+          }
+          // A stored row's NAME is fixed: the gateway restores the sentinel by
+          // header key, so moving it would write a reserved value under a path
+          // holding nothing and be refused at save. The view makes it readonly;
+          // this is the same rule at the state layer.
+          const replaced = patch.value !== undefined;
+          const next: McpHeaderRow = {
+            name: row.stored ? row.name : (patch.name ?? row.name),
+            value: patch.value ?? row.value,
+            // Typing into a stored value replaces it, so the row stops standing
+            // in for a value the browser never saw.
+            stored: replaced ? false : row.stored,
+          };
+          // The saved value only travels while the row still stands in for it.
+          if (!replaced && row.savedValue !== undefined) {
+            next.savedValue = row.savedValue;
+          }
+          return next;
+        });
+  editEnterpriseMcpDraft(state, { headers });
+}
+
+export function addEnterpriseMcpHeader(state: EnterpriseState) {
+  const draft = state.enterpriseMcpDraft;
+  if (!draft) {
+    return;
+  }
+  editEnterpriseMcpDraft(state, {
+    headers: [...draft.headers, { name: "", value: "", stored: false }],
+  });
 }
 
 export function cancelEnterpriseMcpDraft(state: EnterpriseState) {
@@ -224,6 +473,8 @@ export function submitEnterpriseMcpDraft(
   state: EnterpriseState,
   params: {
     existingNames: readonly string[];
+    /** The registered entry being edited, so config this form does not render survives. */
+    existingServer?: Record<string, unknown>;
     apply: (name: string, server: Record<string, unknown>) => void;
   },
 ) {
@@ -231,17 +482,32 @@ export function submitEnterpriseMcpDraft(
   if (!draft) {
     return;
   }
-  const name = draft.name.trim();
-  const fail = (error: EnterpriseMcpDraftError) => {
-    state.enterpriseMcpDraft = { ...draft, error };
+  const fail = (error: EnterpriseMcpDraftError, detail?: string) => {
+    state.enterpriseMcpDraft = { ...draft, error, ...(detail ? { errorDetail: detail } : {}) };
   };
+  // Checked before the mode dispatch: a paste can carry a redaction sentinel
+  // too, so a JSON-mode edit against a changed entry combines the latest secret
+  // with a stale URL exactly as the typed half would.
+  if (draft.editing && JSON.stringify(params.existingServer ?? null) !== draft.editingSnapshot) {
+    fail("entry-changed");
+    return;
+  }
+  if (draft.mode === "json") {
+    submitMcpImport(state, draft, params, fail);
+    return;
+  }
+  // An edit keeps the registered name. It is the key steps attach by
+  // (`ontology.mcpServers`), and nothing migrates them — and it is also the
+  // redaction lookup path, so a stored header could not restore under a new
+  // key. Renaming means removing and registering again.
+  const name = draft.editing ?? draft.name.trim();
   if (!name) {
     fail("name-empty");
     return;
   }
   // Config keys are unique, so a repeated name would REPLACE a working server
   // rather than add one — and take its steps' attachments somewhere else with it.
-  if (params.existingNames.some((existing) => existing === name)) {
+  if (!draft.editing && params.existingNames.some((existing) => existing === name)) {
     fail("name-taken");
     return;
   }
@@ -252,13 +518,62 @@ export function submitEnterpriseMcpDraft(
     fail("name-unsupported");
     return;
   }
-  const entry = buildMcpServerEntry(draft);
+  // The registered entry changed under the form. Its stored header would be
+  // restored from the latest config while this draft supplies the old URL.
+  if (draft.editing && JSON.stringify(params.existingServer ?? null) !== draft.editingSnapshot) {
+    fail("entry-changed");
+    return;
+  }
+  const entry = buildMcpServerEntry(draft, params.existingServer);
   if (entry.kind !== "ok") {
     fail(entry.kind);
     return;
   }
-  const server = entry.server;
-  params.apply(name, server);
+  params.apply(name, entry.server);
+  state.enterpriseMcpDraft = null;
+}
+
+/**
+ * Register every server in a pasted snippet, or none of them.
+ *
+ * The name check runs across the whole snippet before the first write: a paste
+ * is one unit, and half-registering it would leave the operator believing the
+ * server the collision hid is there too.
+ */
+function submitMcpImport(
+  state: EnterpriseState,
+  draft: EnterpriseMcpDraft,
+  params: {
+    existingNames: readonly string[];
+    apply: (name: string, server: Record<string, unknown>) => void;
+  },
+  fail: (error: EnterpriseMcpDraftError, detail?: string) => void,
+) {
+  const parsed = parseMcpServerImport(draft.json);
+  if (parsed.kind !== "ok") {
+    fail(parsed.kind, parsed.detail);
+    return;
+  }
+  const taken = new Set(params.existingNames);
+  if (draft.editing) {
+    // An edit's own name is not a collision: pasting a corrected snippet over
+    // the server being edited is the point of the paste half. But the snippet
+    // has to CARRY that name — otherwise the paste registers new servers and
+    // silently leaves the edited one behind, under a button saying "Update".
+    if (!parsed.entries.some((entry) => entry.name === draft.editing)) {
+      fail("json-name-mismatch", draft.editing);
+      return;
+    }
+    taken.delete(draft.editing);
+  }
+  const collision = parsed.entries.find((entry) => taken.has(entry.name));
+  if (collision) {
+    fail("name-taken", collision.name);
+    return;
+  }
+  for (const entry of parsed.entries) {
+    params.apply(entry.name, entry.server);
+  }
   state.enterpriseMcpDraft = null;
 }
 
@@ -269,27 +584,153 @@ export function submitEnterpriseMcpDraft(
  */
 function buildMcpServerEntry(
   draft: EnterpriseMcpDraft,
+  existing?: Record<string, unknown>,
 ):
   | { kind: "ok"; server: Record<string, unknown> }
   | { kind: "launch-missing" }
-  | { kind: "url-invalid" } {
+  | { kind: "url-invalid" }
+  | { kind: "transport-unset" }
+  | { kind: "header-name-empty" }
+  | { kind: "header-name-duplicate" }
+  | { kind: "header-name-invalid" } {
+  // Start from the registered entry so settings this form does not render —
+  // toolFilter, timeouts, tool policy — are not dropped by an edit that never
+  // touched them. Every field the form DOES own is cleared first, so switching
+  // transport cannot leave both launches behind.
+  const server: Record<string, unknown> = { ...existing };
+  for (const key of ["command", "args", "url", "transport", "type", "headers", "auth"]) {
+    delete server[key];
+  }
+  // ...and so is every field belonging to the transport being switched AWAY
+  // from. OpenClaw would quietly ignore the leftovers, but its Codex projection
+  // copies them (src/agents/cli-runner/bundle-mcp-adapter-shared.ts) and Codex
+  // rejects `env`/`cwd` on a URL transport and URL fields on stdio
+  // (../codex/codex-rs/config/src/mcp_types.rs), so the saved server would fail
+  // to initialize for Codex-backed runs.
+  const stdioOnlyKeys = ["env", "cwd", "workingDirectory"];
+  const httpOnlyKeys = [
+    "oauth",
+    "sslVerify",
+    "ssl_verify",
+    "clientCert",
+    "clientKey",
+    "client_cert",
+    "client_key",
+  ];
+  for (const key of draft.transport === "stdio" ? httpOnlyKeys : stdioOnlyKeys) {
+    delete server[key];
+  }
   if (draft.transport !== "stdio") {
-    const url = draft.url.trim();
+    // The seeded entry declared no transport and the operator did not resolve
+    // it. Both values are wrong to guess: OpenClaw reads an unset one as SSE
+    // and Codex reads a bare URL as streamable HTTP, so saving either would
+    // repoint the server for one of them.
+    if (draft.transport === "unset") {
+      return { kind: "transport-unset" };
+    }
+    const typed = draft.url.trim();
+    // A blank URL on an entry whose stored one is redacted means "leave it":
+    // the browser was never given the value, so it is written straight back.
+    const url = !typed && draft.urlStored ? REDACTED_SENTINEL : typed;
     if (!url) {
       return { kind: "launch-missing" };
     }
+    if (url !== REDACTED_SENTINEL && !isHttpUrl(url)) {
+      return { kind: "url-invalid" };
+    }
+    const headers = buildMcpHeaders(draft.headers);
+    if (headers.kind !== "ok") {
+      return headers;
+    }
+    server.url = url;
     // `transport` is written explicitly: the two HTTP transports are not
     // interchangeable, and leaving it out makes each runtime guess differently.
-    return isHttpUrl(url)
-      ? { kind: "ok", server: { url, transport: draft.transport } }
-      : { kind: "url-invalid" };
+    server.transport = draft.transport;
+    if (Object.keys(headers.headers).length > 0) {
+      server.headers = headers.headers;
+    }
+    if (draft.oauth) {
+      server.auth = "oauth";
+    }
+    return { kind: "ok", server };
   }
   const command = draft.command.trim();
   if (!command) {
     return { kind: "launch-missing" };
   }
-  const args = draft.args.split(/\s+/).filter((arg) => arg.length > 0);
-  return { kind: "ok", server: args.length > 0 ? { command, args } : { command } };
+  server.command = command;
+  const args = resolveMcpArgs(draft);
+  if (args.length > 0) {
+    server.args = args;
+  }
+  return { kind: "ok", server };
+}
+
+/**
+ * The argument array an edit should write.
+ *
+ * An untouched field writes the seeded array back verbatim. This form joins
+ * arguments with spaces and splits them the same way, so a round trip would
+ * turn `["--label", "hello world"]` into three arguments — an edit that only
+ * changed a URL must not rewrite the subprocess invocation.
+ */
+function resolveMcpArgs(draft: EnterpriseMcpDraft): string[] {
+  const original = draft.argsOriginal;
+  if (original && draft.args === original.join(" ")) {
+    return [...original];
+  }
+  return draft.args.split(/\s+/).filter((arg) => arg.length > 0);
+}
+
+/**
+ * The header record a draft's rows describe, or why they do not make one.
+ *
+ * A row still marked `stored` writes the sentinel back, which is what tells the
+ * gateway to keep the credential the browser was never given. A blank value on
+ * an un-stored row is a real empty header, not a deletion — removing a header is
+ * removing its row.
+ */
+function buildMcpHeaders(
+  rows: readonly McpHeaderRow[],
+):
+  | { kind: "ok"; headers: Record<string, unknown> }
+  | { kind: "header-name-empty" }
+  | { kind: "header-name-duplicate" }
+  | { kind: "header-name-invalid" } {
+  const headers: Record<string, unknown> = {};
+  // HTTP header names are case-insensitive, so `Authorization` and
+  // `authorization` are one header in two object keys. Collapsing them into a
+  // record would keep whichever came last and leave what the server actually
+  // receives ambiguous, so the form refuses instead.
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const name = row.name.trim();
+    // A value with no header name reaches nothing and would be silently dropped
+    // on save, so the form refuses rather than letting it look configured.
+    if (!name) {
+      if (row.value.trim() || row.stored) {
+        return { kind: "header-name-empty" };
+      }
+      continue;
+    }
+    if (!HTTP_FIELD_NAME.test(name)) {
+      return { kind: "header-name-invalid" };
+    }
+    if (seen.has(name.toLowerCase())) {
+      return { kind: "header-name-duplicate" };
+    }
+    seen.add(name.toLowerCase());
+    // defineProperty, not assignment: `__proto__` is a valid HTTP field name,
+    // and `headers.__proto__ = x` invokes the legacy setter instead of storing
+    // it — the form would close having silently dropped the header.
+    Object.defineProperty(headers, name, {
+      value: row.stored ? (row.savedValue ?? REDACTED_SENTINEL) : row.value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return { kind: "ok", headers };
 }
 
 /** MCP over HTTP means http(s); anything else cannot be dialed by the runtime. */
@@ -1408,6 +1849,35 @@ export type EnterpriseOntologyDraftBody =
       from: string;
       to: string;
       cardinality: OntologyCardinalityName;
+    }
+  // The two AIP verbs. An action is declared bare and then given its effects and
+  // parameters, the way an object type is declared and then given properties:
+  // each effect has to be checked against what the step can address, so they
+  // cannot be collected in one form without guessing.
+  | { kind: "action"; nodeId: string; id: string; title: string }
+  | {
+      kind: "action-effect";
+      nodeId: string;
+      actionId: string;
+      entity: string;
+      effectKind: OntologyEffectKindName;
+    }
+  | {
+      kind: "action-parameter";
+      nodeId: string;
+      actionId: string;
+      id: string;
+      type: OntologyValueTypeName;
+      required: boolean;
+    }
+  | {
+      kind: "function";
+      nodeId: string;
+      id: string;
+      title: string;
+      entity: string;
+      expression: string;
+      returns: OntologyValueTypeName;
     };
 
 /**
@@ -1415,9 +1885,18 @@ export type EnterpriseOntologyDraftBody =
  * discriminated union collapses it to the keys every member shares, which would
  * lose `entityId`, `from`, and `to` from the callers' view.
  */
+/**
+ * What an open ontology form can be refused for: every splicer reason, plus the
+ * one the controller raises before any splicer runs (a required object type the
+ * step has none of). Closed, because the form renders it as
+ * `enterprise.ontologyEditor.error.<reason>` and a freeform string would put a
+ * raw key on screen.
+ */
+export type EnterpriseOntologyDraftError = OntologyEditReason | "endpoint-missing";
+
 export type EnterpriseOntologyDraft = EnterpriseOntologyDraftBody & {
   treeId: string;
-  error: string | null;
+  error: EnterpriseOntologyDraftError | null;
 };
 
 /** Open an ontology form on the selected step, replacing any other open one. */
@@ -1462,12 +1941,21 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
   if (!draft || !tree || draft.treeId !== tree.id || state.enterpriseTreeSaving) {
     return;
   }
-  const id = draft.id.trim().toLowerCase();
-  if (!isValidEnterpriseId(id)) {
+  // An effect names an object type and a verb, not an id of its own, so the id
+  // gate below would refuse every one of them.
+  const id = draft.kind === "action-effect" ? "" : draft.id.trim().toLowerCase();
+  if (draft.kind !== "action-effect" && !isValidEnterpriseId(id)) {
     state.enterpriseOntologyDraft = { ...draft, error: "invalid-id" };
     return;
   }
   if (draft.kind === "relationship" && (!draft.from || !draft.to)) {
+    state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
+    return;
+  }
+  // Both AIP verbs hang off an object type the step can address. An empty select
+  // means the step has none in scope, and submitting would report the far less
+  // useful "entity-not-found" against a blank name.
+  if ((draft.kind === "action-effect" || draft.kind === "function") && !draft.entity) {
     state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
     return;
   }
@@ -1488,11 +1976,41 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
           ...(draft.primaryKey ? { primaryKey: true } : {}),
         });
       }
-      return addNodeOntologyRelationship(definition, draft.nodeId, {
+      if (draft.kind === "relationship") {
+        return addNodeOntologyRelationship(definition, draft.nodeId, {
+          id,
+          from: draft.from,
+          to: draft.to,
+          cardinality: draft.cardinality,
+        });
+      }
+      if (draft.kind === "action") {
+        const title = draft.title.trim();
+        return addNodeOntologyAction(definition, draft.nodeId, {
+          id,
+          ...(title ? { title } : {}),
+        });
+      }
+      if (draft.kind === "action-effect") {
+        return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
+          entity: draft.entity,
+          kind: draft.effectKind,
+        });
+      }
+      if (draft.kind === "action-parameter") {
+        return addNodeOntologyActionParameter(definition, draft.nodeId, draft.actionId, {
+          id,
+          type: draft.type,
+          ...(draft.required ? { required: true } : {}),
+        });
+      }
+      const functionTitle = draft.title.trim();
+      return addNodeOntologyFunction(definition, draft.nodeId, {
         id,
-        from: draft.from,
-        to: draft.to,
-        cardinality: draft.cardinality,
+        ...(functionTitle ? { title: functionTitle } : {}),
+        entity: draft.entity,
+        expression: draft.expression,
+        returns: draft.returns,
       });
     },
     // Refusals belong ON the form: the operator is mid-typing and the fix is the
@@ -1578,16 +2096,34 @@ export async function saveEnterpriseNodeGuidance(state: EnterpriseState, nodeId:
  * Returns whether the write was saved, so a caller with follow-up state (a draft
  * to clear, say) can act only on success.
  */
+/**
+ * Refusals that mean this SCREEN is behind rather than the operator wrong: the
+ * step or the entry vanished between the snapshot and the export. They reload
+ * the work-map instead of reporting, so they never reach the error strings — and
+ * that is why `enterprise.ontologyEditor.error` carries no entry for them.
+ */
+const STALE_EDIT_REASONS = [
+  "node-not-found",
+  "entry-not-found",
+] as const satisfies readonly OntologyEditReason[];
+
+export const ONTOLOGY_EDIT_REASONS_REPORTED: readonly OntologyEditReason[] =
+  ONTOLOGY_EDIT_REASONS.filter(
+    (reason) => !(STALE_EDIT_REASONS as readonly OntologyEditReason[]).includes(reason),
+  );
+
 async function applyEnterpriseTreeEdit(
   state: EnterpriseState,
   edit: (
     definition: EditableTreeDefinition,
-  ) => { ok: true; definition: EditableTreeDefinition } | { ok: false; reason?: string },
+  ) =>
+    | { ok: true; definition: EditableTreeDefinition }
+    | { ok: false; reason?: OntologyEditReason },
   /**
    * Where a REFUSED edit reports. Without one it falls back to the tree banner,
    * which is right for a removal button but wrong for an open form.
    */
-  onRefused?: (reason: string | undefined) => void,
+  onRefused?: (reason: OntologyEditReason | undefined) => void,
 ): Promise<boolean> {
   const tree = state.enterpriseTreeDetail;
   if (!tree || state.enterpriseTreeSaving) {
@@ -1643,8 +2179,10 @@ async function applyEnterpriseTreeEdit(
       // For the ontology form it is a real refusal — an endpoint out of scope —
       // and belongs next to the field the operator chose it in.
       const stale =
-        result.reason === "node-not-found" ||
-        result.reason === "entry-not-found" ||
+        (result.reason !== undefined &&
+          (STALE_EDIT_REASONS as readonly (OntologyEditReason | undefined)[]).includes(
+            result.reason,
+          )) ||
         (result.reason === "entity-not-found" && !onRefused);
       if (stale) {
         await refreshAfterTreeWrite(state, treeId, treeId);
@@ -1765,6 +2303,50 @@ export async function removeEnterpriseOntologyRelationship(
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
     removeNodeOntologyRelationship(definition, params.nodeId, params.link),
+  );
+}
+
+export async function removeEnterpriseOntologyAction(
+  state: EnterpriseState,
+  params: { nodeId: string; actionId: string },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyAction(definition, params.nodeId, params.actionId),
+  );
+}
+
+export async function removeEnterpriseOntologyActionEffect(
+  state: EnterpriseState,
+  params: { nodeId: string; actionId: string; entity: string; kind: OntologyEffectKindName },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyActionEffect(definition, params.nodeId, params.actionId, {
+      entity: params.entity,
+      kind: params.kind,
+    }),
+  );
+}
+
+export async function removeEnterpriseOntologyActionParameter(
+  state: EnterpriseState,
+  params: { nodeId: string; actionId: string; parameterId: string },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyActionParameter(
+      definition,
+      params.nodeId,
+      params.actionId,
+      params.parameterId,
+    ),
+  );
+}
+
+export async function removeEnterpriseOntologyFunction(
+  state: EnterpriseState,
+  params: { nodeId: string; functionId: string },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyFunction(definition, params.nodeId, params.functionId),
   );
 }
 
