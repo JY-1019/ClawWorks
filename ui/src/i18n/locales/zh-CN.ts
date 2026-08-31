@@ -562,14 +562,73 @@ export const zh_CN: TranslationMap = {
       save: "保存角色提示",
       revert: "还原",
     },
+    capabilities: {
+      toolsTitle: "工具",
+      toolsHint:
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+      skillsTitle: "Skills",
+      skillsHint:
+        "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
+      mcpTitle: "MCP servers",
+      mcpHint:
+        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+      knowledgeTitle: "知识库",
+      knowledgeHint:
+        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+    },
+    bindingDetail: {
+      openTitle: "Show what {entry} is",
+      title: "{entry}",
+      close: "关闭",
+      detach: "Detach from this step",
+      kindTool: "Tool grant",
+      kindDeniedTool: "Tool denial",
+      kindSkill: "Declared skill",
+      kindKnowledge: "Knowledge foundation",
+      kindMcp: "MCP attachment",
+      declaredOn: "Declared on",
+      declaredInherited: "A parent step. Edit it there to change or remove it.",
+      configKey: "Definition key",
+      alsoOn: "Also on",
+      description: "What it does",
+      toolNotOneTool:
+        "This entry is not a single tool in this catalog. It may name a whole section, use a wildcard, or name something this catalog does not carry. What it reaches on this step is decided when the run starts, so it is not spelled out here.",
+      toolGroup: "Section",
+      toolSource: "Provided by",
+      toolRisk: "risk: {risk}",
+      catalogPending: "The catalog for this has not loaded, so nothing can be said about it yet.",
+      configPending: "Config has not arrived, so nothing can be said about this server yet.",
+      skillMissing:
+        "No installed skill has this name, so the step declares a dependency that resolves to nothing.",
+      skillMissingForAgent:
+        "No skill with this name is installed for agent {agentId}, whose catalog this is. If the work-map governs a different agent, check there before treating this as broken.",
+      skillStatus: "Status",
+      skillFile: "Loaded from",
+      skillRequires: "Requires",
+      skillRequiresAnyBin: "Requires any one of",
+      skillRequiresAnyOs: "Runs on any of",
+      mcpMissing:
+        "No server with this name is registered in mcp.servers, so the attachment reaches nothing.",
+      mcpTransport: "Transport",
+      mcpLaunch: "Launch",
+      mcpState: "State",
+      knowledgeMissing:
+        "No foundation with this id is registered, so a search against it returns nothing.",
+      knowledgeKind: "Kind",
+      knowledgeLocator: "Location",
+      knowledgeOwner: "Owned by",
+      knowledgeGlobal: "Registered by a plugin, so every work-map can retrieve it.",
+      knowledgeOwnerUnknown: "This gateway does not report foundation ownership.",
+      knowledgeUnreachable:
+        "Another work-map's bundle owns this foundation. Retrieval resolves it only for its owner, so a search from this work-map returns nothing.",
+    },
     bindings: {
       title: "步骤绑定",
       subtitle: "此步骤可调用的内容、声明的技能以及可检索的知识。",
-      tools: "工具 — ontology.allowedTools",
-      skills: "Skills — ontology.skills",
-      knowledge: "知识 — ontology.knowledgeFoundations",
-      mcp: "MCP 服务器 — ontology.mcpServers",
-      deniedTools: "拒绝的工具 — ontology.deniedTools",
+      allowedLabel: "Allowed",
+      deniedLabel: "Denied",
+      declaredLabel: "Declared",
+      attachedLabel: "Attached",
       deniedToolsWins:
         "拒绝始终优先。它适用于此步骤及其下的所有内容，分支中更深层的授权无法将其撤销。",
       deniedToolsObserving:

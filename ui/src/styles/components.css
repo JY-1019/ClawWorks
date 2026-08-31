@@ -6863,14 +6863,112 @@ details[open] > .ov-expandable-toggle::after {
    =========================================== */
 
 /*
- * The three binding kinds (tools / skills / knowledge) as separate cards. They
- * obey different rules and an operator scans them for different questions, so
- * running them together as one list made the boundaries invisible.
+ * The step inspector, top to bottom: identity, role prompt, sub-steps, the four
+ * capability kinds, then the ontology. Each block is a .node-section carrying a
+ * data-kind, and the accent below is the only thing telling tools from skills
+ * from MCP at a glance — without it the operator reads five identical headers.
+ */
+.node-inspector__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.node-inspector__ident {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.node-inspector__id,
+.binding-group__key {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.node-inspector__desc {
+  margin-top: 4px;
+}
+
+.node-section {
+  margin-top: 16px;
+  padding-left: 12px;
+  /* The accent bar IS the category marker; a per-kind color is set below. */
+  border-left: 3px solid var(--border-strong);
+}
+
+.node-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.node-section__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.node-section__hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.node-section__body {
+  margin-top: 8px;
+}
+
+/*
+ * One hue per setting kind. Raw hues rather than --ok/--warn/--danger on purpose:
+ * these mark a CATEGORY, and a status token would read as a verdict — a green
+ * Knowledge bar and an amber MCP bar would say those blocks are healthy and
+ * suspect, which is not what the accent means. Tools and denials share one block,
+ * so there is no separate denial color: a denial is part of the tool decision.
+ */
+.node-section[data-kind="prompt"] {
+  border-left-color: var(--accent);
+}
+
+.node-section[data-kind="tools"] {
+  border-left-color: #6366f1;
+}
+
+.node-section[data-kind="skills"] {
+  border-left-color: #14b8a6;
+}
+
+.node-section[data-kind="mcp"] {
+  border-left-color: #f59e0b;
+}
+
+.node-section[data-kind="knowledge"] {
+  border-left-color: #a855f7;
+}
+
+.node-section[data-kind="ontology"] {
+  border-left-color: #0ea5e9;
+}
+
+.node-capabilities__lead {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-strong);
+}
+
+/*
+ * The binding rows inside one capability block (tools carry two: allow and deny).
+ * They obey different rules and an operator scans them for different questions,
+ * so running them together as one list made the boundaries invisible.
  */
 .binding-groups {
   display: grid;
   gap: 12px;
-  margin-top: 12px;
 }
 
 .binding-group,
@@ -6906,13 +7004,121 @@ details[open] > .ov-expandable-toggle::after {
 }
 
 /*
- * Structural edits (adding a sub-step) sit below a rule so they do not read as a
- * fourth binding kind: they change the work-map's shape, not the step's scope.
+ * A binding value is clickable: the chip label opens the detail card, and Detach
+ * stays its own control so the two acts never share a hit target.
  */
-.node-structure {
-  margin-top: 20px;
+.chip-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px;
+}
+
+.chip-entry--inherited {
+  opacity: 0.75;
+}
+
+.chip-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip-open:hover,
+.chip-open:focus-visible {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+/*
+ * The one open ontology form. Ruled off from the list it was opened from: it is a
+ * pending edit, not another declared row, and without the separator a half-typed
+ * object type read as one the step already has.
+ */
+.ontology-draft-form {
+  margin-top: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--border-strong);
+}
+
+/* The binding detail card: a read-out of one chip, shown over the inspector. */
+.binding-detail {
+  display: grid;
+  gap: 12px;
+  min-width: min(32rem, 80vw);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--fg);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 28%));
+  /* Same dvh cap as the picker: a long coverage list must scroll inside the
+     dialog rather than push the action row past the visible screen. */
+  max-height: 85dvh;
+  overflow-y: auto;
+}
+
+.binding-detail__head {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
+.binding-detail__kind {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.binding-detail__entry {
+  font-size: 16px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.binding-detail__rows {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 12px;
+  align-items: start;
+  font-size: 13px;
+}
+
+.detail-row__label {
+  color: var(--muted);
+}
+
+.detail-row__value {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.binding-detail__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  /* The label column costs more than it explains once the value has to wrap. */
+  .detail-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }
 
 /*

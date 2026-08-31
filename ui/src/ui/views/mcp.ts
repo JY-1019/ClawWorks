@@ -5,7 +5,17 @@ import { html, nothing, type TemplateResult } from "lit";
 export type McpServerRow = {
   name: string;
   enabled: boolean;
+  /** Transport FAMILY, for the list badge: every URL-backed server reads "http". */
   transport: "stdio" | "http" | "invalid";
+  /**
+   * The transport actually written in config, when it names one.
+   *
+   * `transport` above collapses `sse` and `streamable-http` into one badge, which
+   * is right for a list but wrong for a surface that claims to explain the server:
+   * the two behave differently at run time and neither is spelled "http" in
+   * config. Absent when the entry leaves it implicit.
+   */
+  configuredTransport: string | null;
   auth: string | null;
   launch: string;
   toolFilter: boolean;
@@ -40,6 +50,14 @@ function summarizeServer(name: string, value: unknown): McpServerRow {
   const url = typeof server.url === "string" ? server.url : "";
   const command = typeof server.command === "string" ? server.command : "";
   const transport = url ? "http" : command ? "stdio" : "invalid";
+  // Both spellings: `transport` is OpenClaw's key, `type` the CLI-native alias the
+  // config normalizer rewrites (resolveOpenClawMcpTransportAlias).
+  const configuredTransport =
+    typeof server.transport === "string"
+      ? server.transport
+      : typeof server.type === "string"
+        ? server.type
+        : null;
   const auth = typeof server.auth === "string" ? server.auth : null;
   const launch = url || command || "missing transport";
   const tls =
@@ -52,6 +70,7 @@ function summarizeServer(name: string, value: unknown): McpServerRow {
     name,
     enabled: server.enabled !== false,
     transport,
+    configuredTransport,
     auth,
     launch: url ? redactSensitiveUrlLikeString(launch) : launch,
     toolFilter: Boolean(server.toolFilter),

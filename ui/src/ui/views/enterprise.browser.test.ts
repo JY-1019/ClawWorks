@@ -69,6 +69,27 @@ const TREE: EnterpriseTreeDetail = {
   ],
 } as EnterpriseTreeDetail;
 
+/**
+ * A two-step work-map with the given root and child bindings.
+ *
+ * The detail card re-checks that its entry is still declared on the step, so a
+ * card test has to hand it a tree that really carries the binding — a fixture
+ * that only names the entry in `bindingDetail` renders nothing, which is the
+ * stale-entry guard doing its job rather than a broken assertion.
+ */
+function treeWith(
+  rootOntology: Record<string, unknown>,
+  childOntology: Record<string, unknown>,
+): EnterpriseTreeDetail {
+  return {
+    ...TREE,
+    nodes: [
+      { ...TREE.nodes[0], ontology: rootOntology },
+      { ...TREE.nodes[1], ontology: childOntology },
+    ],
+  } as EnterpriseTreeDetail;
+}
+
 /** A work-map whose child step declares both AIP verbs over an inherited type. */
 const VERB_TREE: EnterpriseTreeDetail = {
   ...TREE,
@@ -193,6 +214,9 @@ function createProps(overrides: Partial<EnterpriseProps> = {}): EnterpriseProps 
     bindingPicker: null,
     onOpenBindingPicker: () => undefined,
     onRemoveBinding: () => undefined,
+    bindingDetail: null,
+    onOpenBindingDetail: () => undefined,
+    onCloseBindingDetail: () => undefined,
     guidanceDraft: null,
     onGuidanceDraft: () => undefined,
     onSaveGuidance: () => undefined,
@@ -1156,13 +1180,379 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(text).toContain("Skills");
     expect(text).toContain("Knowledge");
     expect(text).toContain("MCP servers");
-    // Denials are a binding kind too, and the only one no later grant can undo,
-    // so it gets a row rather than forcing an operator into the raw editor.
-    expect(text).toContain("Denied tools");
+    // Every row names the definition key it writes, so the screen maps onto the
+    // file an operator would otherwise edit by hand.
+    expect(text).toContain("ontology.allowedTools");
+    expect(text).toContain("ontology.deniedTools");
     expect(container.querySelectorAll(".binding-group").length).toBe(5);
     expect(container.querySelector(".binding-group input")).toBeNull();
     // Structural edits live in their own block, not as a fifth binding.
-    expect(container.querySelector(".node-structure")).not.toBeNull();
+    expect(container.querySelector('.node-section[data-kind="structure"]')).not.toBeNull();
+  });
+
+  it("gives each capability kind its own block instead of one flat run of rows", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const kinds = [...container.querySelectorAll(".node-section")].map((section) =>
+      section.getAttribute("data-kind"),
+    );
+    // Allow and deny share the tools block: they are one decision over one
+    // catalog, so there is no separate denial section.
+    expect(kinds).toEqual([
+      "prompt",
+      "structure",
+      "tools",
+      "skills",
+      "mcp",
+      "knowledge",
+      "ontology",
+    ]);
+    expect(
+      container.querySelectorAll('.node-section[data-kind="tools"] .binding-group').length,
+    ).toBe(2);
+    for (const kind of ["skills", "mcp", "knowledge"]) {
+      expect(
+        container.querySelectorAll(`.node-section[data-kind="${kind}"] .binding-group`).length,
+      ).toBe(1);
+    }
+  });
+
+  it("puts the role prompt and the sub-step control above the capability blocks", () => {
+    // What the step IS and what sits under it are the two shortest decisions on
+    // the screen; behind the capability and ontology blocks they took the most
+    // scrolling to reach.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const blocks = [
+      '.node-section[data-kind="prompt"]',
+      '.node-section[data-kind="structure"]',
+      '.node-section[data-kind="tools"]',
+      '.node-section[data-kind="ontology"]',
+    ].map((selector) => container.querySelector(selector));
+    for (const block of blocks) {
+      expect(block).not.toBeNull();
+    }
+    // Document order, not just presence: the point of the change is where these
+    // sit relative to each other.
+    const all = [...container.querySelectorAll("*")];
+    const positions = blocks.map((block) => all.indexOf(block as Element));
+    expect(positions).toEqual([...positions].toSorted((left, right) => left - right));
+  });
+
+  it("states the ontology scope once, not on the section and again on its editor", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    const scopeNote = "A step can address the types declared here";
+    const text = container.textContent ?? "";
+    expect(text.split(scopeNote).length - 1).toBe(1);
+  });
+
+  it("opens a detail card from the clicked chip, naming the entry and its step", () => {
+    const opened: unknown[] = [];
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        onOpenBindingDetail: (detail) => opened.push(detail),
+      }),
+    );
+    const chip = container.querySelector(".chip-open") as HTMLButtonElement | null;
+    expect(chip).not.toBeNull();
+    chip?.click();
+    expect(opened).toEqual([
+      { nodeId: "support.triage", field: "skills", entry: "ticket-triage", origin: "step" },
+    ]);
+  });
+
+  it("shows a failed catalog load inside the dialog, not a forever-loading line", () => {
+    // The error banner lives behind the modal, so reporting a failed load as
+    // "still loading" leaves the operator watching a card that never fills in.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        catalogPhase: "ready",
+        catalogErrors: { tools: null, skills: "skills catalog exploded", foundations: null },
+        bindingDetail: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "skills",
+          entry: "ticket-triage",
+          origin: "step",
+        },
+      }),
+    );
+    const text = container.querySelector(".binding-detail")?.textContent ?? "";
+    expect(text).toContain("skills catalog exploded");
+    expect(text).not.toContain("has not loaded");
+  });
+
+  it("closes itself when a reload removed the entry it describes", () => {
+    // A reconnect reloads the same tree but keeps the node selection, so the card
+    // can outlive its binding — and would offer Detach for one that is gone.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        bindingDetail: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "skills",
+          entry: "detached-elsewhere",
+          origin: "step",
+        },
+      }),
+    );
+    expect(container.querySelector(".binding-detail")).toBeNull();
+  });
+
+  it("does not treat an inherited entry as this step's own", () => {
+    // `message` is the ROOT's grant. Recorded as origin "step" it is not in this
+    // step's own list, so the card must not render it with a Detach.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        bindingDetail: {
+          treeId: TREE.id,
+          nodeId: "support.triage",
+          field: "allowedTools",
+          entry: "message",
+          origin: "step",
+        },
+      }),
+    );
+    expect(container.querySelector(".binding-detail")).toBeNull();
+  });
+
+  it("describes a named tool from the catalog and defers the reach to the runtime", () => {
+    // The card reports catalog facts. What an entry actually reaches is settled by
+    // governance — path policies, the deny matcher, MCP ownership, the
+    // step-advance carve-out, the explicit-grant floor — and a second copy of that
+    // here would drift from it, so a selector gets no invented verdict.
+    const tree = treeWith({}, { allowedTools: ["read", "group:enterprise"] });
+    const base = {
+      section: "worktree" as const,
+      selectedTreeId: tree.id,
+      treeDetail: tree,
+      selectedNodeId: "support.triage",
+      catalogPhase: "ready" as const,
+      toolGroups: [toolGroup("fs", "Files", ["read"])],
+    };
+    const named = renderInto(
+      createProps({
+        ...base,
+        bindingDetail: {
+          treeId: tree.id,
+          nodeId: "support.triage",
+          field: "allowedTools",
+          entry: "read",
+          origin: "step",
+        },
+      }),
+    );
+    const namedText = named.querySelector(".binding-detail")?.textContent ?? "";
+    expect(namedText).toContain("Files");
+    expect(namedText).toContain("core");
+
+    const selector = renderInto(
+      createProps({
+        ...base,
+        bindingDetail: {
+          treeId: tree.id,
+          nodeId: "support.triage",
+          field: "allowedTools",
+          entry: "group:enterprise",
+          origin: "step",
+        },
+      }),
+    );
+    const selectorText = selector.querySelector(".binding-detail")?.textContent ?? "";
+    expect(selectorText).toContain("decided when the run starts");
+  });
+
+  it("says a declared skill resolves to nothing once the skill catalog answered", () => {
+    const detail = {
+      treeId: TREE.id,
+      nodeId: "support.triage",
+      field: "skills" as const,
+      entry: "ticket-triage",
+      origin: "step" as const,
+    };
+    const known = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        catalogPhase: "ready",
+        skills: [skill("summarize")],
+        bindingDetail: detail,
+      }),
+    );
+    // Agent-qualified: the skill set is agent-scoped and the page-level scope
+    // banner is hidden behind this modal.
+    expect(known.querySelector(".binding-detail")?.textContent ?? "").toContain(
+      "installed for agent main",
+    );
+
+    // A catalog that failed also returns an empty list, and calling the entry
+    // missing on that accuses an install that may well provide it.
+    const unknown = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        catalogPhase: "ready",
+        catalogErrors: { tools: null, skills: "boom", foundations: null },
+        bindingDetail: detail,
+      }),
+    );
+    expect(unknown.querySelector(".binding-detail")?.textContent ?? "").not.toContain(
+      "installed for agent",
+    );
+  });
+
+  it("keeps alternative skill requirements out of the mandatory list", () => {
+    // `anyBins` and `os` are satisfied by any one member; listing them beside
+    // `bins` would present alternatives as prerequisites.
+    const tree = treeWith({}, { skills: ["summarize"] });
+    const alt = {
+      ...skill("summarize"),
+      requirements: {
+        bins: ["git"],
+        anyBins: ["bun", "deno"],
+        env: [],
+        config: [],
+        os: ["darwin", "linux"],
+      },
+    };
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: tree.id,
+        treeDetail: tree,
+        selectedNodeId: "support.triage",
+        catalogPhase: "ready",
+        skills: [alt],
+        bindingDetail: {
+          treeId: tree.id,
+          nodeId: "support.triage",
+          field: "skills",
+          entry: "summarize",
+          origin: "step",
+        },
+      }),
+    );
+    const text = container.querySelector(".binding-detail")?.textContent ?? "";
+    expect(text).toContain("Requires any one of");
+    expect(text).toContain("Runs on any of");
+  });
+
+  it("shows the transport a server is configured with, not the list badge family", () => {
+    // The list badge collapses sse and streamable-http into "http"; neither is
+    // what config says, and the two behave differently at run time.
+    const tree = treeWith({}, { mcpServers: ["jira"] });
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: tree.id,
+        treeDetail: tree,
+        selectedNodeId: "support.triage",
+        mcpServers: [
+          {
+            name: "jira",
+            enabled: true,
+            transport: "http",
+            configuredTransport: "sse",
+            auth: null,
+            launch: "https://jira.test/mcp",
+            toolFilter: false,
+            parallel: false,
+            tls: null,
+          },
+        ],
+        bindingDetail: {
+          treeId: tree.id,
+          nodeId: "support.triage",
+          field: "mcpServers",
+          entry: "jira",
+          origin: "step",
+        },
+      }),
+    );
+    const text = container.querySelector(".binding-detail")?.textContent ?? "";
+    expect(text).toContain("sse");
+  });
+
+  it("offers no Detach on an inherited entry, since it belongs to the ancestor", () => {
+    // Denials are one of the two rows that render inherited chips at all, so an
+    // ancestor denial is what an operator can actually click here.
+    const tree = treeWith({ deniedTools: ["exec"] }, {});
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: tree.id,
+        treeDetail: tree,
+        selectedNodeId: "support.triage",
+        bindingDetail: {
+          treeId: tree.id,
+          nodeId: "support.triage",
+          field: "deniedTools",
+          entry: "exec",
+          origin: "inherited",
+        },
+      }),
+    );
+    const card = container.querySelector(".binding-detail");
+    expect(card?.querySelector("button.danger")).toBeNull();
+    expect(card?.textContent ?? "").toContain("A parent step");
+  });
+
+  it("drops a detail card left open for another work-map", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: TREE.id,
+        treeDetail: TREE,
+        selectedNodeId: "support.triage",
+        bindingDetail: {
+          treeId: "other.tree",
+          nodeId: "support.triage",
+          field: "skills",
+          entry: "ticket-triage",
+          origin: "step",
+        },
+      }),
+    );
+    expect(container.querySelector(".binding-detail")).toBeNull();
   });
 
   it("searches the catalog in a dialog and confirms the picks", () => {
@@ -1316,6 +1706,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
             name: "acme-tracker",
             enabled: true,
             transport: "stdio",
+            configuredTransport: null,
             auth: null,
             launch: "npx",
             toolFilter: false,
@@ -1379,6 +1770,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
             name: "github",
             enabled: true,
             transport: "stdio",
+            configuredTransport: null,
             auth: null,
             launch: "npx",
             toolFilter: false,
@@ -1414,6 +1806,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
             name: "github",
             enabled: true,
             transport: "stdio",
+            configuredTransport: null,
             auth: null,
             launch: "npx",
             toolFilter: false,
@@ -1655,6 +2048,7 @@ describe("enterprise MCP registry controls (browser)", () => {
     name: "acme-remote",
     enabled: true,
     transport: "http" as const,
+    configuredTransport: null,
     auth: "oauth",
     launch: "https://mcp.acme.dev",
     toolFilter: false,
@@ -1812,6 +2206,7 @@ describe("enterprise MCP summary accuracy (browser)", () => {
             name: "off",
             enabled: false,
             transport: "http",
+            configuredTransport: null,
             auth: null,
             launch: "https://off.dev",
             toolFilter: false,
@@ -1822,6 +2217,7 @@ describe("enterprise MCP summary accuracy (browser)", () => {
             name: "live",
             enabled: true,
             transport: "http",
+            configuredTransport: null,
             auth: null,
             launch: "https://live.dev",
             toolFilter: false,
@@ -1832,6 +2228,7 @@ describe("enterprise MCP summary accuracy (browser)", () => {
             name: "broken",
             enabled: true,
             transport: "invalid",
+            configuredTransport: null,
             auth: null,
             launch: "missing transport",
             toolFilter: false,

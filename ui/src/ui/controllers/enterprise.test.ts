@@ -23,7 +23,10 @@ import {
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
   cancelEnterpriseBindingPicker,
+  closeEnterpriseBindingDetail,
+  openEnterpriseBindingDetail,
   openEnterpriseBindingPicker,
+  removeEnterpriseBinding,
   setEnterpriseBindingPickerCustom,
   addEnterpriseMcpHeader,
   beginEnterpriseMcpDraft,
@@ -74,6 +77,7 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseTreeVersionsLoading: false,
     enterpriseNodeDraft: null,
     enterpriseBindingPicker: null,
+    enterpriseBindingDetail: null,
     enterpriseGuidanceDraft: null,
     enterpriseOntologyDraft: null,
     enterpriseMcpDraft: null,
@@ -1513,6 +1517,79 @@ describe("add child node (P5)", () => {
     // The stale submit must not close the form or seed the editor with old values.
     expect(state.enterpriseTreeEditing).toBe(false);
     expect(state.enterpriseNodeDraft?.title).toBe("Renamed");
+  });
+});
+
+describe("enterprise binding detail card", () => {
+  const detail = {
+    nodeId: "acme.support.root",
+    field: "allowedTools" as const,
+    entry: "exec",
+    origin: "step" as const,
+  };
+
+  it("binds the open card to the selected work-map", () => {
+    const { state } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+
+    openEnterpriseBindingDetail(state, detail);
+
+    expect(state.enterpriseBindingDetail).toEqual({ treeId: "acme.support", ...detail });
+    closeEnterpriseBindingDetail(state);
+    expect(state.enterpriseBindingDetail).toBeNull();
+  });
+
+  it("opens nothing when no work-map is selected", () => {
+    const { state } = createState();
+
+    openEnterpriseBindingDetail(state, detail);
+
+    expect(state.enterpriseBindingDetail).toBeNull();
+  });
+
+  it("closes the card on a tree reload rather than leaving it to spring back", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseSelectedNodeId = "acme.support.root";
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.get") {
+        return { tree: treeDetail("acme.support") };
+      }
+      return {};
+    });
+    openEnterpriseBindingDetail(state, detail);
+
+    await loadEnterpriseTreeDetail(state, "acme.support");
+
+    // Hiding it in the view is not enough: the state would survive the reload and
+    // the dialog would reopen on its own once a later reload restored the entry.
+    expect(state.enterpriseBindingDetail).toBeNull();
+  });
+
+  it("closes the card when the entry it describes is detached", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    request.mockImplementation(async (method: string) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: "acme.support" };
+      }
+      return {};
+    });
+    openEnterpriseBindingDetail(state, detail);
+
+    // The Detach the card itself offers: leaving the card up would describe a
+    // binding the step no longer has, and offer to remove it again.
+    await removeEnterpriseBinding(state, {
+      nodeId: detail.nodeId,
+      field: detail.field,
+      entry: detail.entry,
+    });
+
+    expect(state.enterpriseBindingDetail).toBeNull();
   });
 });
 

@@ -573,14 +573,73 @@ export const ko: TranslationMap = {
       save: "역할 프롬프트 저장",
       revert: "되돌리기",
     },
+    capabilities: {
+      toolsTitle: "도구",
+      toolsHint:
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+      skillsTitle: "Skills",
+      skillsHint:
+        "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
+      mcpTitle: "MCP servers",
+      mcpHint:
+        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+      knowledgeTitle: "지식",
+      knowledgeHint:
+        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+    },
+    bindingDetail: {
+      openTitle: "Show what {entry} is",
+      title: "{entry}",
+      close: "닫기",
+      detach: "Detach from this step",
+      kindTool: "Tool grant",
+      kindDeniedTool: "Tool denial",
+      kindSkill: "Declared skill",
+      kindKnowledge: "Knowledge foundation",
+      kindMcp: "MCP attachment",
+      declaredOn: "Declared on",
+      declaredInherited: "A parent step. Edit it there to change or remove it.",
+      configKey: "Definition key",
+      alsoOn: "Also on",
+      description: "What it does",
+      toolNotOneTool:
+        "This entry is not a single tool in this catalog. It may name a whole section, use a wildcard, or name something this catalog does not carry. What it reaches on this step is decided when the run starts, so it is not spelled out here.",
+      toolGroup: "Section",
+      toolSource: "Provided by",
+      toolRisk: "risk: {risk}",
+      catalogPending: "The catalog for this has not loaded, so nothing can be said about it yet.",
+      configPending: "Config has not arrived, so nothing can be said about this server yet.",
+      skillMissing:
+        "No installed skill has this name, so the step declares a dependency that resolves to nothing.",
+      skillMissingForAgent:
+        "No skill with this name is installed for agent {agentId}, whose catalog this is. If the work-map governs a different agent, check there before treating this as broken.",
+      skillStatus: "Status",
+      skillFile: "Loaded from",
+      skillRequires: "Requires",
+      skillRequiresAnyBin: "Requires any one of",
+      skillRequiresAnyOs: "Runs on any of",
+      mcpMissing:
+        "No server with this name is registered in mcp.servers, so the attachment reaches nothing.",
+      mcpTransport: "Transport",
+      mcpLaunch: "Launch",
+      mcpState: "State",
+      knowledgeMissing:
+        "No foundation with this id is registered, so a search against it returns nothing.",
+      knowledgeKind: "Kind",
+      knowledgeLocator: "Location",
+      knowledgeOwner: "Owned by",
+      knowledgeGlobal: "Registered by a plugin, so every work-map can retrieve it.",
+      knowledgeOwnerUnknown: "This gateway does not report foundation ownership.",
+      knowledgeUnreachable:
+        "Another work-map's bundle owns this foundation. Retrieval resolves it only for its owner, so a search from this work-map returns nothing.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle: "이 단계가 호출할 수 있는 항목, 선언하는 노하우, 검색할 수 있는 항목입니다.",
-      tools: "도구 — ontology.allowedTools",
-      skills: "Skills — ontology.skills",
-      knowledge: "지식 — ontology.knowledgeFoundations",
-      mcp: "MCP 서버 — ontology.mcpServers",
-      deniedTools: "거부된 도구 — ontology.deniedTools",
+      allowedLabel: "Allowed",
+      deniedLabel: "Denied",
+      declaredLabel: "Declared",
+      attachedLabel: "Attached",
       deniedToolsWins:
         "거부는 항상 우선합니다. 이 단계와 그 하위 모든 항목에 적용되며, 하위 브랜치의 어떤 권한 부여도 이를 되돌릴 수 없습니다.",
       deniedToolsObserving:

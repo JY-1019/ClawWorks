@@ -163,6 +163,29 @@ export type EnterpriseBindingPicker = {
 };
 
 /**
+ * The one binding an operator clicked open on the step inspector, or null.
+ *
+ * A chip carries a bare id — `group:enterprise`, `summarize`, `acme.kb` — and an
+ * operator reading a governed step needs the thing BEHIND it: what the tool
+ * actually is, whether the skill is installed, how the server launches, who owns
+ * the foundation. That answer lives in catalogs the screen already holds, so this
+ * is pure view state: which entry to describe, and whether it belongs to this
+ * step or an ancestor (an inherited one has no Detach here — it is edited on the
+ * step that declared it).
+ *
+ * Bound to `treeId` + `nodeId` like the picker: node ids repeat across work-maps,
+ * so an unbound one would resurface over a same-named step after a tree switch.
+ */
+export type EnterpriseBindingDetail = {
+  treeId: string;
+  nodeId: string;
+  field: NodeOntologyListField;
+  entry: string;
+  /** Declared on this step, or granted by an ancestor and only shown here. */
+  origin: "step" | "inherited";
+};
+
+/**
  * The "register or adjust an MCP server" form on the Enterprise MCP screen.
  *
  * Registration is the same act as anywhere else in OpenClaw — one entry under
@@ -804,6 +827,8 @@ export type EnterpriseState = {
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
   enterpriseBindingPicker: EnterpriseBindingPicker | null;
+  /** The binding chip whose detail card is open, or null. Pure view state. */
+  enterpriseBindingDetail: EnterpriseBindingDetail | null;
   /**
    * Unsaved role-prompt edit for one step. Held outside the tree detail because
    * that is a fetched snapshot the reload replaces; a draft has to survive it.
@@ -1224,6 +1249,8 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
   state.enterpriseNodeDraft = null;
   // Same for a tool-grant / skill draft: it is bound to one node in one tree.
   state.enterpriseBindingPicker = null;
+  // The detail card names a specific entry on a specific step; the step is gone.
+  state.enterpriseBindingDetail = null;
   // ...and for the role prompt. Unsaved text must not survive a tree switch, a
   // pruned node, or scope loss and then reappear under a same-named node
   // elsewhere — or be silently overwritten by editing a different node.
@@ -1240,6 +1267,14 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
  * shows stale rows until the operator manually re-toggles the node.
  */
 function reconcileNodeSelectionAfterReload(state: EnterpriseState, tree: EnterpriseTreeDetail) {
+  // The binding detail card describes ONE entry of the pre-reload tree, and the
+  // reload may have detached it or moved it between local and inherited scope.
+  // Closed rather than re-validated here: it is a read-out with nothing to lose,
+  // and re-deriving "is this entry still declared, at this origin" would put a
+  // second copy of the view's inheritance rules in the controller to drift from.
+  // Merely hiding it in the view is not enough — the state would survive and the
+  // dialog would spring back open on a later reload that restores the entry.
+  state.enterpriseBindingDetail = null;
   const nodeId = state.enterpriseSelectedNodeId;
   if (!nodeId) {
     return;
@@ -1628,6 +1663,28 @@ export function openEnterpriseBindingPicker(
     phase: "idle",
     failure: null,
   };
+}
+
+/**
+ * Open the read-out for one binding chip.
+ *
+ * Separate from the picker: the picker collects a selection to WRITE, this only
+ * describes an entry that already exists. Nothing is fetched — the tool, skill,
+ * MCP and foundation catalogs behind the answer are already on the screen.
+ */
+export function openEnterpriseBindingDetail(
+  state: EnterpriseState,
+  detail: Omit<EnterpriseBindingDetail, "treeId">,
+) {
+  const treeId = state.enterpriseTreeDetail?.id;
+  if (!treeId) {
+    return;
+  }
+  state.enterpriseBindingDetail = { treeId, ...detail };
+}
+
+export function closeEnterpriseBindingDetail(state: EnterpriseState) {
+  state.enterpriseBindingDetail = null;
 }
 
 export function setEnterpriseBindingPickerQuery(state: EnterpriseState, query: string) {
@@ -2222,6 +2279,9 @@ export async function removeEnterpriseBinding(
   state: EnterpriseState,
   params: { nodeId: string; field: NodeOntologyListField; entry: string },
 ) {
+  // A Detach can be issued FROM the detail card, so close it first: leaving it up
+  // would describe a binding the step no longer has, and offer Detach again.
+  state.enterpriseBindingDetail = null;
   await applyEnterpriseTreeEdit(state, (definition) =>
     removeNodeOntologyEntry(definition, params.nodeId, params.field, params.entry),
   );

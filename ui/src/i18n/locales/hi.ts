@@ -571,15 +571,74 @@ export const hi: TranslationMap = {
       save: "भूमिका प्रॉम्प्ट सहेजें",
       revert: "पूर्ववत करें",
     },
+    capabilities: {
+      toolsTitle: "टूल्स",
+      toolsHint:
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+      skillsTitle: "कौशल",
+      skillsHint:
+        "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
+      mcpTitle: "MCP servers",
+      mcpHint:
+        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+      knowledgeTitle: "नॉलेज",
+      knowledgeHint:
+        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+    },
+    bindingDetail: {
+      openTitle: "Show what {entry} is",
+      title: "{entry}",
+      close: "बंद करें",
+      detach: "Detach from this step",
+      kindTool: "Tool grant",
+      kindDeniedTool: "Tool denial",
+      kindSkill: "Declared skill",
+      kindKnowledge: "Knowledge foundation",
+      kindMcp: "MCP attachment",
+      declaredOn: "Declared on",
+      declaredInherited: "A parent step. Edit it there to change or remove it.",
+      configKey: "Definition key",
+      alsoOn: "Also on",
+      description: "What it does",
+      toolNotOneTool:
+        "This entry is not a single tool in this catalog. It may name a whole section, use a wildcard, or name something this catalog does not carry. What it reaches on this step is decided when the run starts, so it is not spelled out here.",
+      toolGroup: "Section",
+      toolSource: "Provided by",
+      toolRisk: "risk: {risk}",
+      catalogPending: "The catalog for this has not loaded, so nothing can be said about it yet.",
+      configPending: "Config has not arrived, so nothing can be said about this server yet.",
+      skillMissing:
+        "No installed skill has this name, so the step declares a dependency that resolves to nothing.",
+      skillMissingForAgent:
+        "No skill with this name is installed for agent {agentId}, whose catalog this is. If the work-map governs a different agent, check there before treating this as broken.",
+      skillStatus: "स्थिति",
+      skillFile: "Loaded from",
+      skillRequires: "Requires",
+      skillRequiresAnyBin: "Requires any one of",
+      skillRequiresAnyOs: "Runs on any of",
+      mcpMissing:
+        "No server with this name is registered in mcp.servers, so the attachment reaches nothing.",
+      mcpTransport: "Transport",
+      mcpLaunch: "Launch",
+      mcpState: "State",
+      knowledgeMissing:
+        "No foundation with this id is registered, so a search against it returns nothing.",
+      knowledgeKind: "प्रकार",
+      knowledgeLocator: "Location",
+      knowledgeOwner: "Owned by",
+      knowledgeGlobal: "Registered by a plugin, so every work-map can retrieve it.",
+      knowledgeOwnerUnknown: "This gateway does not report foundation ownership.",
+      knowledgeUnreachable:
+        "Another work-map's bundle owns this foundation. Retrieval resolves it only for its owner, so a search from this work-map returns nothing.",
+    },
     bindings: {
       title: "Step bindings",
       subtitle:
         "यह स्टेप क्या कॉल कर सकता है, यह कौन सी विशेषज्ञता घोषित करता है, और क्या पुनर्प्राप्त कर सकता है।",
-      tools: "Tools — ontology.allowedTools",
-      skills: "Skills — ontology.skills",
-      knowledge: "Knowledge — ontology.knowledgeFoundations",
-      mcp: "MCP सर्वर — ontology.mcpServers",
-      deniedTools: "अस्वीकृत टूल — ontology.deniedTools",
+      allowedLabel: "Allowed",
+      deniedLabel: "Denied",
+      declaredLabel: "Declared",
+      attachedLabel: "Attached",
       deniedToolsWins:
         "अस्वीकृति हमेशा जीतती है। यह इस चरण और इसके अंतर्गत सब पर लागू होती है, और शाखा में आगे कोई भी grant इसे वापस नहीं ले सकता।",
       deniedToolsObserving:

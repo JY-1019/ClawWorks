@@ -533,6 +533,9 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseBindingPicker:
     | import("./controllers/enterprise.js").EnterpriseBindingPicker
     | null = null;
+  @state() enterpriseBindingDetail:
+    | import("./controllers/enterprise.js").EnterpriseBindingDetail
+    | null = null;
   @state() enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null = null;
   @state() enterpriseOntologyDraft:
     | import("./controllers/enterprise.js").EnterpriseOntologyDraft

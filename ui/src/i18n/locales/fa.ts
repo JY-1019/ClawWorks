@@ -578,15 +578,74 @@ export const fa: TranslationMap = {
       save: "ذخیره پرامپت نقش",
       revert: "بازگردانی",
     },
+    capabilities: {
+      toolsTitle: "ابزارها",
+      toolsHint:
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+      skillsTitle: "Skills",
+      skillsHint:
+        "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
+      mcpTitle: "MCP servers",
+      mcpHint:
+        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+      knowledgeTitle: "دانش",
+      knowledgeHint:
+        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+    },
+    bindingDetail: {
+      openTitle: "Show what {entry} is",
+      title: "{entry}",
+      close: "بستن",
+      detach: "Detach from this step",
+      kindTool: "Tool grant",
+      kindDeniedTool: "Tool denial",
+      kindSkill: "Declared skill",
+      kindKnowledge: "Knowledge foundation",
+      kindMcp: "MCP attachment",
+      declaredOn: "Declared on",
+      declaredInherited: "A parent step. Edit it there to change or remove it.",
+      configKey: "Definition key",
+      alsoOn: "Also on",
+      description: "What it does",
+      toolNotOneTool:
+        "This entry is not a single tool in this catalog. It may name a whole section, use a wildcard, or name something this catalog does not carry. What it reaches on this step is decided when the run starts, so it is not spelled out here.",
+      toolGroup: "Section",
+      toolSource: "Provided by",
+      toolRisk: "risk: {risk}",
+      catalogPending: "The catalog for this has not loaded, so nothing can be said about it yet.",
+      configPending: "Config has not arrived, so nothing can be said about this server yet.",
+      skillMissing:
+        "No installed skill has this name, so the step declares a dependency that resolves to nothing.",
+      skillMissingForAgent:
+        "No skill with this name is installed for agent {agentId}, whose catalog this is. If the work-map governs a different agent, check there before treating this as broken.",
+      skillStatus: "Status",
+      skillFile: "Loaded from",
+      skillRequires: "Requires",
+      skillRequiresAnyBin: "Requires any one of",
+      skillRequiresAnyOs: "Runs on any of",
+      mcpMissing:
+        "No server with this name is registered in mcp.servers, so the attachment reaches nothing.",
+      mcpTransport: "Transport",
+      mcpLaunch: "Launch",
+      mcpState: "State",
+      knowledgeMissing:
+        "No foundation with this id is registered, so a search against it returns nothing.",
+      knowledgeKind: "Kind",
+      knowledgeLocator: "Location",
+      knowledgeOwner: "Owned by",
+      knowledgeGlobal: "Registered by a plugin, so every work-map can retrieve it.",
+      knowledgeOwnerUnknown: "This gateway does not report foundation ownership.",
+      knowledgeUnreachable:
+        "Another work-map's bundle owns this foundation. Retrieval resolves it only for its owner, so a search from this work-map returns nothing.",
+    },
     bindings: {
       title: "اتصالات مرحله",
       subtitle:
         "آنچه این مرحله می‌تواند فراخوانی کند، مهارت‌هایی که اعلام می‌کند و آنچه می‌تواند بازیابی کند.",
-      tools: "ابزارها — ontology.allowedTools",
-      skills: "Skills — ontology.skills",
-      knowledge: "دانش — ontology.knowledgeFoundations",
-      mcp: "سرورهای MCP — ontology.mcpServers",
-      deniedTools: "ابزارهای رد شده — ontology.deniedTools",
+      allowedLabel: "Allowed",
+      deniedLabel: "Denied",
+      declaredLabel: "Declared",
+      attachedLabel: "Attached",
       deniedToolsWins:
         "رد همیشه اولویت دارد. به این مرحله و تمام زیرمجموعه‌های آن اعمال می‌شود و هیچ مجوزی در ادامه شاخه نمی‌تواند آن را لغو کند.",
       deniedToolsObserving:

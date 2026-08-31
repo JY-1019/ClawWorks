@@ -25,6 +25,7 @@ import type {
   EnterpriseCatalogPhase,
   EnterpriseNodeDraft,
   EnterpriseNodeDraftError,
+  EnterpriseBindingDetail,
   EnterpriseBindingPicker,
   EnterpriseBindingPickerFailure,
   EnterpriseMcpDraft,
@@ -126,6 +127,18 @@ export type EnterpriseProps = {
    * while this is already a specific entry on a specific step.
    */
   onRemoveBinding: (nodeId: string, field: NodeOntologyListField, entry: string) => void;
+  /**
+   * The binding chip whose detail card is open, or null. A read-out, not an edit:
+   * it answers "what IS this entry" from catalogs the screen already holds.
+   */
+  bindingDetail: EnterpriseBindingDetail | null;
+  onOpenBindingDetail: (detail: {
+    nodeId: string;
+    field: NodeOntologyListField;
+    entry: string;
+    origin: "step" | "inherited";
+  }) => void;
+  onCloseBindingDetail: () => void;
   /** In-progress role-prompt edit, or null when nothing is being edited. */
   guidanceDraft: { treeId: string; nodeId: string; text: string } | null;
   onGuidanceDraft: (nodeId: string, text: string) => void;
@@ -320,7 +333,7 @@ type OntologyEntryAdder = {
   nodeId: string;
   field: NodeOntologyListField;
   values: readonly string[];
-  /** Row heading, e.g. "Tools — ontology.allowedTools". */
+  /** Row heading, e.g. "Allowed". The definition key comes from BINDING_FIELD_META. */
   title: string;
   /** Catalog entries the picker lists, with an optional one-line description. */
   options: readonly BindingOption[];
@@ -353,11 +366,12 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
     <section class="binding-group">
       <header class="binding-group__head">
         <span class="binding-group__title">${adder.title}</span>
+        <code class="binding-group__key">${BINDING_FIELD_META[field].configKey}</code>
         <span class="chip">${adder.values.length}</span>
         ${props.canEdit
           ? html`<button
               type="button"
-              class="btn"
+              class="btn btn--sm"
               ?disabled=${props.treeSaving}
               @click=${() => props.onOpenBindingPicker(nodeId, field)}
             >
@@ -369,25 +383,9 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
         ${adder.values.length === 0
           ? html`<div class="muted">${t("enterprise.entryDraft.none")}</div>`
           : html`<div class="chip-row">
-              ${adder.values.map((value) => {
-                const note = adder.valueNote?.(value) ?? null;
-                return html`<span class="chip"
-                  ><code>${value}</code>${note
-                    ? html`<span class="chip chip-warn">${note}</span>`
-                    : nothing}${props.canEdit
-                    ? html`<button
-                        type="button"
-                        class="chip-remove"
-                        title=${t("enterprise.entryDraft.removeTitle", { entry: value })}
-                        aria-label=${t("enterprise.entryDraft.removeTitle", { entry: value })}
-                        ?disabled=${props.treeSaving}
-                        @click=${() => props.onRemoveBinding(nodeId, field, value)}
-                      >
-                        ×
-                      </button>`
-                    : nothing}</span
-                >`;
-              })}
+              ${adder.values.map((value) =>
+                renderBindingChip({ props, adder, value, origin: "step" }),
+              )}
             </div>`}
         <!-- Inherited grants sit under the step's own, dimmed and labelled: they
           apply to this step but belong to an ancestor, so removing one means
@@ -395,8 +393,8 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
         ${adder.inheritedValues?.length
           ? html`<div class="chip-row" style="margin-top: 6px;">
               <span class="muted">${t("enterprise.bindings.inherited")}</span>
-              ${adder.inheritedValues.map(
-                (value) => html`<span class="chip"><code>${value}</code></span>`,
+              ${adder.inheritedValues.map((value) =>
+                renderBindingChip({ props, adder, value, origin: "inherited" }),
               )}
             </div>`
           : nothing}
@@ -411,6 +409,56 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
       </div>
     </section>
   `;
+}
+
+/**
+ * One entry on a binding row.
+ *
+ * The label is a BUTTON, not text: a chip carries a bare id (`group:enterprise`,
+ * `acme.kb`) and the operator's next question is always what that id actually
+ * resolves to — a question the catalogs on this screen can answer without a round
+ * trip. Detach stays a separate control beside it so the two acts never share a
+ * hit target.
+ *
+ * Inherited entries open the same card but never get a Detach: they belong to the
+ * ancestor that declared them, and the card says which one to edit instead.
+ */
+function renderBindingChip(params: {
+  props: EnterpriseProps;
+  adder: OntologyEntryAdder;
+  value: string;
+  origin: "step" | "inherited";
+}): TemplateResult {
+  const { props, adder, value, origin } = params;
+  const note = adder.valueNote?.(value) ?? null;
+  const removable = props.canEdit && origin === "step";
+  return html`<span class="chip chip-entry ${origin === "inherited" ? "chip-entry--inherited" : ""}"
+    ><button
+      type="button"
+      class="chip-open"
+      title=${t("enterprise.bindingDetail.openTitle", { entry: value })}
+      @click=${() =>
+        props.onOpenBindingDetail({
+          nodeId: adder.nodeId,
+          field: adder.field,
+          entry: value,
+          origin,
+        })}
+    >
+      <code>${value}</code>${note ? html`<span class="chip chip-warn">${note}</span>` : nothing}</button
+    >${removable
+      ? html`<button
+          type="button"
+          class="chip-remove"
+          title=${t("enterprise.entryDraft.removeTitle", { entry: value })}
+          aria-label=${t("enterprise.entryDraft.removeTitle", { entry: value })}
+          ?disabled=${props.treeSaving}
+          @click=${() => props.onRemoveBinding(adder.nodeId, adder.field, value)}
+        >
+          ×
+        </button>`
+      : nothing}</span
+  >`;
 }
 
 /**
@@ -628,6 +676,367 @@ function renderPickerFailure(failure: EnterpriseBindingPickerFailure): TemplateR
     </div>`;
   }
   return html`<div class="callout danger">${ontologyEntryErrorMessage(failure.kind)}</div>`;
+}
+
+/**
+ * The definition key each binding row writes, and what to call one of its entries.
+ *
+ * One table, because both the row header and the detail card print the key: two
+ * literals for the same mapping is exactly the pair that drifts when a field is
+ * renamed, and a header naming the wrong key is worse than naming none.
+ */
+const BINDING_FIELD_META: Record<NodeOntologyListField, { labelKey: string; configKey: string }> = {
+  allowedTools: {
+    labelKey: "enterprise.bindingDetail.kindTool",
+    configKey: "ontology.allowedTools",
+  },
+  deniedTools: {
+    labelKey: "enterprise.bindingDetail.kindDeniedTool",
+    configKey: "ontology.deniedTools",
+  },
+  skills: { labelKey: "enterprise.bindingDetail.kindSkill", configKey: "ontology.skills" },
+  knowledgeFoundations: {
+    labelKey: "enterprise.bindingDetail.kindKnowledge",
+    configKey: "ontology.knowledgeFoundations",
+  },
+  mcpServers: { labelKey: "enterprise.bindingDetail.kindMcp", configKey: "ontology.mcpServers" },
+};
+
+/** One label/value line of the detail card. */
+function renderDetailRow(label: string, value: unknown): TemplateResult {
+  return html`<div class="detail-row">
+    <span class="detail-row__label">${label}</span>
+    <span class="detail-row__value">${value}</span>
+  </div>`;
+}
+
+/** A chip row of ids, the shape every "which steps / which tools" answer uses. */
+function renderIdChips(ids: readonly string[]): TemplateResult {
+  return html`<span class="chip-row"
+    >${ids.map((id) => html`<span class="chip"><code>${id}</code></span>`)}</span
+  >`;
+}
+
+/**
+ * Other steps of this work-map that declare the same entry on the same field.
+ *
+ * An exact-name scan, deliberately: it answers "where else is this written down",
+ * which is a question about the definition, not about what governance resolves.
+ * The tool rows are the only ones where an entry can be a pattern, and a pattern
+ * is still stored verbatim — so a literal match is what the operator would find
+ * by opening the file.
+ */
+function stepsAlsoDeclaring(
+  props: EnterpriseProps,
+  field: NodeOntologyListField,
+  entry: string,
+  exceptNodeId: string,
+): string[] {
+  return (props.treeDetail?.nodes ?? [])
+    .filter((node) => node.id !== exceptNodeId && (node.ontology[field] ?? []).includes(entry))
+    .map((node) => node.id);
+}
+
+/**
+ * Why a catalog cannot answer for this entry right now, or null when it can.
+ *
+ * A failed request and a pending one both leave an EMPTY list, and the detail card
+ * is a modal: the error banner behind it (renderBindingCatalogIssues) is not
+ * visible, so reporting a failed load as "still loading" leaves the operator
+ * watching a dialog that will never fill in.
+ */
+function catalogUnavailable(props: EnterpriseProps, error: string | null): TemplateResult | null {
+  if (error) {
+    return html`<div class="callout danger">${error}</div>`;
+  }
+  return props.catalogPhase === "ready"
+    ? null
+    : html`<div class="muted">${t("enterprise.bindingDetail.catalogPending")}</div>`;
+}
+
+/**
+ * What a tool entry IS, read from the catalog this screen already holds.
+ *
+ * Deliberately NOT "and here is what it grants". An entry's real reach is decided
+ * by governance: the root->node policy path, the deny matcher that is not the
+ * mirror of the allow one, MCP ownership aliases, the step-advance carve-out that
+ * runs before either lane, the explicit-grant floor, and group expansion over
+ * CORE_TOOL_GROUPS rather than catalog sections. Restating any of that here means
+ * keeping a second copy of governance in the view, and each divergence reads as a
+ * confident claim about enforcement that is simply wrong.
+ *
+ * Same call `nodeBindingAdders` already makes for `denialReachesMcpServer`: the
+ * card reports catalog facts and leaves the verdict to the runtime.
+ */
+function renderToolDetailBody(
+  props: EnterpriseProps,
+  detail: EnterpriseBindingDetail,
+): TemplateResult {
+  const exact = props.toolGroups
+    .flatMap((group) => group.tools.map((tool) => ({ tool, groupLabel: group.label })))
+    .find(({ tool }) => tool.id === detail.entry);
+  if (!exact) {
+    // A group selector, a glob, or a name this catalog does not carry. Which of
+    // the three, and what it reaches, is the runtime's answer to give.
+    return (
+      catalogUnavailable(props, props.catalogErrors.tools) ??
+      html`<div class="callout">${t("enterprise.bindingDetail.toolNotOneTool")}</div>`
+    );
+  }
+  return html`
+    ${renderDetailRow(t("enterprise.bindingDetail.toolGroup"), exact.groupLabel)}
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.toolSource"),
+      html`<span class="chip">${exact.tool.source}</span> ${exact.tool.pluginId
+          ? html`<code>${exact.tool.pluginId}</code>`
+          : nothing}
+        ${exact.tool.risk
+          ? html`<span class="chip chip-warn"
+              >${t("enterprise.bindingDetail.toolRisk", { risk: exact.tool.risk })}</span
+            >`
+          : nothing}
+        ${exact.tool.optional
+          ? html`<span class="chip">${t("enterprise.toolsTab.optionalBadge")}</span>`
+          : nothing}`,
+    )}
+    ${exact.tool.description
+      ? renderDetailRow(t("enterprise.bindingDetail.description"), exact.tool.description)
+      : nothing}
+  `;
+}
+
+/** What a declared skill resolves to on the agent this catalog describes. */
+function renderSkillDetailBody(props: EnterpriseProps, entry: string): TemplateResult {
+  const skill = props.skills.find((candidate) => candidate.name === entry);
+  if (!skill) {
+    // Named per agent, and the page-level scope banner is behind this modal: the
+    // skill set is agent-scoped, and a work-map can govern a different agent than
+    // the one this catalog answered for, so an unqualified "resolves to nothing"
+    // can be false for the agent that actually runs it.
+    return (
+      catalogUnavailable(props, props.catalogErrors.skills) ??
+      html`<div class="callout">
+        ${props.catalogAgentId
+          ? t("enterprise.bindingDetail.skillMissingForAgent", { agentId: props.catalogAgentId })
+          : t("enterprise.bindingDetail.skillMissing")}
+      </div>`
+    );
+  }
+  // Three groups, not one list. `bins`/`env`/`config` must ALL be present, while
+  // `anyBins` and `os` are satisfied by any one member (resolveMissingAnyBins /
+  // resolveMissingOs in src/shared/requirements.ts). Flattening them together
+  // would present alternatives as prerequisites.
+  const required = [
+    ...skill.requirements.bins,
+    ...skill.requirements.env,
+    ...skill.requirements.config,
+  ];
+  const anyBins = skill.requirements.anyBins ?? [];
+  const anyOs = skill.requirements.os;
+  return html`
+    ${skill.description
+      ? renderDetailRow(t("enterprise.bindingDetail.description"), skill.description)
+      : nothing}
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.skillStatus"),
+      renderSkillStatusChips({ skill, showBundledBadge: skill.bundled === true }),
+    )}
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.skillFile"),
+      html`<code>${skill.filePath}</code>`,
+    )}
+    ${required.length > 0
+      ? renderDetailRow(t("enterprise.bindingDetail.skillRequires"), renderIdChips(required))
+      : nothing}
+    ${anyBins.length > 0
+      ? renderDetailRow(t("enterprise.bindingDetail.skillRequiresAnyBin"), renderIdChips(anyBins))
+      : nothing}
+    ${anyOs.length > 0
+      ? renderDetailRow(t("enterprise.bindingDetail.skillRequiresAnyOs"), renderIdChips(anyOs))
+      : nothing}
+  `;
+}
+
+/** How an attached MCP server is registered in `mcp.servers`, and whether it runs. */
+function renderMcpDetailBody(props: EnterpriseProps, entry: string): TemplateResult {
+  const server = props.mcpServers.find((candidate) => candidate.name === entry);
+  if (!server) {
+    return props.mcpServersKnown
+      ? html`<div class="callout">${t("enterprise.bindingDetail.mcpMissing")}</div>`
+      : html`<div class="muted">${t("enterprise.bindingDetail.configPending")}</div>`;
+  }
+  return html`
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.mcpTransport"),
+      // The CONFIGURED value when there is one: the row badge collapses `sse` and
+      // `streamable-http` into "http", and a card that claims to explain the
+      // server must not hide the setting it is explaining.
+      html`<span class="chip">${server.configuredTransport ?? server.transport}</span> ${server.auth
+          ? html`<span class="chip">${server.auth}</span>`
+          : nothing}
+        ${server.tls ? html`<span class="chip chip-warn">${server.tls}</span>` : nothing}`,
+    )}
+    ${renderDetailRow(t("enterprise.bindingDetail.mcpLaunch"), html`<code>${server.launch}</code>`)}
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.mcpState"),
+      server.enabled
+        ? html`<span class="chip chip-ok">${t("common.enabled")}</span>`
+        : // A disabled server stays attachable but never answers, so the run gets
+          // the grant and none of the tools. Worth saying on the card that claims
+          // the step can call it.
+          html`<span class="chip chip-warn">${t("enterprise.mcpTab.disabled")}</span>`,
+    )}
+  `;
+}
+
+/** What a knowledge foundation covers, and whether THIS work-map can retrieve it. */
+function renderKnowledgeDetailBody(props: EnterpriseProps, entry: string): TemplateResult {
+  const foundation = props.foundations.find((candidate) => candidate.id === entry);
+  const { ids: retrievableIds, ownershipKnown } = retrievableFoundations(props);
+  if (!foundation) {
+    return (
+      catalogUnavailable(props, props.catalogErrors.foundations) ??
+      html`<div class="callout">${t("enterprise.bindingDetail.knowledgeMissing")}</div>`
+    );
+  }
+  const owners = foundation.ownerTreeIds ?? [];
+  return html`
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.knowledgeKind"),
+      html`<span class="chip">${foundation.kind}</span> ${foundation.displayName}`,
+    )}
+    ${foundation.description
+      ? renderDetailRow(t("enterprise.bindingDetail.description"), foundation.description)
+      : nothing}
+    ${foundation.detail
+      ? renderDetailRow(
+          t("enterprise.bindingDetail.knowledgeLocator"),
+          html`<code>${foundation.detail}</code>`,
+        )
+      : nothing}
+    ${renderDetailRow(
+      t("enterprise.bindingDetail.knowledgeOwner"),
+      // An owner list is the retrieval scope, not a label: a bundle foundation
+      // resolves only for its owning work-map, so naming the owners is what tells
+      // the operator whether this grant returns anything here.
+      ownershipKnown
+        ? owners.length === 0
+          ? t("enterprise.bindingDetail.knowledgeGlobal")
+          : renderIdChips(owners)
+        : t("enterprise.bindingDetail.knowledgeOwnerUnknown"),
+    )}
+    ${ownershipKnown && !retrievableIds.has(entry)
+      ? html`<div class="callout">${t("enterprise.bindingDetail.knowledgeUnreachable")}</div>`
+      : nothing}
+  `;
+}
+
+function renderBindingDetailBody(
+  props: EnterpriseProps,
+  detail: EnterpriseBindingDetail,
+): TemplateResult {
+  switch (detail.field) {
+    case "skills":
+      return renderSkillDetailBody(props, detail.entry);
+    case "mcpServers":
+      return renderMcpDetailBody(props, detail.entry);
+    case "knowledgeFoundations":
+      return renderKnowledgeDetailBody(props, detail.entry);
+    // Allowed and denied read the same catalog, but NOT the same matcher — the
+    // tool body branches on the field for that.
+    default:
+      return renderToolDetailBody(props, detail);
+  }
+}
+
+/**
+ * The read-out behind a binding chip.
+ *
+ * A step's bindings are bare ids, and every one of them stands for something the
+ * operator has to look up somewhere else: a tool's real name and blast radius, a
+ * skill that may not be installed, a server that may be disabled, a foundation
+ * another work-map owns. The catalogs holding those answers are already loaded
+ * for the picker, so this dialog is pure presentation — nothing is fetched, and
+ * the only mutation it offers is the Detach the chip itself offers.
+ */
+function renderBindingDetail(
+  props: EnterpriseProps,
+  adders: readonly OntologyEntryAdder[],
+): TemplateResult | typeof nothing {
+  const detail = props.bindingDetail;
+  // Same tree guard as the picker: node ids repeat across work-maps, so a card
+  // left open across a tree switch would describe a different step's binding.
+  if (!detail || detail.treeId !== props.treeDetail?.id) {
+    return nothing;
+  }
+  const adder = adders.find(
+    (candidate) => candidate.field === detail.field && candidate.nodeId === detail.nodeId,
+  );
+  if (!adder) {
+    return nothing;
+  }
+  // A reconnect reloads the same tree while deliberately keeping the node
+  // selection, so the card can outlive what it describes. Re-check the entry
+  // against the list its ORIGIN claims: an entry that was detached elsewhere, or
+  // that moved between local and inherited scope, would otherwise keep its stale
+  // read-out and offer a Detach for a binding this step no longer declares.
+  const declared = detail.origin === "inherited" ? (adder.inheritedValues ?? []) : adder.values;
+  if (!declared.includes(detail.entry)) {
+    return nothing;
+  }
+  const meta = BINDING_FIELD_META[detail.field];
+  const kindLabel = t(meta.labelKey);
+  const note = adder.valueNote?.(detail.entry) ?? null;
+  const alsoOn = stepsAlsoDeclaring(props, detail.field, detail.entry, detail.nodeId);
+  // Inherited entries belong to the ancestor that declared them. Offering Detach
+  // here would either fail or silently edit a different step.
+  const removable = props.canEdit && detail.origin === "step";
+  return html`
+    <openclaw-modal-dialog
+      label=${t("enterprise.bindingDetail.title", { entry: detail.entry })}
+      description=${kindLabel}
+      @modal-cancel=${props.onCloseBindingDetail}
+    >
+      <div class="binding-detail">
+        <header class="binding-detail__head">
+          <div class="binding-detail__kind">${kindLabel}</div>
+          <div class="binding-detail__entry"><code>${detail.entry}</code></div>
+          ${note ? html`<span class="chip chip-warn">${note}</span>` : nothing}
+        </header>
+        <div class="binding-detail__rows">
+          ${renderDetailRow(
+            t("enterprise.bindingDetail.declaredOn"),
+            detail.origin === "inherited"
+              ? t("enterprise.bindingDetail.declaredInherited")
+              : html`<code>${detail.nodeId}</code>`,
+          )}
+          ${renderDetailRow(
+            t("enterprise.bindingDetail.configKey"),
+            html`<code>${meta.configKey}</code>`,
+          )}
+          ${alsoOn.length > 0
+            ? renderDetailRow(t("enterprise.bindingDetail.alsoOn"), renderIdChips(alsoOn))
+            : nothing}
+          ${renderBindingDetailBody(props, detail)}
+        </div>
+        <div class="binding-detail__actions">
+          ${removable
+            ? html`<button
+                type="button"
+                class="btn danger"
+                ?disabled=${props.treeSaving}
+                @click=${() => props.onRemoveBinding(detail.nodeId, detail.field, detail.entry)}
+              >
+                ${t("enterprise.bindingDetail.detach")}
+              </button>`
+            : nothing}
+          <button type="button" class="btn" @click=${props.onCloseBindingDetail}>
+            ${t("enterprise.bindingDetail.close")}
+          </button>
+        </div>
+      </div>
+    </openclaw-modal-dialog>
+  `;
 }
 
 /**
@@ -2554,37 +2963,87 @@ function renderNodeInspector(
   // Built once: the groups render from them and the picker dialog resolves the
   // row it was opened for out of the same list, so the two cannot disagree.
   const adders = nodeBindingAdders(node, props);
+  const guidance = renderNodeGuidance(node, props);
   return html`
-    <section class="card-nested" style="margin-top: 12px;">
-      <div class="card-sub">${t("enterprise.nodeInspectorTitle")}: ${node.title} — ${node.id}</div>
+    <section class="card-nested node-inspector" style="margin-top: 12px;">
+      <header class="node-inspector__head">
+        <div class="node-inspector__ident">
+          <div class="card-sub">${node.title}</div>
+          <code class="node-inspector__id">${node.id}</code>
+        </div>
+      </header>
       ${node.description
-        ? html`<div class="muted" style="margin-top: 4px;">${node.description}</div>`
+        ? html`<div class="muted node-inspector__desc">${node.description}</div>`
         : nothing}
-      ${entities.length === 0
-        ? html`<div class="muted" style="margin-top: 8px;">${t("enterprise.nodeNoOntology")}</div>`
-        : html`
-            <openclaw-ontology-graph
-              .entities=${entities}
-              .relationships=${relationships}
-            ></openclaw-ontology-graph>
-            ${renderNodeObjects(objectEntities, props)}
-          `}
-      ${renderNodeOntologyEditor(node, props)} ${renderNodeGuidance(node, props)}
-      ${renderNodeBindings(adders, props)}
+      <!-- Role prompt and sub-steps come FIRST: they are what the step is and
+        what sits under it, which an operator settles before deciding what it may
+        call. The capability and ontology blocks below are longer, so leaving these
+        at the bottom put the two shortest decisions behind the most scrolling. -->
+      ${guidance === nothing
+        ? nothing
+        : renderNodeSection({
+            kind: "prompt",
+            title: t("enterprise.guidanceEditor.title"),
+            hint: t("enterprise.guidanceEditor.guidanceNote"),
+            body: guidance,
+          })}
       <!-- Adding a CHILD STEP is structural: it changes the workflow shape, not
-        what this step may call. Kept in its own block, behind a rule, so it is
-        not read as a fourth kind of binding. -->
+        what this step may call, so it keeps its own block rather than reading as
+        a fifth kind of capability. -->
       ${props.canEdit
-        ? html`<div class="node-structure">
-            <div class="card-title">${t("enterprise.addNodeSectionTitle")}</div>
-            <div class="muted" style="margin-top: 4px;">
-              ${t("enterprise.addNodeSectionSubtitle")}
-            </div>
-            ${renderAddNode(tree.id, nodeId, props)}
-          </div>`
+        ? renderNodeSection({
+            kind: "structure",
+            title: t("enterprise.addNodeSectionTitle"),
+            hint: t("enterprise.addNodeSectionSubtitle"),
+            body: renderAddNode(tree.id, nodeId, props),
+          })
         : nothing}
+      ${renderNodeCapabilities(adders, props)}
+      ${renderNodeSection({
+        kind: "ontology",
+        title: t("enterprise.nodeInspectorTitle"),
+        hint: t("enterprise.ontologyEditor.scopeNote"),
+        body: html`
+          ${entities.length === 0
+            ? html`<div class="muted">${t("enterprise.nodeNoOntology")}</div>`
+            : html`
+                <openclaw-ontology-graph
+                  .entities=${entities}
+                  .relationships=${relationships}
+                ></openclaw-ontology-graph>
+                ${renderNodeObjects(objectEntities, props)}
+              `}
+          ${renderNodeOntologyEditor(node, props)}
+        `,
+      })}
     </section>
-    ${renderBindingPicker(props, adders)}
+    ${renderBindingPicker(props, adders)} ${renderBindingDetail(props, adders)}
+  `;
+}
+
+/**
+ * One labelled block of the step inspector.
+ *
+ * Every per-step setting lives in exactly one of these, and `kind` gives each its
+ * own accent and heading. Without that the ontology, the four capability kinds
+ * and the structural edit all rendered as the same run of cards, and telling
+ * "what MCP servers does this step get" from "what tools" meant reading the body
+ * of each one.
+ */
+function renderNodeSection(params: {
+  kind: string;
+  title: string;
+  hint?: string | null;
+  body: unknown;
+}): TemplateResult {
+  return html`
+    <section class="node-section" data-kind=${params.kind}>
+      <header class="node-section__head">
+        <span class="node-section__title">${params.title}</span>
+      </header>
+      ${params.hint ? html`<div class="node-section__hint">${params.hint}</div>` : nothing}
+      <div class="node-section__body">${params.body}</div>
+    </section>
   `;
 }
 
@@ -2623,7 +3082,7 @@ function nodeBindingAdders(
       nodeId: node.id,
       field: "allowedTools",
       values: allowedTools,
-      title: t("enterprise.bindings.tools"),
+      title: t("enterprise.bindings.allowedLabel"),
       options: toolBindingOptions(props),
       // What an empty list MEANS flips with the work-map's grant mode: inherited
       // scopes leave the step wide open (the first entry narrows it), while
@@ -2642,7 +3101,7 @@ function nodeBindingAdders(
       nodeId: node.id,
       field: "deniedTools",
       values: ontology.deniedTools ?? [],
-      title: t("enterprise.bindings.deniedTools"),
+      title: t("enterprise.bindings.deniedLabel"),
       // Same catalog as the allow-list: a denial names a tool, and an operator
       // reaching for one is picking from what exists, not inventing a name.
       options: toolBindingOptions(props),
@@ -2676,7 +3135,7 @@ function nodeBindingAdders(
       nodeId: node.id,
       field: "skills",
       values: ontology.skills ?? [],
-      title: t("enterprise.bindings.skills"),
+      title: t("enterprise.bindings.declaredLabel"),
       options: props.skills.map((skill) => ({
         value: skill.name,
         ...(skill.description ? { description: skill.description } : {}),
@@ -2694,7 +3153,7 @@ function nodeBindingAdders(
       nodeId: node.id,
       field: "knowledgeFoundations",
       values: foundations,
-      title: t("enterprise.bindings.knowledge"),
+      title: t("enterprise.bindings.allowedLabel"),
       options: [...retrievableIds].toSorted().map((value) => ({ value })),
       // Same path-gate shape as tools: an omitted list lets the step query every
       // registered foundation, so the first entry restricts it.
@@ -2720,7 +3179,7 @@ function nodeBindingAdders(
       nodeId: node.id,
       field: "mcpServers",
       values: ontology.mcpServers ?? [],
-      title: t("enterprise.bindings.mcp"),
+      title: t("enterprise.bindings.attachedLabel"),
       options: props.mcpServers.map((server) => ({
         value: server.name,
         description: server.launch,
@@ -2782,21 +3241,14 @@ function renderNodeGuidance(
       : null;
   if (!props.canEdit) {
     // A read-only operator still needs to see what the step was told to do.
-    return saved
-      ? html`<div class="card-title" style="margin-top: 16px;">
-            ${t("enterprise.guidanceEditor.title")}
-          </div>
-          <div class="muted" style="margin-top: 4px; white-space: pre-wrap;">${saved}</div>`
-      : nothing;
+    return saved ? html`<div class="muted" style="white-space: pre-wrap;">${saved}</div>` : nothing;
   }
   const value = draft ? draft.text : saved;
   const dirty = value !== saved;
   return html`
-    <div class="card-title" style="margin-top: 16px;">${t("enterprise.guidanceEditor.title")}</div>
-    <div class="muted" style="margin-top: 4px;">${t("enterprise.guidanceEditor.guidanceNote")}</div>
     <textarea
       class="input"
-      style="margin-top: 8px; min-height: 96px; width: 100%;"
+      style="min-height: 96px; width: 100%;"
       rows="4"
       .value=${value}
       aria-label=${t("enterprise.guidanceEditor.fieldLabel", { nodeId: node.id })}
@@ -2923,8 +3375,9 @@ function renderNodeOntologyEditor(
     ? declaredExecutableEntityIds(props.treeDetail, node.id)
     : scopeEntityIds;
   return html`
+    <!-- No scope note here: the enclosing ontology section already carries it,
+      and repeating it put the same paragraph twice on one screen. -->
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.ontologyEditor.title")}</div>
-    <div class="muted" style="margin-top: 4px;">${t("enterprise.ontologyEditor.scopeNote")}</div>
     ${entities.map((entity) => {
       const properties = entity.properties ?? [];
       const propertyDraft =
@@ -3407,7 +3860,7 @@ function renderOntologyDraftForm(
   props: EnterpriseProps,
 ): TemplateResult {
   return html`
-    <div class="node-structure" style="margin-top: 8px;">
+    <div class="ontology-draft-form">
       ${draft.kind === "action-effect"
         ? // An effect names an object type and a verb; it has no id of its own.
           nothing
@@ -3626,15 +4079,72 @@ function renderEntitySelect(
   </label>`;
 }
 
-function renderNodeBindings(
+/**
+ * The kinds of capability a step can be given, and the binding rows each one owns.
+ *
+ * Grouped rather than listed flat because the five rows answer four different
+ * questions, and an operator looking for "which MCP servers does this step get"
+ * was scanning a run of identical cards to find the one that answers it.
+ *
+ * Tools keep allow and deny TOGETHER: they are one decision over one catalog, and
+ * a denial only means something next to the grants it overrides.
+ */
+const CAPABILITY_CATEGORIES = [
+  {
+    kind: "tools",
+    titleKey: "enterprise.capabilities.toolsTitle",
+    hintKey: "enterprise.capabilities.toolsHint",
+    fields: ["allowedTools", "deniedTools"],
+  },
+  {
+    kind: "skills",
+    titleKey: "enterprise.capabilities.skillsTitle",
+    hintKey: "enterprise.capabilities.skillsHint",
+    fields: ["skills"],
+  },
+  {
+    kind: "mcp",
+    titleKey: "enterprise.capabilities.mcpTitle",
+    hintKey: "enterprise.capabilities.mcpHint",
+    fields: ["mcpServers"],
+  },
+  {
+    kind: "knowledge",
+    titleKey: "enterprise.capabilities.knowledgeTitle",
+    hintKey: "enterprise.capabilities.knowledgeHint",
+    fields: ["knowledgeFoundations"],
+  },
+] as const satisfies ReadonlyArray<{
+  kind: string;
+  titleKey: string;
+  hintKey: string;
+  fields: readonly NodeOntologyListField[];
+}>;
+
+function renderNodeCapabilities(
   adders: readonly OntologyEntryAdder[],
   props: EnterpriseProps,
 ): TemplateResult {
+  const byField = new Map(adders.map((adder) => [adder.field, adder]));
   return html`
-    <div class="card-title" style="margin-top: 16px;">${t("enterprise.bindings.title")}</div>
-    <div class="muted" style="margin-top: 4px;">${t("enterprise.bindings.subtitle")}</div>
-    ${renderCatalogAgentScope(props.catalogAgentId)}${renderBindingCatalogIssues(props)}
-    <div class="binding-groups">${adders.map((adder) => renderBindingGroup(props, adder))}</div>
+    <div class="node-capabilities__lead">
+      <div class="card-title">${t("enterprise.bindings.title")}</div>
+      <div class="muted" style="margin-top: 4px;">${t("enterprise.bindings.subtitle")}</div>
+      ${renderCatalogAgentScope(props.catalogAgentId)}${renderBindingCatalogIssues(props)}
+    </div>
+    ${CAPABILITY_CATEGORIES.map((category) => {
+      const rows = category.fields
+        .map((field) => byField.get(field))
+        .filter((adder): adder is OntologyEntryAdder => Boolean(adder));
+      return renderNodeSection({
+        kind: category.kind,
+        title: t(category.titleKey),
+        hint: t(category.hintKey),
+        body: html`<div class="binding-groups">
+          ${rows.map((adder) => renderBindingGroup(props, adder))}
+        </div>`,
+      });
+    })}
   `;
 }
 
@@ -3745,12 +4255,7 @@ function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): 
       : null;
   if (!draft) {
     return html`
-      <button
-        type="button"
-        class="btn"
-        style="margin-top: 12px;"
-        @click=${() => props.onBeginAddNode(nodeId)}
-      >
+      <button type="button" class="btn" @click=${() => props.onBeginAddNode(nodeId)}>
         ${t("enterprise.addNodeButton")}
       </button>
     `;
@@ -3758,7 +4263,7 @@ function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): 
   const fieldStyle =
     "width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);";
   return html`
-    <div class="card-nested" style="margin-top: 12px;">
+    <div class="card-nested">
       <div class="card-sub">${t("enterprise.addNodeTitle")}</div>
       <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
         <label style="display: flex; flex-direction: column; gap: 4px;">

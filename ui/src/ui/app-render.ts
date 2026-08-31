@@ -142,12 +142,14 @@ import {
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
   cancelEnterpriseBindingPicker,
+  closeEnterpriseBindingDetail,
   addEnterpriseMcpHeader,
   beginEnterpriseMcpDraft,
   beginEnterpriseMcpEdit,
   cancelEnterpriseMcpDraft,
   editEnterpriseMcpDraft,
   editEnterpriseMcpHeader,
+  openEnterpriseBindingDetail,
   openEnterpriseBindingPicker,
   beginEnterpriseOntologyDraft,
   cancelEnterpriseNodeGuidance,
@@ -3356,6 +3358,12 @@ export function renderApp(state: AppViewState) {
                 // revision the version history can restore like any other.
                 onRemoveBinding: (nodeId, field, entry) =>
                   void removeEnterpriseBinding(state, { nodeId, field, entry }),
+                // Read-only: the tool, skill, MCP and foundation catalogs behind
+                // the card are already on the screen, so opening one fetches
+                // nothing.
+                bindingDetail: state.enterpriseBindingDetail,
+                onOpenBindingDetail: (detail) => openEnterpriseBindingDetail(state, detail),
+                onCloseBindingDetail: () => closeEnterpriseBindingDetail(state),
                 guidanceDraft: state.enterpriseGuidanceDraft,
                 onGuidanceDraft: (nodeId, text) => editEnterpriseNodeGuidance(state, nodeId, text),
                 onSaveGuidance: (nodeId) => void saveEnterpriseNodeGuidance(state, nodeId),
