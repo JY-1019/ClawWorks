@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES } from "../../../../packages/gateway-protocol/src/index.js";
 import { GatewayRequestError } from "../gateway.ts";
+import { listKnowledgeAdapterPlugins } from "./knowledge-registration.ts";
 import {
+  beginKnowledgeDraft,
+  beginKnowledgeEdit,
   cancelKnowledgeDocumentRemoval,
   confirmKnowledgeDocumentRemoval,
+  editKnowledgeDraft,
   type KnowledgeState,
   loadKnowledgeDocuments,
   loadKnowledgeFoundations,
   openKnowledgeFiles,
+  cancelKnowledgeDraftForRemoval,
+  removeKnowledgeFoundation,
   requestKnowledgeDocumentRemoval,
+  submitKnowledgeDraft,
   testKnowledgeFoundationConnection,
   uploadKnowledgeDocument,
 } from "./knowledge.ts";
@@ -32,6 +39,7 @@ function createState(): {
     knowledgeUploadingFor: null,
     knowledgeDocumentConfirm: null,
     knowledgeDocumentNotice: null,
+    knowledgeDraft: null,
   };
   return { state, request };
 }
@@ -473,5 +481,288 @@ describe("knowledge documents", () => {
     await loadKnowledgeFoundations(ctx.state);
 
     expect(ctx.state.knowledgeDocumentConfirm).toBeNull();
+  });
+});
+
+describe("knowledge source registration", () => {
+  const adapter = listKnowledgeAdapterPlugins({
+    properties: {
+      plugins: {
+        properties: {
+          entries: {
+            properties: {
+              lightrag: {
+                properties: {
+                  config: {
+                    properties: {
+                      foundations: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          required: ["id", "serverUrl"],
+                          properties: {
+                            id: { type: "string" },
+                            serverUrl: { type: "string" },
+                            apiKey: { type: ["string", "object"] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })[0];
+
+  it("appends the new source after the ones already configured", () => {
+    // Appended, never spliced: a stored credential is restored by array index
+    // on save, so reordering would hand one foundation another's API key.
+    const { state } = createState();
+    beginKnowledgeDraft(state, "lightrag");
+    editKnowledgeDraft(state, {
+      values: { id: "acme.support-kb", serverUrl: "http://localhost:9621" },
+    });
+    const applied: Array<{ pluginId: string; foundations: Record<string, unknown>[] }> = [];
+
+    submitKnowledgeDraft(state, {
+      adapter,
+      existingIds: ["acme.orders-kb"],
+      existingFoundations: [{ id: "acme.orders-kb", serverUrl: "http://a", apiKey: "SECRET" }],
+      apply: (params) => applied.push(params),
+    });
+
+    expect(applied).toEqual([
+      {
+        pluginId: "lightrag",
+        foundations: [
+          { id: "acme.orders-kb", serverUrl: "http://a", apiKey: "SECRET" },
+          { id: "acme.support-kb", serverUrl: "http://localhost:9621" },
+        ],
+      },
+    ]);
+    expect(state.knowledgeDraft).toBeNull();
+  });
+
+  it("keeps the form open with the reason when the entry is refused", () => {
+    const { state } = createState();
+    beginKnowledgeDraft(state, "lightrag");
+    editKnowledgeDraft(state, { values: { id: "acme.kb", serverUrl: "http://a" } });
+    let applied = 0;
+
+    submitKnowledgeDraft(state, {
+      adapter,
+      existingIds: ["acme.kb"],
+      existingFoundations: [],
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.knowledgeDraft?.error).toBe("id-taken");
+  });
+
+  it("drops the values when the operator switches adapter", () => {
+    // The fields belong to the adapter's schema, so carrying answers across
+    // would submit one adapter's input under another's contract.
+    const { state } = createState();
+    beginKnowledgeDraft(state, "lightrag");
+    editKnowledgeDraft(state, { values: { id: "acme.kb", serverUrl: "http://a" } });
+
+    editKnowledgeDraft(state, { pluginId: "acme-rag" });
+
+    expect(state.knowledgeDraft).toEqual({
+      pluginId: "acme-rag",
+      editingIndex: null,
+      editingSnapshot: null,
+      values: {},
+      error: null,
+    });
+  });
+
+  it("replaces the edited source in place and leaves the others alone", () => {
+    // In place, never spliced: a stored credential is restored by array index on
+    // save, so moving an entry would hand it another server's key.
+    const { state } = createState();
+    const foundations = [
+      { id: "acme.orders-kb", serverUrl: "http://a", apiKey: "__OPENCLAW_REDACTED__" },
+      { id: "acme.support-kb", serverUrl: "http://b" },
+    ];
+    beginKnowledgeEdit(state, { pluginId: "lightrag", index: 1, entry: foundations[1] });
+    editKnowledgeDraft(state, { values: { serverUrl: "https://rag.acme.dev" } });
+    const applied: Array<{ pluginId: string; foundations: Record<string, unknown>[] }> = [];
+
+    submitKnowledgeDraft(state, {
+      adapter,
+      existingIds: ["acme.orders-kb"],
+      existingFoundations: foundations,
+      apply: (params) => applied.push(params),
+    });
+
+    expect(applied).toEqual([
+      {
+        pluginId: "lightrag",
+        foundations: [
+          { id: "acme.orders-kb", serverUrl: "http://a", apiKey: "__OPENCLAW_REDACTED__" },
+          { id: "acme.support-kb", serverUrl: "https://rag.acme.dev" },
+        ],
+      },
+    ]);
+  });
+
+  it("drops the edit target when the operator switches adapter", () => {
+    // The index belongs to the old adapter's list; keeping it would write a new
+    // source over an unrelated one.
+    const { state } = createState();
+    beginKnowledgeEdit(state, {
+      pluginId: "lightrag",
+      index: 3,
+      entry: { id: "acme.kb", serverUrl: "http://a" },
+    });
+
+    editKnowledgeDraft(state, { pluginId: "acme-rag" });
+
+    expect(state.knowledgeDraft).toEqual({
+      pluginId: "acme-rag",
+      editingIndex: null,
+      editingSnapshot: null,
+      values: {},
+      error: null,
+    });
+  });
+
+  it("removes a source, and refuses when a later credential would shift", () => {
+    const applied: Array<{ pluginId: string; foundations: Record<string, unknown>[] }> = [];
+    const apply = (params: { pluginId: string; foundations: Record<string, unknown>[] }) =>
+      applied.push(params);
+    const withSecretLast = [
+      { id: "a", serverUrl: "http://a" },
+      { id: "b", serverUrl: "http://b", apiKey: "__OPENCLAW_REDACTED__" },
+    ];
+
+    // Removing index 0 would shift b's stored key into a slot holding a's.
+    removeKnowledgeFoundation({
+      pluginId: "lightrag",
+      foundations: withSecretLast,
+      index: 0,
+      expectedId: "a",
+      apply,
+    });
+    // Removing the last shifts nothing.
+    removeKnowledgeFoundation({
+      pluginId: "lightrag",
+      foundations: withSecretLast,
+      index: 1,
+      expectedId: "b",
+      apply,
+    });
+
+    expect(applied).toEqual([{ pluginId: "lightrag", foundations: [withSecretLast[0]] }]);
+  });
+});
+
+describe("an open form survives a removal that did not move it", () => {
+  function stateWithDraft(editingIndex: number | null, pluginId = "lightrag") {
+    return {
+      knowledgeDraft: {
+        pluginId,
+        editingIndex,
+        editingSnapshot: null,
+        values: { serverUrl: "http://typed-but-unsaved" },
+        error: null,
+      },
+    } as unknown as Parameters<typeof cancelKnowledgeDraftForRemoval>[0];
+  }
+
+  it("cancels the form whose own row went", () => {
+    const state = stateWithDraft(1);
+    cancelKnowledgeDraftForRemoval(state, { pluginId: "lightrag", index: 1 });
+    expect(state.knowledgeDraft).toBeNull();
+  });
+
+  it("cancels a form whose row shifted up behind the removal", () => {
+    const state = stateWithDraft(2);
+    cancelKnowledgeDraftForRemoval(state, { pluginId: "lightrag", index: 1 });
+    expect(state.knowledgeDraft).toBeNull();
+  });
+
+  it("keeps unsaved values when a LATER row is removed", () => {
+    // The draft is pinned to its index, and a removal after it moves nothing.
+    const state = stateWithDraft(0);
+    cancelKnowledgeDraftForRemoval(state, { pluginId: "lightrag", index: 1 });
+    expect(state.knowledgeDraft?.values.serverUrl).toBe("http://typed-but-unsaved");
+  });
+
+  it("keeps a form open on another adapter", () => {
+    const state = stateWithDraft(0, "other-adapter");
+    cancelKnowledgeDraftForRemoval(state, { pluginId: "lightrag", index: 0 });
+    expect(state.knowledgeDraft).not.toBeNull();
+  });
+
+  it("keeps a form that is appending a new entry", () => {
+    const state = stateWithDraft(null);
+    cancelKnowledgeDraftForRemoval(state, { pluginId: "lightrag", index: 0 });
+    expect(state.knowledgeDraft).not.toBeNull();
+  });
+});
+
+describe("removal reports whether it removed", () => {
+  const noop = () => undefined;
+
+  it("reports true only when the entry was actually dropped", () => {
+    const foundations = [{ id: "a", serverUrl: "http://a" }];
+    expect(
+      removeKnowledgeFoundation({
+        pluginId: "lightrag",
+        foundations,
+        index: 0,
+        expectedId: "a",
+        apply: noop,
+      }),
+    ).toBe(true);
+    // A raced confirmation removes nothing, so the caller must not act on it.
+    expect(
+      removeKnowledgeFoundation({
+        pluginId: "lightrag",
+        foundations,
+        index: 0,
+        expectedId: "b",
+        apply: noop,
+      }),
+    ).toBe(false);
+    expect(
+      removeKnowledgeFoundation({
+        pluginId: "lightrag",
+        foundations,
+        index: 5,
+        expectedId: "a",
+        apply: noop,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("removal identity", () => {
+  it("refuses when the list reordered under the confirmation", () => {
+    // Same race the edit path guards with editingId: a Refresh between opening
+    // the modal and accepting it would otherwise delete a different source.
+    const applied: Array<{ pluginId: string; foundations: Record<string, unknown>[] }> = [];
+
+    removeKnowledgeFoundation({
+      pluginId: "lightrag",
+      foundations: [
+        { id: "moved-in", serverUrl: "http://x" },
+        { id: "a", serverUrl: "http://a" },
+      ],
+      index: 0,
+      expectedId: "a",
+      apply: (params) => applied.push(params),
+    });
+
+    expect(applied).toEqual([]);
   });
 });

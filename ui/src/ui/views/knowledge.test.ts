@@ -24,6 +24,30 @@ function buildProps(overrides?: Partial<KnowledgeProps>): KnowledgeProps {
     onRequestRemove: vi.fn(),
     onCancelRemove: vi.fn(),
     onConfirmRemove: vi.fn(),
+    adapters: [],
+    adaptersKnown: true,
+    defaultAdapterId: null,
+    omittedAdapterSchemas: [],
+    canRegister: true,
+    registerBlockedReason: null,
+    addBlockedReason: null,
+    draft: null,
+    configured: {},
+    configDirty: false,
+    configSaving: false,
+    configApplying: false,
+    connected: true,
+    onBeginDraft: vi.fn(),
+    onEditDraft: vi.fn(),
+    onCancelDraft: vi.fn(),
+    onSubmitDraft: vi.fn(),
+    onBeginEdit: vi.fn(),
+    sourceConfirm: null,
+    onRequestRemoveSource: vi.fn(),
+    onCancelRemoveSource: vi.fn(),
+    onConfirmRemoveSource: vi.fn(),
+    onSaveConfig: vi.fn(),
+    onApplyConfig: vi.fn(),
   };
   return { ...props, ...overrides };
 }
@@ -418,5 +442,225 @@ describe("renderKnowledge files section", () => {
       }),
     );
     expect(container.textContent).toContain("started");
+  });
+});
+
+function adapter(overrides: Partial<KnowledgeProps["adapters"][number]> = {}) {
+  return {
+    pluginId: "lightrag",
+    label: "LightRAG Knowledge",
+    fields: [
+      { name: "id", options: [], required: true, sensitive: false },
+      { name: "serverUrl", options: [], required: true, sensitive: false },
+      { name: "kind", options: ["remote", "local"], required: false, sensitive: false },
+      { name: "apiKey", options: [], required: false, sensitive: true },
+    ],
+    ...overrides,
+  } as KnowledgeProps["adapters"][number];
+}
+
+describe("renderKnowledge registration", () => {
+  it("offers to connect a source when an adapter can take one", () => {
+    const container = renderInto(buildProps({ adapters: [adapter()] }));
+    expect(container.textContent).toContain("Connect a knowledge source");
+    expect(container.textContent).toContain("Connect a source");
+  });
+
+  it("hides the whole card from a session that cannot write config", () => {
+    const container = renderInto(buildProps({ adapters: [adapter()], canRegister: false }));
+    expect(container.textContent).not.toContain("Connect a knowledge source");
+  });
+
+  it("tells the operator to install an adapter only once the schema answered", () => {
+    // Before that, an empty adapter list is "not known yet", and sending them to
+    // install a plugin they already have would be wrong.
+    const pending = renderInto(buildProps({ adaptersKnown: false }));
+    expect(pending.textContent).not.toContain("No installed plugin can register");
+
+    const answered = renderInto(buildProps({ adaptersKnown: true }));
+    expect(answered.textContent).toContain("No installed plugin can register");
+  });
+
+  it("builds the form from the fields the adapter declares", () => {
+    const container = renderInto(
+      buildProps({
+        adapters: [adapter()],
+        draft: {
+          pluginId: "lightrag",
+          editingIndex: null,
+          editingSnapshot: null,
+          values: {},
+          error: null,
+        },
+      }),
+    );
+
+    expect(container.querySelector("select")).toBeTruthy();
+    // A credential is masked, because the same path is redacted on the way out.
+    expect(container.querySelector('input[type="password"]')).toBeTruthy();
+    expect(container.textContent).toContain("Foundation id");
+    expect(container.textContent).toContain("Server URL");
+  });
+
+  it("lists every configured source with edit and remove, marking the unsaved ones", () => {
+    const container = renderInto(
+      buildProps({
+        adapters: [adapter()],
+        configDirty: true,
+        configured: {
+          lightrag: {
+            pending: [false, true],
+            foundations: [
+              { id: "acme.orders-kb", serverUrl: "http://a" },
+              { id: "acme.support-kb", serverUrl: "http://b" },
+            ],
+          },
+        },
+      }),
+    );
+
+    // The list an operator can change is the config list, not the live registry.
+    expect(container.textContent).toContain("acme.orders-kb");
+    expect(container.textContent).toContain("acme.support-kb");
+    expect(container.textContent).toContain("Not saved");
+    expect(container.textContent).toContain("Edit");
+    expect(container.textContent).toContain("exist only in this browser");
+    expect(container.textContent).toContain("Save & Publish");
+  });
+
+  it("refuses to remove a source that would displace a later credential", () => {
+    // The gateway matches stored credentials by array position, so removing
+    // would hand the later source the wrong key.
+    const container = renderInto(
+      buildProps({
+        adapters: [adapter()],
+        configured: {
+          lightrag: {
+            pending: [false, false],
+            foundations: [
+              { id: "acme.orders-kb", serverUrl: "http://a" },
+              { id: "acme.support-kb", serverUrl: "http://b", apiKey: "__OPENCLAW_REDACTED__" },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(container.textContent).toContain("acme.support-kb still holds a stored credential");
+    const remove = [...container.querySelectorAll("button")].filter((entry) =>
+      entry.textContent?.trim().startsWith("Remove"),
+    );
+    // The first source is blocked; the last one shifts nothing and stays usable.
+    expect(remove[0]?.disabled).toBe(true);
+    expect(remove[1]?.disabled).toBe(false);
+  });
+
+  it("shows an edited source's stored credential as unchanged rather than as dots", () => {
+    const container = renderInto(
+      buildProps({
+        adapters: [adapter()],
+        configured: {
+          lightrag: {
+            pending: [false],
+            foundations: [
+              { id: "acme.kb", serverUrl: "http://a", apiKey: "__OPENCLAW_REDACTED__" },
+            ],
+          },
+        },
+        draft: {
+          pluginId: "lightrag",
+          editingIndex: 0,
+          editingSnapshot: null,
+          values: { id: "acme.kb", serverUrl: "http://a" },
+          error: null,
+        },
+      }),
+    );
+
+    expect(container.textContent).toContain("Edit source");
+    expect(container.textContent).toContain("Type here only to replace it");
+    expect(container.querySelector('input[type="password"]')?.getAttribute("placeholder")).toBe(
+      "Unchanged",
+    );
+  });
+
+  it("blocks registering while the config draft cannot be written", () => {
+    const container = renderInto(
+      buildProps({
+        adapters: [adapter()],
+        registerBlockedReason: "A config save is in flight.",
+        addBlockedReason: "A config save is in flight.",
+      }),
+    );
+
+    expect(container.textContent).toContain("A config save is in flight.");
+    const button = [...container.querySelectorAll("button")].find((entry) =>
+      entry.textContent?.includes("Connect a source"),
+    );
+    expect(button?.disabled).toBe(true);
+  });
+});
+
+describe("renderKnowledge field binding", () => {
+  it("shows a nested SecretRef as unchanged, not as absent", () => {
+    // A SecretRef's sentinel is nested, so a shallow check would call the
+    // credential missing and hide the replacement guidance.
+    const container = renderInto(
+      buildProps({
+        adapters: [adapter()],
+        configured: {
+          lightrag: {
+            pending: [false],
+            foundations: [
+              {
+                id: "acme.kb",
+                serverUrl: "http://a",
+                apiKey: { source: "env", provider: "default", id: "__OPENCLAW_REDACTED__" },
+              },
+            ],
+          },
+        },
+        draft: {
+          pluginId: "lightrag",
+          editingIndex: 0,
+          editingSnapshot: null,
+          values: { id: "acme.kb", serverUrl: "http://a" },
+          error: null,
+        },
+      }),
+    );
+
+    expect(container.textContent).toContain("Type here only to replace it");
+    expect(container.querySelector('input[type="password"]')?.getAttribute("placeholder")).toBe(
+      "Unchanged",
+    );
+  });
+
+  it("renders an adapter field named like a prototype key as empty", () => {
+    // A plain lookup on a fresh draft's {} would bind the inherited function
+    // into the control.
+    const container = renderInto(
+      buildProps({
+        adapters: [
+          adapter({
+            fields: [
+              { name: "id", options: [], required: true, sensitive: false },
+              { name: "serverUrl", options: [], required: true, sensitive: false },
+              { name: "constructor", options: [], required: false, sensitive: false },
+            ],
+          }),
+        ],
+        draft: {
+          pluginId: "lightrag",
+          editingIndex: null,
+          editingSnapshot: null,
+          values: {},
+          error: null,
+        },
+      }),
+    );
+
+    const inputs = [...container.querySelectorAll("input")];
+    expect(inputs.every((input) => input.value === "")).toBe(true);
   });
 });

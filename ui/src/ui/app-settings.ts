@@ -417,7 +417,9 @@ async function refreshAgentsTab(host: SettingsHost, app: SettingsAppHost) {
 }
 
 function loadConfigSchemaAfterPrimary(
-  host: SettingsHost,
+  // Only the re-render hook is used, so this takes the narrow shape rather than
+  // the whole settings host — refreshKnowledgeTab is called from the view layer.
+  host: { requestUpdate?: () => void },
   app: SettingsAppHost,
   primaryRefresh: Promise<unknown>,
 ) {
@@ -427,6 +429,31 @@ function loadConfigSchemaAfterPrimary(
     },
     () => undefined,
   );
+}
+
+/**
+ * Everything the Knowledge screen renders from.
+ *
+ * Config and its schema come with the registry: a foundation is registered by
+ * writing an adapter plugin's config, and the schema is what says which plugins
+ * can take one. Without them the screen would report "no adapter can register a
+ * foundation" for a deployment that has one. Exported so the screen's own
+ * Refresh reloads the same set as tab entry — reloading only the registry would
+ * leave a failed schema load unrecoverable without a page reload.
+ */
+export async function refreshKnowledgeTab(host: { requestUpdate?: () => void }) {
+  const app = host as unknown as SettingsAppHost;
+  // The registry is operator.read; the config and its schema are admin-only.
+  // A reader may open this screen, so asking for them anyway would put a
+  // missing-scope error on a page whose registration surface is already hidden.
+  const admin = hasOperatorAdminAccess(app.hello?.auth ?? null);
+  if (!admin) {
+    await loadKnowledgeFoundations(app);
+    return;
+  }
+  const primaryRefresh = Promise.all([loadKnowledgeFoundations(app), loadConfig(app)]);
+  loadConfigSchemaAfterPrimary(host, app, primaryRefresh);
+  await primaryRefresh;
 }
 
 export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?: boolean }) {
@@ -487,7 +514,7 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
         await Promise.all([refreshEnterprise(app), loadEnterpriseCatalogs(app), loadConfig(app)]);
         break;
       case "knowledge":
-        await loadKnowledgeFoundations(app);
+        await refreshKnowledgeTab(host);
         break;
       case "usage":
         await loadUsage(app);

@@ -350,6 +350,9 @@ export type AppViewState = {
   knowledgeUploadingFor: string | null;
   knowledgeDocumentConfirm: import("./controllers/knowledge.js").KnowledgeDocumentConfirm | null;
   knowledgeDocumentNotice: string | null;
+  knowledgeDraft: import("./controllers/knowledge-registration.js").KnowledgeFoundationDraft | null;
+  knowledgeSourceConfirm: { pluginId: string; index: number; foundationId: string } | null;
+  enterpriseMcpRemoveConfirm: string | null;
   agentsLoading: boolean;
   agentsList: AgentsListResult | null;
   agentsError: string | null;

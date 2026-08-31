@@ -34,6 +34,119 @@ const PLUGIN_ORIGIN_RANK: Readonly<Record<PluginOrigin, number>> = {
   bundled: 3,
 };
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * The hint-map spelling of one manifest secret-input path.
+ *
+ * `configContracts.secretInputs` writes a wildcard segment as `*` while config
+ * hints spell an ARRAY segment `[]` (`foundations[].apiKey`), so the path is
+ * walked against the plugin's own schema to tell an array wildcard from a map
+ * one. Returns null when the schema does not carry the path, since a hint keyed
+ * to something no field answers to would never be read.
+ */
+/**
+ * The member schema of a permissive object, or null when the shape is closed.
+ *
+ * `additionalProperties` absent or `true` means "more members may exist" with
+ * nothing said about them, so an empty node carries the walk forward; an object
+ * describes them; only an explicit `false` closes the shape.
+ */
+function openObjectMemberSchema(node: Record<string, unknown>): Record<string, unknown> | null {
+  if (node.additionalProperties === false) {
+    return null;
+  }
+  return asRecord(node.additionalProperties) ?? {};
+}
+
+function secretInputHintPath(configSchema: unknown, path: string): string | null {
+  let node: Record<string, unknown> | null = asRecord(configSchema);
+  const spelled: string[] = [];
+  for (const segment of path.split(".")) {
+    if (!node) {
+      return null;
+    }
+    if (segment === "*") {
+      const items = asRecord(node.items);
+      if (items) {
+        // An array wildcard: the hint key carries the brackets on the segment
+        // BEFORE it, which is already the last one spelled.
+        spelled[spelled.length - 1] = `${spelled.at(-1) ?? ""}[]`;
+        node = items;
+        continue;
+      }
+      const member = openObjectMemberSchema(node);
+      if (!member) {
+        return null;
+      }
+      spelled.push("*");
+      node = member;
+      continue;
+    }
+    const properties = asRecord(node.properties);
+    const next = properties ? asRecord(properties[segment]) : null;
+    if (!next) {
+      // A permissive object declares no member schemas, and a dynamic map is a
+      // supported shape — so the rest of the declared path is spelled as written
+      // rather than dropped, which would leave the credential unmarked.
+      const member = openObjectMemberSchema(node);
+      if (!member) {
+        return null;
+      }
+      spelled.push(segment);
+      node = member;
+      continue;
+    }
+    spelled.push(segment);
+    node = next;
+  }
+  return spelled.join(".");
+}
+
+/**
+ * Plugin hints with every declared secret input marked sensitive.
+ *
+ * `configContracts.secretInputs` is the contract a plugin uses to say "this
+ * field holds a credential", but nothing promoted it into the hints — so a field
+ * whose NAME does not look like one (`bearer`, `pat`) reached the Control UI
+ * unmarked and rendered in a plain text box on first entry, before any saved
+ * value had been redacted. An authored hint still wins: this only fills a gap.
+ */
+function withSecretInputHints(
+  record: PluginManifestRegistry["plugins"][number],
+): PluginUiMetadata["configUiHints"] {
+  const paths = record.configContracts?.secretInputs?.paths ?? [];
+  if (paths.length === 0) {
+    return record.configUiHints;
+  }
+  const hints = { ...record.configUiHints };
+  for (const { path } of paths) {
+    // Two spellings, because the two readers match differently. The Knowledge
+    // registration form looks a key up verbatim as `foundations[].apiKey`, while
+    // the generic Settings form's `hintForPath` drops numeric segments and
+    // wildcard-matches only keys containing `*` — so a bracket key never reaches
+    // an array item there, and a `*` key never reaches the other. Emitting both
+    // is what makes one declared secret masked on every surface.
+    const resolved = secretInputHintPath(record.configSchema, path);
+    if (!resolved) {
+      // A path the schema closes off cannot name a real field, so a hint for it
+      // would only claim a surface the plugin does not have.
+      continue;
+    }
+    for (const key of new Set([resolved, path])) {
+      if (hints[key]?.sensitive !== undefined) {
+        continue;
+      }
+      hints[key] = { ...hints[key], sensitive: true };
+    }
+  }
+  return hints;
+}
+
 /** Collects plugin config UI metadata with deterministic origin precedence and output ordering. */
 export function collectPluginSchemaMetadata(registry: PluginManifestRegistry): PluginUiMetadata[] {
   const deduped = new Map<
@@ -54,7 +167,7 @@ export function collectPluginSchemaMetadata(registry: PluginManifestRegistry): P
       id: record.id,
       name: record.name,
       description: record.description,
-      configUiHints: record.configUiHints,
+      configUiHints: withSecretInputHints(record),
       configSchema: record.configSchema,
       originRank: nextRank,
     });

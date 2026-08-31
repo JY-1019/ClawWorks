@@ -570,6 +570,15 @@ export class OpenClawApp extends LitElement {
     | import("./controllers/knowledge.js").KnowledgeDocumentConfirm
     | null = null;
   @state() knowledgeDocumentNotice: string | null = null;
+  @state() knowledgeDraft:
+    | import("./controllers/knowledge-registration.js").KnowledgeFoundationDraft
+    | null = null;
+  @state() knowledgeSourceConfirm: {
+    pluginId: string;
+    index: number;
+    foundationId: string;
+  } | null = null;
+  @state() enterpriseMcpRemoveConfirm: string | null = null;
 
   @state() agentsLoading = false;
   @state() agentsList: AgentsListResult | null = null;

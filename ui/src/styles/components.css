@@ -1023,6 +1023,47 @@
   accent-color: var(--accent);
 }
 
+/*
+ * One request-header row on the MCP registration form: name, value, and a remove
+ * control. A grid rather than a flex row so every row's remove button lines up
+ * whatever the inputs wrap to, and so the value column keeps the width that
+ * makes a long bearer token readable.
+ */
+.mcp-header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.mcp-header-row input {
+  border: 1px solid var(--input);
+  background: var(--card);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  outline: none;
+  min-width: 0;
+}
+
+.mcp-header-row input:focus-visible {
+  border-color: var(--ring);
+  box-shadow: var(--focus-ring);
+}
+
+/*
+ * Help under a form control. Not .list-meta, which is the right-hand column of a
+ * list row and right-aligns with a 200px floor: help sitting under an input has
+ * to line up with its own label, or it reads as belonging to the next field.
+ * More specific than `.field span` so it wins the size and colour.
+ */
+.field .field-help {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
 .form-grid {
   display: grid;
   gap: 12px;

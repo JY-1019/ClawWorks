@@ -13,6 +13,14 @@ import {
 import { t } from "../../i18n/index.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import {
+  buildKnowledgeFoundationEntry,
+  foundationsBlockingRemoval,
+  foundationText,
+  type KnowledgeAdapterPlugin,
+  type KnowledgeFoundationDraft,
+  knowledgeDraftFromEntry,
+} from "./knowledge-registration.ts";
+import {
   formatMissingOperatorReadScopeMessage,
   isMissingOperatorReadScopeError,
 } from "./scope-errors.ts";
@@ -66,7 +74,168 @@ export type KnowledgeState = {
   knowledgeDocumentConfirm: KnowledgeDocumentConfirm | null;
   /** Last file-action message (upload rejected, removal started, ...). */
   knowledgeDocumentNotice: string | null;
+  /** The open "register a source" form, or null when it is closed. */
+  knowledgeDraft: KnowledgeFoundationDraft | null;
 };
+
+/**
+ * Open the form to register a NEW source under one adapter.
+ *
+ * Pre-selecting the only adapter is not a shortcut: with a single knowledge
+ * plugin installed — the usual deployment — a chooser would be a control with
+ * one option, and the operator would still have to answer it.
+ */
+export function beginKnowledgeDraft(state: KnowledgeState, pluginId: string) {
+  state.knowledgeDraft = {
+    pluginId,
+    editingIndex: null,
+    editingSnapshot: null,
+    values: {},
+    error: null,
+  };
+}
+
+/** Open the same form on a source already in this adapter's config. */
+export function beginKnowledgeEdit(
+  state: KnowledgeState,
+  params: { pluginId: string; index: number; entry: Record<string, unknown> },
+) {
+  state.knowledgeDraft = knowledgeDraftFromEntry(params);
+}
+
+export function editKnowledgeDraft(
+  state: KnowledgeState,
+  patch: { pluginId?: string; values?: Record<string, string> },
+) {
+  const draft = state.knowledgeDraft;
+  if (!draft) {
+    return;
+  }
+  // Switching adapters clears the values and drops the edit target: the fields
+  // belong to the adapter's schema, and the index belongs to the adapter's list,
+  // so carrying either across would write one adapter's answers into another's.
+  const switching = patch.pluginId !== undefined && patch.pluginId !== draft.pluginId;
+  // Clearing the error on every edit: the operator is answering it, and a stale
+  // "id taken" under an id they just changed reads as a second failure.
+  state.knowledgeDraft = {
+    pluginId: patch.pluginId ?? draft.pluginId,
+    editingIndex: switching ? null : draft.editingIndex,
+    editingSnapshot: switching ? null : draft.editingSnapshot,
+    values: switching ? {} : { ...draft.values, ...patch.values },
+    error: null,
+  };
+}
+
+export function cancelKnowledgeDraft(state: KnowledgeState) {
+  state.knowledgeDraft = null;
+}
+
+/**
+ * Validate the form and hand the whole list to `apply`, which owns the config
+ * write.
+ *
+ * Two writes, not one: the foundation list, and the adapter's `enabled` flag. A
+ * foundation configured under a disabled plugin is registered nowhere — nothing
+ * loads the adapter, so `knowledge_search` would keep reporting the id as
+ * unavailable and the operator would have no way to see why from here.
+ */
+export function submitKnowledgeDraft(
+  state: KnowledgeState,
+  params: {
+    adapter: KnowledgeAdapterPlugin | undefined;
+    existingIds: readonly string[];
+    existingFoundations: readonly Record<string, unknown>[];
+    apply: (params: { pluginId: string; foundations: Record<string, unknown>[] }) => void;
+  },
+) {
+  const draft = state.knowledgeDraft;
+  if (!draft) {
+    return;
+  }
+  const editingIndex = draft.editingIndex;
+  const original = editingIndex === null ? undefined : params.existingFoundations[editingIndex];
+  const built = buildKnowledgeFoundationEntry({
+    draft,
+    adapter: params.adapter,
+    existingIds: params.existingIds,
+    ...(original ? { original } : {}),
+  });
+  if (built.kind !== "ok") {
+    state.knowledgeDraft = { ...draft, error: built.kind };
+    return;
+  }
+  // Replaced in place, or appended — never spliced or reordered. The config the
+  // form started from carries the redaction sentinel for every stored
+  // credential, and those are restored BY INDEX on save, so moving an entry
+  // would hand one foundation another's API key.
+  const foundations =
+    editingIndex === null
+      ? [...params.existingFoundations, built.entry]
+      : params.existingFoundations.map((entry, at) => (at === editingIndex ? built.entry : entry));
+  params.apply({ pluginId: draft.pluginId, foundations });
+  state.knowledgeDraft = null;
+}
+
+/**
+ * Remove a source from an adapter's config.
+ *
+ * Refused when a later entry holds a credential the browser never saw: removing
+ * shifts it into a slot whose stored value belongs to a different server, and
+ * the save would silently hand it that key. The caller checks first with
+ * foundationsBlockingRemoval so it can say which source is in the way.
+ */
+export function removeKnowledgeFoundation(params: {
+  pluginId: string;
+  foundations: readonly Record<string, unknown>[];
+  index: number;
+  /** The id that was at `index` when the operator confirmed. */
+  expectedId: string;
+  apply: (params: { pluginId: string; foundations: Record<string, unknown>[] }) => void;
+}): boolean {
+  if (params.index < 0 || params.index >= params.foundations.length) {
+    return false;
+  }
+  // Same race the edit path guards with `editingId`: a Refresh, or another
+  // client saving, can reorder the list between opening the confirmation and
+  // accepting it. An index alone would then delete a different source — and
+  // stage that deletion for Publish.
+  if (foundationText(params.foundations[params.index]?.id) !== params.expectedId) {
+    return false;
+  }
+  if (foundationsBlockingRemoval(params).length > 0) {
+    return false;
+  }
+  params.apply({
+    pluginId: params.pluginId,
+    foundations: params.foundations.filter((_entry, at) => at !== params.index),
+  });
+  // Reported, because the caller has an open form whose index may have just
+  // moved — and the three refusals above leave every index exactly as it was.
+  return true;
+}
+
+/**
+ * Drop the open form only when the removal moved the row it writes to.
+ *
+ * An edit is pinned to its INDEX (the gateway restores a stored credential by
+ * array position), so a removal at or before that index invalidates it. A
+ * removal after it, one under another adapter, and a refused removal all leave
+ * the draft pointing exactly where it did — cancelling there would throw away
+ * unsaved field values for no reason.
+ */
+export function cancelKnowledgeDraftForRemoval(
+  state: KnowledgeState,
+  params: { pluginId: string; index: number },
+) {
+  const draft = state.knowledgeDraft;
+  // A draft with no index appends a new entry; nothing above it can move it.
+  if (!draft || draft.pluginId !== params.pluginId || draft.editingIndex === null) {
+    return;
+  }
+  if (draft.editingIndex >= params.index) {
+    cancelKnowledgeDraft(state);
+  }
+}
 
 // Monotonic token so the latest list load wins. A "skip if already loading"
 // guard would make a refresh triggered right after a tab switch a no-op; the
