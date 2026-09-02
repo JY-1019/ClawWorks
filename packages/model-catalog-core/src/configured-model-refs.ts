@@ -121,6 +121,17 @@ export function collectConfiguredModelRefs(
       ? root.channels.discord.voice.model
       : undefined,
   );
+  // The enterprise route planner can be the ONLY reference to its provider, so
+  // omitting it leaves that plugin un-activated and routing silently unavailable.
+  // Skipped when enterprise mode is off: nothing can consult the router then, and
+  // a dormant setting must not activate a provider plugin on a stock install.
+  const enterprise = isRecord(root.enterprise) ? root.enterprise : undefined;
+  if (enterprise?.mode !== "off") {
+    pushModelRef(
+      "enterprise.routePlanner.model",
+      isRecord(enterprise?.routePlanner) ? enterprise.routePlanner.model : undefined,
+    );
+  }
   return refs;
 }
 

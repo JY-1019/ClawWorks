@@ -250,6 +250,10 @@ export const FIELD_HELP: Record<string, string> = {
     'Enterprise execution mode. "enforce" binds every run to a workflow tree and blocks governance denials, "observe" records decisions without blocking, and "off" disables enterprise mediation entirely. Default: enforce.',
   "enterprise.governance":
     "Governance policy declarations evaluated at run start and before every tool call in enterprise mode. Matching policies compose deny-first regardless of declaration order.",
+  "enterprise.routePlanner":
+    "Settings for the model that picks a work-map and route before the tool loop starts.",
+  "enterprise.routePlanner.model":
+    "Model ref (\"provider/model\") the route planner uses, instead of the model the run itself dispatches to. Set this when the run has no API-callable credential to plan with (a CLI backend authenticates itself and lends the planner nothing) or to keep routing off the turn's model. The planner resolves its own auth profile, so a router on another provider is fine. Default: the run's own model.",
   "enterprise.governance.policies":
     "Governance policies. Each policy applies when all of its selectors (trees, nodes, tools, actions) match; matching policies compose order-independently with precedence deny > require_approval > allow > audit, and audit records the decision without changing the outcome.",
   "enterprise.governance.policies[]":

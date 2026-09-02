@@ -486,6 +486,14 @@ function collectConfiguredAgentModelProviderIds(
     addModelMapProviderIds(agent.models);
   }
 
+  // A governed run's router can name a provider nothing else in the config does.
+  // Miss it and the owning plugin never activates, so routing reports unavailable.
+  // With enterprise mode off nothing can consult the router, so a dormant setting
+  // must not pull its provider plugin into startup.
+  if (config.enterprise?.mode !== "off") {
+    addModelProviderRefs(config.enterprise?.routePlanner?.model);
+  }
+
   return new Set(
     [...modelIdsByProvider.entries()]
       .filter(([providerId, modelIds]) => {

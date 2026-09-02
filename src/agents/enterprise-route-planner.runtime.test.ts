@@ -215,6 +215,87 @@ describe("createModelWorkflowPlanner provider refusals", () => {
   });
 });
 
+describe("createModelWorkflowPlanner configured router", () => {
+  const okReply = () =>
+    vi.fn(async () => ({
+      content: [{ type: "text", text: '{"treeId":"acme.ops","routes":[]}' }],
+    }));
+
+  it("resolves a configured router literally and through provider discovery", async () => {
+    // Its catalog row may not exist for this agent — no CLI run and no non-default
+    // agent can rely on a warmup having written one. Async resolution finds it while
+    // still honoring plugin activation, which the bundled-manifest fallback does not.
+    const prepare = vi.fn(async (_params: Record<string, unknown>) => ({
+      model: { id: "m" },
+      auth: { apiKey: "k" },
+    }));
+    const build = createModelWorkflowPlanner({
+      cfg: {} as Parameters<typeof createModelWorkflowPlanner>[0]["cfg"],
+      agentId: "main",
+      modelRef: "mistral/mistral-medium-3-5",
+      literalModelRef: true,
+      deps: {
+        prepareSimpleCompletionModelForAgent: prepare as never,
+        completeWithPreparedSimpleCompletionModel: okReply() as never,
+      },
+    });
+    await build?.({ trees: [TREE], requestText: "pay it", candidates: "ops" });
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    const passed = prepare.mock.calls[0]?.[0];
+    expect(passed?.literalModelRef).toBe(true);
+    expect(passed?.useAsyncModelResolution).toBe(true);
+    // The bundled fallback reads manifests off disk, past plugin activation.
+    expect(passed?.allowBundledStaticCatalogFallback).toBeUndefined();
+  });
+
+  it("reports a model that will not resolve as unavailable, without a second attempt", async () => {
+    // Warming the router's catalog row is startup's job. On the request path a miss
+    // is reported once; retrying here would put a bundled-manifest rescan, and a
+    // provider-activation bypass, on every governed turn.
+    const prepare = vi.fn(async (_params: Record<string, unknown>) => ({
+      error: "Unknown model: mistral/mistral-medium-3-5",
+      stage: "model" as const,
+    }));
+    const build = createModelWorkflowPlanner({
+      cfg: {} as Parameters<typeof createModelWorkflowPlanner>[0]["cfg"],
+      agentId: "main",
+      modelRef: "mistral/mistral-medium-3-5",
+      literalModelRef: true,
+      deps: {
+        prepareSimpleCompletionModelForAgent: prepare as never,
+        completeWithPreparedSimpleCompletionModel: okReply() as never,
+      },
+    });
+    expect(await build?.({ trees: [TREE], requestText: "pay it", candidates: "ops" })).toEqual({
+      kind: "unavailable",
+    });
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the run's own model on normal resolution", async () => {
+    // The run already resolved that model, and it is a provider the run chose.
+    const prepare = vi.fn(async (_params: Record<string, unknown>) => ({
+      model: { id: "m" },
+      auth: { apiKey: "k" },
+    }));
+    const build = createModelWorkflowPlanner({
+      cfg: {} as Parameters<typeof createModelWorkflowPlanner>[0]["cfg"],
+      agentId: "main",
+      modelRef: "openai/gpt-5.5",
+      deps: {
+        prepareSimpleCompletionModelForAgent: prepare as never,
+        completeWithPreparedSimpleCompletionModel: okReply() as never,
+      },
+    });
+    await build?.({ trees: [TREE], requestText: "pay it", candidates: "ops" });
+
+    const passed = prepare.mock.calls[0]?.[0];
+    expect(passed?.literalModelRef).toBeUndefined();
+    expect(passed?.useAsyncModelResolution).toBeUndefined();
+  });
+});
+
 describe("createModelWorkflowPlanner request framing", () => {
   it("embeds the request as a JSON string so it cannot steer the route", async () => {
     const { run, complete } = planner({});

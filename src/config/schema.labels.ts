@@ -627,6 +627,8 @@ export const FIELD_LABELS: Record<string, string> = {
   enterprise: "Enterprise",
   "enterprise.mode": "Enterprise Mode",
   "enterprise.governance": "Enterprise Governance",
+  "enterprise.routePlanner": "Enterprise Route Planner",
+  "enterprise.routePlanner.model": "Enterprise Route Planner Model",
   "enterprise.governance.policies": "Enterprise Governance Policies",
   "enterprise.governance.policies[]": "Enterprise Governance Policy",
   "enterprise.governance.policies[].id": "Enterprise Governance Policy ID",

@@ -51,6 +51,9 @@ export type SimpleCompletionModelOptions = {
   signal?: AbortSignal;
 };
 
+/** Which half of preparation failed: placing the model, or resolving its credential. */
+export type PreparedSimpleCompletionModelErrorStage = "model" | "auth";
+
 export type PreparedSimpleCompletionModel =
   | {
       model: Model;
@@ -58,6 +61,7 @@ export type PreparedSimpleCompletionModel =
     }
   | {
       error: string;
+      stage?: PreparedSimpleCompletionModelErrorStage;
       auth?: ResolvedProviderAuth;
     };
 
@@ -78,6 +82,8 @@ export type PreparedSimpleCompletionModelForAgent =
     }
   | {
       error: string;
+      /** Which half failed: the catalog placing the model, or its credential. */
+      stage?: PreparedSimpleCompletionModelErrorStage;
       selection?: AgentSimpleCompletionSelection;
       auth?: ResolvedProviderAuth;
     };
@@ -86,6 +92,17 @@ export function resolveSimpleCompletionSelectionForAgent(params: {
   cfg: OpenClawConfig;
   agentId: string;
   modelRef?: string;
+  /**
+   * Resolve `modelRef` exactly as written: no agent aliases, and no falling back to
+   * the agent's default model when it will not parse.
+   *
+   * For a caller whose model ref IS the statement of where a prompt may be sent —
+   * the enterprise route planner, which overrides a privacy gate on the strength of
+   * that statement — alias resolution and the default-model fallback are both ways
+   * the prompt can end up at a provider nobody named. Refusing to resolve is the
+   * safe answer there: the caller reports the router unavailable instead.
+   */
+  literalModelRef?: boolean;
 }): AgentSimpleCompletionSelection | null {
   const fallbackRef = resolveDefaultModelForAgent({
     cfg: params.cfg,
@@ -94,17 +111,22 @@ export function resolveSimpleCompletionSelectionForAgent(params: {
   const modelRef =
     params.modelRef?.trim() || resolveAgentEffectiveModelPrimary(params.cfg, params.agentId);
   const split = modelRef ? splitTrailingAuthProfile(modelRef) : null;
-  const aliasIndex = buildModelAliasIndex({
-    cfg: params.cfg,
-    defaultProvider: fallbackRef.provider || DEFAULT_PROVIDER,
-  });
+  const aliasIndex = params.literalModelRef
+    ? undefined
+    : buildModelAliasIndex({
+        cfg: params.cfg,
+        defaultProvider: fallbackRef.provider || DEFAULT_PROVIDER,
+      });
   const resolved = split
     ? resolveModelRefFromString({
         raw: split.model,
         defaultProvider: fallbackRef.provider || DEFAULT_PROVIDER,
-        aliasIndex,
+        ...(aliasIndex ? { aliasIndex } : {}),
       })
     : null;
+  if (params.literalModelRef && (!resolved?.ref.provider || !resolved.ref.model)) {
+    return null;
+  }
   const provider = resolved?.ref.provider ?? fallbackRef.provider;
   const modelId = resolved?.ref.model ?? fallbackRef.model;
   if (!provider || !modelId) {
@@ -230,6 +252,10 @@ export async function prepareSimpleCompletionModel(params: {
   if (!resolved.model) {
     return {
       error: resolved.error ?? `Unknown model: ${params.provider}/${params.modelId}`,
+      // The catalog could not place the model. Distinguished from an auth failure so
+      // a caller can retry against a colder, more expensive catalog without also
+      // retrying a credential that is simply wrong.
+      stage: "model",
     };
   }
 
@@ -245,6 +271,7 @@ export async function prepareSimpleCompletionModel(params: {
   } catch (err) {
     return {
       error: `Auth lookup failed for provider "${resolved.model.provider}": ${formatErrorMessage(err)}`,
+      stage: "auth",
     };
   }
   const rawApiKey = auth.apiKey?.trim();
@@ -258,6 +285,7 @@ export async function prepareSimpleCompletionModel(params: {
     return {
       error: formatMissingAuthError(auth, resolved.model.provider),
       auth,
+      stage: "auth",
     };
   }
 
@@ -292,6 +320,8 @@ export async function prepareSimpleCompletionModelForAgent(params: {
   cfg: OpenClawConfig;
   agentId: string;
   modelRef?: string;
+  /** See resolveSimpleCompletionSelectionForAgent: no aliases, no default fallback. */
+  literalModelRef?: boolean;
   preferredProfile?: string;
   allowMissingApiKeyModes?: ReadonlyArray<AllowedMissingApiKeyMode>;
   allowBundledStaticCatalogFallback?: boolean;
@@ -303,10 +333,13 @@ export async function prepareSimpleCompletionModelForAgent(params: {
     cfg: params.cfg,
     agentId: params.agentId,
     modelRef: params.modelRef,
+    ...(params.literalModelRef ? { literalModelRef: true } : {}),
   });
   if (!selection) {
     return {
-      error: `No model configured for agent ${params.agentId}.`,
+      error: params.literalModelRef
+        ? `Model ref "${params.modelRef ?? ""}" does not resolve to a provider/model on its own.`
+        : `No model configured for agent ${params.agentId}.`,
     };
   }
   const prepared = await prepareSimpleCompletionModel({

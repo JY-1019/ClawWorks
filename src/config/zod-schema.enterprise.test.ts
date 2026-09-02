@@ -170,3 +170,59 @@ describe("applyEnterpriseDefaults", () => {
     expect(optedOut.enterprise?.mode).toBe("off");
   });
 });
+
+describe("enterprise.routePlanner", () => {
+  it("accepts a plain model ref", () => {
+    expect(
+      EnterpriseConfigSchema.parse({
+        mode: "enforce",
+        routePlanner: { model: "mistral/mistral-medium-3-5" },
+      }),
+    ).toMatchObject({ routePlanner: { model: "mistral/mistral-medium-3-5" } });
+  });
+
+  it("rejects a ref with no provider, which would resolve against the agent default", () => {
+    // The override skips the hook gate that exists to keep a prompt off a provider
+    // the run avoided, so an unqualified ref must not read as an operator's choice.
+    for (const model of [
+      "llama3",
+      "mistral/",
+      "/mistral-medium-3-5",
+      " mistral/x",
+      // The auth-profile suffix is stripped before parsing, leaving "mistral/".
+      "mistral/@work",
+    ]) {
+      expect(() => EnterpriseConfigSchema.parse({ routePlanner: { model } })).toThrow();
+    }
+  });
+
+  it("keeps @-prefixed model path segments, which are part of the model id", () => {
+    // The splitter deliberately preserves these; only a suffix that leaves the model
+    // half empty is a profile-only value.
+    for (const model of ["openrouter/@preset/router", "openai/@cf/meta/llama"]) {
+      expect(EnterpriseConfigSchema.parse({ routePlanner: { model } })).toMatchObject({
+        routePlanner: { model },
+      });
+    }
+  });
+
+  it("accepts a gateway provider that routes slash-bearing model ids", () => {
+    expect(
+      EnterpriseConfigSchema.parse({
+        routePlanner: { model: "openrouter/mistralai/mistral-medium-3.1" },
+      }),
+    ).toMatchObject({ routePlanner: { model: "openrouter/mistralai/mistral-medium-3.1" } });
+  });
+
+  it("rejects the tool-model object form, which nothing behind it implements", () => {
+    expect(() =>
+      EnterpriseConfigSchema.parse({
+        routePlanner: { model: { primary: "mistral/mistral-small-latest" } },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects an unknown key so a typo cannot silently disable routing", () => {
+    expect(() => EnterpriseConfigSchema.parse({ routePlanner: { models: "mistral/x" } })).toThrow();
+  });
+});

@@ -567,24 +567,45 @@ async function waitForAcpRuntimeBackendReady(params: {
   return false;
 }
 
+/** The canonical provider a configured route-planner model belongs to. */
+function resolveRoutePlannerProviderId(
+  routerModel: string | undefined,
+  deps: { normalizeProviderId: (provider: string) => string },
+): string | undefined {
+  const slash = routerModel?.indexOf("/") ?? -1;
+  if (slash <= 0) {
+    return undefined;
+  }
+  return deps.normalizeProviderId(routerModel?.slice(0, slash) ?? "") || undefined;
+}
+
 async function prewarmConfiguredPrimaryModel(params: {
   cfg: OpenClawConfig;
   workspaceDir?: string;
   log: { warn: (msg: string) => void };
 }): Promise<void> {
+  const { normalizeProviderId } = await import("@openclaw/model-catalog-core/provider-id");
+  // The governed route planner calls a provider API directly, and its model is often
+  // the only reference to that provider — on a CLI primary it is the only one that
+  // needs a catalog row at all. Warm it here so the first governed turn does not pay
+  // a cold bundled-manifest scan on the request path, or report the router
+  // unavailable because no row exists yet.
+  const routerProvider =
+    params.cfg.enterprise?.mode === "off"
+      ? undefined
+      : resolveRoutePlannerProviderId(params.cfg.enterprise?.routePlanner?.model, {
+          normalizeProviderId,
+        });
   const { resolveAgentModelPrimaryValue } = await import("../config/model-input.js");
   const explicitPrimary = resolveAgentModelPrimaryValue(params.cfg.agents?.defaults?.model)?.trim();
-  if (!explicitPrimary) {
-    return;
-  }
-  const { normalizeProviderId } = await import("@openclaw/model-catalog-core/provider-id");
-  if (
+  const primaryIsCliBacked =
+    !explicitPrimary ||
     isConfiguredCliBackendPrimary({
       cfg: params.cfg,
       explicitPrimary,
       normalizeProviderId,
-    })
-  ) {
+    });
+  if (primaryIsCliBacked && !routerProvider) {
     return;
   }
   const [
@@ -596,12 +617,23 @@ async function prewarmConfiguredPrimaryModel(params: {
     loadAgentDefaultsModule(),
     loadAgentModelSelectionModule(),
   ]);
-  const { provider, model } = resolveConfiguredModelRef({
+  const { provider } = resolveConfiguredModelRef({
     cfg: params.cfg,
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL,
   });
-  if (isCliProvider(provider, params.cfg)) {
+  // Dedupe against what was actually ADDED. Comparing the router to the resolved
+  // primary instead would drop it whenever the primary was skipped but resolved to
+  // the same provider — an install with no explicit primary and a router on the
+  // default provider would warm nothing at all.
+  const providerIds: string[] = [];
+  if (!primaryIsCliBacked && !isCliProvider(provider, params.cfg)) {
+    providerIds.push(provider);
+  }
+  if (routerProvider && !providerIds.includes(routerProvider)) {
+    providerIds.push(routerProvider);
+  }
+  if (providerIds.length === 0) {
     return;
   }
   // Keep startup prewarm metadata-only; resolving models can import provider runtimes and block readiness.
@@ -612,12 +644,12 @@ async function prewarmConfiguredPrimaryModel(params: {
   try {
     await ensureOpenClawModelsJson(params.cfg, agentDir, {
       workspaceDir,
-      providerDiscoveryProviderIds: [provider],
+      providerDiscoveryProviderIds: providerIds,
       providerDiscoveryTimeoutMs: STARTUP_PROVIDER_DISCOVERY_TIMEOUT_MS,
       providerDiscoveryEntriesOnly: true,
     });
   } catch (err) {
-    params.log.warn(`startup model warmup failed for ${provider}/${model}: ${String(err)}`);
+    params.log.warn(`startup model warmup failed for ${providerIds.join(", ")}: ${String(err)}`);
   }
 }
 

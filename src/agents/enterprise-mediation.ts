@@ -24,6 +24,7 @@ import {
 } from "../skills/limits-defaults.js";
 import { buildAgentRunTerminalOutcome } from "./agent-run-terminal-outcome.js";
 import type { EmbeddedAgentRunResult } from "./embedded-agent-runner/types.js";
+import { resolveProviderIdForAuth } from "./provider-auth-aliases.js";
 
 /**
  * Whether this run may appear in the session it is bound to.
@@ -165,15 +166,30 @@ function defaultHasHook(hook: "before_model_resolve" | "before_agent_reply"): bo
 }
 
 export type RouteModelChoice =
-  | { kind: "ref"; ref: string }
+  | { kind: "ref"; ref: string; literal?: boolean }
   /** The run pinned no provider/model: the agent default IS its dispatch choice. */
   | { kind: "agent-default" }
   /** The run pinned a provider we cannot turn into a ref: do not plan at all. */
   | { kind: "skip" };
 
+/**
+ * The router model an operator configured, if any.
+ *
+ * Read straight off the config. This module is imported eagerly by every runner, and
+ * reaching for the tool-model helpers here would pull model auth, auth-profile
+ * discovery and the plugin provider runtime into runs that never plan a thing.
+ */
+function resolveConfiguredRouteModelRef(config?: OpenClawConfig): string | undefined {
+  return config?.enterprise?.routePlanner?.model?.trim() || undefined;
+}
+
 export function resolveRouteModelRef(
   params: EnterpriseMediatedRunParams,
-  deps: { hasHook?: (hook: "before_model_resolve" | "before_agent_reply") => boolean } = {},
+  deps: {
+    hasHook?: (hook: "before_model_resolve" | "before_agent_reply") => boolean;
+    /** Resolved config; mediation falls back to the pinned snapshot, so pass its result. */
+    config?: OpenClawConfig;
+  } = {},
 ): RouteModelChoice {
   // The turn goes to a backend we do not choose the model for, so there is no
   // model choice to route with. Planning would ship the prompt to OpenClaw's
@@ -182,11 +198,17 @@ export function resolveRouteModelRef(
     return { kind: "skip" };
   }
   const hasHook = deps.hasHook ?? defaultHasHook;
+  // An operator who names a router model has answered what the branches below are
+  // guessing at: WHERE the routing prompt may go. That outranks anything derivable
+  // from the run — but only the branches deciding WHICH model routes. The gates
+  // deciding whether this run plans AT ALL still go first, so a turn that was never
+  // going to reach a backend does not start paying for a routing call.
+  const routerModel = resolveConfiguredRouteModelRef(deps.config);
   // A before_model_resolve hook can swap the run onto a different (often local
   // or private) provider AFTER mediation runs. We would be routing on the
   // pre-hook model, i.e. possibly the very cloud default the hook exists to
   // avoid. We cannot know the post-hook choice here, so we do not plan.
-  if (hasHook("before_model_resolve")) {
+  if (hasHook("before_model_resolve") && !routerModel) {
     return { kind: "skip" };
   }
   // On a CRON run a before_agent_reply hook can claim the turn and answer it
@@ -198,6 +220,9 @@ export function resolveRouteModelRef(
   // planning for everyone.
   if (params.trigger === "cron" && hasHook("before_agent_reply")) {
     return { kind: "skip" };
+  }
+  if (routerModel) {
+    return { kind: "ref", ref: routerModel, literal: true };
   }
   const model = params.model?.trim();
   const provider = params.provider?.trim();
@@ -239,8 +264,56 @@ export function resolveRouteModelRef(
  * the router to it turns an unused, possibly-dead credential into a hard routing
  * failure, and every failure binds a work-map the request has nothing to do with.
  */
-function resolveRoutePlannerAuthProfileId(params: EnterpriseMediatedRunParams): string | undefined {
-  return params.authProfileIdSource === "user" ? params.authProfileId : undefined;
+function resolveRoutePlannerAuthProfileId(
+  params: EnterpriseMediatedRunParams,
+  config?: OpenClawConfig,
+): string | undefined {
+  if (params.authProfileIdSource !== "user") {
+    return undefined;
+  }
+  // An auth profile names an account WITHIN one provider. A configured router on
+  // another provider cannot use the run's pinned profile — it would be a credential
+  // from somewhere else and fail every call — so the router picks its own there. On
+  // the SAME provider the pin is still an account/tenant boundary the router has to
+  // reproduce, or a cheaper same-provider router would quietly route through
+  // whichever account the provider's order happens to reach first.
+  const routerModel = resolveConfiguredRouteModelRef(config);
+  if (routerModel && !routerSharesRunProvider(routerModel, params, config)) {
+    return undefined;
+  }
+  return params.authProfileId;
+}
+
+/**
+ * Whether a configured router resolves to the same provider the run dispatches to.
+ *
+ * Compared as AUTH identities, not as written: `moonshotai/...` and `moonshot/...`
+ * are the same account boundary once resolution canonicalizes them, and a raw string
+ * compare would drop the pin for a router that is not actually going anywhere else.
+ */
+function routerSharesRunProvider(
+  routerModel: string,
+  params: EnterpriseMediatedRunParams,
+  config?: OpenClawConfig,
+): boolean {
+  const lookup = config ? { config } : undefined;
+  const runProvider = providerOfRef(params.provider?.trim() || params.model, lookup);
+  const routerProvider = providerOfRef(routerModel, lookup);
+  return Boolean(runProvider && routerProvider && runProvider === routerProvider);
+}
+
+/** The canonical auth provider a ref (or a bare provider id) belongs to. */
+function providerOfRef(
+  ref: string | undefined,
+  lookup: { config: OpenClawConfig } | undefined,
+): string | undefined {
+  const trimmed = ref?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const slash = trimmed.indexOf("/");
+  const provider = slash > 0 ? trimmed.slice(0, slash) : trimmed;
+  return resolveProviderIdForAuth(provider, lookup) || undefined;
 }
 
 export type EnterpriseMediationOutcome<T extends EnterpriseMediatedRunParams> = {
@@ -275,8 +348,8 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
   // It is loaded LAZILY. The planner module pulls in the provider/completion
   // runtime, and a static import would put that cost on every embedded/CLI/ACP
   // run — including the ones with enterprise mode off, which never plan.
-  const modelChoice = resolveRouteModelRef(params);
-  const routeAuthProfileId = resolveRoutePlannerAuthProfileId(params);
+  const modelChoice = resolveRouteModelRef(params, config ? { config } : {});
+  const routeAuthProfileId = resolveRoutePlannerAuthProfileId(params, config);
   const planningPossible =
     Boolean(config) && resolveEnterpriseMode(config) !== "off" && modelChoice.kind !== "skip";
   // The planner module pulls in the provider/completion runtime. Import it inside
@@ -293,7 +366,12 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
             ...(params.agentId ? { agentId: params.agentId } : {}),
             // Route with the exact provider/model the run dispatches to, and with
             // the account the operator pinned when there is one.
-            ...(modelChoice.kind === "ref" ? { modelRef: modelChoice.ref } : {}),
+            ...(modelChoice.kind === "ref"
+              ? {
+                  modelRef: modelChoice.ref,
+                  ...(modelChoice.literal ? { literalModelRef: true } : {}),
+                }
+              : {}),
             ...(routeAuthProfileId ? { authProfileId: routeAuthProfileId } : {}),
           });
           // No planner could be built (no config): "cannot be consulted", not

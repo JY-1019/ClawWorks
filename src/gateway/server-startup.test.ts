@@ -142,7 +142,58 @@ describe("gateway startup primary model warmup", () => {
     });
 
     expect(warn).toHaveBeenCalledWith(
-      "startup model warmup failed for codex/gpt-5.4: Error: models write failed",
+      "startup model warmup failed for codex: Error: models write failed",
     );
+  });
+
+  it("warms the route planner's provider even when the primary is CLI-backed", async () => {
+    // The router calls a provider API directly, and on a CLI primary it is the only
+    // model that needs a catalog row. Without this the first governed turn either
+    // pays a cold scan or reports the router unavailable.
+    const cfg = {
+      agents: {
+        defaults: {
+          model: { primary: "codex-cli/gpt-5.5" },
+          cliBackends: { "codex-cli": { command: "codex", args: ["exec"] } },
+        },
+      },
+      enterprise: { mode: "enforce", routePlanner: { model: "mistral/mistral-medium-3-5" } },
+    } as OpenClawConfig;
+
+    await prewarmConfiguredPrimaryModel({ cfg, log: { warn: vi.fn() } });
+
+    const options = ensureOpenClawModelsJsonMock.mock.calls.at(0)?.[2];
+    expect(options).toMatchObject({ providerDiscoveryProviderIds: ["mistral"] });
+  });
+
+  it("warms a router on the default provider when no primary is configured", async () => {
+    // With no explicit primary the primary is skipped, but the router still needs its
+    // catalog even when it resolves to the same provider the default would have.
+    await prewarmConfiguredPrimaryModel({
+      cfg: {
+        enterprise: { mode: "enforce", routePlanner: { model: "openai/gpt-5.4-mini" } },
+      } as OpenClawConfig,
+      log: { warn: vi.fn() },
+    });
+
+    const options = ensureOpenClawModelsJsonMock.mock.calls.at(0)?.[2];
+    expect(options).toMatchObject({ providerDiscoveryProviderIds: ["openai"] });
+  });
+
+  it("leaves a dormant route planner alone when enterprise mode is off", async () => {
+    await prewarmConfiguredPrimaryModel({
+      cfg: {
+        agents: {
+          defaults: {
+            model: { primary: "codex-cli/gpt-5.5" },
+            cliBackends: { "codex-cli": { command: "codex", args: ["exec"] } },
+          },
+        },
+        enterprise: { mode: "off", routePlanner: { model: "mistral/mistral-medium-3-5" } },
+      } as OpenClawConfig,
+      log: { warn: vi.fn() },
+    });
+
+    expect(ensureOpenClawModelsJsonMock).not.toHaveBeenCalled();
   });
 });

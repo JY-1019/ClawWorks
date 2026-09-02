@@ -295,3 +295,98 @@ describe("finishEnterpriseMediation", () => {
     expect(getEnterpriseRunRecord(second.runId)?.status).toBe("blocked");
   });
 });
+
+describe("a configured router model", () => {
+  // A Mistral key costs a fraction of the turn's model and, unlike a CLI or
+  // subscription backend, it is something the direct completion API accepts —
+  // which is the whole reason an operator names a router model.
+  const withRouter = (ref: string): OpenClawConfig =>
+    ({ enterprise: { routePlanner: { model: ref } } }) as OpenClawConfig;
+
+  it("wins over the model the turn happens to run on", () => {
+    expect(
+      resolveRouteModelRefForTest(makeParams({ provider: "openai", model: "gpt-5.5" }), {
+        config: withRouter("mistral/mistral-medium-3-5"),
+      }),
+    ).toEqual({ kind: "ref", ref: "mistral/mistral-medium-3-5", literal: true });
+  });
+
+  it("gives a provider-only run a route again", () => {
+    // Without a named router this run cannot be planned at all: its default model
+    // has no ref to route with. Naming one answers exactly that.
+    expect(
+      resolveRouteModelRefForTest(makeParams({ provider: "ollama" }), {
+        config: withRouter("mistral/mistral-small-latest"),
+      }),
+    ).toEqual({ kind: "ref", ref: "mistral/mistral-small-latest", literal: true });
+  });
+
+  it("outranks a hook that may swap the run's own model later", () => {
+    // The hook gate exists because we cannot know the post-hook model. An operator
+    // who names the router has already said where the routing prompt may go.
+    expect(
+      resolveRouteModelRefForTest(makeParams({}), {
+        config: withRouter("mistral/mistral-medium-3-5"),
+        hasHook: (hook) => hook === "before_model_resolve",
+      }),
+    ).toEqual({ kind: "ref", ref: "mistral/mistral-medium-3-5", literal: true });
+  });
+
+  it("still refuses to plan a cron turn a hook may answer without a backend", () => {
+    // A before_agent_reply hook can finish the cron turn without ever dispatching,
+    // so naming a router must not start buying routing calls for work that never
+    // runs. Gates about WHETHER to plan outrank the operator's choice of model.
+    expect(
+      resolveRouteModelRefForTest(makeParams({ trigger: "cron" }), {
+        config: withRouter("mistral/mistral-medium-3-5"),
+        hasHook: (hook) => hook === "before_agent_reply",
+      }),
+    ).toEqual({ kind: "skip" });
+  });
+
+  it("still refuses to plan an ACP run", () => {
+    // ACP owns its tool channel and its own backend; a router model does not change
+    // who dispatches the turn.
+    expect(
+      resolveRouteModelRefForTest(makeParams({ externalDispatch: true }), {
+        config: withRouter("mistral/mistral-medium-3-5"),
+      }),
+    ).toEqual({ kind: "skip" });
+  });
+
+  it("keeps a pinned profile when the router shares the run's provider", () => {
+    // A pin is an account/tenant boundary. A cheaper same-provider router must
+    // reproduce it, or routing quietly runs through whichever account the provider
+    // order reaches first.
+    expect(
+      resolveRoutePlannerAuthProfileIdForTest(
+        makeParams({
+          provider: "openai",
+          model: "gpt-5.5",
+          authProfileId: "openai:tenant-b",
+          authProfileIdSource: "user",
+        }),
+        withRouter("openai/gpt-5.4-mini"),
+      ),
+    ).toBe("openai:tenant-b");
+  });
+
+  it("does not hand the router an auth profile from another provider", () => {
+    // authProfileId names an account INSIDE one provider. Forwarding the turn's
+    // pinned profile to a router on a different provider fails every call.
+    expect(
+      resolveRoutePlannerAuthProfileIdForTest(
+        makeParams({ authProfileId: "openai:tenant-b", authProfileIdSource: "user" }),
+        withRouter("mistral/mistral-medium-3-5"),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps forwarding the pinned profile when no router is named", () => {
+    expect(
+      resolveRoutePlannerAuthProfileIdForTest(
+        makeParams({ authProfileId: "openai:tenant-b", authProfileIdSource: "user" }),
+      ),
+    ).toBe("openai:tenant-b");
+  });
+});

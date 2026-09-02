@@ -155,6 +155,7 @@ describe("prepareSimpleCompletionModel", () => {
 
     expect(result).toEqual({
       error: "Unknown model: anthropic/missing-model",
+      stage: "model",
     });
     expect(hoisted.getApiKeyForModelMock).not.toHaveBeenCalled();
   });
@@ -178,6 +179,7 @@ describe("prepareSimpleCompletionModel", () => {
         source: "models.providers.anthropic",
         mode: "api-key",
       },
+      stage: "auth",
     });
     expect(hoisted.setRuntimeApiKeyMock).not.toHaveBeenCalled();
   });
@@ -328,6 +330,7 @@ describe("prepareSimpleCompletionModel", () => {
 
     expect(result).toEqual({
       error: 'Auth lookup failed for provider "anthropic": Profile not found: copilot',
+      stage: "auth",
     });
     expect(hoisted.setRuntimeApiKeyMock).not.toHaveBeenCalled();
   });

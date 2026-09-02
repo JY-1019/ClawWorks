@@ -155,9 +155,29 @@ exists.
 `9e852bee881` removed the loudest cause — route planning inheriting a failover
 auth profile the turn never spends — and reclassified install-level refusals as
 unavailable rather than fail-closed, so an outage no longer drags unrelated
-requests into an arbitrary work-map. The structural gap below is unchanged:
-unavailability is still silent, and nothing surfaces planner readiness before a
-run starts.
+requests into an arbitrary work-map.
+
+`enterprise.routePlanner.model` now removes the other one an operator could not
+work around: the router made its direct completion call with whatever credential
+the run had, so a CLI-backed run — whose backend authenticates itself and holds no
+API credential — could not be planned at all. Naming a router model gives routing
+its own model and account, independent of the turn.
+
+The structural gap is unchanged: unavailability is still silent, and nothing
+surfaces planner readiness before a run starts.
+
+**Known limit on the router's catalog.** The router resolves through provider
+discovery, which finds its model once that provider has usable auth for the agent
+in question — the same step that registers the provider's catalog. The gateway also
+warms the router's provider at startup. Neither covers every path: startup warming
+is best-effort and writes the DEFAULT agent's catalog, and a standalone CLI run on a
+non-default agent performs no warming at all, so a router that is the only reference
+to a catalog-backed provider can report `unavailable` there until that agent has
+resolved it once. Reading it out of the bundled manifests instead was considered and
+rejected twice: that path is not gated on plugin activation, so it would let a
+disabled provider serve routing, and it rescans plugin manifests on the request path
+for every governed turn. Closing this properly means a lifecycle-owned catalog
+resolver, not a flag on the planner's call.
 
 Target behavior:
 

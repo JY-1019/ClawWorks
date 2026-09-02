@@ -53,6 +53,64 @@ Set the mode in the `enterprise` config section:
 `openclaw doctor` migrates older config shapes; the runtime only reads the
 current shape.
 
+## Giving the router its own model
+
+By default the router plans with the model the run itself dispatches to. That is
+the right default — it keeps the routing prompt on a provider the run already
+chose — but it ties two unlike workloads together. The turn can be long and
+tool-heavy; the router makes **one** small structured call, capped at 400 output
+tokens, before the tool loop starts. More importantly, the router goes through the
+direct completion API, while a CLI backend runs the turn by handing it to a binary
+that authenticates itself. Such a run has no API credential to lend the router, so
+it cannot be planned at all and the default tree governs.
+
+Name a router model when either applies:
+
+```jsonc
+{
+  "enterprise": {
+    "mode": "enforce",
+    "routePlanner": {
+      "model": "mistral/mistral-medium-3-5",
+    },
+  },
+}
+```
+
+A plain `provider/model` ref, and the provider half is required — a bare
+`mistral-medium-3-5` is rejected, because it would resolve against whatever the
+agent's default provider happens to be and this setting exists to say where routing
+may send the prompt. Gateway providers route slash-bearing ids, so
+`openrouter/mistralai/mistral-medium-3.1` is fine: only the first segment is the
+provider. The router makes one bounded call and owns its own deadline, so there is
+no fallback list or timeout to set here.
+
+Three consequences worth knowing:
+
+- **The router picks its own credential.** An auth profile names an account inside
+  one provider, so the run's pinned profile is not forwarded to a router on a
+  different one.
+- **It overrides the gates that exist because the run's model is unknowable** — a
+  provider-only run, or a `before_model_resolve` hook that may swap the model
+  later. Naming a router answers the question those gates were guessing at: where
+  the routing prompt may go. The gates about whether a run plans **at all** still
+  decide first, so an ACP run (its backend is not ours to pick) and a cron turn a
+  `before_agent_reply` hook may answer without dispatching are still not planned —
+  naming a router never buys a routing call for work that never runs.
+- **The allow-list is not involved.** `agents.defaults.models` gates agent model
+  overrides; the router resolves through the completion runtime, which does not
+  consult it.
+
+Set up the router's provider auth first — that is what registers its catalog, and
+the router resolves through provider discovery rather than a hard-coded list. The
+gateway also warms this provider at startup so the first governed turn is not the one
+that discovers it. A router added to config needs a gateway restart, since the
+gateway reads config at startup.
+
+Pick for routing judgment, not context size: the prompt is small, and what matters
+is whether the model picks the deepest node covering a request instead of hedging
+up to its parent.
+
 ## Workflow trees
 
 A workflow tree is a versioned, importable definition. Each node is a step; leaf

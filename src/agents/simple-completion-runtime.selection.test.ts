@@ -76,6 +76,48 @@ describe("resolveSimpleCompletionSelectionForAgent", () => {
     expect(selection.profileId).toBe("work");
   });
 
+  it("ignores agent aliases for a literal ref, so the named provider is the destination", () => {
+    // An alias may be NAMED like a provider ref. For a caller whose ref is the
+    // statement of where a prompt may be sent, letting an alias redirect it would
+    // send the prompt to a provider nobody named.
+    const cfg = {
+      agents: {
+        defaults: {
+          model: "openai/gpt-5.5",
+          models: { "openai/gpt-5.5": { alias: "mistral/decoy" } },
+        },
+      },
+    } as OpenClawConfig;
+
+    const selection = requireSelection(
+      resolveSimpleCompletionSelectionForAgent({
+        cfg,
+        agentId: "main",
+        modelRef: "mistral/decoy",
+        literalModelRef: true,
+      }),
+    );
+    expect(selection.provider).toBe("mistral");
+    expect(selection.modelId).toBe("decoy");
+  });
+
+  it("refuses a literal ref that will not parse instead of falling back", () => {
+    // "mistral/@work" loses its profile before parsing and leaves "mistral/". Falling
+    // back to the agent default here would route the prompt somewhere unnamed.
+    const cfg = {
+      agents: { defaults: { model: "openai/gpt-5.5" } },
+    } as OpenClawConfig;
+
+    expect(
+      resolveSimpleCompletionSelectionForAgent({
+        cfg,
+        agentId: "main",
+        modelRef: "mistral/@work",
+        literalModelRef: true,
+      }),
+    ).toBeNull();
+  });
+
   it("keeps OpenAI as execution provider for OpenAI model refs with Codex runtime policy", () => {
     const cfg = {
       agents: {

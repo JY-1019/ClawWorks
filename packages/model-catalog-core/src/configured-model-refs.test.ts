@@ -42,6 +42,29 @@ describe("configured model refs", () => {
     ]);
   });
 
+  it("collects the enterprise route planner model", () => {
+    // It can be the only reference to its provider; leaving it out leaves that
+    // plugin un-activated and routing reports unavailable at run time.
+    expect(
+      collectConfiguredModelRefs({
+        enterprise: { routePlanner: { model: "mistral/mistral-medium-3-5" } },
+      }),
+    ).toContainEqual({
+      path: "enterprise.routePlanner.model",
+      value: "mistral/mistral-medium-3-5",
+    });
+  });
+
+  it("skips the route planner model when enterprise mode is off", () => {
+    // Nothing can consult the router then, so a dormant setting must not activate a
+    // provider plugin on what is otherwise a stock install.
+    expect(
+      collectConfiguredModelRefs({
+        enterprise: { mode: "off", routePlanner: { model: "mistral/mistral-medium-3-5" } },
+      }),
+    ).toEqual([]);
+  });
+
   it("can exclude channel model overrides from configured refs", () => {
     expect(
       collectConfiguredModelRefValues(

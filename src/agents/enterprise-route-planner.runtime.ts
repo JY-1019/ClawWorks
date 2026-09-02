@@ -238,6 +238,8 @@ export function createModelWorkflowPlanner(params: {
   agentId?: string;
   /** The model ref the RUN selected; routing must not silently use another. */
   modelRef?: string;
+  /** The ref came from `enterprise.routePlanner.model`, so resolve it as written. */
+  literalModelRef?: boolean;
   /**
    * The auth profile the RUN dispatches with. In multi-profile setups the same
    * provider/model can resolve to a different account or tenant, so routing must
@@ -252,6 +254,7 @@ export function createModelWorkflowPlanner(params: {
   }
   const agentId = params.agentId ?? "main";
   const modelRef = params.modelRef;
+  const literalModelRef = params.literalModelRef === true;
   const authProfileId = params.authProfileId;
   const prepareModel =
     params.deps?.prepareSimpleCompletionModelForAgent ?? prepareSimpleCompletionModelForAgent;
@@ -275,7 +278,25 @@ export function createModelWorkflowPlanner(params: {
         prepareModel({
           cfg,
           agentId,
-          ...(modelRef ? { modelRef } : {}),
+          // A configured router ref IS the operator's statement of where this prompt
+          // may go, so it resolves literally: an agent alias or the default-model
+          // fallback would quietly send it somewhere else. Without one, the run's own
+          // model is already a provider the run chose, so normal resolution applies.
+          // A configured router also resolves ASYNC. It is usually the only reference
+          // to its provider, so the synchronous path only sees it once some other
+          // pass has written a catalog row for THIS agent — which no CLI run and no
+          // non-default agent can count on. Async resolution runs provider discovery
+          // itself, so it honors plugin activation and needs no warmup to have
+          // happened first. Not the bundled-manifest fallback: that reads manifests
+          // straight off disk, which both skips activation and rescans per turn.
+          ...(modelRef
+            ? {
+                modelRef,
+                ...(literalModelRef
+                  ? { literalModelRef: true, useAsyncModelResolution: true }
+                  : {}),
+              }
+            : {}),
           // Same account/tenant the run itself dispatches with: in a
           // multi-profile setup the default profile can be a different account.
           ...(authProfileId ? { preferredProfile: authProfileId } : {}),
