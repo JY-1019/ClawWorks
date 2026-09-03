@@ -10,13 +10,13 @@ title: "ClawWorks"
 
 <p align="center">
     <img
-        src="/assets/openclaw-logo-text-dark.png"
+        src="/assets/clawworks-logo-text-dark.png"
         alt="ClawWorks"
         width="500"
         class="dark:hidden"
     />
     <img
-        src="/assets/openclaw-logo-text.png"
+        src="/assets/clawworks-logo-text.png"
         alt="ClawWorks"
         width="500"
         class="hidden dark:block"
@@ -51,7 +51,7 @@ ClawWorks is a **self-hosted gateway** that connects your favorite chat apps and
 
 On top of that gateway, ClawWorks adds an **ontology-driven governance layer**. Instead of free-running, an agent advances through a **work-map** — a versioned tree of steps, where each step declares the tools, skills, MCP servers, and knowledge foundations it may reach. Governance policies gate those requests, and every lifecycle and denial decision is written to an inspectable run trace.
 
-**Who is it for?** Developers and power users who want a personal AI assistant they can message from anywhere — without giving up control of their data or relying on a hosted service. And teams who need an agent to act on real systems while staying able to answer *which step was this run on, what was it allowed to touch, and what got denied*.
+**Who is it for?** Developers and power users who want a personal AI assistant they can message from anywhere — without giving up control of their data or relying on a hosted service. And teams who need an agent to act on real systems while staying able to answer _which step was this run on, what was it allowed to touch, and what got denied_.
 
 **What makes it different?**
 

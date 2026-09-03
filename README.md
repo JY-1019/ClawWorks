@@ -1,9 +1,9 @@
-# 🦞 ClawWorks
+# ClawWorks
 
 <p align="center">
     <picture>
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/openclaw-logo-text-dark.svg">
-        <img src="https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/openclaw-logo-text.svg" alt="ClawWorks" width="480">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/clawworks-logo-text-dark.svg">
+        <img src="https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/clawworks-logo-text.svg" alt="ClawWorks" width="480">
     </picture>
 </p>
 
@@ -23,6 +23,7 @@
 <p align="center">
   <a href="#why-clawworks-exists">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#what-it-looks-like">Screens</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#authoring-a-work-map">Authoring</a> ·
   <a href="#built-on-openclaw">Upstream</a> ·
@@ -39,7 +40,7 @@ solve: **you cannot say afterward what it was allowed to do.**
 Ask a stock agent deployment the questions an operator actually needs answered —
 
 - Which step of the process was this run on when it called that tool?
-- Was it *supposed* to be able to reach the refund API from there?
+- Was it _supposed_ to be able to reach the refund API from there?
 - What did it ask for and get refused?
 - Which document did that claim come from?
 
@@ -80,7 +81,7 @@ flowchart TB
 ```
 
 **1 · Selection.** Imported work-maps are narrowed to those serving the run's trigger, then a
-model judges which one governs. The run records *how* it was bound — `planner`, `no-match`,
+model judges which one governs. The run records _how_ it was bound — `planner`, `no-match`,
 `only-candidate`, `unavailable`, or `fallback` — so a binding is never a mystery. The
 distinction is load-bearing: `fallback` (a planner answered unusably) fails **closed onto a
 work-map**, because a crafted request must not become a way out of governance, while
@@ -100,13 +101,13 @@ down the root-to-active path, then against configured governance policies.
 ### The design principle: omissions ask, decisions block
 
 A work-map cannot anticipate every tool a real request needs. So ClawWorks distinguishes what
-an author *forgot* from what an author *decided*:
+an author _forgot_ from what an author _decided_:
 
-| Situation | Behavior | Why |
-| --- | --- | --- |
-| Tool not covered by the step's scope | Raises **Allow once / Deny**, naming the step and where the lasting fix belongs | A silent refusal leaves an operator with a failure only the trace explains |
-| Entry in a step's `deniedTools` | **Hard block** | Somebody wrote that denial; escalating it to a prompt would make writing one mean nothing |
-| `deny` policy in `enterprise.governance.policies` | **Hard block**, and it wins anywhere on the path | Same reason — including on a step *below* the one whose list omitted the tool |
+| Situation                                         | Behavior                                                                        | Why                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Tool not covered by the step's scope              | Raises **Allow once / Deny**, naming the step and where the lasting fix belongs | A silent refusal leaves an operator with a failure only the trace explains                |
+| Entry in a step's `deniedTools`                   | **Hard block**                                                                  | Somebody wrote that denial; escalating it to a prompt would make writing one mean nothing |
+| `deny` policy in `enterprise.governance.policies` | **Hard block**, and it wins anywhere on the path                                | Same reason — including on a step _below_ the one whose list omitted the tool             |
 
 Nothing runs unapproved, and it **fails closed**: an approval times out to deny, and a run with
 no interactive channel — cron, headless — resolves it as a refusal rather than passing it.
@@ -123,18 +124,41 @@ tree opts into writes. Every tool is bounded to the active node's path and to ad
 so **a step can never read, traverse into, or write an object type outside its own contract.**
 Writes are recorded to the trace as `action.invoked` events.
 
+## What it looks like
+
+Screens below are the Control UI against a running gateway, governing an imported
+`acme.financial-operations` work-map.
+
+**The work-map, and what each step may reach.** Every step carries its own grants: the badges on
+the graph are the counts, and selecting one spells out the allow-list, the knowledge foundations,
+and what the step is expected to produce. That panel is not documentation — it is the scope the
+gate reads on every tool call.
+
+![The Worktree view: a work-map subtree with the selected step's tool and knowledge scope](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/work-map.png)
+
+**The run trace.** A governed run records how it was bound and why. Here the planner chose one of
+46 steps and wrote its reasoning into `route.selected`; each subsequent tool call lands as a
+`governance.decision` naming the step that authorized it.
+
+![A governed run trace: route selection rationale, step entry, and per-tool-call governance decisions](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/run-trace.png)
+
+**The typed object graph.** A step that declares an object model gets tools scoped to it, and the
+inspector shows both the declared types and the instances currently in the store.
+
+![The node inspector: a step's declared object types and their live instances](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/ontology.png)
+
 ## What ClawWorks adds
 
-| Capability | What it does |
-| --- | --- |
-| **Work-maps** | Versioned, importable step trees (`clawworks.workflow-tree`). Runs advance through leaf steps under a model-driven cursor. |
-| **Ontology bindings** | Each step declares `allowedTools`, `knowledgeFoundations`, `contextHints`, and `audit`. A step reaches what it declared — nothing inherited by accident. |
-| **Explicit grants** | Tools, skills, MCP servers, and knowledge foundations granted per step, browsable and bindable from the Control UI. |
-| **Governance policies** | Action-scoped allow/deny with approval flows. Compile plain-language intent into a reviewable policy. |
-| **Knowledge foundations** | Governed retrieval through `knowledge_search`, scoped per step, with foundation targeting, a routing glossary, and citations. Bundled LightRAG adapter. |
-| **Run traces** | Lifecycle and governance decisions written to SQLite and anchored to the transcript. Inspectable from CLI, gateway, or Control UI. |
-| **Typed object graph** | Palantir-style ontology types with `OntologyFunction`, a closed and type-checked expression language. Effects are the write authorization. |
-| **Operator surface** | Per-node inspector with live object instances, force-directed ontology graph, route visualization in the assistant bubble, step-level role prompts. |
+| Capability                | What it does                                                                                                                                             |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Work-maps**             | Versioned, importable step trees (`clawworks.workflow-tree`). Runs advance through leaf steps under a model-driven cursor.                               |
+| **Ontology bindings**     | Each step declares `allowedTools`, `knowledgeFoundations`, `contextHints`, and `audit`. A step reaches what it declared — nothing inherited by accident. |
+| **Explicit grants**       | Tools, skills, MCP servers, and knowledge foundations granted per step, browsable and bindable from the Control UI.                                      |
+| **Governance policies**   | Action-scoped allow/deny with approval flows. Compile plain-language intent into a reviewable policy.                                                    |
+| **Knowledge foundations** | Governed retrieval through `knowledge_search`, scoped per step, with foundation targeting, a routing glossary, and citations. Bundled LightRAG adapter.  |
+| **Run traces**            | Lifecycle and governance decisions written to SQLite and anchored to the transcript. Inspectable from CLI, gateway, or Control UI.                       |
+| **Typed object graph**    | Palantir-style ontology types with `OntologyFunction`, a closed and type-checked expression language. Effects are the write authorization.               |
+| **Operator surface**      | Per-node inspector with live object instances, force-directed ontology graph, route visualization in the assistant bubble, step-level role prompts.      |
 
 ## Governance modes
 
@@ -151,11 +175,11 @@ govern a request.
 }
 ```
 
-| Mode | Behavior |
-| --- | --- |
-| `enforce` *(default)* | Denials block tool calls and knowledge retrieval; unreadable trees fail closed. |
-| `observe` | Decisions are recorded but never block; unreadable trees fall back to built-ins with a warning. |
-| `off` | No mediation. |
+| Mode                  | Behavior                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `enforce` _(default)_ | Denials block tool calls and knowledge retrieval; unreadable trees fail closed.                 |
+| `observe`             | Decisions are recorded but never block; unreadable trees fall back to built-ins with a warning. |
+| `off`                 | No mediation.                                                                                   |
 
 Default-allow tool calls are not traced unless a step opts in with `audit: true`, so stock runs
 stay quiet.
@@ -245,7 +269,12 @@ LightRAG API servers:
         "enabled": true,
         "config": {
           "foundations": [
-            { "id": "acme.support-kb", "serverUrl": "http://localhost:9621", "kind": "remote", "mode": "mix" },
+            {
+              "id": "acme.support-kb",
+              "serverUrl": "http://localhost:9621",
+              "kind": "remote",
+              "mode": "mix",
+            },
           ],
         },
       },
@@ -321,8 +350,8 @@ ClawWorks connects to real messaging surfaces. Treat inbound DMs as **untrusted 
 - Run `openclaw doctor` to surface risky or misconfigured DM policies.
 - Group/channel safety: set `agents.defaults.sandbox.mode: "non-main"` to run non-`main` sessions in sandboxes (Docker default; SSH and OpenShell available).
 
-> **Governance is not a sandbox.** Work-map grants shape what a step is *allowed to ask for*;
-> sandboxing shapes what the host will *actually execute*. Use both.
+> **Governance is not a sandbox.** Work-map grants shape what a step is _allowed to ask for_;
+> sandboxing shapes what the host will _actually execute_. Use both.
 
 Before exposing anything remotely, read [Security](https://docs.openclaw.ai/gateway/security),
 the [exposure runbook](https://docs.openclaw.ai/gateway/security/exposure-runbook), and
@@ -332,12 +361,12 @@ the [exposure runbook](https://docs.openclaw.ai/gateway/security/exposure-runboo
 
 **ClawWorks-specific** (this repository)
 
-| Document | Contents |
-| --- | --- |
-| [ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md) | Modes, work-maps, mediation, ontology operations, MCP servers, policies, knowledge foundations, run inspection |
-| [Worktree Authoring](docs/concepts/clawworks-worktree-authoring.md) | The work-map format, field by field, YAML and JSON |
-| [Enterprise CLI](docs/cli/enterprise.md) | Trees, bundles, policies, run traces |
-| [`AGENTS.md`](AGENTS.md) | Repository rules, naming boundary, test lanes |
+| Document                                                            | Contents                                                                                                       |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md)       | Modes, work-maps, mediation, ontology operations, MCP servers, policies, knowledge foundations, run inspection |
+| [Worktree Authoring](docs/concepts/clawworks-worktree-authoring.md) | The work-map format, field by field, YAML and JSON                                                             |
+| [Enterprise CLI](docs/cli/enterprise.md)                            | Trees, bundles, policies, run traces                                                                           |
+| [`AGENTS.md`](AGENTS.md)                                            | Repository rules, naming boundary, test lanes                                                                  |
 
 **Inherited platform docs** — [Getting started](https://docs.openclaw.ai/start/getting-started) ·
 [Channels](https://docs.openclaw.ai/channels) ·
