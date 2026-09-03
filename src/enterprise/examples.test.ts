@@ -28,7 +28,7 @@ const MCP_ATTACHMENTS: Record<string, string[]> = {
   ],
   "acme-tracker": ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
   "acme-ledger": ["finops.claims.settlement.payment"],
-  "acme-filing": ["finops.reporting.regulatory.sar-filing"],
+  "acme-filing": ["finops.reporting.regulatory.submission"],
 };
 
 /** Every corpus, and the domain roots that may grant it. A corpus is not owned by one domain. */
@@ -223,7 +223,7 @@ describe("the shipped enterprise example", () => {
       ["finops.risk.monitoring.alert-triage", "finops.claims.intake.triage"],
       ["finops.risk.underwriting.decision", "finops.claims.adjudication.decision"],
       ["finops.risk.monitoring.investigation", "finops.claims.adjudication.fraud-review"],
-      ["finops.risk.monitoring.sar-filing", "finops.reporting.regulatory.sar-filing"],
+      ["finops.risk.monitoring.sar-filing", "finops.reporting.regulatory.submission"],
       ["finops.customer.onboarding.risk-rating", "finops.risk.underwriting.scoring"],
       ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
     ]) {
@@ -300,7 +300,7 @@ describe("the shipped enterprise example", () => {
         blocked: ["claim", "alert", "payment"],
       },
       {
-        node: "finops.reporting.regulatory.sar-filing",
+        node: "finops.reporting.regulatory.submission",
         reaches: ["regulatory-report", "sar"],
         blocked: ["payment", "policy", "credit-report"],
       },

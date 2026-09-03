@@ -466,7 +466,7 @@ async function main(): Promise<number> {
     endEnterpriseRun({ runId: sarId, status: "completed" });
 
     const filingId = "golden-filing-update";
-    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.sar-filing"]);
+    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.submission"]);
     await createInvokeActionTool({ runId: filingId }).execute("file-call", {
       action: "file-regulatory-report",
       args: { "report-id": "RP-9102", status: "filed" },
@@ -620,7 +620,7 @@ async function main(): Promise<number> {
     // The control: same shape, no per-operation denial, so it is handed over.
     // Without this the check above would pass on any bug that withheld everything.
     const filingId = "golden-mcp-native-undenied";
-    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.sar-filing"]);
+    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.submission"]);
     expectEqual(
       "a server with no operation denied is still handed over",
       [...(enterpriseRunAttachedMcpServers(filingId, []) ?? ["<not governed>"])],
@@ -680,7 +680,7 @@ async function main(): Promise<number> {
     // AND to reporting, so the filing step answers from it and from the regulatory
     // code — a corpus is granted to the steps that need it, not owned by a domain.
     const filingId = "golden-knowledge-filing";
-    await openRun(filingId, "분기 신고 준비", ["finops.reporting.regulatory.sar-filing"]);
+    await openRun(filingId, "분기 신고 준비", ["finops.reporting.regulatory.submission"]);
     expectEqual(
       "a step granted two corpora answers from both",
       [

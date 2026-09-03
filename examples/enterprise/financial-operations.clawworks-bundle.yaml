@@ -482,11 +482,16 @@ trees:
                 properties:
                   - { id: customer-id, type: id, primaryKey: true }
                   - { id: name, type: string, required: true }
+                  # Readable here, never written here. `risk-rating` is the
+                  # onboarding desk's KYC judgement (standard / elevated), and a
+                  # lending band written into it would silently redefine what every
+                  # customer-domain step reads back.
                   - { id: risk-rating, type: string }
                   # Declared only in this domain, so only risk steps can read or
-                  # write it: the customer desk rates onboarding risk, it does not
+                  # write them: the customer desk rates onboarding risk, it does not
                   # see what underwriting decided about lending.
                   - { id: credit-decision, type: string }
+                  - { id: credit-rating, type: string }
               - id: account
                 title: Account
                 properties:
@@ -798,15 +803,20 @@ trees:
                           # would leave the outcome unrecoverable from the store —
                           # the expectedOutput would be a claim nothing backs.
                           - { id: credit-decision, type: string, required: true }
-                          - { id: risk-rating, type: string, required: true }
+                          # The LENDING band, not the onboarding desk's KYC rating.
+                          # Objects are stored tree-wide, so writing this into the
+                          # shared `risk-rating` would overwrite an onboarding
+                          # judgement with a word from another vocabulary.
+                          - { id: credit-rating, type: string, required: true }
                         effects:
-                          - { entity: customer, kind: update, description: Stores the decision and rating. }
+                          - { entity: customer, kind: update, description: Stores the decision and the lending band it rests on. }
                     guidance: >-
                       Record the decision the scoring step reached, together with the
                       lending band it rested on. Do not re-derive the band here: the
                       derived value on the credit report is the one the credit policy is
-                      written against.
-                    expectedOutput: The decision, the rating stored, and what drove it.
+                      written against. The band goes in `credit-rating`; `risk-rating` is
+                      the onboarding desk's and is not yours to change.
+                    expectedOutput: The decision, the lending band stored, and what drove it.
                     audit: true
 
                 - id: finops.risk.underwriting.exception
@@ -1229,9 +1239,15 @@ trees:
               title: File with the regulator
               description: Assemble and submit the filings the code requires.
               children:
-                - id: finops.reporting.regulatory.sar-filing
-                  title: Submit the SAR filing
-                  description: Package the drafted reports for the period and submit them to the portal.
+                - id: finops.reporting.regulatory.submission
+                  # The title carries the VERB and the artifacts, because a step line
+                  # is `id — title: description` and the description is clipped. A
+                  # title naming only the artifact loses "submit" to the sibling that
+                  # happens to share the noun.
+                  title: Submit a SAR or a periodic return to the regulator
+                  description: >-
+                    File a drafted SAR or a period's return with the regulator and move
+                    it to filed. The only step that can submit anything.
                   ontology:
                     allowedTools:
                       [
@@ -1271,9 +1287,14 @@ trees:
                     expectedOutput: The filing reference, the period it covers, and the deadline it met.
                     audit: true
 
-                - id: finops.reporting.regulatory.periodic
-                  title: Assemble the periodic return
-                  description: Build the recurring return for a period without submitting it.
+                - id: finops.reporting.regulatory.preparation
+                  # Deliberately does NOT carry the word "return". Its sibling is the
+                  # step that files returns, and a title sharing the artifact noun
+                  # outranks the verb every time a request names both.
+                  title: Compile a period's figures before anything is filed
+                  description: >-
+                    Gather what a period's filing must contain and what is still
+                    outstanding. Preparation only — filing is a separate step.
                   ontology:
                     allowedTools: [search_objects, get_neighbors, knowledge_search, message]
                     knowledgeFoundations: [acme.regulatory-code]
