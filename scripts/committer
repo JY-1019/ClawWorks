@@ -113,7 +113,10 @@ for file in "${files[@]}"; do
   fi
 done
 
-# Prevent staging node_modules even if a path is forced.
+# Reject a node_modules path outright. This catches the direct spelling early,
+# with the argument that caused it; the staged-set check after `git add` is what
+# actually enforces the rule, since a directory argument reaches these files
+# without ever naming them.
 for file in "${files[@]}"; do
   case "$file" in
     *node_modules* | */node_modules | */node_modules/* | node_modules)
@@ -213,6 +216,25 @@ if git diff --staged --quiet; then
   exit 1
 fi
 
+staged_files=$(git diff --staged --name-only)
+staged_count=$(printf '%s\n' "$staged_files" | grep -c . || true)
+
+# The node_modules guard, enforced on what `git add` actually reached rather than
+# on how it was spelled. A directory argument names no ignored path, but
+# `--force` recurses into every one of them, so the argument check above cannot
+# see this coming. Unstage before failing: the script already cleared the index
+# on entry, so leaving hundreds of forced files staged would hand the caller a
+# worse index than they started with.
+staged_node_modules=$(printf '%s\n' "$staged_files" | grep -E '(^|/)node_modules(/|$)' || true)
+if [ -n "$staged_node_modules" ]; then
+  run_git_with_lock_retry "unstaging files" git restore --staged :/
+  printf 'Error: refusing to commit node_modules; staging %s reached %d of them, e.g.\n' \
+    "${files[*]}" "$(printf '%s\n' "$staged_node_modules" | grep -c .)" >&2
+  printf '%s\n' "$staged_node_modules" | head -n 3 >&2
+  printf 'List the paths you mean instead of a directory that contains them.\n' >&2
+  exit 1
+fi
+
 committed=false
 if [ "$fast_commit" = true ]; then
   declare -a commit_env=(FAST_COMMIT=1)
@@ -229,4 +251,6 @@ if [ "$committed" = false ]; then
   exit 1
 fi
 
-printf 'Committed "%s" with %d files\n' "$commit_message" "${#files[@]}"
+# The STAGED count, not the argument count: a directory argument commits far more
+# than the one path it named, and the old line reported "with 1 files" for it.
+printf 'Committed "%s" with %d files\n' "$commit_message" "$staged_count"
