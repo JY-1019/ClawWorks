@@ -23,7 +23,11 @@
  * or to drop the declaration.
  */
 import { isToolAllowedByPolicyName } from "../agents/tool-policy-match.js";
-import type { WorkflowNodeDefinition, WorkflowTreeDefinition } from "./types.js";
+import type {
+  OntologyObjectEffect,
+  WorkflowNodeDefinition,
+  WorkflowTreeDefinition,
+} from "./types.js";
 
 export type WorkflowTreeWarning = {
   /** Dot-path to the offending declaration, matching validation issue style. */
@@ -136,24 +140,41 @@ export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): Workf
     const keys = primaryKeys(paths.flat());
 
     const actions = ontology?.actions ?? [];
-    if (actions.length > 0 && !paths.some((candidate) => canWrite(candidate, explicit))) {
+    // Only the actions that go through invoke_action need the write opt-in. An
+    // outward action IS the tool call the model makes, so requiring invoke_action
+    // for it would demand a grant it never uses.
+    const localActions = actions.filter((action) =>
+      (action.effects ?? []).some((effect) => effect.kind !== "call"),
+    );
+    if (localActions.length > 0 && !paths.some((candidate) => canWrite(candidate, explicit))) {
       warnings.push({
         path: `node.${node.id}.ontology.actions`,
         message:
-          `step "${node.id}" declares ${actions.length === 1 ? "action" : "actions"} ` +
-          `${actions.map((action) => `"${action.id}"`).join(", ")} but no step that runs under it ` +
-          `can perform an ontology write, so the model is shown an action every call will refuse. ` +
-          `Name invoke_action literally in ontology.allowedTools here or on a step beneath it ` +
-          `(a glob such as invoke_* does not opt into writes), keep every ancestor's allow-list ` +
-          `from excluding it, and do not deny it — or drop the declaration.`,
+          `step "${node.id}" declares ${localActions.length === 1 ? "action" : "actions"} ` +
+          `${localActions.map((action) => `"${action.id}"`).join(", ")} but no step that runs ` +
+          `under it can perform an ontology write, so the model is shown an action every call ` +
+          `will refuse. Name invoke_action literally in ontology.allowedTools here or on a step ` +
+          `beneath it (a glob such as invoke_* does not opt into writes), keep every ancestor's ` +
+          `allow-list from excluding it, and do not deny it — or drop the declaration.`,
       });
     }
 
     for (const action of actions) {
       // The effects ARE the write scope (ontology-actions.ts): invoke_action
-      // refuses an action that declares none.
-      const writes = (action.effects ?? []).filter((effect) => effect.kind !== "read");
-      if (writes.length === 0) {
+      // refuses an action that declares none. An outward `call` is not one of them
+      // — it happens in another system, and the checks below (primaryKey, an
+      // identifying parameter) address a row this action never touches.
+      // Narrowed by the field, not the kind: excluding "read" and "call" would
+      // leave the graph effects, and every check below reads `effect.entity`.
+      const writes = (action.effects ?? [])
+        .filter((effect): effect is OntologyObjectEffect => "entity" in effect)
+        .filter((effect) => effect.kind !== "read");
+      // A graph effect is a real effect too, so an action carrying one is not the
+      // "declares nothing it can do" case this warning is about.
+      const nonObjectEffect = (action.effects ?? []).some(
+        (effect) => effect.kind !== "read" && !("entity" in effect),
+      );
+      if (writes.length === 0 && !nonObjectEffect) {
         warnings.push({
           path: `node.${node.id}.ontology.actions.${action.id}.effects`,
           message:

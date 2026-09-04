@@ -1352,7 +1352,7 @@ CREATE TABLE IF NOT EXISTS enterprise_workflow_tree_versions (
 -- Scoped by tree_id, not by agent or run: the object TYPE lives in the tree's
 -- ontology, the tree is global (keyed by tree_id alone, loaded through a
 -- process-global registry, edited by operator.admin), and an instance store
--- cannot be scoped narrower than the definition of its own type. Run provenance
+-- cannot be scoped narrower than the definition of its own type. Run ownership
 -- rides along as nullable columns, exactly as enterprise_runs carries agent_id.
 --
 -- No FOREIGN KEY on tree_id: BUILT-IN trees are code, not rows in
@@ -1364,10 +1364,6 @@ CREATE TABLE IF NOT EXISTS enterprise_ontology_objects (
   entity_id TEXT NOT NULL,
   -- The value of the object type's primaryKey property.
   object_id TEXT NOT NULL,
-  -- 'seed' rows are declared BY the tree and are re-applied on every import, so
-  -- the tree stays the source of truth for what it declares. 'runtime' rows were
-  -- created by an action during a run and are never clobbered by a re-import.
-  provenance TEXT NOT NULL,
   properties_json TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -1389,7 +1385,6 @@ CREATE TABLE IF NOT EXISTS enterprise_ontology_links (
   from_object_id TEXT NOT NULL,
   to_entity_id TEXT NOT NULL,
   to_object_id TEXT NOT NULL,
-  provenance TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (tree_id, relationship_id, from_object_id, to_object_id)
 );

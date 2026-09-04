@@ -19,6 +19,8 @@ import type {
   EnterprisePlanNode,
   EnterpriseRunPlan,
   OntologyBinding,
+  OntologyLinkEffect,
+  OntologyObjectEffect,
   WorkflowNodeDefinition,
   WorkflowTreeDefinition,
   WorkflowTreeTrigger,
@@ -408,9 +410,7 @@ export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
     // the leaf's own object types for the entire run.
     ontology.entities?.length ||
     ontology.relationships?.length ||
-    ontology.functions?.length ||
-    ontology.objects?.length ||
-    ontology.links?.length,
+    ontology.functions?.length,
   );
 }
 
@@ -513,9 +513,24 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
       // Effects are the action's write scope. The model has to know it is about
       // to create/update an object type before it calls the tool, not after
       // governance blocks it. Reads are omitted: they carry no such warning.
+      // Narrowed by the field each variant carries, not by kind: excluding "read"
+      // and "call" leaves the GRAPH effects, which carry no entity — and the
+      // digest would then hand the model "link undefined".
       const writes = (action.effects ?? [])
+        .filter((effect): effect is OntologyObjectEffect => "entity" in effect)
         .filter((effect) => effect.kind !== "read")
         .map((effect) => `${effect.kind} ${effect.entity}`);
+      // The graph effects, named by what they relate. Without this the model sees
+      // an action whose only effect is invisible to it.
+      const relates = (action.effects ?? [])
+        .filter((effect): effect is OntologyLinkEffect => "relationship" in effect)
+        .map((effect) => `${effect.kind} ${effect.relationship}`);
+      // The outward effect is the action itself, so it has to reach the model as
+      // an instruction: nothing local happens, and invoke_action only answers with
+      // a pointer back here. Governance holds the call to the params above.
+      const calls = (action.effects ?? [])
+        .filter((effect) => effect.kind === "call")
+        .map((effect) => effect.tool);
       // Parameters are what the model must actually gather before it can call
       // the action, so the declaration is only useful if it reaches the prompt.
       const parameters = (action.parameters ?? []).map(
@@ -527,6 +542,8 @@ function appendOntologyGuidance(lines: string[], ontology: OntologyBinding, inde
         action.tools?.length ? `tools: ${action.tools.toSorted().join(", ")}` : undefined,
         parameters.length ? `params: ${parameters.join(", ")}` : undefined,
         writes.length ? `writes: ${writes.join(", ")}` : undefined,
+        relates.length ? `relates: ${relates.join(", ")}` : undefined,
+        calls.length ? `perform by calling: ${calls.toSorted().join(" or ")}` : undefined,
       ]
         .filter(Boolean)
         .join(" — ");

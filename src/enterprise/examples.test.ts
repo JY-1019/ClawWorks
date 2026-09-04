@@ -30,7 +30,18 @@ const MCP_ATTACHMENTS: Record<string, string[]> = {
   "acme-tracker": ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
   "acme-ledger": ["finops.claims.settlement.payment"],
   "acme-filing": ["finops.reporting.regulatory.submission"],
+  // Attached by the four steps whose actions perform an OUTWARD call: core
+  // banking owns customers and accounts, so those steps write nothing locally.
+  "acme-core-banking": [
+    "finops.customer.onboarding.account-opening",
+    "finops.customer.servicing.profile-update",
+    "finops.customer.servicing.closure",
+    "finops.risk.underwriting.decision",
+  ],
 };
+
+/** Steps whose outward actions ARE their grant, so they need no tool globs. */
+const OUTWARD_STEPS = new Set(MCP_ATTACHMENTS["acme-core-banking"]);
 
 /** Every corpus, and the domain roots that may grant it. A corpus is not owned by one domain. */
 const KNOWLEDGE_REACH: Record<string, string[]> = {
@@ -245,14 +256,24 @@ describe("the shipped enterprise example", () => {
     expect(relationships.length).toBeGreaterThan(0);
     expect(relationships.every((relationship) => relationship.cardinality)).toBe(true);
 
-    // The money-movement step is the one governance must be able to gate, so its
-    // action has to declare what it writes.
+    // The money-movement step is the one governance must be able to gate. Paying
+    // is an OUTWARD action — the ledger owns the money, so nothing is written
+    // here — and its declaration is what the gate holds the call to.
     const payment = nodes.find((node) => node.id === "finops.claims.settlement.payment");
     const issue = payment?.ontology?.actions?.find((action) => action.id === "issue-claim-payment");
     expect(issue?.effects).toEqual(
-      expect.arrayContaining([expect.objectContaining({ entity: "payment", kind: "create" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "call", tool: "acme-ledger__post_payment" }),
+      ]),
     );
     expect(issue?.preconditions?.length).toBeGreaterThan(0);
+    // ...and the claim file this workflow DOES own is settled by a second, local
+    // action. An outward call cannot join a local transaction, so the two facts
+    // cannot be one write.
+    const settle = payment?.ontology?.actions?.find((action) => action.id === "settle-claim");
+    expect(settle?.effects).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entity: "claim", kind: "update" })]),
+    );
   });
 
   it("scopes the ontology per domain instead of hoisting it onto the root", () => {
@@ -337,8 +358,14 @@ describe("the shipped enterprise example", () => {
       const scope = scopes.get(node.id);
       for (const action of node.ontology?.actions ?? []) {
         for (const effect of action.effects ?? []) {
-          if (!scope?.entities.has(effect.entity)) {
-            unresolved.push(`${node.id} → ${action.id} → ${effect.entity}`);
+          // An outward effect names a tool, and a graph effect a relationship, so
+          // each resolves against a different declaration on the same scope.
+          if ("entity" in effect) {
+            if (!scope?.entities.has(effect.entity)) {
+              unresolved.push(`${node.id} → ${action.id} → ${effect.entity}`);
+            }
+          } else if (effect.kind !== "call" && !scope?.relationships.has(effect.relationship)) {
+            unresolved.push(`${node.id} → ${action.id} → ${effect.relationship}`);
           }
         }
       }
@@ -373,9 +400,21 @@ describe("the shipped enterprise example", () => {
       .filter((node) => (node.ontology?.allowedTools ?? []).includes("invoke_action"))
       .map((node) => node.id);
     expect(interiorWriters).toEqual([]);
-    // And every step that declares an action opts in LITERALLY: a glob such as
+    // And every step with a LOCAL action opts in LITERALLY: a glob such as
     // `invoke_*` satisfies the ordinary tool gate and is still refused as a write.
+    // An outward-only step is exempt because it never calls invoke_action — the
+    // tool call named by its action is how that action happens.
     for (const node of writers) {
+      const local = (node.ontology?.actions ?? []).some((action) =>
+        (action.effects ?? []).some((effect) => effect.kind !== "call"),
+      );
+      if (!local) {
+        expect(
+          node.ontology?.allowedTools ?? [],
+          `${node.id} is outward-only and must not hold the write opt-in`,
+        ).not.toContain("invoke_action");
+        continue;
+      }
       expect(
         node.ontology?.allowedTools ?? [],
         `${node.id} declares an action without naming invoke_action`,
@@ -409,6 +448,13 @@ describe("the shipped enterprise example", () => {
     // either may carry the `mcp__` prefix.
     for (const node of nodes) {
       for (const server of node.ontology?.mcpServers ?? []) {
+        // A step whose action NAMES the tool it calls needs no globs: the action
+        // is the grant, and it is narrower than any glob — one operation rather
+        // than the whole server. That is the difference between attaching a
+        // server and declaring what the step does with it.
+        if (OUTWARD_STEPS.has(node.id)) {
+          continue;
+        }
         const folded = server.replaceAll("-", "_");
         for (const glob of [
           `${server}__*`,

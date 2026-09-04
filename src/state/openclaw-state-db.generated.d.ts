@@ -459,7 +459,6 @@ export interface EnterpriseOntologyLinks {
   created_at: number;
   from_entity_id: string;
   from_object_id: string;
-  provenance: string;
   relationship_id: string;
   to_entity_id: string;
   to_object_id: string;
@@ -471,7 +470,6 @@ export interface EnterpriseOntologyObjects {
   entity_id: string;
   object_id: string;
   properties_json: string;
-  provenance: string;
   tree_id: string;
   updated_at: number;
 }

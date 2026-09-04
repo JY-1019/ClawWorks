@@ -4260,6 +4260,10 @@ export async function detectLegacyStateMigrations(params: {
     for (const migration of stateSchemaMigrations) {
       if (migration.kind === "agent-databases-composite-primary-key") {
         preview.push("- Shared SQLite schema: agent database registry primary key → agent_id,path");
+      } else if (migration.kind === "enterprise-ontology-declared-instances") {
+        preview.push(
+          "- Shared SQLite schema: drop tree-declared ontology instances → rebuild instance tables",
+        );
       } else if (migration.kind === "enterprise-trace-execution-id-key") {
         preview.push(
           "- Shared SQLite schema: rebuild legacy enterprise run-trace tables → execution_id key",

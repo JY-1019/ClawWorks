@@ -272,6 +272,13 @@ export type EnterpriseToolCallVerdict = {
  * without this the audit trail can show that a write was allowed but not that it
  * happened, nor to which object.
  */
+/** Tool arguments as the trail records them; a non-object call carries none. */
+function asRecord(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+}
+
 export function recordEnterpriseActionInvoked(
   runId: string,
   event: { actionId: string; writes: readonly unknown[]; context: Record<string, unknown> },
@@ -376,6 +383,12 @@ export function evaluateEnterpriseToolCall(params: {
    * can retract an appended event.
    */
   record?: boolean;
+  /**
+   * The call's arguments. The outward lane needs them: an action that declares
+   * the external tool it calls is only satisfied by a call that carries the
+   * action's declared parameters.
+   */
+  toolParams?: unknown;
 }): EnterpriseToolCallVerdict | undefined {
   if (!params.runId) {
     return undefined;
@@ -433,6 +446,7 @@ export function evaluateEnterpriseToolCall(params: {
       ...(runTracksSteps(run) ? { tracksSteps: true } : { attachmentScope: "plan" as const }),
       ...(params.actionId !== undefined ? { actionId: params.actionId } : {}),
       ...(toolCarriesOntologyAction(params.toolName) ? { carriesAction: true } : {}),
+      ...(params.toolParams !== undefined ? { toolParams: params.toolParams } : {}),
     });
     const verdict: EnterpriseToolCallVerdict = {
       decision,
@@ -457,6 +471,29 @@ export function evaluateEnterpriseToolCall(params: {
     const shouldRecord = verdict.blocked || params.record !== false;
     if (shouldRecord && !silentDefaultAllow && !verdict.requiresApproval) {
       recordDecision(run, verdict, params);
+    }
+    // An outward action leaves no local write to record, so without this the trail
+    // would hold the tool name and nothing tying it to the action whose contract
+    // let it through. Only for a call that will actually go out: an approval still
+    // pending, or a denial, is not the action happening.
+    //
+    // Recorded as `dispatched`, not as a completed effect. This gate runs BEFORE
+    // the call and nothing reports back to it, so what it can attest is that the
+    // action's contract was satisfied and the call was released — never that the
+    // external system accepted it. A local write is recorded after it commits, so
+    // the two must not read alike in the trail.
+    if (
+      shouldRecord &&
+      decision.outwardActionId &&
+      !verdict.blocked &&
+      !verdict.requiresApproval &&
+      decision.effect !== "deny"
+    ) {
+      recordEnterpriseActionInvoked(params.runId, {
+        actionId: decision.outwardActionId,
+        writes: [{ kind: "dispatched", tool: params.toolName }],
+        context: asRecord(params.toolParams),
+      });
     }
     return verdict;
   } catch (err) {

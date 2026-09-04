@@ -128,19 +128,43 @@ export const EnterpriseOntologyActionParameterSchema = Type.Object(
 );
 
 /** What an action does to an object type when it runs. */
-export const EnterpriseOntologyActionEffectSchema = Type.Object(
-  {
-    entity: NonEmptyString,
-    kind: Type.Union([
-      Type.Literal("read"),
-      Type.Literal("create"),
-      Type.Literal("update"),
-      Type.Literal("delete"),
-    ]),
-    description: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
+export const EnterpriseOntologyActionEffectSchema = Type.Union([
+  Type.Object(
+    {
+      entity: NonEmptyString,
+      kind: Type.Union([
+        Type.Literal("read"),
+        Type.Literal("create"),
+        Type.Literal("update"),
+        Type.Literal("delete"),
+      ]),
+      description: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+  // The outward effect names a TOOL, not an object type: the action happens in the
+  // system that owns the data, and the governance gate holds the call to this
+  // action's parameters. Additive — an existing payload still validates.
+  Type.Object(
+    {
+      kind: Type.Literal("call"),
+      tool: NonEmptyString,
+      description: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+  // The graph effect relates two objects the action's parameters identify.
+  Type.Object(
+    {
+      kind: Type.Union([Type.Literal("link"), Type.Literal("unlink")]),
+      relationship: NonEmptyString,
+      from: Type.Optional(NonEmptyString),
+      to: Type.Optional(NonEmptyString),
+      description: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 /** An action type a step may perform: bound tools plus what it reads/writes. */
 export const EnterpriseOntologyActionSchema = Type.Object(
@@ -283,7 +307,6 @@ export const EnterpriseOntologyObjectSchema = Type.Object(
     objectId: NonEmptyString,
     properties: Type.Record(Type.String(), EnterpriseOntologyValueSchema),
     /** Whether the tree declared this object (`seed`) or an action created it (`runtime`). */
-    provenance: Type.Union([Type.Literal("seed"), Type.Literal("runtime")]),
     updatedAt: TimestampSchema,
   },
   { additionalProperties: false },

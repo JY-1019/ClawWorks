@@ -17,12 +17,14 @@ import {
   trimCodexToolName,
   withLegacyPrefix,
 } from "./mcp-callable-names.js";
+import { ontologyValueMatchesType } from "./ontology-expression.js";
 import type {
   EnterprisePlanNode,
   EnterpriseRunPlan,
   GovernanceDecision,
   GovernancePolicy,
   OntologyAction,
+  OntologyValue,
 } from "./types.js";
 import { isWorkflowControlTool } from "./workflow-control.js";
 
@@ -152,6 +154,178 @@ function actionsCoveringTool(
       }
       return action.tools.length > 0 && selectorsCoverCall(action.tools, call);
     });
+}
+
+/**
+ * Actions on the path that declare an outward call, with the tool globs that ARE
+ * each one happening.
+ *
+ * Read from `effects`, not from `action.tools`: `tools` is the selector a
+ * governance policy matches on and predates this lane, so treating it as a grant
+ * would silently narrow every work-map that already uses it to scope a policy.
+ */
+function outwardActionsOnPath(
+  path: readonly EnterprisePlanNode[],
+): { action: OntologyAction; tools: string[] }[] {
+  return path
+    .flatMap((node) => node.ontology.actions ?? [])
+    .map((action) => ({
+      action,
+      tools: (action.effects ?? [])
+        .filter((effect) => effect.kind === "call")
+        .map((effect) => effect.tool),
+    }))
+    .filter((entry) => entry.tools.length > 0);
+}
+
+/** Why this call does not satisfy the action it claims to be, or null when it does. */
+function actionContractViolation(
+  action: OntologyAction,
+  args: Record<string, OntologyValue>,
+): string | null {
+  for (const parameter of action.parameters ?? []) {
+    const value = args[parameter.id];
+    if (value === undefined) {
+      // Required-ness is the whole point of the outward lane: an external system
+      // takes the call whatever we think of it, so a missing reason code or case
+      // id can never be recovered after the fact.
+      if (parameter.required) {
+        return `action "${action.id}" requires "${parameter.id}", which this call did not pass`;
+      }
+      continue;
+    }
+    if (!ontologyValueMatchesType(value, parameter.type)) {
+      return `action "${action.id}" declares "${parameter.id}" as ${parameter.type}, but this call passed ${
+        value === null ? "null" : typeof value
+      }`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The outward lane: an ontology action's contract applied to a call that leaves
+ * the process, rather than to a write into our own object store.
+ *
+ * Our runtime cannot make that call itself — the ontology tools are built before
+ * any MCP session materializes, and a run on the CLI/ACP surfaces resolves tools
+ * somewhere we never reach — so the MODEL calls the external tool and this gate
+ * holds it to the same contract invoke_action enforces locally: the action's
+ * declared parameters, checked before anything leaves.
+ *
+ * Two clauses, and only the first applies to non-MCP tools:
+ *   1. A call an outward action COVERS must satisfy that action.
+ *   2. Once a step declares outward actions ON A SERVER, that server's other
+ *      tools are no longer reachable from it. Attaching a server otherwise grants
+ *      every tool on it, so a step that carefully declared "freeze an account"
+ *      would still leave "close an account" one call away.
+ *
+ * Clause 2 is scoped to the server the declaration names, not to every server the
+ * path attaches: an ancestor may attach a tracker for free use, and a leaf
+ * declaring an outward action on the core banking service must not silently take
+ * that tracker away. A step that declares no outward action for a server keeps
+ * the plain attachment behavior on it.
+ */
+function outwardActionDecision(params: {
+  path: readonly EnterprisePlanNode[];
+  call: McpCallIdentity;
+  toolName: string;
+  args: Record<string, OntologyValue>;
+  mcpAttached: boolean;
+  /** Server-name spellings of the call's owner, when it has an MCP registration. */
+  namespaces: readonly string[];
+}): { decision: GovernanceDecision } | { action: OntologyAction } | null {
+  const outward = outwardActionsOnPath(params.path);
+  if (outward.length === 0) {
+    return null;
+  }
+  const covering = outward
+    .filter(
+      (entry) =>
+        selectorsCoverCall(entry.tools, params.call) ||
+        entry.tools.some((selector) => outwardSelectorMatchesName(selector, params.toolName)),
+    )
+    .map((entry) => entry.action);
+  if (covering.length === 0) {
+    // Only the server this call belongs to. An outward action aimed elsewhere
+    // says nothing about how freely this server may be used.
+    if (!params.mcpAttached || !outwardTargetsServer(outward, params.namespaces)) {
+      return null;
+    }
+    return {
+      decision: {
+        effect: "deny",
+        policyId: null,
+        source: "ontology",
+        reason: `tool "${params.toolName}" is not one of the outward actions workflow step "${
+          params.path[params.path.length - 1]?.nodeId ?? "?"
+        }" declares; give an action a call effect naming it to make it reachable here`,
+      },
+    };
+  }
+  // Any ONE satisfied action authorizes the call: two actions can legitimately
+  // cover the same tool with different parameter sets, and the model picked one
+  // of them by what it passed.
+  const violations: string[] = [];
+  for (const action of covering) {
+    const violation = actionContractViolation(action, params.args);
+    if (!violation) {
+      return { action };
+    }
+    violations.push(violation);
+  }
+  return {
+    decision: {
+      effect: "deny",
+      policyId: null,
+      source: "ontology",
+      reason: violations[0] ?? `tool "${params.toolName}" does not satisfy its ontology action`,
+    },
+  };
+}
+
+/**
+ * Does an outward action's declared tool name this call, judged on the NAME alone?
+ *
+ * A native harness (Codex, the Claude CLI) reports a tool call with no MCP
+ * registration, so the alias machinery that needs one cannot run and the call
+ * arrives in whichever spelling that harness produced: OpenClaw maps punctuation
+ * to `-`, Codex to `_`, and either may carry the `mcp__` prefix. Comparing on a
+ * folded, prefix-stripped form is what keeps a declaration written once from
+ * silently failing to grant on exactly the runtimes that need the grant most.
+ */
+function outwardSelectorMatchesName(selector: string, toolName: string): boolean {
+  return matchesSelector(foldCallableName(toolName), [foldCallableName(selector)]);
+}
+
+/**
+ * One spelling for every form a harness may produce: the `mcp__` prefix present,
+ * punctuation folded to `_`, case dropped. Comparing folded names is what lets a
+ * declaration written once hold on all of them.
+ */
+function foldCallableName(value: string): string {
+  return withLegacyPrefix(value).replaceAll("-", "_").toLowerCase();
+}
+
+/** Does any of these outward declarations name a tool ON this call's server? */
+function outwardTargetsServer(
+  outward: readonly { tools: string[] }[],
+  namespaces: readonly string[],
+): boolean {
+  const prefixes = namespaces.map((name) => `${foldCallableName(name)}__`);
+  return outward.some((entry) =>
+    entry.tools.some((selector) => {
+      const folded = foldCallableName(selector);
+      return prefixes.some((prefix) => folded.startsWith(prefix));
+    }),
+  );
+}
+
+/** Tool arguments as the outward contract reads them; a non-object call carries none. */
+function callArguments(raw: unknown): Record<string, OntologyValue> {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, OntologyValue>)
+    : {};
 }
 
 /**
@@ -660,6 +834,12 @@ export function evaluateToolCallGovernance(params: {
    * exists on a step-tracking run.
    */
   tracksSteps?: boolean;
+  /**
+   * The call's arguments, for the outward lane: an action that declares the tool
+   * it calls is only satisfied by a call carrying its declared parameters. Absent
+   * on hook paths that dispatch by name with nothing to read.
+   */
+  toolParams?: unknown;
 }): GovernanceDecision {
   // Advancing the run is not a capability a work-map grants — it is how the
   // work-map gets executed at all, so it is decided BEFORE both lanes below.
@@ -750,38 +930,63 @@ export function evaluateToolCallGovernance(params: {
       reason: `tool "${params.toolName}" is denied at workflow step "${violation.node.nodeId}" by ontology.deniedTools`,
     };
   }
-  const approvableOmission: GovernanceDecision | null = violation
-    ? {
-        // ASK rather than dead-end. A work-map cannot anticipate every tool a real
-        // request needs, and a silent refusal leaves the operator with a run that
-        // failed for reasons only the trace explains. Escalating to a human keeps
-        // the boundary — nothing runs unapproved — while making the boundary
-        // negotiable at the moment it actually binds.
-        //
-        // This is the SCOPE lane only. A `deny` an operator wrote in
-        // enterprise.governance.policies stays a hard block below: escalating that
-        // would make writing a deny rule mean nothing.
-        //
-        // Fails closed by construction: severity/timeout default to deny, and a run
-        // with no interactive channel (cron, headless) resolves the approval as a
-        // veto rather than passing it — see applyEnterpriseApproval.
-        effect: "require_approval",
-        approval: { severity: "warning", timeoutBehavior: "deny" },
-        policyId: null,
-        source: "ontology",
-        ontologyOmission: true,
-        // Two different fixes, so two different sentences: a scope violation means
-        // some step narrowed the tool away, while an ungranted call means nobody
-        // ever attached it — and an operator reading the first would look at the
-        // wrong step.
-        // Also the text a human reads on the approval prompt, so each says what to
-        // decide AND where the lasting fix belongs.
-        reason:
-          violation.kind === "ungranted"
-            ? `tool "${params.toolName}" is not granted to workflow step "${violation.node.nodeId}". This work-map grants capabilities explicitly, so allowing it here is a one-off; to grant it for good, name it in that step's ontology.allowedTools (or an ancestor's).`
-            : `tool "${params.toolName}" is outside the ontology tool scope of workflow step "${violation.node.nodeId}". Allowing it here is a one-off; to change it for good, widen that step's ontology.allowedTools.`,
-      }
-    : null;
+  // The outward lane runs BEFORE the omission/approval lane below: a call an
+  // action declares is not an omission to be asked about, and a call the step's
+  // outward declaration excludes must not be reachable by approving it either.
+  const outward = outwardActionDecision({
+    path,
+    call,
+    toolName: params.toolName,
+    args: callArguments(params.toolParams),
+    mcpAttached,
+    namespaces: ownership?.namespaces ?? [],
+  });
+  if (outward && "decision" in outward) {
+    return outward.decision;
+  }
+  // Stamped onto whichever decision the lanes below reach, and it also GRANTS the
+  // call: an action naming the tool it performs is the operator saying this step
+  // makes exactly this call, so requiring them to repeat it in allowedTools would
+  // make the declaration insufficient on its own — and unguessable in the node
+  // inspector. Narrow by construction: only the tool the action names, and only
+  // when the call satisfies the action's parameters. `deniedTools` already
+  // returned above, so a step can still take one back.
+  const satisfiedOutwardAction = outward && "action" in outward ? outward.action : null;
+  const withOutwardAction = (decision: GovernanceDecision): GovernanceDecision =>
+    satisfiedOutwardAction ? { ...decision, outwardActionId: satisfiedOutwardAction.id } : decision;
+  const approvableOmission: GovernanceDecision | null =
+    violation && !satisfiedOutwardAction
+      ? {
+          // ASK rather than dead-end. A work-map cannot anticipate every tool a real
+          // request needs, and a silent refusal leaves the operator with a run that
+          // failed for reasons only the trace explains. Escalating to a human keeps
+          // the boundary — nothing runs unapproved — while making the boundary
+          // negotiable at the moment it actually binds.
+          //
+          // This is the SCOPE lane only. A `deny` an operator wrote in
+          // enterprise.governance.policies stays a hard block below: escalating that
+          // would make writing a deny rule mean nothing.
+          //
+          // Fails closed by construction: severity/timeout default to deny, and a run
+          // with no interactive channel (cron, headless) resolves the approval as a
+          // veto rather than passing it — see applyEnterpriseApproval.
+          effect: "require_approval",
+          approval: { severity: "warning", timeoutBehavior: "deny" },
+          policyId: null,
+          source: "ontology",
+          ontologyOmission: true,
+          // Two different fixes, so two different sentences: a scope violation means
+          // some step narrowed the tool away, while an ungranted call means nobody
+          // ever attached it — and an operator reading the first would look at the
+          // wrong step.
+          // Also the text a human reads on the approval prompt, so each says what to
+          // decide AND where the lasting fix belongs.
+          reason:
+            violation.kind === "ungranted"
+              ? `tool "${params.toolName}" is not granted to workflow step "${violation.node.nodeId}". This work-map grants capabilities explicitly, so allowing it here is a one-off; to grant it for good, name it in that step's ontology.allowedTools (or an ancestor's).`
+              : `tool "${params.toolName}" is outside the ontology tool scope of workflow step "${violation.node.nodeId}". Allowing it here is a one-off; to change it for good, widen that step's ontology.allowedTools.`,
+        }
+      : null;
 
   const coveringActions = actionsCoveringTool(path, call);
   const declaredActions = new Set(
@@ -814,14 +1019,14 @@ export function evaluateToolCallGovernance(params: {
     // severity and timeout. Anything weaker — allow, audit — does not widen an
     // ontology scope, which is the first layer and has already spoken.
     if (decision?.effect === "deny") {
-      return decision;
+      return withOutwardAction(decision);
     }
     if (decision?.effect === "require_approval") {
       // Keep the operator's prompt — their severity and timeout length — but never
       // their allow-on-timeout. An ontology omission is fail-closed by contract, so
       // a policy that would let an unanswered prompt through must not relax a call
       // the step's scope never covered in the first place. Strictest wins.
-      return {
+      return withOutwardAction({
         ...decision,
         approval: { ...decision.approval, timeoutBehavior: "deny" },
         // The scope never covered this call, and returning the POLICY's decision
@@ -829,19 +1034,19 @@ export function evaluateToolCallGovernance(params: {
         // fail closed where no human can answer would otherwise treat this as an
         // operator's deliberate prompt and wait on it.
         ontologyOmission: true,
-      };
+      });
     }
-    return approvableOmission;
+    return withOutwardAction(approvableOmission);
   }
   if (decision) {
-    return decision;
+    return withOutwardAction(decision);
   }
-  return {
+  return withOutwardAction({
     effect: "allow",
     policyId: null,
     source: "default",
     reason: "no governance policy restricts this tool call",
-  };
+  });
 }
 
 function policyAppliesToKnowledge(

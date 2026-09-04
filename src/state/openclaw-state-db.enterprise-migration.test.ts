@@ -122,3 +122,79 @@ describe("enterprise run-trace schema migration", () => {
     expect(repairOpenClawStateDatabaseSchema({ env }).changes).toStrictEqual([]);
   });
 });
+
+function createLegacyOntologyInstanceDb(stateDir: string): string {
+  const stateDatabasePath = path.join(stateDir, "state", "openclaw.sqlite");
+  fs.mkdirSync(path.dirname(stateDatabasePath), { recursive: true });
+  const { DatabaseSync } = requireNodeSqlite();
+  const db = new DatabaseSync(stateDatabasePath);
+  try {
+    // Pre-migration shape: instances had two writers, and `provenance` told the
+    // tree-declared rows from the ones a run created.
+    db.exec(`
+      CREATE TABLE enterprise_ontology_objects (
+        tree_id TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        object_id TEXT NOT NULL,
+        provenance TEXT NOT NULL,
+        properties_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (tree_id, entity_id, object_id)
+      );
+      CREATE TABLE enterprise_ontology_links (
+        tree_id TEXT NOT NULL,
+        relationship_id TEXT NOT NULL,
+        from_entity_id TEXT NOT NULL,
+        from_object_id TEXT NOT NULL,
+        to_entity_id TEXT NOT NULL,
+        to_object_id TEXT NOT NULL,
+        provenance TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (tree_id, relationship_id, from_object_id, to_object_id)
+      );
+      INSERT INTO enterprise_ontology_objects VALUES
+        ('acme.ops', 'customer', 'CU-1', 'seed', '{"customer-id":"CU-1"}', 1, 1),
+        ('acme.ops', 'case', 'CS-1', 'runtime', '{"case-id":"CS-1"}', 2, 2);
+      INSERT INTO enterprise_ontology_links VALUES
+        ('acme.ops', 'holds', 'customer', 'CU-1', 'case', 'CS-1', 'seed', 1),
+        ('acme.ops', 'covers', 'case', 'CS-1', 'case', 'CS-1', 'runtime', 2);
+    `);
+  } finally {
+    db.close();
+  }
+  return stateDatabasePath;
+}
+
+describe("ontology declared-instance migration", () => {
+  it("drops the declared rows, keeps what a run created, and removes the column", () => {
+    // A work-map declares object TYPES, never instances, so `provenance` no
+    // longer distinguishes anything — and it is NOT NULL with no default, so an
+    // insert from current code fails until the tables are rebuilt. The rows a run
+    // created are persistent user state (a case file, a filed report) and survive.
+    const stateDir = makeStateDir();
+    createLegacyOntologyInstanceDb(stateDir);
+    const env = { OPENCLAW_STATE_DIR: stateDir };
+
+    expect(detectOpenClawStateDatabaseSchemaMigrations({ env }).map((entry) => entry.kind)).toEqual(
+      ["enterprise-ontology-declared-instances"],
+    );
+    expect(repairOpenClawStateDatabaseSchema({ env }).changes).toHaveLength(1);
+    expect(detectOpenClawStateDatabaseSchemaMigrations({ env })).toEqual([]);
+
+    const database = openOpenClawStateDatabase({ env });
+    const objects = database.db
+      .prepare("SELECT object_id FROM enterprise_ontology_objects ORDER BY object_id")
+      .all() as { object_id: string }[];
+    expect(objects.map((row) => row.object_id)).toEqual(["CS-1"]);
+    const links = database.db
+      .prepare("SELECT relationship_id FROM enterprise_ontology_links")
+      .all() as { relationship_id: string }[];
+    expect(links.map((row) => row.relationship_id)).toEqual(["covers"]);
+    // The rebuilt table takes an insert from current code, which the legacy
+    // NOT NULL column would have refused.
+    database.db
+      .prepare("INSERT INTO enterprise_ontology_objects VALUES ('acme.ops','case','CS-2','{}',3,3)")
+      .run();
+  });
+});

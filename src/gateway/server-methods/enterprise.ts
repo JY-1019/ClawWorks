@@ -711,7 +711,6 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       objects: objects.map((object) => ({
         objectId: object.objectId,
         properties: object.properties,
-        provenance: object.provenance,
         updatedAt: object.updatedAt,
       })),
     };

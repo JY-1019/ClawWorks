@@ -12,6 +12,7 @@ import {
   getOntologyNeighbors,
   getOntologyObject,
   searchOntologyObjects,
+  upsertOntologyLink,
   upsertOntologyObject,
 } from "./object-store.sqlite.js";
 import { importWorkflowTreeContent, removeImportedWorkflowTree } from "./tree-io.js";
@@ -57,17 +58,6 @@ const TREE = JSON.stringify({
         },
       ],
       relationships: [{ id: "claim-against-policy", from: "claim", to: "policy" }],
-      objects: [
-        { entity: "claim", properties: { "claim-id": "C-1", amount: 100, status: "intake" } },
-        { entity: "claim", properties: { "claim-id": "C-2", amount: 900, status: "closed" } },
-        { entity: "policy", properties: { "policy-id": "P-1", limit: 5000 } },
-        { entity: "document", properties: { "document-id": "D-1", verified: false } },
-        { entity: "document", properties: { "document-id": "D-2", verified: true } },
-      ],
-      links: [
-        { relationship: "claim-against-policy", from: "C-1", to: "P-1" },
-        { relationship: "claim-against-policy", from: "C-2", to: "P-1" },
-      ],
     },
   },
 });
@@ -76,6 +66,41 @@ beforeAll(() => {
   setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
   invalidateWorkflowTreeRegistry();
   expect(importWorkflowTreeContent({ content: TREE, format: "json" }).ok).toBe(true);
+  // Every row is created by a run: a tree declares object TYPES and the actions
+  // that write them, never instances.
+  runOpenClawStateWriteTransaction((database) => {
+    for (const object of [
+      {
+        entity: "claim",
+        objectId: "C-1",
+        properties: { "claim-id": "C-1", amount: 100, status: "intake" },
+      },
+      {
+        entity: "claim",
+        objectId: "C-2",
+        properties: { "claim-id": "C-2", amount: 900, status: "closed" },
+      },
+      { entity: "policy", objectId: "P-1", properties: { "policy-id": "P-1", limit: 5000 } },
+      {
+        entity: "document",
+        objectId: "D-1",
+        properties: { "document-id": "D-1", verified: false },
+      },
+      { entity: "document", objectId: "D-2", properties: { "document-id": "D-2", verified: true } },
+    ]) {
+      upsertOntologyObject(database, { treeId: TREE_ID, ...object });
+    }
+    for (const from of ["C-1", "C-2"]) {
+      upsertOntologyLink(database, {
+        treeId: TREE_ID,
+        relationship: "claim-against-policy",
+        fromEntity: "claim",
+        fromObjectId: from,
+        toEntity: "policy",
+        toObjectId: "P-1",
+      });
+    }
+  }, {});
 });
 
 afterAll(() => {
@@ -85,11 +110,10 @@ afterAll(() => {
   envSnapshot.restore();
 });
 
-describe("seed materialization", () => {
-  it("writes the objects the tree declares, keyed by their primaryKey value", () => {
+describe("object reads", () => {
+  it("keys objects by their primaryKey value", () => {
     const claims = searchOntologyObjects({ treeId: TREE_ID, entity: "claim", limit: 10 });
     expect(claims.map((claim) => claim.objectId).toSorted()).toEqual(["C-1", "C-2"]);
-    expect(claims.every((claim) => claim.provenance === "seed")).toBe(true);
     const first = getOntologyObject({ treeId: TREE_ID, entity: "claim", objectId: "C-1" });
     expect(first?.properties).toEqual({ "claim-id": "C-1", amount: 100, status: "intake" });
   });
@@ -136,12 +160,6 @@ describe("seed materialization", () => {
       ),
     ).toEqual(["C-1"]);
   });
-
-  it("re-applies seeds on re-import without duplicating them", () => {
-    expect(importWorkflowTreeContent({ content: TREE, format: "json" }).ok).toBe(true);
-    const claims = searchOntologyObjects({ treeId: TREE_ID, entity: "claim", limit: 10 });
-    expect(claims).toHaveLength(2);
-  });
 });
 
 describe("link traversal", () => {
@@ -174,9 +192,7 @@ describe("link traversal", () => {
 });
 
 describe("runtime writes", () => {
-  it("updates a seeded object without losing its seed provenance", () => {
-    // The tree still DECLARES this object, so a re-import must still be able to
-    // restate it. Only the values move.
+  it("updates an object in place", () => {
     runOpenClawStateWriteTransaction((database) => {
       upsertOntologyObject(database, {
         treeId: TREE_ID,
@@ -187,10 +203,9 @@ describe("runtime writes", () => {
     }, {});
     const updated = getOntologyObject({ treeId: TREE_ID, entity: "claim", objectId: "C-1" });
     expect(updated?.properties.status).toBe("adjudicating");
-    expect(updated?.provenance).toBe("seed");
   });
 
-  it("creates a runtime object that a re-import does not clobber", () => {
+  it("keeps what a run created across a re-import", () => {
     runOpenClawStateWriteTransaction((database) => {
       upsertOntologyObject(database, {
         treeId: TREE_ID,
@@ -199,13 +214,9 @@ describe("runtime writes", () => {
         properties: { "claim-id": "C-9", amount: 1, status: "intake" },
       });
     }, {});
-    expect(
-      getOntologyObject({ treeId: TREE_ID, entity: "claim", objectId: "C-9" })?.provenance,
-    ).toBe("runtime");
-
     expect(importWorkflowTreeContent({ content: TREE, format: "json" }).ok).toBe(true);
-    // A re-import restates what the tree declares; it must not destroy what a run
-    // created.
+    // A re-import restates the DEFINITION; it must not destroy the data a run
+    // created under it.
     expect(getOntologyObject({ treeId: TREE_ID, entity: "claim", objectId: "C-9" })).not.toBeNull();
   });
 

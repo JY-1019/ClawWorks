@@ -3,6 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
+  runOntologyObjectWrite,
+  upsertOntologyLink,
+  upsertOntologyObject,
+} from "../../enterprise/object-store.sqlite.js";
+import {
   collectTreeRequiredProperties,
   resolveActiveOntologyScope,
   runDeclaresOntology,
@@ -63,26 +68,6 @@ const TREE = JSON.stringify({
           expression: "$fraud-score >= 80 ? 'refer' : 'auto'",
           returns: "string",
         },
-      ],
-      objects: [
-        // salary-note is declared only on the PAYROLL branch, but an object type is
-        // tree-scoped, so the stored row legitimately carries it. A run on the
-        // claims branch must not be able to read it.
-        {
-          entity: "claim",
-          properties: {
-            "claim-id": "C-1",
-            amount: 10,
-            "fraud-score": 91,
-            "salary-note": "confidential",
-          },
-        },
-        { entity: "policy", properties: { "policy-id": "P-1" } },
-        { entity: "payroll-record", properties: { "run-id": "PR-1" } },
-      ],
-      links: [
-        { relationship: "claim-against-policy", from: "C-1", to: "P-1" },
-        { relationship: "claim-touches-payroll", from: "C-1", to: "PR-1" },
       ],
     },
     children: [
@@ -148,6 +133,39 @@ beforeAll(() => {
   setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
   invalidateWorkflowTreeRegistry();
   expect(importWorkflowTreeContent({ content: TREE, format: "json" }).ok).toBe(true);
+  // Written the only way instances come into being: by a run. `salary-note` is
+  // declared only on the PAYROLL branch, but an object type is tree-scoped, so
+  // the stored row legitimately carries it — and a run on the claims branch must
+  // still not be able to read it.
+  runOntologyObjectWrite((database) => {
+    for (const object of [
+      {
+        entity: "claim",
+        objectId: "C-1",
+        properties: {
+          "claim-id": "C-1",
+          amount: 10,
+          "fraud-score": 91,
+          "salary-note": "confidential",
+        },
+      },
+      { entity: "policy", objectId: "P-1", properties: { "policy-id": "P-1" } },
+      { entity: "payroll-record", objectId: "PR-1", properties: { "run-id": "PR-1" } },
+    ]) {
+      upsertOntologyObject(database, { treeId: TREE_ID, ...object });
+    }
+    for (const link of [
+      { relationship: "claim-against-policy", toEntity: "policy", toObjectId: "P-1" },
+      { relationship: "claim-touches-payroll", toEntity: "payroll-record", toObjectId: "PR-1" },
+    ]) {
+      upsertOntologyLink(database, {
+        treeId: TREE_ID,
+        fromEntity: "claim",
+        fromObjectId: "C-1",
+        ...link,
+      });
+    }
+  });
 });
 
 afterEach(() => {

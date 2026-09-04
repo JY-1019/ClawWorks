@@ -6,9 +6,11 @@ import { closeOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { evaluateToolCallGovernance } from "./governance.js";
 import {
+  getOntologyNeighbors,
   getOntologyObject,
   runOntologyObjectWrite,
   searchOntologyObjects,
+  upsertOntologyObject,
 } from "./object-store.sqlite.js";
 import { invokeOntologyAction } from "./ontology-actions.js";
 import type { NodeOntologyScope } from "./ontology-runtime.js";
@@ -25,6 +27,7 @@ import type {
   GovernancePolicy,
   OntologyAction,
   OntologyEntity,
+  OntologyRelationship,
   OntologyValue,
 } from "./types.js";
 
@@ -52,9 +55,6 @@ const TREE = JSON.stringify({
     title: "Root",
     ontology: {
       entities: [CLAIM],
-      objects: [
-        { entity: "claim", properties: { "claim-id": "C-1", status: "intake", amount: 10 } },
-      ],
     },
     children: [{ id: "root.work", title: "Work" }],
   },
@@ -97,6 +97,16 @@ beforeAll(() => {
   setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
   invalidateWorkflowTreeRegistry();
   expect(importWorkflowTreeContent({ content: TREE, format: "json" }).ok).toBe(true);
+  // The object an update acts on has to exist first, and only a run can create
+  // one — the tree declares the type, never the instance.
+  runOntologyObjectWrite((database) =>
+    upsertOntologyObject(database, {
+      treeId: TREE_ID,
+      entity: "claim",
+      objectId: "C-1",
+      properties: { "claim-id": "C-1", status: "intake", amount: 10 },
+    }),
+  );
 });
 
 afterAll(() => {
@@ -560,5 +570,137 @@ describe("governance sees the action the model actually invoked", () => {
     // a policy scoped to `refund` matched through the covering-action set and
     // would have denied `note` as well — every action or none.
     expect(decide("note").effect).toBe("allow");
+  });
+});
+
+describe("graph effects", () => {
+  const CASE: OntologyEntity = {
+    id: "case",
+    properties: [{ id: "case-id", type: "id", primaryKey: true }],
+  };
+  const RELATED: OntologyRelationship = { id: "claim-of-case", from: "case", to: "claim" };
+
+  function graphScope(actions: OntologyAction[]): NodeOntologyScope {
+    return {
+      treeId: TREE_ID,
+      nodeId: "root.work",
+      enforce: true,
+      entities: new Map([
+        ["claim", CLAIM],
+        ["case", CASE],
+      ]),
+      relationships: new Map([[RELATED.id, RELATED]]),
+      actions: new Map(actions.map((action) => [action.id, action])),
+      functions: new Map(),
+      treeRequiredProperties: new Map([["claim", new Set(["claim-id", "amount"])]]),
+    };
+  }
+
+  const ATTACH: OntologyAction = {
+    id: "attach-claim",
+    parameters: [
+      { id: "case-id", type: "id", required: true },
+      { id: "claim-id", type: "id", required: true },
+    ],
+    effects: [{ kind: "link", relationship: "claim-of-case" }],
+  };
+
+  function runGraph(action: OntologyAction, args: Record<string, OntologyValue>) {
+    return runOntologyObjectWrite((database) =>
+      invokeOntologyAction(database, { scope: graphScope([action]), action, args }),
+    );
+  }
+
+  it("relates two objects the action's parameters identify", () => {
+    const result = runGraph(ATTACH, { "case-id": "CS-1", "claim-id": "C-1" });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.writes).toEqual([
+      { relationship: "claim-of-case", from: "CS-1", to: "C-1", kind: "link" },
+    ]);
+    const neighbors = getOntologyNeighbors({
+      treeId: TREE_ID,
+      entity: "claim",
+      objectId: "C-1",
+      limit: 10,
+    });
+    expect(neighbors.map((neighbor) => neighbor.link.relationship)).toEqual(["claim-of-case"]);
+  });
+
+  it("is idempotent, so re-running an action does not duplicate the edge", () => {
+    expect(runGraph(ATTACH, { "case-id": "CS-1", "claim-id": "C-1" }).ok).toBe(true);
+    expect(
+      getOntologyNeighbors({ treeId: TREE_ID, entity: "claim", objectId: "C-1", limit: 10 }),
+    ).toHaveLength(1);
+  });
+
+  it("removes the edge again with unlink", () => {
+    const detach: OntologyAction = { ...ATTACH, id: "detach-claim" };
+    detach.effects = [{ kind: "unlink", relationship: "claim-of-case" }];
+    expect(runGraph(detach, { "case-id": "CS-1", "claim-id": "C-1" }).ok).toBe(true);
+    expect(
+      getOntologyNeighbors({ treeId: TREE_ID, entity: "claim", objectId: "C-1", limit: 10 }),
+    ).toEqual([]);
+  });
+
+  it("names the parameter for each end when both ends are the same object type", () => {
+    // Both ends would otherwise read the same primaryKey parameter and the edge
+    // would loop an object back onto itself.
+    const scope = graphScope([]);
+    scope.relationships.set("related-claim", {
+      id: "related-claim",
+      from: "claim",
+      to: "claim",
+    });
+    const action: OntologyAction = {
+      id: "relate-claims",
+      parameters: [
+        { id: "claim-id", type: "id", required: true },
+        { id: "other-claim-id", type: "id", required: true },
+      ],
+      effects: [{ kind: "link", relationship: "related-claim", to: "other-claim-id" }],
+    };
+    scope.actions.set(action.id, action);
+    const result = runOntologyObjectWrite((database) =>
+      invokeOntologyAction(database, {
+        scope,
+        action,
+        args: { "claim-id": "C-1", "other-claim-id": "C-2" },
+      }),
+    );
+    expect(result.ok && result.writes).toEqual([
+      { relationship: "related-claim", from: "C-1", to: "C-2", kind: "link" },
+    ]);
+  });
+
+  it("refuses a relationship the step does not declare", () => {
+    const action: OntologyAction = {
+      id: "attach-elsewhere",
+      parameters: [{ id: "claim-id", type: "id", required: true }],
+      effects: [{ kind: "link", relationship: "unknown-link" }],
+    };
+    const result = runGraph(action, { "claim-id": "C-1" });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("does not declare");
+  });
+
+  it("refuses a call that cannot identify one end", () => {
+    const result = runGraph(ATTACH, { "claim-id": "C-1" });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("case-id");
+  });
+});
+
+describe("outward actions", () => {
+  it("sends the model to the tool instead of writing anything locally", () => {
+    // The call itself IS the action; invoke_action has nothing local to do, and
+    // the governance gate is what holds that call to these parameters.
+    const action: OntologyAction = {
+      id: "freeze-account",
+      parameters: [{ id: "account-id", type: "id", required: true }],
+      effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+    };
+    const result = invoke(action, { "account-id": "AC-1" });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("core-banking__freeze_account");
   });
 });

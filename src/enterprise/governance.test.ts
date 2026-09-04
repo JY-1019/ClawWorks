@@ -1635,3 +1635,341 @@ describe("evaluateKnowledgeRetrievalGovernance", () => {
     ).toBe("allow");
   });
 });
+
+describe("outward ontology actions", () => {
+  const FREEZE = {
+    id: "freeze-account",
+    description: "Freeze an account",
+    parameters: [
+      { id: "account-id", type: "id" as const, required: true },
+      { id: "reason", type: "string" as const, required: true },
+      { id: "notify", type: "boolean" as const },
+    ],
+    effects: [{ kind: "call" as const, tool: "core-banking__freeze_account" }],
+  };
+
+  function bankCall(tool: string) {
+    const { plan, node } = planWith({
+      ontology: { mcpServers: ["core-banking"], actions: [FREEZE] },
+    });
+    plan.mcpGoverned = true;
+    return {
+      plan,
+      node,
+      toolName: `core-banking__${tool}`,
+      mcpTool: { serverName: "core-banking", safeServerName: "core-banking", toolName: tool },
+      mcpServers: ["core-banking"],
+      policies: [] as GovernancePolicy[],
+    } as const;
+  }
+
+  it("allows the declared call when it carries the action's required parameters", () => {
+    const decision = evaluateToolCallGovernance({
+      ...bankCall("freeze_account"),
+      toolParams: { "account-id": "AC-2002", reason: "structuring pattern" },
+    });
+    expect(decision.effect).toBe("allow");
+    // The audit trail records the outward call as the action it answered to;
+    // nothing local changed, so this is the only link between the two.
+    expect(decision.outwardActionId).toBe("freeze-account");
+  });
+
+  it("denies the declared call when a required parameter is missing", () => {
+    const decision = evaluateToolCallGovernance({
+      ...bankCall("freeze_account"),
+      toolParams: { "account-id": "AC-2002" },
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.source).toBe("ontology");
+    expect(decision.reason).toContain("reason");
+    expect(decision.outwardActionId).toBeUndefined();
+  });
+
+  it("denies the declared call when a parameter has the wrong type", () => {
+    const decision = evaluateToolCallGovernance({
+      ...bankCall("freeze_account"),
+      toolParams: { "account-id": "AC-2002", reason: "structuring", notify: "yes" },
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.reason).toContain("boolean");
+  });
+
+  it("closes the rest of an attached server once a step declares an outward action", () => {
+    // The point of the lane: attaching a server otherwise grants every tool on
+    // it, so a step that declared "freeze" would still leave "close" one call away.
+    const decision = evaluateToolCallGovernance({
+      ...bankCall("close_account"),
+      toolParams: { "account-id": "AC-2002" },
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.source).toBe("ontology");
+    expect(decision.reason).toContain("outward actions");
+  });
+
+  it("leaves a step that declares no outward action on plain attachment behavior", () => {
+    const { plan, node } = planWith({ ontology: { mcpServers: ["core-banking"] } });
+    plan.mcpGoverned = true;
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "core-banking__close_account",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "close_account",
+      },
+      mcpServers: ["core-banking"],
+      policies: [],
+      toolParams: {},
+    });
+    expect(decision.effect).toBe("allow");
+  });
+
+  it("does not gate non-MCP tools on the step's outward declaration", () => {
+    // Clause 2 is about an attached server's OTHER tools. Local capabilities keep
+    // their own lane, or declaring one outward action would strip the step of read.
+    const { plan, node } = planWith({ ontology: { actions: [FREEZE] } });
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "read",
+      policies: [],
+      toolParams: { path: "notes.md" },
+    });
+    expect(decision.effect).toBe("allow");
+  });
+
+  it("reads the declaration from effects, not from an action's policy selector", () => {
+    // `tools` predates this lane and scopes governance policies. Treating it as a
+    // grant would silently narrow every work-map already using it.
+    const { plan, node } = planWith({
+      ontology: {
+        mcpServers: ["core-banking"],
+        actions: [{ id: "audit", description: "audit", tools: ["core-banking__freeze_account"] }],
+      },
+    });
+    plan.mcpGoverned = true;
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "core-banking__close_account",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "close_account",
+      },
+      mcpServers: ["core-banking"],
+      policies: [],
+      toolParams: {},
+    });
+    expect(decision.effect).toBe("allow");
+  });
+});
+
+describe("an outward action as its own grant", () => {
+  const FREEZE = {
+    id: "freeze-account",
+    parameters: [
+      { id: "account-id", type: "id" as const, required: true },
+      { id: "reason", type: "string" as const, required: true },
+    ],
+    effects: [{ kind: "call" as const, tool: "core-banking__freeze_account" }],
+  };
+
+  it("admits the declared call without repeating it in allowedTools", () => {
+    // Attaching the server and declaring the action in the node inspector has to
+    // be enough on its own; otherwise the declaration is insufficient in exactly
+    // the surface an operator writes it in.
+    const { plan, node } = planWith({
+      ontology: {
+        allowedTools: ["search_objects"],
+        mcpServers: ["core-banking"],
+        actions: [FREEZE],
+      },
+    });
+    plan.mcpGoverned = true;
+    plan.capabilityGrants = "explicit";
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "core-banking__freeze_account",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+      mcpServers: ["core-banking"],
+      policies: [],
+      toolParams: { "account-id": "AC-1", reason: "structuring" },
+    });
+    expect(decision.effect).toBe("allow");
+    expect(decision.outwardActionId).toBe("freeze-account");
+  });
+
+  it("still loses to an explicit deniedTools entry", () => {
+    const { plan, node } = planWith({
+      ontology: {
+        mcpServers: ["core-banking"],
+        deniedTools: ["core-banking__freeze_account"],
+        actions: [FREEZE],
+      },
+    });
+    plan.mcpGoverned = true;
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "core-banking__freeze_account",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+      mcpServers: ["core-banking"],
+      policies: [],
+      toolParams: { "account-id": "AC-1", reason: "structuring" },
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.reason).toContain("deniedTools");
+  });
+});
+
+describe("the outward lane on a native harness", () => {
+  // Codex and the Claude CLI report a tool call with NO MCP registration, so the
+  // alias machinery that needs one cannot run: the call arrives in whichever
+  // spelling that harness produced. A declaration written once has to grant in
+  // all of them, or the lane would work only on the embedded runtime.
+  const step = () => {
+    const built = planWith({
+      ontology: {
+        allowedTools: ["search_objects"],
+        mcpServers: ["core-banking"],
+        actions: [
+          {
+            id: "freeze-account",
+            parameters: [
+              { id: "account-id", type: "id", required: true },
+              { id: "reason", type: "string", required: true },
+            ],
+            effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+          },
+        ],
+      },
+    });
+    built.plan.mcpGoverned = true;
+    built.plan.capabilityGrants = "explicit";
+    return built;
+  };
+
+  it("grants the declared call in every spelling a harness may produce", () => {
+    for (const toolName of [
+      "core-banking__freeze_account",
+      "core_banking__freeze_account",
+      "mcp__core-banking__freeze_account",
+      "mcp__core_banking__freeze_account",
+    ]) {
+      const { plan, node } = step();
+      const decision = evaluateToolCallGovernance({
+        plan,
+        node,
+        toolName,
+        mcpServers: ["core-banking"],
+        policies: [],
+        toolParams: { "account-id": "AC-1", reason: "structuring" },
+      });
+      expect(decision.effect, toolName).toBe("allow");
+      expect(decision.outwardActionId, toolName).toBe("freeze-account");
+    }
+  });
+
+  it("holds the contract on those spellings too", () => {
+    const { plan, node } = step();
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "mcp__core_banking__freeze_account",
+      mcpServers: ["core-banking"],
+      policies: [],
+      toolParams: { "account-id": "AC-1" },
+    });
+    expect(decision.effect).toBe("deny");
+    expect(decision.reason).toContain("reason");
+  });
+
+  it("leaves the step's other calls to the tool scope, which has no registration either", () => {
+    // Closing the REST of an attached server needs the MCP registration to know
+    // which server a call belongs to, and a native harness carries none. The
+    // scope lane still governs: under explicit grants an unnamed tool is an
+    // omission, which fails closed rather than passing.
+    const { plan, node } = step();
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node,
+      toolName: "core_banking__close_account",
+      mcpServers: ["core-banking"],
+      policies: [],
+      toolParams: {},
+    });
+    expect(decision.effect).toBe("require_approval");
+    expect(decision.ontologyOmission).toBe(true);
+  });
+});
+
+describe("an outward action closes only its own server", () => {
+  // Regression: clause 2 used to deny any attached-MCP call the path's outward
+  // actions did not cover, whatever server it belonged to — so declaring an
+  // outward action on one service silently took away a freely attached other.
+  it("leaves a second attached server on plain attachment behavior", () => {
+    const root: EnterprisePlanNode = {
+      nodeId: "root",
+      parentId: null,
+      seq: 0,
+      title: "Root",
+      ontology: { mcpServers: ["tracker"] },
+    };
+    const leaf: EnterprisePlanNode = {
+      nodeId: "leaf",
+      parentId: "root",
+      seq: 1,
+      title: "Leaf",
+      ontology: {
+        mcpServers: ["core-banking"],
+        actions: [
+          {
+            id: "freeze-account",
+            parameters: [{ id: "account-id", type: "id", required: true }],
+            effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+          },
+        ],
+      },
+    };
+    const plan: EnterpriseRunPlan = {
+      runId: "run-1",
+      treeId: "acme.ops",
+      treeVersion: "1.0.0",
+      treeName: "Ops",
+      matchedBy: "planner",
+      requestSummary: "help",
+      nodes: [root, leaf],
+      activeNodeId: "leaf",
+      mode: "enforce",
+      createdAt: 0,
+      mcpGoverned: true,
+    };
+    const call = (server: string, tool: string) =>
+      evaluateToolCallGovernance({
+        plan,
+        node: leaf,
+        path: [root, leaf],
+        toolName: `${server}__${tool}`,
+        mcpTool: { serverName: server, safeServerName: server, toolName: tool },
+        mcpServers: ["tracker", "core-banking"],
+        policies: [],
+        toolParams: {},
+      });
+
+    // Nobody narrowed the tracker, so it keeps the grant its attachment gave it.
+    expect(call("tracker", "create_issue").effect).toBe("allow");
+    // The server the declaration DOES name is closed to everything else on it.
+    expect(call("core-banking", "close_account").effect).toBe("deny");
+  });
+});

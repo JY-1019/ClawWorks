@@ -71,12 +71,55 @@ export type OntologyActionParameter = {
 };
 
 /** What an action does to an object type when it runs. */
-export type OntologyActionEffect = {
+/** An effect on the object store: the action's write scope, checked before it writes. */
+export type OntologyObjectEffect = {
   /** Object type id this action touches. */
   entity: EnterpriseId;
   kind: "read" | "create" | "update" | "delete";
   description?: string;
 };
+
+/**
+ * An effect that LEAVES the process: the named tool call is this action happening
+ * in the system that actually owns the data.
+ *
+ * Our runtime cannot place the call itself — the ontology tools are built before
+ * any MCP session materializes, and CLI/ACP runs resolve tools somewhere we never
+ * reach — so the model calls the tool and the governance gate holds it to this
+ * action's declared parameters first. Declaring one also closes the step: an
+ * attached MCP server's other tools stop being reachable from it.
+ *
+ * `tool` is a glob, like every other tool selector here, so an operator can write
+ * the hash slot of a Codex-mangled MCP name as `*`.
+ */
+export type OntologyCallEffect = {
+  kind: "call";
+  tool: string;
+  description?: string;
+};
+
+/**
+ * An effect on the object GRAPH: the action relates two objects, or stops
+ * relating them.
+ *
+ * The endpoints come from the action's own parameters. By default each is the
+ * parameter named after that end's object type primaryKey — the same rule an
+ * object effect uses to identify what it writes — and `from`/`to` name the
+ * parameter explicitly when that default cannot work, which is any relationship
+ * whose two ends are the same object type.
+ */
+export type OntologyLinkEffect = {
+  kind: "link" | "unlink";
+  /** Relationship type id declared under `relationships`. */
+  relationship: EnterpriseId;
+  /** Parameter id holding the source object's key. Defaults to its primaryKey. */
+  from?: string;
+  /** Parameter id holding the target object's key. Defaults to its primaryKey. */
+  to?: string;
+  description?: string;
+};
+
+export type OntologyActionEffect = OntologyObjectEffect | OntologyCallEffect | OntologyLinkEffect;
 
 /**
  * Ontology action type: a named operation a step may perform, declaring what it
@@ -129,31 +172,6 @@ export type OntologyFunction = {
   returns: OntologyValueType;
 };
 
-/**
- * One object INSTANCE the tree declares up front.
- *
- * The tree owns what it declares: a seed is re-applied on every import, so
- * editing the definition updates it. Objects an action creates during a run are
- * `runtime`-provenance and are never clobbered by a re-import. Instances live in
- * SQLite; this is the exchange format, not the runtime store.
- */
-export type OntologyObjectSeed = {
-  /** Object type this is an instance of. */
-  entity: EnterpriseId;
-  /** Property values keyed by property id. Must carry the type's primaryKey. */
-  properties: Record<string, OntologyValue>;
-};
-
-/** One declared link between two seeded objects (instance level, not type level). */
-export type OntologyLinkSeed = {
-  /** Link type id declared under `relationships`. */
-  relationship: EnterpriseId;
-  /** primaryKey value of the source object. */
-  from: string;
-  /** primaryKey value of the target object. */
-  to: string;
-};
-
 /** Constraint the step must respect; blocking constraints join governance denials. */
 export type OntologyConstraint = {
   id: EnterpriseId;
@@ -170,10 +188,6 @@ export type OntologyBinding = {
   relationships?: OntologyRelationship[];
   actions?: OntologyAction[];
   functions?: OntologyFunction[];
-  /** Object instances the tree declares. Materialized into SQLite on import. */
-  objects?: OntologyObjectSeed[];
-  /** Links between the declared objects. Materialized into SQLite on import. */
-  links?: OntologyLinkSeed[];
   constraints?: OntologyConstraint[];
   /**
    * Tool name globs allowed for this node. Empty/omitted = allow all (repo
@@ -438,6 +452,13 @@ export type GovernanceDecision = {
    * can answer (a synchronous native hook) need that fact, not the source.
    */
   ontologyOmission?: true;
+  /**
+   * This call IS an ontology action leaving the process, and it satisfied that
+   * action's contract. Carried so the audit trail can record the outward call as
+   * the action it was, the way invoke_action records a local write: the gate is
+   * the only place that knows which action a raw external tool call answered to.
+   */
+  outwardActionId?: EnterpriseId;
 };
 
 /** Flattened plan node with its resolved ontology. */

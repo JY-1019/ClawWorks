@@ -37,10 +37,6 @@ const TREE = JSON.stringify({
           ],
         },
       ],
-      objects: [
-        { entity: "claim", properties: { "claim-id": "C-1", amount: 100, status: "intake" } },
-        { entity: "claim", properties: { "claim-id": "C-2", amount: 900, status: "closed" } },
-      ],
     },
     children: [{ id: "root.work", title: "Work" }],
   },
@@ -67,12 +63,21 @@ function invoke(params: Record<string, unknown>) {
   return calls[0];
 }
 
-type ObjectRow = { objectId: string; properties: Record<string, unknown>; provenance: string };
+type ObjectRow = { objectId: string; properties: Record<string, unknown> };
 
 beforeAll(() => {
   setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
   invalidateWorkflowTreeRegistry();
   expect(importWorkflowTreeContent({ content: TREE, format: "json" }).ok).toBe(true);
+  // Instances exist only because a run made them; the tree declares the type.
+  runOntologyObjectWrite((database) => {
+    for (const object of [
+      { objectId: "C-1", properties: { "claim-id": "C-1", amount: 100, status: "intake" } },
+      { objectId: "C-2", properties: { "claim-id": "C-2", amount: 900, status: "closed" } },
+    ]) {
+      upsertOntologyObject(database, { treeId: "acme.objects", entity: "claim", ...object });
+    }
+  });
 });
 
 afterAll(() => {
@@ -83,7 +88,7 @@ afterAll(() => {
 });
 
 describe("enterprise.objects.list", () => {
-  it("serves the seeded instances of an object type, full properties", () => {
+  it("serves the instances of an object type, full properties", () => {
     const { ok, payload } = invoke({ treeId: "acme.objects", entity: "claim" });
     expect(ok).toBe(true);
     const objects = (payload as { objects: ObjectRow[] }).objects;
@@ -91,7 +96,6 @@ describe("enterprise.objects.list", () => {
     // Operator inspection sees every property (unlike the model tools, which scope).
     const first = objects.find((object) => object.objectId === "C-1");
     expect(first?.properties).toEqual({ "claim-id": "C-1", amount: 100, status: "intake" });
-    expect(first?.provenance).toBe("seed");
   });
 
   it("filters by property value in SQL", () => {

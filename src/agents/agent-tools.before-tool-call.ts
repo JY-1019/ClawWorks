@@ -1204,6 +1204,7 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
     ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
     ...(invokedActionId !== undefined ? { actionId: invokedActionId } : {}),
     ...(decideLater ? { record: false } : {}),
+    toolParams: params,
   });
   if (enterpriseVerdict?.blocked) {
     return {

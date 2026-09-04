@@ -8,10 +8,9 @@
  * store would show the same tree a different object graph per agent, and an
  * operator removing a tree could not reach the rows it orphaned.
  *
- * Provenance is the seam between the two writers. `seed` rows are declared BY the
- * tree, so a re-import re-applies them and the definition stays the source of
- * truth for what it declares. `runtime` rows were created by an action during a
- * run and a re-import never touches them.
+ * Every row here was created by an action during a run. A tree declares object
+ * TYPES and the actions that write them; it declares no instances, so a
+ * re-import changes what may be written and never the data itself.
  */
 import { sql } from "kysely";
 import {
@@ -39,15 +38,11 @@ export type EnterpriseObjectStoreOptions = {
   stateDatabasePath?: string;
 };
 
-/** Who wrote the row: the tree definition, or an action during a run. */
-export type OntologyProvenance = "seed" | "runtime";
-
 /** One object instance as the tools see it. */
 export type OntologyObjectRecord = {
   entity: EnterpriseId;
   objectId: string;
   properties: Record<string, OntologyValue>;
-  provenance: OntologyProvenance;
   updatedAt: number;
 };
 
@@ -69,7 +64,6 @@ type ObjectRow = {
   tree_id: string;
   entity_id: string;
   object_id: string;
-  provenance: string;
   properties_json: string;
   created_at: number | bigint;
   updated_at: number | bigint;
@@ -91,10 +85,6 @@ function stateDatabaseOptions(options: EnterpriseObjectStoreOptions): OpenClawSt
     ...(options.env ? { env: options.env } : {}),
     ...(options.stateDatabasePath ? { path: options.stateDatabasePath } : {}),
   };
-}
-
-function parseProvenance(value: string): OntologyProvenance {
-  return value === "runtime" ? "runtime" : "seed";
 }
 
 function rowToObject(row: ObjectRow): OntologyObjectRecord {
@@ -119,7 +109,6 @@ function rowToObject(row: ObjectRow): OntologyObjectRecord {
     entity: row.entity_id,
     objectId: row.object_id,
     properties: parsed as Record<string, OntologyValue>,
-    provenance: parseProvenance(row.provenance),
     updatedAt,
   };
 }
@@ -134,28 +123,11 @@ function rowToLink(row: LinkRow): OntologyLinkRecord {
   };
 }
 
-/** Object instances the tree declares, plus the edges between them. */
-export type OntologySeedData = {
-  objects: Array<{
-    entity: EnterpriseId;
-    objectId: string;
-    properties: Record<string, OntologyValue>;
-  }>;
-  links: Array<{
-    relationship: EnterpriseId;
-    fromEntity: EnterpriseId;
-    fromObjectId: string;
-    toEntity: EnterpriseId;
-    toObjectId: string;
-  }>;
-};
-
 /**
  * Object types a tree can currently address: an entity declared anywhere in the
  * tree with a primaryKey. Only these can hold instances (identity IS a primaryKey
- * value), so an operator read of any other id would only ever surface runtime
- * rows a prior definition left behind — `replaceSeededOntologyObjects` keeps
- * runtime rows across re-imports. Reads gate on this so a dropped entity's stale
+ * value), so an operator read of any other id would only ever surface rows a
+ * prior definition left behind. Reads gate on this so a dropped entity's stale
  * rows are not exposed after the definition stops declaring it.
  */
 export function addressableObjectEntityIds(tree: WorkflowTreeDefinition): Set<EnterpriseId> {
@@ -172,150 +144,6 @@ export function addressableObjectEntityIds(tree: WorkflowTreeDefinition): Set<En
   };
   walk(tree.root);
   return ids;
-}
-
-/**
- * Flatten a validated tree's declared instances into rows.
- *
- * Object identity is the VALUE of the object type's primaryKey property — that
- * is what makes `$claim-id` in an expression and `claim/CLM-1042` in the store
- * the same thing. Import validation already proved every seed carries a non-blank
- * primaryKey and every link joins two seeded objects, so the identity filter
- * below only drops what a validated tree can never contain — it re-checks nothing
- * the store then relies on.
- */
-export function collectOntologySeed(tree: WorkflowTreeDefinition): OntologySeedData {
-  const primaryKeys = new Map<EnterpriseId, string>();
-  const linkEndpoints = new Map<EnterpriseId, { from: EnterpriseId; to: EnterpriseId }>();
-  const seeds: Array<{ entity: EnterpriseId; properties: Record<string, OntologyValue> }> = [];
-  const declaredLinks: Array<{ relationship: EnterpriseId; from: string; to: string }> = [];
-
-  const walk = (node: WorkflowNodeDefinition): void => {
-    for (const entity of node.ontology?.entities ?? []) {
-      const primaryKey = entity.properties?.find((property) => property.primaryKey);
-      if (primaryKey) {
-        primaryKeys.set(entity.id, primaryKey.id);
-      }
-    }
-    for (const relationship of node.ontology?.relationships ?? []) {
-      if (!linkEndpoints.has(relationship.id)) {
-        linkEndpoints.set(relationship.id, { from: relationship.from, to: relationship.to });
-      }
-    }
-    seeds.push(...(node.ontology?.objects ?? []));
-    declaredLinks.push(...(node.ontology?.links ?? []));
-    for (const child of node.children ?? []) {
-      walk(child);
-    }
-  };
-  walk(tree.root);
-
-  const objects = seeds.flatMap((seed) => {
-    const primaryKey = primaryKeys.get(seed.entity);
-    const identity = primaryKey ? seed.properties[primaryKey] : undefined;
-    if (identity === undefined || identity === null || typeof identity === "boolean") {
-      return [];
-    }
-    return [{ entity: seed.entity, objectId: String(identity), properties: seed.properties }];
-  });
-
-  const links = declaredLinks.flatMap((link) => {
-    const endpoints = linkEndpoints.get(link.relationship);
-    if (!endpoints) {
-      return [];
-    }
-    return [
-      {
-        relationship: link.relationship,
-        fromEntity: endpoints.from,
-        fromObjectId: link.from,
-        toEntity: endpoints.to,
-        toObjectId: link.to,
-      },
-    ];
-  });
-
-  return { objects, links };
-}
-
-/**
- * Re-apply a tree's declared instances, inside the caller's import transaction.
- *
- * Seed rows are replaced wholesale (a seed dropped from the definition must
- * disappear, not linger), while `runtime` rows are left alone — a re-import
- * re-states what the tree declares and must not destroy what a run created.
- */
-export function replaceSeededOntologyObjects(
-  database: OpenClawStateDatabase,
-  params: { treeId: string; seed: OntologySeedData; now?: number },
-): void {
-  const now = params.now ?? Date.now();
-  const stateDb = getNodeSqliteKysely<EnterpriseObjectDatabase>(database.db);
-
-  executeSqliteQuerySync(
-    database.db,
-    stateDb
-      .deleteFrom("enterprise_ontology_objects")
-      .where("tree_id", "=", params.treeId)
-      .where("provenance", "=", "seed"),
-  );
-  executeSqliteQuerySync(
-    database.db,
-    stateDb
-      .deleteFrom("enterprise_ontology_links")
-      .where("tree_id", "=", params.treeId)
-      .where("provenance", "=", "seed"),
-  );
-
-  for (const object of params.seed.objects) {
-    executeSqliteQuerySync(
-      database.db,
-      stateDb
-        .insertInto("enterprise_ontology_objects")
-        .values({
-          tree_id: params.treeId,
-          entity_id: object.entity,
-          object_id: object.objectId,
-          provenance: "seed",
-          properties_json: JSON.stringify(object.properties),
-          created_at: now,
-          updated_at: now,
-        })
-        // A seed whose id collides with a RUNTIME row overwrites it: the tree is
-        // the source of truth for what it declares, and leaving both would make
-        // the object's identity ambiguous (the primary key is the identity).
-        .onConflict((conflict) =>
-          conflict.columns(["tree_id", "entity_id", "object_id"]).doUpdateSet({
-            provenance: "seed",
-            properties_json: JSON.stringify(object.properties),
-            updated_at: now,
-          }),
-        ),
-    );
-  }
-
-  for (const link of params.seed.links) {
-    executeSqliteQuerySync(
-      database.db,
-      stateDb
-        .insertInto("enterprise_ontology_links")
-        .values({
-          tree_id: params.treeId,
-          relationship_id: link.relationship,
-          from_entity_id: link.fromEntity,
-          from_object_id: link.fromObjectId,
-          to_entity_id: link.toEntity,
-          to_object_id: link.toObjectId,
-          provenance: "seed",
-          created_at: now,
-        })
-        .onConflict((conflict) =>
-          conflict
-            .columns(["tree_id", "relationship_id", "from_object_id", "to_object_id"])
-            .doNothing(),
-        ),
-    );
-  }
 }
 
 /**
@@ -612,14 +440,10 @@ export function upsertOntologyObject(
         tree_id: params.treeId,
         entity_id: params.entity,
         object_id: params.objectId,
-        provenance: "runtime",
         properties_json: propertiesJson,
         created_at: now,
         updated_at: now,
       })
-      // An update to a SEEDED object keeps its seed provenance: the tree still
-      // declares it, so a re-import must still be able to restate it. Only the
-      // values move.
       .onConflict((conflict) =>
         conflict.columns(["tree_id", "entity_id", "object_id"]).doUpdateSet({
           properties_json: propertiesJson,
@@ -627,6 +451,70 @@ export function upsertOntologyObject(
         }),
       ),
   );
+}
+
+/**
+ * Relate two objects, inside the caller's write transaction.
+ *
+ * Idempotent by the same key the traversal reads, so re-running an action that
+ * already linked its two objects restates the edge instead of duplicating it —
+ * get_neighbors would otherwise return the same neighbor twice.
+ */
+export function upsertOntologyLink(
+  database: OpenClawStateDatabase,
+  params: {
+    treeId: string;
+    relationship: EnterpriseId;
+    fromEntity: EnterpriseId;
+    fromObjectId: string;
+    toEntity: EnterpriseId;
+    toObjectId: string;
+    now?: number;
+  },
+): void {
+  const stateDb = getNodeSqliteKysely<EnterpriseObjectDatabase>(database.db);
+  executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .insertInto("enterprise_ontology_links")
+      .values({
+        tree_id: params.treeId,
+        relationship_id: params.relationship,
+        from_entity_id: params.fromEntity,
+        from_object_id: params.fromObjectId,
+        to_entity_id: params.toEntity,
+        to_object_id: params.toObjectId,
+        created_at: params.now ?? Date.now(),
+      })
+      .onConflict((conflict) =>
+        conflict
+          .columns(["tree_id", "relationship_id", "from_object_id", "to_object_id"])
+          .doNothing(),
+      ),
+  );
+}
+
+/** Drop one edge, inside a write transaction. Returns whether it existed. */
+export function deleteOntologyLink(
+  database: OpenClawStateDatabase,
+  params: {
+    treeId: string;
+    relationship: EnterpriseId;
+    fromObjectId: string;
+    toObjectId: string;
+  },
+): boolean {
+  const stateDb = getNodeSqliteKysely<EnterpriseObjectDatabase>(database.db);
+  const result = executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .deleteFrom("enterprise_ontology_links")
+      .where("tree_id", "=", params.treeId)
+      .where("relationship_id", "=", params.relationship)
+      .where("from_object_id", "=", params.fromObjectId)
+      .where("to_object_id", "=", params.toObjectId),
+  );
+  return (normalizeSqliteNumber(result.numAffectedRows ?? 0n) ?? 0) > 0;
 }
 
 /** Delete one object and every edge touching it, inside a write transaction. */

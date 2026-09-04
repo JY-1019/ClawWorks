@@ -51,7 +51,10 @@ export type OpenClawStateDatabaseOptions = {
 };
 
 export type OpenClawStateDatabaseSchemaMigration = {
-  kind: "agent-databases-composite-primary-key" | "enterprise-trace-execution-id-key";
+  kind:
+    | "agent-databases-composite-primary-key"
+    | "enterprise-trace-execution-id-key"
+    | "enterprise-ontology-declared-instances";
   path: string;
 };
 
@@ -272,6 +275,69 @@ function repairEnterpriseTraceExecutionIdKey(db: DatabaseSync): boolean {
   return true;
 }
 
+function hasCanonicalOntologyInstanceSchema(db: DatabaseSync): boolean {
+  // Ontology instances used to have two writers: rows a tree DECLARED (re-applied
+  // on every import) and rows an action created during a run. A tree declares
+  // object types and the actions that write them, never instances, so the
+  // `provenance` column that told them apart no longer distinguishes anything —
+  // and it is NOT NULL with no default, so an insert from current code fails
+  // against a legacy-shaped table.
+  for (const table of ["enterprise_ontology_objects", "enterprise_ontology_links"] as const) {
+    if (tableExists(db, table) && tableHasColumn(db, table, "provenance")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function repairOntologyDeclaredInstances(db: DatabaseSync): boolean {
+  if (hasCanonicalOntologyInstanceSchema(db)) {
+    return false;
+  }
+  // Declared rows go; rows a run created stay. An investigation case or a filed
+  // report is persistent user state a definition never owned, so this rebuilds
+  // rather than dropping the tables the way the run-trace repair can.
+  db.exec(`
+    DELETE FROM enterprise_ontology_objects WHERE provenance = 'seed';
+    DELETE FROM enterprise_ontology_links WHERE provenance = 'seed';
+
+    CREATE TABLE enterprise_ontology_objects_migrated (
+      tree_id TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      object_id TEXT NOT NULL,
+      properties_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tree_id, entity_id, object_id)
+    );
+    INSERT INTO enterprise_ontology_objects_migrated
+      SELECT tree_id, entity_id, object_id, properties_json, created_at, updated_at
+      FROM enterprise_ontology_objects;
+    DROP TABLE enterprise_ontology_objects;
+    ALTER TABLE enterprise_ontology_objects_migrated RENAME TO enterprise_ontology_objects;
+
+    CREATE TABLE enterprise_ontology_links_migrated (
+      tree_id TEXT NOT NULL,
+      relationship_id TEXT NOT NULL,
+      from_entity_id TEXT NOT NULL,
+      from_object_id TEXT NOT NULL,
+      to_entity_id TEXT NOT NULL,
+      to_object_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tree_id, relationship_id, from_object_id, to_object_id)
+    );
+    INSERT INTO enterprise_ontology_links_migrated
+      SELECT tree_id, relationship_id, from_entity_id, from_object_id,
+             to_entity_id, to_object_id, created_at
+      FROM enterprise_ontology_links;
+    DROP TABLE enterprise_ontology_links;
+    ALTER TABLE enterprise_ontology_links_migrated RENAME TO enterprise_ontology_links;
+  `);
+  // The indexes went with the dropped tables; ensureSchema recreates them on the
+  // next open, the same way it creates them for a fresh database.
+  return true;
+}
+
 function assertCanonicalStateSchemaShape(db: DatabaseSync, pathname: string): void {
   if (!hasCanonicalAgentDatabasesPrimaryKey(db)) {
     throw new Error(
@@ -281,6 +347,11 @@ function assertCanonicalStateSchemaShape(db: DatabaseSync, pathname: string): vo
   if (!hasCanonicalEnterpriseTraceSchema(db)) {
     throw new Error(
       `OpenClaw state database ${pathname} has a legacy enterprise run-trace schema; run openclaw doctor --fix to migrate it.`,
+    );
+  }
+  if (!hasCanonicalOntologyInstanceSchema(db)) {
+    throw new Error(
+      `OpenClaw state database ${pathname} has a legacy ontology instance schema; run openclaw doctor --fix to migrate it.`,
     );
   }
 }
@@ -301,6 +372,9 @@ export function detectOpenClawStateDatabaseSchemaMigrations(
     }
     if (!hasCanonicalEnterpriseTraceSchema(db)) {
       migrations.push({ kind: "enterprise-trace-execution-id-key", path: pathname });
+    }
+    if (!hasCanonicalOntologyInstanceSchema(db)) {
+      migrations.push({ kind: "enterprise-ontology-declared-instances", path: pathname });
     }
     return migrations;
   } finally {
@@ -326,6 +400,7 @@ export function repairOpenClawStateDatabaseSchema(options: OpenClawStateDatabase
     const repaired = runSqliteImmediateTransactionSync(db, () => ({
       agentDatabases: repairAgentDatabasesCompositePrimaryKey(db),
       enterpriseTrace: repairEnterpriseTraceExecutionIdKey(db),
+      ontologyInstances: repairOntologyDeclaredInstances(db),
     }));
     const changes: string[] = [];
     if (repaired.agentDatabases) {
@@ -333,6 +408,9 @@ export function repairOpenClawStateDatabaseSchema(options: OpenClawStateDatabase
     }
     if (repaired.enterpriseTrace) {
       changes.push(`Rebuilt legacy enterprise run-trace tables → execution_id key`);
+    }
+    if (repaired.ontologyInstances) {
+      changes.push(`Dropped tree-declared ontology instances and rebuilt the instance tables`);
     }
     return { changes, warnings: [] };
   } catch (err) {

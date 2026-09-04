@@ -22,29 +22,40 @@
  */
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
+  deleteOntologyLink,
   deleteOntologyObject,
   getOntologyObjectIn,
+  upsertOntologyLink,
   upsertOntologyObject,
 } from "./object-store.sqlite.js";
 import { ontologyValueMatchesType } from "./ontology-expression.js";
 import { primaryKeyOf, type NodeOntologyScope } from "./ontology-runtime.js";
 import type {
   OntologyAction,
-  OntologyActionEffect,
   OntologyEntity,
+  OntologyLinkEffect,
+  OntologyObjectEffect,
   OntologyValue,
 } from "./types.js";
 
 /** One write an action performed, as the audit trail records it. */
-export type OntologyWrite = {
-  entity: string;
-  objectId: string;
-  kind: "create" | "update" | "delete";
-};
+export type OntologyWrite =
+  | { entity: string; objectId: string; kind: "create" | "update" | "delete" }
+  | { relationship: string; from: string; to: string; kind: "link" | "unlink" };
 
 export type OntologyActionResult =
   | { ok: true; writes: OntologyWrite[]; unmappedParameters: Record<string, OntologyValue> }
   | { ok: false; error: string };
+
+/** A single resolved, fully-checked edge write, ready to apply. */
+type PlannedLink = {
+  kind: "link" | "unlink";
+  relationship: string;
+  fromEntity: string;
+  fromObjectId: string;
+  toEntity: string;
+  toObjectId: string;
+};
 
 /** A single resolved, fully-checked write, ready to apply. */
 type PlannedWrite = {
@@ -113,7 +124,7 @@ type PlanEffectResult = { ok: true; write: PlannedWrite } | { ok: false; error: 
  * later read and every function assumes is typed differently.
  */
 function planEffect(
-  effect: OntologyActionEffect & { kind: "create" | "update" | "delete" },
+  effect: OntologyObjectEffect & { kind: "create" | "update" | "delete" },
   params: {
     database: OpenClawStateDatabase;
     scope: NodeOntologyScope;
@@ -263,6 +274,93 @@ function planEffect(
 }
 
 /**
+ * Resolve one graph effect into a checked edge.
+ *
+ * The endpoints come from the action's own parameters, so linking is declarative
+ * the way writing is: each end reads the parameter named after that end's object
+ * type primaryKey, and `from`/`to` name the parameter outright when that default
+ * cannot work — which is any relationship whose two ends are the same type, where
+ * both ends would otherwise read the same parameter.
+ *
+ * Endpoint existence is NOT checked here. get_neighbors joins edges back to
+ * objects, so an edge to a missing object simply returns no neighbor; requiring
+ * the target to exist first would forbid the ordinary case of an action that
+ * creates an object and links it in the same call.
+ */
+function planLinkEffect(
+  effect: OntologyLinkEffect,
+  context: {
+    scope: NodeOntologyScope;
+    action: OntologyAction;
+    args: Record<string, OntologyValue>;
+    consumed: Set<string>;
+  },
+): { ok: true; link: PlannedLink } | { ok: false; error: string } {
+  const { scope, action, args, consumed } = context;
+  const relationship = scope.relationships.get(effect.relationship);
+  if (!relationship) {
+    // Import validation resolves effect relationships tree-wide, so this means
+    // the declaration lives on a branch this step's path does not include.
+    return {
+      ok: false,
+      error: `action "${action.id}" relates over "${effect.relationship}", which this workflow step does not declare`,
+    };
+  }
+  const ends = [
+    { side: "from" as const, entityId: relationship.from, parameter: effect.from },
+    { side: "to" as const, entityId: relationship.to, parameter: effect.to },
+  ];
+  const resolved: { entityId: string; objectId: string }[] = [];
+  for (const end of ends) {
+    const entity = scope.entities.get(end.entityId);
+    if (!entity) {
+      return {
+        ok: false,
+        error: `relationship "${effect.relationship}" ${end.side === "from" ? "starts at" : "ends at"} object type "${end.entityId}", which this workflow step does not declare`,
+      };
+    }
+    const primaryKey = primaryKeyOf(entity);
+    if (!primaryKey) {
+      return {
+        ok: false,
+        error: `object type "${end.entityId}" declares no primaryKey, so an action cannot address an instance of it`,
+      };
+    }
+    const parameterId = end.parameter ?? primaryKey;
+    const value = args[parameterId];
+    if (value === undefined) {
+      return {
+        ok: false,
+        error: `action "${action.id}" must pass "${parameterId}" to identify the "${end.entityId}" it relates`,
+      };
+    }
+    if (typeof value !== "string" && typeof value !== "number") {
+      return {
+        ok: false,
+        error: `action "${action.id}" passed ${value === null ? "null" : typeof value} as "${parameterId}", which cannot identify an object`,
+      };
+    }
+    consumed.add(parameterId);
+    resolved.push({ entityId: end.entityId, objectId: String(value) });
+  }
+  const [from, to] = resolved;
+  if (!from || !to) {
+    return { ok: false, error: `action "${action.id}" could not resolve both ends of the link` };
+  }
+  return {
+    ok: true,
+    link: {
+      kind: effect.kind,
+      relationship: effect.relationship,
+      fromEntity: from.entityId,
+      fromObjectId: from.objectId,
+      toEntity: to.entityId,
+      toObjectId: to.objectId,
+    },
+  };
+}
+
+/**
  * Apply one action's declared effects to the object store, inside the caller's
  * write transaction.
  *
@@ -286,15 +384,32 @@ export function invokeOntologyAction(
     return { ok: false, error: parameterError };
   }
 
-  // A type predicate, not a bare filter: "read" must not survive into a write.
+  // A type predicate over the three object-write kinds, selected positively: a
+  // "read" must not survive into a write, and neither must the outward or graph
+  // effects, which write no object at all.
   const writeEffects = (action.effects ?? []).filter(
-    (effect): effect is OntologyActionEffect & { kind: "create" | "update" | "delete" } =>
-      effect.kind !== "read",
+    (effect): effect is OntologyObjectEffect & { kind: "create" | "update" | "delete" } =>
+      effect.kind === "create" || effect.kind === "update" || effect.kind === "delete",
   );
-  if (writeEffects.length === 0) {
+  const linkEffects = (action.effects ?? []).filter(
+    (effect): effect is OntologyLinkEffect => effect.kind === "link" || effect.kind === "unlink",
+  );
+  if (writeEffects.length === 0 && linkEffects.length === 0) {
     // The effects ARE the write scope. An action that declares none (or only
     // reads) is read-only, and saying so is more useful than silently doing
-    // nothing.
+    // nothing. An outward action lands here too, and the message has to send the
+    // model to the tool rather than leave it retrying invoke_action: the call
+    // itself is how that action happens, and the governance gate is what holds it
+    // to these same parameters.
+    const outward = (action.effects ?? []).filter((effect) => effect.kind === "call");
+    if (outward.length > 0) {
+      return {
+        ok: false,
+        error: `action "${action.id}" happens outside this workflow: call ${outward
+          .map((effect) => `"${effect.tool}"`)
+          .join(" or ")} directly with the action's parameters`,
+      };
+    }
     return {
       ok: false,
       error: `action "${action.id}" declares no write effects, so it cannot change any object`,
@@ -327,6 +442,15 @@ export function invokeOntologyAction(
     planned.push(write);
   }
 
+  const plannedLinks: PlannedLink[] = [];
+  for (const effect of linkEffects) {
+    const outcome = planLinkEffect(effect, { scope, action, args, consumed });
+    if (!outcome.ok) {
+      return { ok: false, error: outcome.error };
+    }
+    plannedLinks.push(outcome.link);
+  }
+
   // APPLY: nothing below can fail on the ontology's terms.
   const writes: OntologyWrite[] = [];
   for (const write of planned) {
@@ -346,6 +470,33 @@ export function invokeOntologyAction(
       });
     }
     writes.push({ entity: write.entityId, objectId: write.objectId, kind: write.kind });
+  }
+
+  for (const link of plannedLinks) {
+    if (link.kind === "unlink") {
+      deleteOntologyLink(database, {
+        treeId: scope.treeId,
+        relationship: link.relationship,
+        fromObjectId: link.fromObjectId,
+        toObjectId: link.toObjectId,
+      });
+    } else {
+      upsertOntologyLink(database, {
+        treeId: scope.treeId,
+        relationship: link.relationship,
+        fromEntity: link.fromEntity,
+        fromObjectId: link.fromObjectId,
+        toEntity: link.toEntity,
+        toObjectId: link.toObjectId,
+        ...(params.now !== undefined ? { now: params.now } : {}),
+      });
+    }
+    writes.push({
+      relationship: link.relationship,
+      from: link.fromObjectId,
+      to: link.toObjectId,
+      kind: link.kind,
+    });
   }
 
   // Parameters that mapped to no property are the action's rationale/context:

@@ -23,11 +23,7 @@ import {
   pruneBundledKnowledgeFoundationsForTree,
   replaceBundledKnowledgeFoundationsForTree,
 } from "./enterprise-knowledge-store.sqlite.js";
-import {
-  collectOntologySeed,
-  deleteOntologyObjectsForTree,
-  replaceSeededOntologyObjects,
-} from "./object-store.sqlite.js";
+import { deleteOntologyObjectsForTree } from "./object-store.sqlite.js";
 import { validateWorkflowTreeDefinition } from "./schema.js";
 import { collectReferencedFoundationIds } from "./tree-references.js";
 import type { BundledKnowledgeFoundation, WorkflowTreeDefinition } from "./types.js";
@@ -286,14 +282,6 @@ export function upsertEnterpriseWorkflowTree(
         saved_at: now,
       }),
     );
-    // Materialize the objects the tree declares in the SAME transaction: the
-    // definition and its instances must never be half-applied, or a run would
-    // plan against a tree whose objects do not exist yet.
-    replaceSeededOntologyObjects(database, {
-      treeId: params.tree.id,
-      seed: collectOntologySeed(params.tree),
-      now,
-    });
     // Keep this tree's persisted bundled foundations in sync with its definition,
     // in the SAME transaction so tree and knowledge are never half-applied. Note:
     // only the live set is kept — bundled knowledge is NOT snapshotted into the

@@ -1313,3 +1313,39 @@ describe("ontologyHasGuidance / planTracksSteps", () => {
     expect(planTracksSteps(planFor(tree, "approve"))).toBe(true);
   });
 });
+
+describe("graph effects in the step digest", () => {
+  it("names the relationship an action relates, never a missing object type", () => {
+    // Regression: the writes filter excluded "read" and "call" by kind, so a link
+    // effect passed it and the digest handed the model "writes: link undefined".
+    const node = {
+      nodeId: "n",
+      parentId: null,
+      seq: 0,
+      title: "N",
+      ontology: {
+        actions: [
+          {
+            id: "attach",
+            parameters: [{ id: "case-id", type: "id" as const, required: true }],
+            effects: [{ kind: "link" as const, relationship: "case-investigates-alert" }],
+          },
+        ],
+      },
+    };
+    const section = buildEnterprisePromptSection({
+      runId: "r",
+      treeId: "t",
+      treeVersion: "1",
+      treeName: "T",
+      matchedBy: "planner",
+      requestSummary: "x",
+      nodes: [node],
+      activeNodeId: "n",
+      mode: "enforce",
+      createdAt: 0,
+    });
+    expect(section).toContain("relates: link case-investigates-alert");
+    expect(section).not.toContain("undefined");
+  });
+});
