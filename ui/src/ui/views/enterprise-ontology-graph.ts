@@ -127,6 +127,43 @@ export function declaredExecutableEntityIds(tree: EnterpriseTreeDetail, nodeId: 
   return [...first].filter((id) => rest.every((scope) => scope.has(id)));
 }
 
+/**
+ * Link type ids a declaration made at `nodeId` can relate over when it RUNS.
+ *
+ * The relationship mirror of `declaredExecutableEntityIds`, and the same
+ * intersection for the same reason: a graph effect resolves against whichever
+ * leaf is active, so a link type only one branch declares would come back
+ * `relationship-not-found` on the others.
+ */
+export function declaredExecutableRelationshipIds(
+  tree: EnterpriseTreeDetail,
+  nodeId: string,
+): string[] {
+  const subtree = new Set([nodeId]);
+  for (const candidate of tree.nodes) {
+    if (candidate.parentId && subtree.has(candidate.parentId)) {
+      subtree.add(candidate.id);
+    }
+  }
+  const hasChildren = new Set(
+    tree.nodes.map((candidate) => candidate.parentId).filter((id) => id !== null),
+  );
+  const leaves = [...subtree].filter((id) => !hasChildren.has(id));
+  const perLeaf = (leaves.length > 0 ? leaves : [nodeId]).map(
+    (id) =>
+      new Set(
+        nodePathTo(tree, id)
+          .flatMap((node) => node.ontology.relationships ?? [])
+          .map((relationship) => relationship.id),
+      ),
+  );
+  const [first, ...rest] = perLeaf;
+  if (!first) {
+    return [];
+  }
+  return [...first].filter((id) => rest.every((scope) => scope.has(id)));
+}
+
 function mergeOntologyNodes(nodes: readonly EnterpriseTreeNode[]): OntologyGraph {
   const entityById = new Map<string, OntologyEntity>();
   const relationshipByKey = new Map<string, OntologyRelationship>();

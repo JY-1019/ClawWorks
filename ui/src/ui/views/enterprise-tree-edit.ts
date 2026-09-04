@@ -256,7 +256,6 @@ export const ONTOLOGY_EDIT_REASONS = [
   "entity-in-use",
   "entity-referenced",
   "property-in-use",
-  "seeded-data-in-use",
   "primary-key-taken",
   "action-not-found",
   "effect-needs-identity",
@@ -267,6 +266,8 @@ export const ONTOLOGY_EDIT_REASONS = [
   "parameter-type-conflict",
   "effect-target-taken",
   "create-required-unreachable",
+  "relationship-not-found",
+  "effect-mixes-outward",
 ] as const;
 
 export type OntologyEditReason = (typeof ONTOLOGY_EDIT_REASONS)[number];
@@ -707,7 +708,22 @@ export function removeNodeOntologyRelationship(
   return { ok: true, definition: next };
 }
 
-/** Effect kinds an action may declare (mirrors OntologyActionEffect.kind). */
+/** One effect as the inspector collects it, before the splicer checks it. */
+export type OntologyEffectDraft =
+  | { kind: OntologyEffectKindName; entity: string }
+  | { kind: "call"; tool: string }
+  | { kind: "link" | "unlink"; relationship: string };
+
+/** Append one checked effect, keeping the array the caller already read. */
+function appendActionEffect(
+  action: Record<string, unknown>,
+  declared: readonly Record<string, unknown>[],
+  added: Record<string, unknown>,
+): void {
+  action.effects = [...declared, added];
+}
+
+/** Effect kinds an action may declare (mirrors OntologyActionEffect.kind). */ /** Effect kinds an action may declare (mirrors OntologyActionEffect.kind). */
 export const ONTOLOGY_EFFECT_KINDS = ["read", "create", "update", "delete"] as const;
 
 export type OntologyEffectKindName = (typeof ONTOLOGY_EFFECT_KINDS)[number];
@@ -850,6 +866,37 @@ function executableShapeScopes(
 }
 
 /**
+ * Link type ids each reachable leaf can address, the relationship mirror of
+ * `executableShapeScopes`.
+ *
+ * `planLinkEffect` resolves a graph effect against the ACTIVE node's path
+ * (src/enterprise/ontology-actions.ts), so a declaration naming a link type only
+ * a sibling branch declares imports cleanly and then fails mid-run.
+ */
+function executableRelationshipScopes(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+): Set<string>[] {
+  const node = (nodePathToDefinitionNode(definition.root, nodeId) ?? []).at(-1);
+  if (!node) {
+    return [];
+  }
+  const leaves = eachDefinitionNode(node).filter((candidate) => !candidate.children?.length);
+  return (leaves.length > 0 ? leaves : [node]).map((candidate) => {
+    const ids = new Set<string>();
+    for (const step of nodePathToDefinitionNode(definition.root, candidate.id) ?? []) {
+      for (const relationship of ontologyList(nodeOntologyRecord(step), "relationships")) {
+        if (typeof relationship.id === "string") {
+          ids.add(relationship.id);
+        }
+      }
+    }
+    return ids;
+  });
+}
+
+/**
+ * The parameter/property type clash the runtime cannot resolve./**
  * The parameter/property type clash the runtime cannot resolve.
  *
  * A call's value is checked TWICE against two different declarations:
@@ -929,7 +976,7 @@ export function addNodeOntologyActionEffect(
   definition: EditableTreeDefinition,
   nodeId: string,
   actionId: string,
-  effect: { entity: string; kind: OntologyEffectKindName },
+  effect: OntologyEffectDraft,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -939,6 +986,56 @@ export function addNodeOntologyActionEffect(
   const action = findNodeAction(node, actionId);
   if (!action) {
     return { ok: false, reason: "action-not-found" };
+  }
+  const declared = Array.isArray(action.effects)
+    ? (action.effects as Record<string, unknown>[])
+    : [];
+  // An action is either outward or local, never both: an external call cannot
+  // join the local write transaction, so the import refuses a mixed action
+  // (src/enterprise/schema.ts). Refusing here says so at the field instead. The
+  // FIRST effect settles which side the action is on, so an empty list accepts
+  // either — the clash only exists once something is already declared.
+  const mixesOutward =
+    effect.kind === "call"
+      ? declared.some((existing) => existing.kind !== "call")
+      : declared.some((existing) => existing.kind === "call");
+  if (mixesOutward) {
+    return { ok: false, reason: "effect-mixes-outward" };
+  }
+  if (effect.kind === "call") {
+    const tool = effect.tool.trim();
+    if (!tool) {
+      return { ok: false, reason: "invalid-id" };
+    }
+    if (declared.some((existing) => existing.tool === tool)) {
+      return { ok: false, reason: "duplicate-entry" };
+    }
+    appendActionEffect(action, declared, { kind: "call", tool });
+    return { ok: true, definition: next };
+  }
+  // Narrowed by the field, not the kind: the object variant's `kind` is a
+  // four-value enum, and excluding all four does not reduce it away. The call
+  // lane returned above, so anything without an entity relates two objects.
+  if (!("entity" in effect)) {
+    // EVERY leaf, the same rule the object effects below follow: the action is
+    // inherited into all of them, and planLinkEffect refuses it at whichever leaf
+    // cannot address the link type.
+    if (!executableRelationshipScopes(next, nodeId).every((ids) => ids.has(effect.relationship))) {
+      return { ok: false, reason: "relationship-not-found" };
+    }
+    if (
+      declared.some(
+        (existing) =>
+          existing.kind === effect.kind && existing.relationship === effect.relationship,
+      )
+    ) {
+      return { ok: false, reason: "duplicate-entry" };
+    }
+    appendActionEffect(action, declared, {
+      kind: effect.kind,
+      relationship: effect.relationship,
+    });
+    return { ok: true, definition: next };
   }
   // EVERY leaf, not some: the action is inherited into all of them, and planEffect
   // refuses it at whichever leaf cannot address the type. An action that resolves
@@ -967,9 +1064,7 @@ export function addNodeOntologyActionEffect(
       return { ok: false, reason: "create-required-unreachable" };
     }
   }
-  const effects = Array.isArray(action.effects)
-    ? (action.effects as Record<string, unknown>[])
-    : [];
+  const effects = declared;
   if (
     effects.some((existing) => existing.entity === effect.entity && existing.kind === effect.kind)
   ) {
@@ -1018,7 +1113,10 @@ export function removeNodeOntologyActionEffect(
   definition: EditableTreeDefinition,
   nodeId: string,
   actionId: string,
-  effect: { entity: string; kind: OntologyEffectKindName },
+  effect:
+    | { entity: string; kind: OntologyEffectKindName }
+    | { kind: "call"; tool: string }
+    | { kind: "link" | "unlink"; relationship: string },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -1032,8 +1130,18 @@ export function removeNodeOntologyActionEffect(
   const effects = Array.isArray(action.effects)
     ? (action.effects as Record<string, unknown>[])
     : [];
-  const matches = (candidate: Record<string, unknown>) =>
-    candidate.entity === effect.entity && candidate.kind === effect.kind;
+  // Each variant is identified by the field it carries: an outward or graph
+  // effect has no entity, so the object-effect match would drop every one of them
+  // on the action at once.
+  const matches = (candidate: Record<string, unknown>) => {
+    if ("entity" in effect) {
+      return candidate.entity === effect.entity && candidate.kind === effect.kind;
+    }
+    if (effect.kind === "call") {
+      return candidate.kind === "call" && candidate.tool === effect.tool;
+    }
+    return candidate.kind === effect.kind && candidate.relationship === effect.relationship;
+  };
   if (!effects.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
@@ -1293,34 +1401,6 @@ function brokenOntologyReferences(definition: EditableTreeDefinition): Set<strin
     }
   }
 
-  for (const node of nodes) {
-    const ontology = nodeOntologyRecord(node);
-    for (const seed of ontologyList(ontology, "objects")) {
-      const entity = typeof seed.entity === "string" ? treeWide.get(seed.entity) : undefined;
-      if (!entity) {
-        broken.add(`seed-entity:${String(seed.entity)}`);
-        continue;
-      }
-      // A seeded instance carries values keyed by property id, and the schema
-      // requires the type's primaryKey among them.
-      if (entity.primaryKey === undefined) {
-        broken.add(`seed-key:${String(seed.entity)}`);
-      }
-      for (const property of seed.properties && typeof seed.properties === "object"
-        ? Object.keys(seed.properties)
-        : []) {
-        if (!entity.properties.has(property)) {
-          broken.add(`seed-property:${String(seed.entity)}:${property}`);
-        }
-      }
-    }
-    for (const seed of ontologyList(ontology, "links")) {
-      if (typeof seed.relationship === "string" && !treeWideLinkIds.has(seed.relationship)) {
-        broken.add(`seed-link:${seed.relationship}`);
-      }
-    }
-  }
-
   // Consumers, by contrast, resolve at the node they RUN at. Iterated as
   // active-node candidates because declarations inherit downward: a function on
   // an ancestor executes at any descendant against THAT node's merged scope,
@@ -1464,7 +1544,7 @@ function brokenOntologyReferences(definition: EditableTreeDefinition): Set<strin
 function newBreakageReason(
   before: EditableTreeDefinition,
   after: EditableTreeDefinition,
-): "entity-in-use" | "entity-referenced" | "property-in-use" | "seeded-data-in-use" | null {
+): "entity-in-use" | "entity-referenced" | "property-in-use" | null {
   const existing = brokenOntologyReferences(before);
   const added = [...brokenOntologyReferences(after)].filter((key) => !existing.has(key));
   if (added.length === 0) {
@@ -1474,9 +1554,6 @@ function newBreakageReason(
   // the message; the rest have to be resolved by re-importing the work-map.
   if (added.some((key) => key.startsWith("link:"))) {
     return "entity-in-use";
-  }
-  if (added.some((key) => key.startsWith("seed-"))) {
-    return "seeded-data-in-use";
   }
   if (added.some((key) => key.startsWith("fn-entity:") || key.startsWith("action-entity:"))) {
     return "entity-referenced";

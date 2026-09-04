@@ -952,68 +952,6 @@ describe("ontology editing", () => {
     ).toMatchObject({ ok: false, reason: "duplicate-entry" });
   });
 
-  // Seeded objects and links are declarations the schema validates, so a removal
-  // that strands one would be refused by the import rather than by this editor.
-  it("refuses removals that would strand a seeded object or link", () => {
-    let current = definition();
-    for (const id of ["policy", "adjuster"]) {
-      const seeded = addNodeOntologyEntity(current, "support.triage", { id });
-      if (!seeded.ok) {
-        throw new Error("seed failed");
-      }
-      current = seeded.definition;
-    }
-    const keyed = addNodeOntologyProperty(current, "support.triage", "policy", {
-      id: "number",
-      type: "string",
-      primaryKey: true,
-    });
-    if (!keyed.ok) {
-      throw new Error("seed failed");
-    }
-    const adjusterKey = addNodeOntologyProperty(keyed.definition, "support.triage", "adjuster", {
-      id: "badge",
-      type: "string",
-      primaryKey: true,
-    });
-    if (!adjusterKey.ok) {
-      throw new Error("seed failed");
-    }
-    const linked = addNodeOntologyRelationship(adjusterKey.definition, "support.triage", {
-      id: "handled-by",
-      from: "policy",
-      to: "adjuster",
-    });
-    if (!linked.ok) {
-      throw new Error("seed failed");
-    }
-    const withSeeds = structuredClone(linked.definition);
-    const triage = withSeeds.root.children?.find((child) => child.id === "support.triage");
-    if (!triage) {
-      throw new Error("seed failed");
-    }
-    triage.ontology = {
-      ...(triage.ontology as Record<string, unknown>),
-      objects: [{ entity: "policy", properties: { number: "P-1" } }],
-      links: [{ relationship: "handled-by", from: "P-1", to: "A-1" }],
-    };
-
-    // Its own reason: seeds are import-only records the tree detail never shows,
-    // so blaming an action or derived value would misdirect the operator.
-    expect(
-      removeNodeOntologyProperty(withSeeds, "support.triage", "policy", "number"),
-    ).toMatchObject({ ok: false, reason: "seeded-data-in-use" });
-
-    // The link TYPE a seeded link names.
-    expect(
-      removeNodeOntologyRelationship(withSeeds, "support.triage", {
-        id: "handled-by",
-        from: "policy",
-        to: "adjuster",
-      }),
-    ).toMatchObject({ ok: false, reason: "seeded-data-in-use" });
-  });
-
   // The real parser decides, so text inside a string literal is not a read.
   it("ignores a field name that only appears inside a string literal", () => {
     const seeded = addNodeOntologyEntity(definition(), "support.triage", { id: "policy" });
@@ -2012,5 +1950,157 @@ describe("create effects and tree-wide required fields", () => {
         kind: "update",
       }).ok,
     ).toBe(true);
+  });
+});
+
+describe("authoring outward and graph effects", () => {
+  /** A claims tree with a link type, plus one action to hang effects on. */
+  function actionDefinition(): EditableTreeDefinition {
+    const withLink = addNodeOntologyRelationship(verbDefinition(), "claims", {
+      id: "claim-has-note",
+      from: "claim",
+      to: "note",
+      cardinality: "one-to-many",
+    });
+    if (!withLink.ok) {
+      throw new Error("fixture failed");
+    }
+    const withAction = addNodeOntologyAction(withLink.definition, "claims.decide", {
+      id: "settle",
+    });
+    if (!withAction.ok) {
+      throw new Error("fixture failed");
+    }
+    return withAction.definition;
+  }
+
+  function effectsOf(tree: EditableTreeDefinition): Record<string, unknown>[] {
+    const actions = (nodeOntology(tree, "claims.decide")?.actions ?? []) as Record<
+      string,
+      unknown
+    >[];
+    return (actions[0]?.effects ?? []) as Record<string, unknown>[];
+  }
+
+  it("adds an outward call naming the tool it performs", () => {
+    const result = addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+      kind: "call",
+      tool: "acme-ledger__post_payment",
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && effectsOf(result.definition)).toEqual([
+      { kind: "call", tool: "acme-ledger__post_payment" },
+    ]);
+  });
+
+  it("adds a graph effect over a link type the step can address", () => {
+    const result = addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+      kind: "link",
+      relationship: "claim-has-note",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && effectsOf(result.definition)).toEqual([
+      { kind: "link", relationship: "claim-has-note" },
+    ]);
+  });
+
+  it("refuses a link type declared only on a sibling branch", () => {
+    // planLinkEffect resolves against the ACTIVE node's path, so a link type this
+    // step never reaches imports cleanly and then fails mid-run.
+    const sibling = addNodeOntologyRelationship(actionDefinition(), "claims.other", {
+      id: "audit-of-claim",
+      from: "audit",
+      to: "claim",
+    });
+    if (!sibling.ok) {
+      throw new Error("fixture failed");
+    }
+    expect(
+      addNodeOntologyActionEffect(sibling.definition, "claims.decide", "settle", {
+        kind: "link",
+        relationship: "audit-of-claim",
+      }),
+    ).toMatchObject({ ok: false, reason: "relationship-not-found" });
+  });
+
+  it("refuses a second outward call naming the same tool", () => {
+    const first = addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+      kind: "call",
+      tool: "acme-ledger__post_payment",
+    });
+    if (!first.ok) {
+      throw new Error("fixture failed");
+    }
+    expect(
+      addNodeOntologyActionEffect(first.definition, "claims.decide", "settle", {
+        kind: "call",
+        tool: "acme-ledger__post_payment",
+      }),
+    ).toMatchObject({ ok: false, reason: "duplicate-entry" });
+  });
+
+  it("refuses mixing an outward call with a local effect, from either side", () => {
+    // The call cannot join the local write transaction, so the pair could never
+    // be one atomic action — the import refuses it too.
+    const outward = addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+      kind: "call",
+      tool: "acme-ledger__post_payment",
+    });
+    if (!outward.ok) {
+      throw new Error("fixture failed");
+    }
+    expect(
+      addNodeOntologyActionEffect(outward.definition, "claims.decide", "settle", {
+        entity: "claim",
+        kind: "update",
+      }),
+    ).toMatchObject({ ok: false, reason: "effect-mixes-outward" });
+
+    const local = addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+      entity: "claim",
+      kind: "update",
+    });
+    if (!local.ok) {
+      throw new Error("fixture failed");
+    }
+    expect(
+      addNodeOntologyActionEffect(local.definition, "claims.decide", "settle", {
+        kind: "call",
+        tool: "acme-ledger__post_payment",
+      }),
+    ).toMatchObject({ ok: false, reason: "effect-mixes-outward" });
+  });
+
+  it("refuses a blank tool", () => {
+    expect(
+      addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+        kind: "call",
+        tool: "   ",
+      }),
+    ).toMatchObject({ ok: false, reason: "invalid-id" });
+  });
+
+  it("removes an outward or graph effect by what it names", () => {
+    // Identified by tool and relationship rather than entity: the object-effect
+    // match would drop every one of them at once.
+    let current = actionDefinition();
+    for (const effect of [
+      { kind: "link" as const, relationship: "claim-has-note" },
+      { kind: "unlink" as const, relationship: "claim-has-note" },
+    ]) {
+      const added = addNodeOntologyActionEffect(current, "claims.decide", "settle", effect);
+      if (!added.ok) {
+        throw new Error("fixture failed");
+      }
+      current = added.definition;
+    }
+    const removed = removeNodeOntologyActionEffect(current, "claims.decide", "settle", {
+      kind: "link",
+      relationship: "claim-has-note",
+    });
+    expect(removed.ok).toBe(true);
+    expect(removed.ok && effectsOf(removed.definition)).toEqual([
+      { kind: "unlink", relationship: "claim-has-note" },
+    ]);
   });
 });

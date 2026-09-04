@@ -40,6 +40,7 @@ import type { SkillStatusEntry } from "../types.ts";
 import {
   collectNodeOntologyGraph,
   declaredExecutableEntityIds,
+  declaredExecutableRelationshipIds,
   declaredNodePathEntityIds,
   collectOntologyGraph,
   nodeObjectEntityIds,
@@ -159,7 +160,10 @@ export type EnterpriseProps = {
   onRemoveOntologyAction: (nodeId: string, actionId: string) => void;
   onRemoveOntologyActionEffect: (
     nodeId: string,
-    effect: { actionId: string; entity: string; kind: OntologyEffectKindName },
+    effect:
+      | { actionId: string; entity: string; kind: OntologyEffectKindName }
+      | { actionId: string; kind: "call"; tool: string }
+      | { actionId: string; kind: "link" | "unlink"; relationship: string },
   ) => void;
   onRemoveOntologyActionParameter: (
     nodeId: string,
@@ -3374,6 +3378,12 @@ function renderNodeOntologyEditor(
   const verbEntityIds = props.treeDetail
     ? declaredExecutableEntityIds(props.treeDetail, node.id)
     : scopeEntityIds;
+  // Same reach for the link types a graph effect may relate over: it resolves at
+  // whichever node is active below here, so one every executable leaf declares is
+  // addressable and one only a sibling branch declares never is.
+  const verbRelationshipIds = props.treeDetail
+    ? declaredExecutableRelationshipIds(props.treeDetail, node.id)
+    : relationships.map((relationship) => relationship.id);
   return html`
     <!-- No scope note here: the enclosing ontology section already carries it,
       and repeating it put the same paragraph twice on one screen. -->
@@ -3485,7 +3495,7 @@ function renderNodeOntologyEditor(
           : nothing}
       </div>
     </section>
-    ${renderNodeOntologyActions(node, actions, verbEntityIds, draft, props)}
+    ${renderNodeOntologyActions(node, actions, verbEntityIds, draft, props, verbRelationshipIds)}
     ${renderNodeOntologyFunctions(node, functions, verbEntityIds, draft, props)}
     ${props.canEdit
       ? html`<div class="row" style="margin-top: 8px;">
@@ -3520,6 +3530,7 @@ function renderNodeOntologyActions(
   scopeEntityIds: readonly string[],
   draft: EnterpriseOntologyDraft | null,
   props: EnterpriseProps,
+  relationshipIds: readonly string[] = [],
 ): TemplateResult | typeof nothing {
   if (!props.canEdit && actions.length === 0) {
     return nothing;
@@ -3534,13 +3545,23 @@ function renderNodeOntologyActions(
     <div class="card-title" style="margin-top: 16px;">
       ${t("enterprise.ontologyEditor.actions")}
     </div>
-    <div class="muted" style="margin-top: 4px;">${t("enterprise.ontologyEditor.actionsNote")}</div>
+    <div class="muted" style="margin-top: 4px;">
+      ${t("enterprise.ontologyEditor.actionsSummary")}
+    </div>
     ${actions.map((action) => {
       const effects = action.effects ?? [];
       const parameters = action.parameters ?? [];
       const callable = actionIsCallable(effects, parameters, entityKeys);
+      // An action is either outward or local, never both: the call cannot join
+      // the local write transaction, so the import refuses a mixed one. The Add
+      // buttons offer only the side this action is already on.
+      const outward = effects.some((effect) => effect.kind === "call");
+      const local = effects.some((effect) => effect.kind !== "call");
       const actionDraft =
-        (draft?.kind === "action-effect" || draft?.kind === "action-parameter") &&
+        (draft?.kind === "action-effect" ||
+          draft?.kind === "action-parameter" ||
+          draft?.kind === "action-call" ||
+          draft?.kind === "action-link") &&
         draft.actionId === action.id
           ? draft
           : null;
@@ -3551,7 +3572,7 @@ function renderNodeOntologyActions(
               >${action.title ? `${action.title} — ${action.id}` : action.id}</span
             >
             ${props.canEdit
-              ? html`${scopeEntityIds.length >= 1
+              ? html`${scopeEntityIds.length >= 1 && !outward
                     ? html`<button
                         type="button"
                         class="btn"
@@ -3570,7 +3591,46 @@ function renderNodeOntologyActions(
                     : // With no object type in scope the form could only collect an
                       // empty select and save `endpoint-missing`, whose message is
                       // about links. The function editor already guards this way.
+                      // An outward action is hidden from this button for a second
+                      // reason: it may hold no local effect at all, so the splicer
+                      // would refuse whatever the form collected.
                       nothing}
+                  ${relationshipIds.length >= 1 && !outward
+                    ? html`<button
+                        type="button"
+                        class="btn"
+                        ?disabled=${props.treeSaving}
+                        @click=${() =>
+                          props.onOntologyDraft({
+                            kind: "action-link",
+                            nodeId: node.id,
+                            actionId: action.id,
+                            relationship: relationshipIds[0] ?? "",
+                            linkKind: "link",
+                          })}
+                      >
+                        ${t("enterprise.ontologyEditor.addLinkEffect")}
+                      </button>`
+                    : nothing}
+                  ${local
+                    ? // The mirror of the two above: an action already writing
+                      // locally cannot also call out, because the call cannot join
+                      // that write's transaction.
+                      nothing
+                    : html`<button
+                        type="button"
+                        class="btn"
+                        ?disabled=${props.treeSaving}
+                        @click=${() =>
+                          props.onOntologyDraft({
+                            kind: "action-call",
+                            nodeId: node.id,
+                            actionId: action.id,
+                            tool: "",
+                          })}
+                      >
+                        ${t("enterprise.ontologyEditor.addCallEffect")}
+                      </button>`}
                   <button
                     type="button"
                     class="btn"
@@ -3599,22 +3659,36 @@ function renderNodeOntologyActions(
             ${effects.length === 0
               ? html`<div class="muted">${t("enterprise.ontologyEditor.noEffects")}</div>`
               : html`<div class="chip-row">
-                  ${effects.map((effect) =>
-                    renderOntologyChip(
-                      `${effect.kind} ${effect.entity}`,
+                  ${effects.map((effect) => {
+                    // Each variant names a different target: an object type, the
+                    // tool an outward call goes to, or the relationship a graph
+                    // effect relates over. The chip has to say which.
+                    const removal =
+                      "entity" in effect
+                        ? { actionId: action.id, entity: effect.entity, kind: effect.kind }
+                        : effect.kind === "call"
+                          ? { actionId: action.id, kind: "call" as const, tool: effect.tool }
+                          : {
+                              actionId: action.id,
+                              kind: effect.kind,
+                              relationship: effect.relationship,
+                            };
+                    const target =
+                      "entity" in effect
+                        ? effect.entity
+                        : effect.kind === "call"
+                          ? effect.tool
+                          : effect.relationship;
+                    return renderOntologyChip(
+                      `${effect.kind} ${target}`,
                       t("enterprise.ontologyEditor.removeEffectTitle", {
                         kind: effect.kind,
-                        entity: effect.entity,
+                        entity: target,
                       }),
                       props,
-                      () =>
-                        props.onRemoveOntologyActionEffect(node.id, {
-                          actionId: action.id,
-                          entity: effect.entity,
-                          kind: effect.kind,
-                        }),
-                    ),
-                  )}
+                      () => props.onRemoveOntologyActionEffect(node.id, removal),
+                    );
+                  })}
                 </div>`}
             ${callable
               ? nothing
@@ -3641,7 +3715,9 @@ function renderNodeOntologyActions(
                     ),
                   )}
                 </div>`}
-            ${actionDraft ? renderOntologyDraftForm(actionDraft, scopeEntityIds, props) : nothing}
+            ${actionDraft
+              ? renderOntologyDraftForm(actionDraft, scopeEntityIds, props, relationshipIds)
+              : nothing}
           </div>
         </section>
       `;
@@ -3759,11 +3835,26 @@ function executableEntityKeys(
  * one, which is exactly when it is still uncallable.
  */
 function actionIsCallable(
-  effects: readonly { entity: string; kind: string }[],
+  effects: readonly (
+    | { entity: string; kind: string }
+    | { kind: "call"; tool: string }
+    | { kind: "link" | "unlink"; relationship: string }
+  )[],
   parameters: readonly { id: string }[],
   entityKeys: ReadonlyMap<string, { primaryKey?: string; required: string[] }>,
 ): boolean {
-  const writes = effects.filter((effect) => effect.kind !== "read");
+  // Neither of these names an object type, so neither has a primaryKey a
+  // parameter must supply. An outward action executes as the tool call itself and
+  // governance checks its parameters when the call goes out; a graph effect
+  // resolves its two ends from the action's own parameters at write time. Only
+  // the object-write lane below can be incomplete.
+  if (effects.some((effect) => effect.kind !== "read" && !("entity" in effect))) {
+    return true;
+  }
+  const writes = effects.filter(
+    (effect): effect is { entity: string; kind: string } =>
+      "entity" in effect && effect.kind !== "read",
+  );
   if (writes.length === 0) {
     return false;
   }
@@ -3858,11 +3949,14 @@ function renderOntologyDraftForm(
   draft: EnterpriseOntologyDraft,
   entityIds: readonly string[],
   props: EnterpriseProps,
+  relationshipIds: readonly string[] = [],
 ): TemplateResult {
   return html`
     <div class="ontology-draft-form">
-      ${draft.kind === "action-effect"
-        ? // An effect names an object type and a verb; it has no id of its own.
+      ${draft.kind === "action-effect" ||
+      draft.kind === "action-call" ||
+      draft.kind === "action-link"
+        ? // An effect names its target and a verb; it has no id of its own.
           nothing
         : html`<label class="field">
             <span class="muted">${t(`enterprise.ontologyEditor.idLabel.${draft.kind}`)}</span>
@@ -3943,6 +4037,58 @@ function renderOntologyDraftForm(
               >
                 ${ONTOLOGY_EFFECT_KINDS.map(
                   (kind) => html`<option value=${kind} ?selected=${kind === draft.effectKind}>
+                    ${kind}
+                  </option>`,
+                )}
+              </select>
+            </label>`
+        : nothing}
+      ${draft.kind === "action-call"
+        ? html`<label class="field">
+            <span class="muted">${t("enterprise.ontologyEditor.callToolLabel")}</span>
+            <input
+              class="input"
+              .value=${draft.tool}
+              placeholder=${t("enterprise.ontologyEditor.callToolPlaceholder")}
+              ?disabled=${props.treeSaving}
+              @input=${(event: Event) =>
+                props.onEditOntologyDraft({ tool: (event.target as HTMLInputElement).value })}
+            />
+            <span class="muted">${t("enterprise.ontologyEditor.callToolHint")}</span>
+          </label>`
+        : nothing}
+      ${draft.kind === "action-link"
+        ? html`<label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.linkRelationshipLabel")}</span>
+              <select
+                class="input"
+                .value=${draft.relationship}
+                ?disabled=${props.treeSaving}
+                @change=${(event: Event) =>
+                  props.onEditOntologyDraft({
+                    relationship: (event.target as HTMLSelectElement).value,
+                  })}
+              >
+                ${relationshipIds.map(
+                  (id) => html`<option value=${id} ?selected=${id === draft.relationship}>
+                    ${id}
+                  </option>`,
+                )}
+              </select>
+            </label>
+            <label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.effectKindLabel")}</span>
+              <select
+                class="input"
+                .value=${draft.linkKind}
+                ?disabled=${props.treeSaving}
+                @change=${(event: Event) =>
+                  props.onEditOntologyDraft({
+                    linkKind: (event.target as HTMLSelectElement).value as "link" | "unlink",
+                  })}
+              >
+                ${(["link", "unlink"] as const).map(
+                  (kind) => html`<option value=${kind} ?selected=${kind === draft.linkKind}>
                     ${kind}
                   </option>`,
                 )}
@@ -4345,7 +4491,6 @@ function renderObjectTable(objects: EnterpriseOntologyObject[]): TemplateResult 
           <tr>
             <th>id</th>
             ${columns.map((column) => html`<th>${column}</th>`)}
-            <th>source</th>
           </tr>
         </thead>
         <tbody>
@@ -4356,7 +4501,6 @@ function renderObjectTable(objects: EnterpriseOntologyObject[]): TemplateResult 
                 ${columns.map(
                   (column) => html`<td>${formatOntologyValue(object.properties[column])}</td>`,
                 )}
-                <td><span class="muted">${object.provenance}</span></td>
               </tr>
             `,
           )}

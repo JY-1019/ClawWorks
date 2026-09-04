@@ -2351,3 +2351,215 @@ describe("MCP import preview caveats (browser)", () => {
     expect(container.textContent).toContain("openclaw mcp login");
   });
 });
+
+describe("authoring the two effects that are not object writes", () => {
+  /** VERB_TREE plus a link type, and an action carrying no effect yet. */
+  const GRAPH_TREE = {
+    ...VERB_TREE,
+    nodes: VERB_TREE.nodes.map((node, index) =>
+      index === 0
+        ? {
+            ...node,
+            ontology: {
+              ...node.ontology,
+              relationships: [
+                { id: "claim-of-case", from: "claim", to: "claim", cardinality: "one-to-many" },
+              ],
+            },
+          }
+        : { ...node, ontology: { ...node.ontology, actions: [{ id: "approve" }] } },
+    ),
+  } as EnterpriseTreeDetail;
+
+  /** The same tree with `approve` turned into an outward action. */
+  const withCall = {
+    ...GRAPH_TREE,
+    nodes: [
+      GRAPH_TREE.nodes[0],
+      {
+        ...GRAPH_TREE.nodes[1],
+        ontology: {
+          ...GRAPH_TREE.nodes[1]?.ontology,
+          actions: [{ id: "approve", effects: [{ kind: "call", tool: "bank__freeze" }] }],
+        },
+      },
+    ],
+  } as EnterpriseTreeDetail;
+
+  function buttons(container: HTMLElement): string[] {
+    return [...container.querySelectorAll("button")].map((button) =>
+      (button.textContent ?? "").trim(),
+    );
+  }
+
+  it("offers both new effects on an action that has declared none", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: GRAPH_TREE.id,
+        treeDetail: GRAPH_TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(buttons(container)).toEqual(expect.arrayContaining(["Add link", "Add outward call"]));
+  });
+
+  it("seeds the link form from the link types the step can address", () => {
+    const opened: unknown[] = [];
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: GRAPH_TREE.id,
+        treeDetail: GRAPH_TREE,
+        selectedNodeId: "support.triage",
+        onOntologyDraft: (draft) => opened.push(draft),
+      }),
+    );
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent?.trim() === "Add link")
+      ?.click();
+    expect(opened).toEqual([
+      {
+        kind: "action-link",
+        nodeId: "support.triage",
+        actionId: "approve",
+        relationship: "claim-of-case",
+        linkKind: "link",
+      },
+    ]);
+  });
+
+  it("offers only the outward side once the action calls out, and only the local side once it writes", () => {
+    // An action is either outward or local, never both, so the buttons cannot
+    // offer a choice the splicer would refuse.
+    const outward = buttons(
+      renderInto(
+        createProps({
+          section: "worktree",
+          selectedTreeId: withCall.id,
+          treeDetail: withCall,
+          selectedNodeId: "support.triage",
+        }),
+      ),
+    );
+    expect(outward).not.toContain("Add effect");
+    expect(outward).not.toContain("Add link");
+
+    const local = buttons(
+      renderInto(
+        createProps({
+          section: "worktree",
+          selectedTreeId: VERB_TREE.id,
+          treeDetail: VERB_TREE,
+          selectedNodeId: "support.triage",
+        }),
+      ),
+    );
+    expect(local).toContain("Add effect");
+    expect(local).not.toContain("Add outward call");
+  });
+
+  it("shows an outward effect as the tool it calls, not as an object type", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: withCall.id,
+        treeDetail: withCall,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").toContain("call bank__freeze");
+    // An outward action needs no local write, so the incomplete-action callout
+    // must not fire on one.
+    expect(container.textContent ?? "").not.toContain("cannot be called yet");
+  });
+});
+
+describe("the inspector renders the two effects that are not object writes", () => {
+  const LINK_TREE = {
+    ...VERB_TREE,
+    nodes: [
+      {
+        ...VERB_TREE.nodes[0],
+        ontology: {
+          ...VERB_TREE.nodes[0]?.ontology,
+          relationships: [
+            { id: "claim-of-case", from: "claim", to: "claim", cardinality: "one-to-many" },
+          ],
+        },
+      },
+      {
+        ...VERB_TREE.nodes[1],
+        ontology: {
+          ...VERB_TREE.nodes[1]?.ontology,
+          actions: [
+            {
+              id: "approve",
+              parameters: [{ id: "claim-id", type: "id", required: true }],
+              effects: [{ kind: "link", relationship: "claim-of-case" }],
+            },
+          ],
+        },
+      },
+    ],
+  } as EnterpriseTreeDetail;
+
+  it("opens the link form on the action it was opened from", () => {
+    // Regression: the per-action draft gate matched only action-effect and
+    // action-parameter, so clicking Add link stored a draft nothing rendered.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: LINK_TREE.id,
+        treeDetail: LINK_TREE,
+        selectedNodeId: "support.triage",
+        ontologyDraft: {
+          kind: "action-link",
+          treeId: LINK_TREE.id,
+          nodeId: "support.triage",
+          actionId: "approve",
+          relationship: "claim-of-case",
+          linkKind: "link",
+          error: null,
+        } as never,
+      }),
+    );
+    expect(container.textContent ?? "").toContain("Link type");
+  });
+
+  it("opens the outward call form the same way", () => {
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: LINK_TREE.id,
+        treeDetail: LINK_TREE,
+        selectedNodeId: "support.triage",
+        ontologyDraft: {
+          kind: "action-call",
+          treeId: LINK_TREE.id,
+          nodeId: "support.triage",
+          actionId: "approve",
+          tool: "",
+          error: null,
+        } as never,
+      }),
+    );
+    expect(container.textContent ?? "").toContain("Tool");
+  });
+
+  it("does not call a link-only action incomplete", () => {
+    // Regression: the callability check required an object write, so an action
+    // whose only effect relates two objects — which invoke_action accepts — was
+    // rendered with the "cannot be called yet" callout.
+    const container = renderInto(
+      createProps({
+        section: "worktree",
+        selectedTreeId: LINK_TREE.id,
+        treeDetail: LINK_TREE,
+        selectedNodeId: "support.triage",
+      }),
+    );
+    expect(container.textContent ?? "").not.toContain("cannot be called yet");
+    expect(container.textContent ?? "").toContain("link claim-of-case");
+  });
+});

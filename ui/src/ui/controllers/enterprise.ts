@@ -1919,6 +1919,18 @@ export type EnterpriseOntologyDraftBody =
       entity: string;
       effectKind: OntologyEffectKindName;
     }
+  // The two effects that name something other than an object type: a TOOL the
+  // action performs outside this workflow, and a RELATIONSHIP it relates two
+  // objects over. Separate drafts rather than more fields on `action-effect`,
+  // because each collects a different thing and the form has to ask for it.
+  | { kind: "action-call"; nodeId: string; actionId: string; tool: string }
+  | {
+      kind: "action-link";
+      nodeId: string;
+      actionId: string;
+      relationship: string;
+      linkKind: "link" | "unlink";
+    }
   | {
       kind: "action-parameter";
       nodeId: string;
@@ -1998,10 +2010,12 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
   if (!draft || !tree || draft.treeId !== tree.id || state.enterpriseTreeSaving) {
     return;
   }
-  // An effect names an object type and a verb, not an id of its own, so the id
-  // gate below would refuse every one of them.
-  const id = draft.kind === "action-effect" ? "" : draft.id.trim().toLowerCase();
-  if (draft.kind !== "action-effect" && !isValidEnterpriseId(id)) {
+  // An effect names its target and a verb, not an id of its own, so the id gate
+  // below would refuse every one of them.
+  const idless =
+    draft.kind === "action-effect" || draft.kind === "action-call" || draft.kind === "action-link";
+  const id = idless ? "" : draft.id.trim().toLowerCase();
+  if (!idless && !isValidEnterpriseId(id)) {
     state.enterpriseOntologyDraft = { ...draft, error: "invalid-id" };
     return;
   }
@@ -2013,6 +2027,17 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
   // means the step has none in scope, and submitting would report the far less
   // useful "entity-not-found" against a blank name.
   if ((draft.kind === "action-effect" || draft.kind === "function") && !draft.entity) {
+    state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
+    return;
+  }
+  // The outward tool is free text (it names a tool the runtime resolves, not an
+  // ontology id) and the link's relationship comes from a select that is empty
+  // when the step declares none — both submit to nothing useful when blank.
+  if (draft.kind === "action-call" && !draft.tool.trim()) {
+    state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
+    return;
+  }
+  if (draft.kind === "action-link" && !draft.relationship) {
     state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
     return;
   }
@@ -2052,6 +2077,18 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
         return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
           entity: draft.entity,
           kind: draft.effectKind,
+        });
+      }
+      if (draft.kind === "action-call") {
+        return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
+          kind: "call",
+          tool: draft.tool.trim(),
+        });
+      }
+      if (draft.kind === "action-link") {
+        return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
+          kind: draft.linkKind,
+          relationship: draft.relationship,
         });
       }
       if (draft.kind === "action-parameter") {
@@ -2377,13 +2414,23 @@ export async function removeEnterpriseOntologyAction(
 
 export async function removeEnterpriseOntologyActionEffect(
   state: EnterpriseState,
-  params: { nodeId: string; actionId: string; entity: string; kind: OntologyEffectKindName },
+  params: { nodeId: string; actionId: string } & (
+    | { entity: string; kind: OntologyEffectKindName }
+    | { kind: "call"; tool: string }
+    | { kind: "link" | "unlink"; relationship: string }
+  ),
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
-    removeNodeOntologyActionEffect(definition, params.nodeId, params.actionId, {
-      entity: params.entity,
-      kind: params.kind,
-    }),
+    removeNodeOntologyActionEffect(
+      definition,
+      params.nodeId,
+      params.actionId,
+      "entity" in params
+        ? { entity: params.entity, kind: params.kind }
+        : params.kind === "call"
+          ? { kind: "call", tool: params.tool }
+          : { kind: params.kind, relationship: params.relationship },
+    ),
   );
 }
 

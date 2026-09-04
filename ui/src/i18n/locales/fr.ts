@@ -508,11 +508,13 @@ export const fr: TranslationMap = {
       cardinalityLabel: "Cardinality",
       save: "Enregistrer",
       actions: "Actions",
-      actionsNote:
-        "Typed operations the model runs with invoke_action. The effects are the authorization: an action may only touch the object types they name, in the way they name.",
+      actionsSummary:
+        "Typed operations. The effects are the authorization: an action may only write the object types they name, relate the link types they name, and call the tool they name — nothing else.",
       addAction: "Add action",
       removeActionTitle: "Remove the {action} action from this step",
       addEffect: "Add effect",
+      addLinkEffect: "Add link",
+      addCallEffect: "Add outward call",
       addParameter: "Add parameter",
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
@@ -524,6 +526,11 @@ export const fr: TranslationMap = {
       requiredMark: "(required)",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
+      linkRelationshipLabel: "Link type",
+      callToolLabel: "Tool",
+      callToolPlaceholder: "server__operation",
+      callToolHint:
+        "The tool this action performs. It happens outside this workflow, so nothing is written here — the model makes the call and the gate holds it to this action's parameters first.",
       functions: "Derived values",
       noFunctions: "No derived values declared yet.",
       removeFunctionTitle: "Remove the {function} derived value",
@@ -549,8 +556,6 @@ export const fr: TranslationMap = {
           "An action or derived value on this work-map still uses this object type. Remove that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
-        "seeded-data-in-use":
-          "Seeded objects or links in this work-map still depend on this. Those records come from the imported work-map, so change them there first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
         "action-not-found": "That action is no longer declared on this step.",
@@ -568,6 +573,9 @@ export const fr: TranslationMap = {
           "This action already writes that object type. Both effects would land on the same object, which the write path refuses, so give the second one its own action.",
         "parameter-type-conflict":
           "This parameter names a field of an object type the action writes, but declares a different type. No value could satisfy both, so the call would always fail.",
+        "relationship-not-found": "That link type is not in this step's scope.",
+        "effect-mixes-outward":
+          "An action either happens outside this workflow or writes here, never both — a call that has already left cannot be undone if the write fails. Give the other side its own action.",
       },
     },
     guidanceEditor: {
