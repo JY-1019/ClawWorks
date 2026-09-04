@@ -35,58 +35,42 @@
 
 ## Why I built this
 
-I wanted an agent I could hand a real operation to — not a demo that impresses once, but something
-an organization can point at its own records and still answer for. That turns out to be a different
-problem from making the agent more capable.
+A harness is an exoskeleton for the model: it holds the tools, the context, the loop. I wanted one a
+level down — an exoskeleton on **the structure of the work itself**. Not only "here is what you may
+pick up", but "here is the procedure, here is where in it you stand, here is what this step may
+touch." The model still reasons freely. What it is _doing_ stops being something it improvises turn
+by turn.
 
-**An enterprise needs predictability, visibility, and stability before it needs cleverness.** A team
-deciding whether to deploy an agent is not asking how smart it is. They are asking what it is
-allowed to do, what it actually did, and whether tomorrow's run behaves like today's. A stock
-deployment answers all three with a transcript and a shrug.
+That is a different problem from making the agent more capable.
 
-**Workflow and the tool-calling loop should meet, not compete.** A workflow engine is predictable
-and cannot cope with a request phrased in a way nobody anticipated. An agent loop copes with
-anything and cannot tell you where in the process it was. So the process is a versioned tree of
-steps and the loop runs _inside_ a step: the model reasons and calls tools freely within the scope
-that step declares, and the cursor moves when the model says the step is done rather than after a
-fixed number of turns. Procedure lives in the tree; judgment stays in the loop.
+**An enterprise needs predictability, visibility, and stability before cleverness.** A team deciding
+whether to deploy an agent is not asking how smart it is. They are asking what it is allowed to do,
+what it actually did, and whether tomorrow's run behaves like today's. A stock deployment answers all
+three with a transcript and a shrug.
 
-**Governance belongs under the agent engine, not inside the harness.** Putting the rules in the
-harness means inheriting whatever that harness happens to see, and re-implementing your policy
-every time you change runtimes. Here the gate sits on the execution path in the product, so the
-tool-calling engine never has to know governance exists and the rules travel with the work-map
-instead of being rebuilt per runtime. Building it proved the point the hard way: on one harness the
-check that decided whether a hook had any work to do could not see the enterprise gate at all, so a
-governed run went unjudged on exactly the path that mattered. It fails closed now.
+**Workflow and the tool-calling loop should meet, not compete.** A workflow engine is predictable and
+cannot cope with a request nobody phrased in advance; an agent loop copes with anything and cannot
+tell you where in the process it was. So the process is a versioned tree of steps and the loop runs
+_inside_ a step, with the cursor moving when the model says the step is done rather than after a
+fixed number of turns. Procedure lives in the tree; judgment stays in the loop. That is the
+exoskeleton in concrete form.
 
-The honest limit belongs here rather than in a footnote: a gate in the product still has to be
-_reached_. Where a harness invokes it out-of-process, that harness decides what happens when the
-invocation fails. And a runtime that never asks is not bounded by a work-map at all — an ACP-backed
-turn brings its own tools, so its calls never reach the per-call gate and only run-level policy and
-tracing apply; scope that agent itself rather than trusting a grant to hold it. So this is the case
-for owning the rules, not a claim that no runtime can slip past them.
+**Governance belongs under the agent engine, not inside the harness.** Rules in the harness inherit
+whatever that harness happens to see, and get rebuilt every time the runtime changes. Here the gate
+sits on the execution path in the product, so the rules travel with the work-map. The honest limit:
+a gate still has to be _reached_. A runtime that brings its own tools — an ACP-backed turn — never
+reaches the per-call gate, so scope that agent itself rather than trusting a grant to hold it.
 
-**Forgetting is not the same as deciding.** No author can list every tool a real request will need,
-so the gate separates an author's silence from an author's decision: silence can be escalated to a
-human, while a written denial blocks and stays blocked. If both behaved alike, writing a denial would
-mean nothing and authoring a work-map would become a guessing game. Which silences ask and which are
-simply refused is set out in [the table below](#the-design-principle-omissions-ask-decisions-block).
-
-**When the answer is unclear, stop.** Under `enforce`, a decision the gate reaches resolves closed:
-an approval raised because the work-map never granted the tool times out to deny — overriding even
-an operator policy that would have allowed it on timeout — and a run with no interactive channel
-refuses instead of passing. A work-map can flip the default itself, so that a capability is reachable
-where it was granted rather than wherever it happened to be inherited — which families that covers,
-at what granularity, and what stays reachable regardless, is set out in
-[ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md). A work-map that draws no boundary
-keeps the behavior it always inherited, because breaking a stock install to make a point is not a
-governance win.
+**Forgetting is not the same as deciding.** No author lists every tool a real request will need, so
+an author's silence can be escalated to a human while a written denial blocks and stays blocked —
+and under `enforce`, anything left unresolved resolves closed. Which silences ask and which are
+refused is in [the table below](#the-design-principle-omissions-ask-decisions-block).
 
 **Govern the platform; do not replace it.** The gateway, channels, and plugin system are upstream's
-and stay upstream's. Import specifiers, package names, manifest keys, config keys, environment
-variables, and state paths are frozen rather than renamed, so the surface a third-party plugin author
-writes against is the one they already wrote against. Forking away from an ecosystem in order to add
-governance would cost more than the governance is worth.
+and stay upstream's. Import specifiers, package names, manifest and config keys, environment
+variables, and state paths are frozen rather than renamed, so a third-party plugin still runs
+unmodified. Forking away from an ecosystem to add governance would cost more than the governance is
+worth.
 
 ## The gap it closes
 
