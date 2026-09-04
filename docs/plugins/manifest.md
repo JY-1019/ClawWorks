@@ -1292,6 +1292,14 @@ registry loading for non-bundled plugin sources. Invalid values are rejected;
 newer-but-valid values skip external plugins on older hosts. Bundled source
 plugins are assumed to be co-versioned with the host checkout.
 
+Both this floor and `openclaw.compat.pluginApi` are compared against the
+**upstream OpenClaw release this build descends from**, not against the
+ClawWorks version in `package.json`. A plugin published for OpenClaw therefore
+declares the same range it always did, and a ClawWorks-only plugin has no
+separate version to pin. Operators can override the advertised version with
+`OPENCLAW_COMPATIBILITY_HOST_VERSION`, which the updater uses to re-check
+plugins against a core release it is about to install.
+
 `openclaw.install.requiredPlatformPackages` is for npm packages that expose
 required native binaries through optional, platform-specific aliases. List the
 bare npm package name for every supported platform alias. During npm install,

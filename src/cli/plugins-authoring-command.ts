@@ -17,7 +17,7 @@ import { buildPluginLoaderAliasMap } from "../plugins/sdk-alias.js";
 import { defaultRuntime } from "../runtime.js";
 import { toSafeImportPath } from "../shared/import-specifier.js";
 import { isRecord } from "../utils.js";
-import { VERSION } from "../version.js";
+import { UPSTREAM_COMPATIBILITY_VERSION, VERSION } from "../version.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -562,10 +562,14 @@ function writeProviderPluginScaffold(params: { rootDir: string; id: string; name
       install: {
         clawhubSpec: `clawhub:${packageName}`,
         defaultChoice: "clawhub",
-        minHostVersion: `>=${VERSION}`,
+        // Floors are compared against the upstream lineage version a host
+        // advertises, so emitting the fork's own semver would let any 2026.x
+        // host clear a floor written against today's API. `openclawVersion`
+        // below is a build record rather than a floor and stays this build's.
+        minHostVersion: `>=${UPSTREAM_COMPATIBILITY_VERSION}`,
       },
       compat: {
-        pluginApi: `>=${VERSION}`,
+        pluginApi: `>=${UPSTREAM_COMPATIBILITY_VERSION}`,
       },
       build: {
         openclawVersion: VERSION,

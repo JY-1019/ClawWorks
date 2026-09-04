@@ -83,6 +83,10 @@ vi.mock("./plugin-metadata-snapshot.js", () => ({
   loadPluginMetadataSnapshot: (...args: unknown[]) => loadPluginMetadataSnapshotMock(...args),
   resolvePluginMetadataSnapshot: (params?: { pluginMetadataSnapshot?: unknown }) =>
     params?.pluginMetadataSnapshot ?? loadPluginMetadataSnapshotMock(params),
+  // These suites hand in the snapshot they want exercised, matching
+  // `resolvePluginMetadataSnapshot` above; without this export the runtime load
+  // context throws before any assertion runs.
+  isPluginMetadataSnapshotCompatible: () => true,
 }));
 
 vi.mock("./providers.js", () => ({
@@ -621,7 +625,7 @@ describe("plugin status reports", () => {
     const report = buildPluginDiagnosticsReport({
       config: {},
       env: {
-        OPENCLAW_VERSION: "2026.3.23-1",
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.3.23-1",
       } as NodeJS.ProcessEnv,
     });
 

@@ -91,7 +91,7 @@ function writeManifestlessClaudeBundle(rootDir: string, entries: readonly string
 function hermeticEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     OPENCLAW_BUNDLED_PLUGINS_DIR: undefined,
-    OPENCLAW_VERSION: "2026.4.25",
+    OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.25",
     VITEST: "true",
     ...overrides,
   };
@@ -1202,7 +1202,7 @@ describe("installed plugin index", () => {
           },
         },
       },
-      env: hermeticEnv({ OPENCLAW_VERSION: "2026.4.25" }),
+      env: hermeticEnv({ OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.25" }),
     });
 
     writePackageJson(fixture.rootDir, {
@@ -1228,7 +1228,7 @@ describe("installed plugin index", () => {
             resolvedVersion: "1.2.4",
           },
         },
-        env: hermeticEnv({ OPENCLAW_VERSION: "2026.4.26" }),
+        env: hermeticEnv({ OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.26" }),
       }),
       compatRegistryVersion: "different-compat-registry",
     };

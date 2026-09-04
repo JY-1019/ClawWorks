@@ -125,7 +125,7 @@ import {
 import { runCommandWithTimeout } from "../../process/exec.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveUserPath } from "../../utils.js";
-import { VERSION } from "../../version.js";
+import { UPSTREAM_COMPATIBILITY_VERSION, VERSION } from "../../version.js";
 import { replaceCliName, resolveCliName } from "../cli-name.js";
 import { formatCliCommand } from "../command-format.js";
 import { installCompletion } from "../completion-runtime.js";
@@ -153,6 +153,7 @@ import {
   normalizeTag,
   parseTimeoutMsOrExit,
   readPackageName,
+  readPackageCompatibilityHostVersion,
   readPackageVersion,
   resolveGitInstallDir,
   resolveGlobalManager,
@@ -1658,7 +1659,8 @@ async function runPackageInstallUpdate(params: {
       const entryPath = await resolveGatewayInstallEntrypoint(verifiedPackageRoot);
       if (entryPath) {
         await createUpdateConfigSnapshot();
-        const candidateHostVersion = await readPackageVersion(verifiedPackageRoot);
+        const candidateHostVersion =
+          await readPackageCompatibilityHostVersion(verifiedPackageRoot);
         const doctorResultPath = createUpdatePostInstallDoctorResultPath();
         const doctorArgv = [
           params.nodeRunner ?? resolveNodeRunner(),
@@ -3117,11 +3119,15 @@ async function continuePostCoreUpdateInFreshProcess(params: {
   const resultPath = path.join(resultDir, "plugins.json");
   const installRecordsPath = path.join(resultDir, "plugin-install-records.json");
   const sourceConfigPath = path.join(resultDir, "source-config.json");
-  const postCoreHostVersion = await readPackageVersion(params.root);
+  const postCoreHostVersion = await readPackageCompatibilityHostVersion(params.root);
+  // Downgrade cleanup asks whether this build is newer than the one being moved
+  // to, which is a package-version question and stays in the package domain --
+  // the compatibility version above answers a different question for plugins.
+  const postCorePackageVersion = await readPackageVersion(params.root);
 
   const pluginInstallRecords = preparePostCorePluginInstallRecordsForFreshProcess({
     records: params.pluginInstallRecords,
-    targetVersion: postCoreHostVersion,
+    targetVersion: postCorePackageVersion,
   });
 
   try {
@@ -3352,7 +3358,8 @@ async function updateCommandInternal(opts: UpdateCommandOptions): Promise<void> 
       return;
     }
 
-    process.env.OPENCLAW_COMPATIBILITY_HOST_VERSION = (await readPackageVersion(root)) ?? VERSION;
+    process.env.OPENCLAW_COMPATIBILITY_HOST_VERSION =
+      (await readPackageCompatibilityHostVersion(root)) ?? UPSTREAM_COMPATIBILITY_VERSION;
 
     let postCoreConfigSnapshot = await readConfigFileSnapshot({
       skipPluginValidation: true,

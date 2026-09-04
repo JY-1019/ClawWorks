@@ -7,7 +7,11 @@ import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/st
 import { theme } from "../../../packages/terminal-core/src/theme.js";
 import { resolveRequiredHomeDir } from "../../infra/home-dir.js";
 import { resolveOpenClawPackageRoot } from "../../infra/openclaw-root.js";
-import { readPackageName, readPackageVersion } from "../../infra/package-json.js";
+import {
+  readPackageCompatibilityHostVersion,
+  readPackageName,
+  readPackageVersion,
+} from "../../infra/package-json.js";
 import { normalizePackageTagInput } from "../../infra/package-tag.js";
 import { parseStrictPositiveInteger } from "../../infra/parse-finite-number.js";
 import { trimLogTail } from "../../infra/restart-sentinel.js";
@@ -94,7 +98,7 @@ function normalizeVersionTag(tag: string): string | null {
   return parseSemver(cleaned) ? cleaned : null;
 }
 
-export { readPackageName, readPackageVersion };
+export { readPackageCompatibilityHostVersion, readPackageName, readPackageVersion };
 
 /** Resolve an npm dist-tag or explicit version into a concrete package version. */
 export async function resolveTargetVersion(

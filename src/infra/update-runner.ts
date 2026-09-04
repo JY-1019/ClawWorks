@@ -12,7 +12,11 @@ import {
   resolveControlUiDistIndexHealth,
   resolveControlUiDistIndexPathForRoot,
 } from "./control-ui-assets.js";
-import { readPackageName, readPackageVersion } from "./package-json.js";
+import {
+  readPackageCompatibilityHostVersion,
+  readPackageName,
+  readPackageVersion,
+} from "./package-json.js";
 import { normalizePackageTagInput } from "./package-tag.js";
 import {
   runGlobalPackageUpdateSteps,
@@ -1701,7 +1705,8 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           return null;
         }
         const doctorNodePath = await resolveStableNodePath(process.execPath);
-        const candidateHostVersion = await readPackageVersion(verifiedPackageRoot);
+        const candidateHostVersion =
+          await readPackageCompatibilityHostVersion(verifiedPackageRoot);
         return await runStep({
           runCommand,
           name: "openclaw doctor",

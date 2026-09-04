@@ -8,6 +8,7 @@ import {
   VERSION,
   readVersionFromBuildInfoForModuleUrl,
   resolveCompatibilityHostVersion,
+  UPSTREAM_COMPATIBILITY_VERSION,
   readVersionFromPackageJsonForModuleUrl,
   resolveBinaryVersion,
   resolveRuntimeServiceVersion,
@@ -166,7 +167,10 @@ describe("version resolution", () => {
     process.env[key] = value;
   }
 
-  it("prefers runtime VERSION over stale OPENCLAW_VERSION for compatibility checks", () => {
+  it("answers plugin compatibility with the upstream version, not this fork's", () => {
+    // A plugin published for OpenClaw pins its range to an OpenClaw release, so
+    // answering with the fork's semver would reject every one of them.
+    expect(UPSTREAM_COMPATIBILITY_VERSION).not.toBe(VERSION);
     const previous = process.env.OPENCLAW_VERSION;
     const previousService = process.env.OPENCLAW_SERVICE_VERSION;
     const previousPackage = process.env.npm_package_version;
@@ -174,7 +178,7 @@ describe("version resolution", () => {
       process.env.OPENCLAW_VERSION = "2026.3.25";
       process.env.OPENCLAW_SERVICE_VERSION = "2026.3.25-service";
       process.env.npm_package_version = "2026.3.25-package";
-      expect(resolveCompatibilityHostVersion()).toBe(VERSION);
+      expect(resolveCompatibilityHostVersion()).toBe(UPSTREAM_COMPATIBILITY_VERSION);
     } finally {
       restoreEnvValue("OPENCLAW_VERSION", previous);
       restoreEnvValue("OPENCLAW_SERVICE_VERSION", previousService);
@@ -182,14 +186,26 @@ describe("version resolution", () => {
     }
   });
 
-  it("keeps explicit env-object overrides for compatibility checks in tests", () => {
+  it("ignores general version env vars for compatibility checks", () => {
+    // These carry the fork's own version wherever they are set; only the
+    // compatibility-specific override speaks for the plugin API.
     expect(
       resolveCompatibilityHostVersion({
         OPENCLAW_VERSION: "2026.3.99",
         OPENCLAW_SERVICE_VERSION: "2026.3.98",
         npm_package_version: "2026.3.97",
       }),
-    ).toBe("2026.3.99");
+    ).toBe(UPSTREAM_COMPATIBILITY_VERSION);
+  });
+
+  it("keeps the pinned upstream version in step with the fork metadata", async () => {
+    const pkg = await fs.readFile(
+      fileURLToPath(new URL("../package.json", import.meta.url)),
+      "utf8",
+    );
+    const upstream = (JSON.parse(pkg) as { clawworks?: { upstream?: { version?: string } } })
+      .clawworks?.upstream?.version;
+    expect(upstream).toBe(UPSTREAM_COMPATIBILITY_VERSION);
   });
 
   it("prefers explicit compatibility host overrides over runtime and stale env versions", () => {

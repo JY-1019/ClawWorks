@@ -141,20 +141,35 @@ export function resolveRuntimeServiceVersion(
   });
 }
 
+/**
+ * The upstream OpenClaw release this build descends from, pinned to package.json
+ * `clawworks.upstream.version` by version.test.ts.
+ */
+export const UPSTREAM_COMPATIBILITY_VERSION = "2026.6.10";
+
+/**
+ * The version advertised to plugin compatibility checks, which is a different
+ * question from `VERSION` (what this build is) and from
+ * `resolveRuntimeServiceVersion` (what the service reports it is).
+ *
+ * Third-party plugins pin `openclaw.compat.pluginApi` and `minHostVersion` to
+ * OpenClaw releases, so the host has to answer with the upstream lineage version
+ * or every one of those ranges fails to resolve: this fork's own semver
+ * (`0.1.0-beta.1`) satisfies `>=2026.6.10` never, which would silently retire the
+ * compatibility promise the fork exists to keep. Deliberately ignores
+ * `OPENCLAW_VERSION` and friends for the same reason — those carry the fork's
+ * version, and a plugin is not asking about the fork.
+ */
 export function resolveCompatibilityHostVersion(
   env: RuntimeVersionEnv = process.env as RuntimeVersionEnv,
-  fallback = RUNTIME_SERVICE_VERSION_FALLBACK,
+  // Ignored. Retained because this function is re-exported from
+  // `openclaw/plugin-sdk/cli-runtime`, so dropping the parameter would break an
+  // external TypeScript caller that still passes one. Remove on a versioned break.
+  _fallback = RUNTIME_SERVICE_VERSION_FALLBACK,
 ): string {
-  const explicitCompatibilityVersion = firstNonEmpty(env.OPENCLAW_COMPATIBILITY_HOST_VERSION);
-  if (explicitCompatibilityVersion) {
-    return explicitCompatibilityVersion;
-  }
-  return resolveVersionFromRuntimeSources({
-    env,
-    runtimeVersion: resolveUsableRuntimeVersion(VERSION),
-    fallback,
-    preference: env === (process.env as RuntimeVersionEnv) ? "runtime-first" : "env-first",
-  });
+  // Set by the updater when it re-runs plugin checks against a candidate core,
+  // so a pending upgrade is judged against the version it would install.
+  return firstNonEmpty(env.OPENCLAW_COMPATIBILITY_HOST_VERSION) ?? UPSTREAM_COMPATIBILITY_VERSION;
 }
 
 // Single source of truth for the current OpenClaw version.

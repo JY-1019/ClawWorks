@@ -9,6 +9,7 @@ import {
   __testing as manifestRegistryTesting,
   loadPluginManifestRegistry,
 } from "./manifest-registry.js";
+import { UPSTREAM_COMPATIBILITY_VERSION } from "../version.js";
 import type { OpenClawPackageManifest } from "./manifest.js";
 import { cleanupTrackedTempDirs, makeTrackedTempDir } from "./test-helpers/fs-fixtures.js";
 
@@ -2320,14 +2321,14 @@ describe("loadPluginManifestRegistry", () => {
     {
       name: "skips plugins whose minHostVersion is newer than the current host",
       minHostVersion: ">=2026.3.22",
-      env: { OPENCLAW_VERSION: "2026.3.21" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.3.21" } as NodeJS.ProcessEnv,
       expectedMessage: "plugin requires OpenClaw >=2026.3.22, but this host is 2026.3.21",
       expectWarn: true,
     },
     {
       name: "skips plugins whose beta minHostVersion is newer than the current host",
       minHostVersion: ">=2026.5.1-beta.1",
-      env: { OPENCLAW_VERSION: "2026.4.30" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.30" } as NodeJS.ProcessEnv,
       expectedMessage: "plugin requires OpenClaw >=2026.5.1-beta.1, but this host is 2026.4.30",
       expectWarn: true,
     },
@@ -2340,7 +2341,7 @@ describe("loadPluginManifestRegistry", () => {
     {
       name: "warns distinctly when host version cannot be determined",
       minHostVersion: ">=2026.3.22",
-      env: { OPENCLAW_VERSION: "unknown" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "unknown" } as NodeJS.ProcessEnv,
       expectedMessage: "host version could not be determined",
       expectWarn: true,
     },
@@ -2359,6 +2360,37 @@ describe("loadPluginManifestRegistry", () => {
     if (expectWarn) {
       expect(registry.diagnostics.map((diag) => diag.level)).toContain("warn");
     }
+  });
+
+  it("loads a plugin published for the upstream release this fork descends from", () => {
+    // The fork's own semver satisfies no OpenClaw range, so answering plugin
+    // compatibility with it would reject every published plugin. Guards the
+    // promise in README "Govern the platform; do not replace it".
+    const dir = makeTempDir();
+    writeManifest(dir, { id: "discord", configSchema: { type: "object" } });
+
+    const registry = loadPluginManifestRegistry({
+      installRecords: { discord: { source: "npm", installPath: dir } },
+      candidates: [
+        createPluginCandidate({
+          idHint: "discord",
+          rootDir: dir,
+          packageDir: dir,
+          origin: "global",
+          packageManifest: {
+            install: {
+              npmSpec: "@openclaw/discord",
+              minHostVersion: `>=${UPSTREAM_COMPATIBILITY_VERSION}`,
+            },
+          },
+        }),
+      ],
+      // No compatibility override: exactly what a stock install resolves.
+      env: hermeticEnv(),
+    });
+
+    expect(registry.plugins.map((plugin) => plugin.id)).toEqual(["discord"]);
+    expectNoRegistryDiagnosticContains(registry, "but this host is");
   });
 
   it("accepts legacy bare minHostVersion metadata for recorded installed globals", () => {
@@ -2411,7 +2443,7 @@ describe("loadPluginManifestRegistry", () => {
           },
         }),
       ],
-      env: { OPENCLAW_VERSION: "2026.4.30" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.30" } as NodeJS.ProcessEnv,
     });
 
     expect(registry.plugins.map((plugin) => plugin.id)).toContain("codex");
@@ -2425,7 +2457,7 @@ describe("loadPluginManifestRegistry", () => {
     const registry = loadRegistryForPluginApiCase({
       rootDir: dir,
       pluginApi: ">=2026.5.27",
-      env: { OPENCLAW_VERSION: "2026.5.10-beta.1" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.5.10-beta.1" } as NodeJS.ProcessEnv,
     });
 
     expect(registry.plugins).toStrictEqual([]);
@@ -2443,7 +2475,7 @@ describe("loadPluginManifestRegistry", () => {
     const registry = loadRegistryForPluginApiCase({
       rootDir: dir,
       pluginApi: 20260527,
-      env: { OPENCLAW_VERSION: "2026.5.27" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.5.27" } as NodeJS.ProcessEnv,
     });
 
     expect(registry.plugins).toStrictEqual([]);
@@ -2461,7 +2493,7 @@ describe("loadPluginManifestRegistry", () => {
     const registry = loadRegistryForPluginApiCase({
       rootDir: dir,
       pluginApi: ">=2026.5.27",
-      env: { OPENCLAW_VERSION: "2026.5.27-beta.1" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.5.27-beta.1" } as NodeJS.ProcessEnv,
     });
 
     expect(registry.plugins.map((plugin) => plugin.id)).toEqual(["synology-chat"]);
@@ -2477,7 +2509,7 @@ describe("loadPluginManifestRegistry", () => {
       pluginApi: ">=2026.5.27",
       origin: "bundled",
       idHint: "codex",
-      env: { OPENCLAW_VERSION: "2026.5.10-beta.1" } as NodeJS.ProcessEnv,
+      env: { OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.5.10-beta.1" } as NodeJS.ProcessEnv,
     });
 
     expect(registry.plugins.map((plugin) => plugin.id)).toContain("codex");
@@ -2882,13 +2914,13 @@ describe("loadPluginManifestRegistry", () => {
     const olderHost = loadPluginManifestRegistry({
       candidates,
       env: hermeticEnv({
-        OPENCLAW_VERSION: "2026.3.21",
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.3.21",
       }),
     });
     const newerHost = loadPluginManifestRegistry({
       candidates,
       env: hermeticEnv({
-        OPENCLAW_VERSION: "2026.3.22",
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.3.22",
       }),
     });
 

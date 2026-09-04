@@ -26,7 +26,7 @@ vi.mock("./plugin-payload-validation.js", () => ({
 }));
 
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { VERSION } from "../../version.js";
+import { UPSTREAM_COMPATIBILITY_VERSION } from "../../version.js";
 import {
   convergenceWarningsToOutcomes,
   filterRecordsToActive,
@@ -103,7 +103,7 @@ describe("runPostCorePluginConvergence", () => {
       cfg,
       env: {
         OPENCLAW_UPDATE_IN_PROGRESS: "1",
-        OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
         OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
       },
     });
@@ -118,7 +118,7 @@ describe("runPostCorePluginConvergence", () => {
     expect(mocks.repairMissingConfiguredPluginInstalls).toHaveBeenCalledWith({
       cfg,
       env: {
-        OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
         OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
       },
     });
@@ -194,7 +194,7 @@ describe("runPostCorePluginConvergence", () => {
       logger: {},
     });
     expect(result.changes).toEqual([
-      "Repaired OpenClaw host peer link(s) for 1 managed npm plugin package(s).",
+      "Repaired ClawWorks host peer link(s) for 1 managed npm plugin package(s).",
     ]);
     expect(
       mocks.relinkOpenClawPeerDependenciesInManagedNpmRoot.mock.invocationCallOrder[0],
@@ -220,7 +220,7 @@ describe("runPostCorePluginConvergence", () => {
     expect(mocks.repairMissingConfiguredPluginInstalls).toHaveBeenCalledWith({
       cfg,
       env: {
-        OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
         OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
       },
       baselineRecords: baseline,
@@ -263,7 +263,7 @@ describe("runPostCorePluginConvergence", () => {
         OPENCLAW_BUNDLED_PLUGINS_DIR: bundledRoot,
         OPENCLAW_TEST_TRUST_BUNDLED_PLUGINS_DIR: "1",
         VITEST: "true",
-        OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
         OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
       },
       baselineRecords: {
@@ -291,7 +291,7 @@ describe("runPostCorePluginConvergence", () => {
     expect(mocks.repairMissingConfiguredPluginInstalls).toHaveBeenCalledWith({
       cfg,
       env: {
-        OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
         OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
       },
       acknowledgeClawHubRisk: true,
@@ -513,7 +513,7 @@ describe("runPostCorePluginConvergence", () => {
     expect(mocks.runPluginPayloadSmokeCheck).toHaveBeenCalledWith({
       records,
       env: {
-        OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
         OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
       },
     });

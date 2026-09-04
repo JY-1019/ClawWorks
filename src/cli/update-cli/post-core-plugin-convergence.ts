@@ -13,7 +13,7 @@ import {
 } from "../../plugins/official-external-install-records.js";
 import { relinkOpenClawPeerDependenciesInManagedNpmRoot } from "../../plugins/plugin-peer-link.js";
 import { pruneStaleLocalBundledPluginInstallRecords } from "../../plugins/stale-local-bundled-plugin-install-records.js";
-import { VERSION } from "../../version.js";
+import { UPSTREAM_COMPATIBILITY_VERSION } from "../../version.js";
 import {
   runPluginPayloadSmokeCheck,
   type PluginPayloadSmokeFailure,
@@ -110,7 +110,7 @@ export async function runPostCorePluginConvergence(params: {
 }): Promise<PostCoreConvergenceResult> {
   const env: NodeJS.ProcessEnv = {
     ...params.env,
-    OPENCLAW_COMPATIBILITY_HOST_VERSION: VERSION,
+    OPENCLAW_COMPATIBILITY_HOST_VERSION: UPSTREAM_COMPATIBILITY_VERSION,
     [UPDATE_POST_CORE_CONVERGENCE_ENV]: "1",
   };
   const prunedBaseline = params.baselineInstallRecords

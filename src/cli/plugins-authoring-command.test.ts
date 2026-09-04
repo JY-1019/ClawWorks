@@ -5,7 +5,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, it } from "vitest";
 import { defineToolPlugin, getToolPluginMetadata } from "../plugin-sdk/tool-plugin.js";
-import { VERSION } from "../version.js";
+import { UPSTREAM_COMPATIBILITY_VERSION, VERSION } from "../version.js";
 import {
   buildToolPluginManifest,
   buildToolPluginPackageManifest,
@@ -403,10 +403,10 @@ describe("plugin authoring commands", () => {
         install: {
           clawhubSpec: "clawhub:openclaw-plugin-plugin-init-test",
           defaultChoice: "clawhub",
-          minHostVersion: `>=${VERSION}`,
+          minHostVersion: `>=${UPSTREAM_COMPATIBILITY_VERSION}`,
         },
         compat: {
-          pluginApi: `>=${VERSION}`,
+          pluginApi: `>=${UPSTREAM_COMPATIBILITY_VERSION}`,
         },
         build: {
           openclawVersion: VERSION,

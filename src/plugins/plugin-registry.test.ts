@@ -57,7 +57,7 @@ function makeTempDir() {
 function hermeticEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     OPENCLAW_BUNDLED_PLUGINS_DIR: undefined,
-    OPENCLAW_VERSION: "2026.4.25",
+    OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.25",
     VITEST: "true",
     ...overrides,
   };
@@ -797,7 +797,7 @@ describe("plugin registry facade", () => {
       config,
       env: hermeticEnv({
         OPENCLAW_BUNDLED_PLUGINS_DIR: bundledRoot,
-        OPENCLAW_VERSION: "2026.4.26",
+        OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.4.26",
       }),
     });
 
