@@ -1,0 +1,15 @@
+{
+  "name": "acme-tracker-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo MCP server for the ClawWorks enterprise tutorial: read-only Acme order and shipment lookups over streamable HTTP.",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  }
+}

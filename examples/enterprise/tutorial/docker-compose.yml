@@ -1,0 +1,50 @@
+# Local stack for the ClawWorks enterprise tutorial
+# (docs/concepts/clawworks-enterprise-tutorial.md).
+#
+#   cp .env.example .env   # then fill in the LLM/embedding credentials
+#   docker compose up -d --build
+#
+# Two services, one per governed capability the tutorial registers:
+#   - lightrag      the knowledge foundation behind knowledge_search
+#   - acme-tracker  the MCP server the lookup step attaches
+#
+# Nothing here talks to the gateway. ClawWorks reaches both over localhost, so
+# the gateway can stay wherever it already runs.
+name: clawworks-tutorial
+
+services:
+  lightrag:
+    # Upstream image and layout: https://github.com/HKUDS/LightRAG
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: clawworks-tutorial-lightrag
+    env_file:
+      # Required on purpose: LightRAG needs an LLM and an embedding binding, and
+      # a server that starts without them fails later, at the first query, where
+      # the cause is much harder to read.
+      - path: .env
+        required: true
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "9621"
+      WORKING_DIR: /app/data/rag_storage
+      INPUT_DIR: /app/data/inputs
+    ports:
+      - "${LIGHTRAG_PORT:-9621}:9621"
+    volumes:
+      - ./data/rag_storage:/app/data/rag_storage
+      - ./data/inputs:/app/data/inputs
+    # Lets the .env point a binding at a model server on the host
+    # (http://host.docker.internal:11434 for Ollama, say) on Linux too, where the
+    # alias does not exist by default.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  acme-tracker:
+    build: ./mcp
+    container_name: clawworks-tutorial-tracker
+    environment:
+      PORT: "9700"
+    ports:
+      - "${TRACKER_PORT:-9700}:9700"
+    restart: unless-stopped

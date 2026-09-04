@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { buildPlanCandidateDigest } from "@openclaw/enterprise-planner";
 import { describe, expect, it } from "vitest";
 import { parseWorkflowBundleContent } from "./bundle-io.js";
+import { parseWorkflowTreeContent } from "./tree-io.js";
 import { collectWorkflowTreeWarnings } from "./tree-warnings.js";
 import type { WorkflowNodeDefinition, WorkflowTreeDefinition } from "./types.js";
 
@@ -465,5 +466,49 @@ describe("the shipped enterprise example", () => {
     };
     visit(tree.root, null);
     expect(unreachable).toEqual([]);
+  });
+});
+
+/**
+ * The tutorial ships a second work-map, under `examples/enterprise/tutorial/`.
+ * It is not another axis demo — the guard above still holds for the directory
+ * that carries the shipped example. This one is the answer key readers compare
+ * their Control UI work against in
+ * docs/concepts/clawworks-enterprise-tutorial.md, so a definition that stopped
+ * importing would read to them as the enterprise layer being broken.
+ */
+describe("the tutorial work-map", () => {
+  const TUTORIAL_FILE = join(EXAMPLES_DIR, "tutorial", "acme-returns.worktree.yaml");
+
+  it("imports, and declares nothing its own scope cannot reach", () => {
+    const parsed = parseWorkflowTreeContent(readFileSync(TUTORIAL_FILE, "utf8"), "yaml");
+    if (!parsed.ok) {
+      throw new Error(
+        `acme-returns.worktree.yaml failed to validate: ${JSON.stringify(parsed.issues, null, 2)}`,
+      );
+    }
+    expect(parsed.tree.id).toBe("acme.returns");
+    expect(collectWorkflowTreeWarnings(parsed.tree)).toEqual([]);
+  });
+
+  it("keeps the bindings the tutorial teaches", () => {
+    const parsed = parseWorkflowTreeContent(readFileSync(TUTORIAL_FILE, "utf8"), "yaml");
+    if (!parsed.ok) {
+      throw new Error("acme-returns.worktree.yaml failed to validate");
+    }
+    const root = parsed.tree.root;
+    // The denial is the lesson: a tool left out only asks, so the three the
+    // tutorial promises are refused everywhere have to be named here.
+    expect(root.ontology?.deniedTools).toEqual(["exec", "write", "edit"]);
+    const steps = new Map((root.children ?? []).map((child) => [child.id, child]));
+    expect([...steps.keys()]).toEqual(["returns.triage", "returns.lookup", "returns.decide"]);
+    expect(steps.get("returns.triage")?.ontology?.knowledgeFoundations).toEqual([
+      "acme.returns-kb",
+    ]);
+    expect(steps.get("returns.lookup")?.ontology?.mcpServers).toEqual(["acme-tracker"]);
+    expect(steps.get("returns.decide")?.ontology?.skills).toEqual(["refund-reply"]);
+    // Fewer than five nodes is never route-planned, which is what makes the
+    // tutorial's traces predictable: every run walks all three steps in order.
+    expect(walk(root, 1).count).toBeLessThan(5);
   });
 });

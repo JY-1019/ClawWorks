@@ -1005,6 +1005,7 @@ and the attachments resolve.
 ## Related
 
 - [ClawWorks Enterprise](/concepts/clawworks-enterprise)
+- [Enterprise tutorial](/concepts/clawworks-enterprise-tutorial)
 - [Enterprise CLI](/cli/enterprise)
 - [Skills](/tools/skills)
 - [LightRAG knowledge plugin](/plugins/reference/lightrag)

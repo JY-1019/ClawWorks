@@ -1,0 +1,94 @@
+# The finished work-map from the ClawWorks enterprise tutorial
+# (docs/concepts/clawworks-enterprise-tutorial.md).
+#
+# The tutorial builds this in the Control UI, step by step. This file is the
+# answer key: compare it against what you built, or import it directly with
+#
+#   openclaw enterprise trees import examples/enterprise/tutorial/acme-returns.worktree.yaml
+#   openclaw gateway restart
+#
+# The restart is only needed for a CLI import — a running gateway holds its tree
+# registry for the life of the process. Saving from the Control UI refreshes it
+# in place.
+#
+# The MCP server and the knowledge foundation are deployment configuration, so
+# they are NOT in here: register `acme-tracker` under `mcp.servers` and
+# `acme.returns-kb` under the LightRAG plugin first, or the attachments below
+# resolve to nothing.
+schema: clawworks.workflow-tree
+schemaVersion: 1
+id: acme.returns
+version: 1.0.0
+name: Returns desk
+
+# The routing signal, and the only thing that decides whether a request enters
+# this work-map at all. Domain nouns first, tasks second, under 600 characters:
+# a description that covered "refund an order" but not "the orders" loses
+# "where is my order" to the permissive default tree.
+description: >-
+  Acme customer orders, returns, refunds, replacements and parcel delivery:
+  order records and totals, delivery dates, carrier tracking and shipment scans,
+  the returns policy handbook (30-day window, restocking fees, refund
+  thresholds), shipping service levels, and the support escalation matrix.
+  Handles "can I return this", "where is my order", refund eligibility, late or
+  lost parcels, damaged items, and who a case escalates to.
+
+match:
+  triggers: [user]
+  priority: 10
+
+root:
+  id: returns
+  title: Returns desk
+  description: Answer a customer's return, refund, or delivery question.
+  ontology:
+    # A denial is the wall. Leaving a tool out only means "ask" — these three
+    # must never run from a customer reply, so they are named here, where the
+    # refusal reaches every step below.
+    deniedTools: [exec, write, edit]
+    # Advisory, and typed straight into the Control UI's "Role prompt" box. It
+    # teaches; it never widens. Enforcement wins on conflict.
+    guidance: >-
+      Name the order id in every reply, and quote the policy rule the outcome
+      rests on.
+  children:
+    - id: returns.triage
+      title: Read the policy
+      description: Find the handbook rule that applies to this request.
+      ontology:
+        # The first entry turns this into an allowlist: on this step, anything
+        # else raises a one-off approval instead of running.
+        allowedTools: [knowledge_search]
+        knowledgeFoundations: [acme.returns-kb]
+        # Trace every tool decision under this step, including default allows.
+        audit: true
+
+    - id: returns.lookup
+      title: Look up the order
+      description: Fetch the order and its shipment from the tracker.
+      ontology:
+        # The first MCP attachment anywhere in a work-map switches the WHOLE
+        # work-map to deny-by-default for MCP: every step without an attachment
+        # now reaches no server at all.
+        #
+        # No allowedTools here on purpose. On the embedded runtime the
+        # attachment already grants this server's tools. If you narrow this step
+        # (or the root) with an allowlist, a Claude CLI or Codex-backed run also
+        # needs the tool globs, in every spelling each harness may report:
+        #   allowedTools:
+        #     - "acme-tracker__*"
+        #     - "mcp__acme-tracker__*"
+        #     - "acme_tracker__*"
+        #     - "mcp__acme_tracker__*"
+        mcpServers: [acme-tracker]
+        audit: true
+
+    - id: returns.decide
+      title: Decide and reply
+      description: Apply the rule to the order and write the answer.
+      ontology:
+        allowedTools: [message]
+        # Advisory: the skill's SKILL.md body is inlined into this step's digest
+        # at run start. It never grants a tool the step withholds.
+        skills: [refund-reply]
+        expectedOutput: The decision, the rule it rests on, and the order id.
