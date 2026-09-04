@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Onboarding
-    url: https://discord.gg/clawd
-    about: "New to OpenClaw? Join Discord for setup guidance in #help."
-  - name: Support
-    url: https://discord.gg/clawd
-    about: "Get help from the OpenClaw community on Discord in #help."
+  - name: Platform bug (gateway, channels, apps, plugin SDK)
+    url: https://github.com/openclaw/openclaw/issues
+    about: "ClawWorks inherits that code from OpenClaw. Fixing it upstream reaches every install, including this one."
+  - name: Security issue
+    url: https://github.com/JY-1019/ClawWorks/security/advisories/new
+    about: "Report privately. Do not open a public issue for an unpatched vulnerability."

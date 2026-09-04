@@ -1,34 +1,36 @@
 # Security Policy
 
-If you believe you've found a security issue in OpenClaw, report it privately first.
+If you believe you've found a security issue in ClawWorks, report it privately first.
 
-This policy does two things: it gives researchers a clear disclosure path, and it spells out the trust model maintainers use when triaging reports. OpenClaw is local-first agent infrastructure for trusted operators; it is not designed as a shared multi-tenant boundary between adversarial users on one gateway.
+ClawWorks is a fork of [OpenClaw](https://github.com/openclaw/openclaw) that adds a governance
+layer on top of it, so a report belongs in one of two places:
 
-The fastest useful reports show a current, reproducible boundary bypass with demonstrated impact. Scanner output, prompt-injection-only chains, or reports that rely on hostile users sharing one trusted gateway are usually not security vulnerabilities under this model.
+- **The governance layer — work-maps, the tool-call gate, capability grants, policies, run traces,
+  the ontology and knowledge surfaces, and the enterprise Control UI views.** That code is this
+  fork's, so report it here through a private
+  [GitHub Security Advisory](https://github.com/JY-1019/ClawWorks/security/advisories/new).
+- **The inherited platform — gateway, channels, nodes, canvas, skills, the plugin system, and the
+  companion apps — when the issue reproduces on stock OpenClaw.** A fix belongs upstream, so report
+  it to [openclaw/openclaw](https://github.com/openclaw/openclaw/security/advisories/new) under
+  [their policy](https://trust.openclaw.ai). An inherited surface that is only vulnerable on
+  ClawWorks belongs here instead: upstream cannot reproduce or fix a weakness this fork introduced.
+  If you are not sure which side a bug lives on, report it here and it will be routed.
 
-Security work is shared across a number of OpenClaw maintainers, including engineers and security researchers from organizations such as NVIDIA and Tencent. See the [maintainer list](CONTRIBUTING.md#maintainers).
+Do not open a public issue or PR that discloses an unpatched vulnerability, exploit path, secret, or
+security-sensitive proof of concept. Such reports may be closed or hidden and redirected through
+private disclosure so the issue can be fixed without publishing a playbook first.
 
-## Report a Security Issue
+This policy also spells out the trust model used when triaging. ClawWorks inherits OpenClaw's:
+local-first agent infrastructure for trusted operators, not a shared multi-tenant boundary between
+adversarial users on one gateway. The governance layer shapes what a step is *allowed to ask for*;
+it is not a sandbox and does not change that model.
 
-Report vulnerabilities directly to the repository where the issue lives:
+The fastest useful reports show a current, reproducible boundary bypass with demonstrated impact.
+Scanner output, prompt-injection-only chains, or reports that rely on hostile users sharing one
+trusted gateway are usually not security vulnerabilities under this model.
 
-- **Core CLI and gateway** — [openclaw/openclaw](https://github.com/openclaw/openclaw)
-- **macOS desktop app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/macos)
-- **iOS app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/ios)
-- **Android app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/android)
-- **ClawHub** — [openclaw/clawhub](https://github.com/openclaw/clawhub)
-- **Trust and threat model** — [openclaw/trust](https://github.com/openclaw/trust)
-
-For issues that don't fit a specific repo, or if you're unsure, email **[security@openclaw.ai](mailto:security@openclaw.ai)** and we'll route it.
-
-For OpenClaw core issues, submit through a private [GitHub Security Advisory](https://github.com/openclaw/openclaw/security/advisories/new). Do not open a public issue or PR that discloses an unpatched vulnerability, exploit path, secret, or security-sensitive proof of concept.
-
-Maintainers may close, hide, delete, or otherwise take down public issues and PRs that disclose vulnerabilities or active security issues. We will redirect those reports through the private disclosure process so the issue can be triaged and fixed without giving attackers a public playbook.
-
-For full reporting instructions see our [Trust page](https://trust.openclaw.ai).
-For maintainer response workflow, see the [incident response plan](docs/security/incident-response.md).
-
-OpenClaw does not currently run a paid bug bounty program. Please still disclose responsibly so we can fix real issues quickly. The best way to help the project right now is to send high-signal reports and, when practical, focused PRs.
+There is no paid bug bounty. Please still disclose responsibly. For the maintainer response
+workflow, see the [incident response plan](docs/security/incident-response.md).
 
 ### What We Need
 

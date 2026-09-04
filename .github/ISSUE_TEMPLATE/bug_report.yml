@@ -7,6 +7,8 @@ body:
   - type: markdown
     attributes:
       value: |
+        **Does this reproduce on stock OpenClaw?** ClawWorks inherits the gateway, channels, nodes, canvas, skills, the plugin system, and the companion apps. If the same failure happens on [OpenClaw](https://github.com/openclaw/openclaw/issues) too, report it there, where a fix reaches every install including this one. Report it **here** when it is the governance layer — work-maps, the tool-call gate, capability grants, policies, run traces, the ontology, the enterprise views — or when an inherited surface breaks only on ClawWorks, because upstream cannot reproduce or fix that.
+
         Thanks for filing this report. Keep every answer concise, reproducible, and grounded in observed evidence.
         Do not speculate or infer beyond the evidence. If a narrative section cannot be answered from the available evidence, respond with exactly `NOT_ENOUGH_INFO`.
 
