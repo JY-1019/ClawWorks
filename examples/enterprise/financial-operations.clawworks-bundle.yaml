@@ -60,12 +60,17 @@
 #
 # WHAT AN OPERATOR STILL HAS TO SUPPLY
 # ------------------------------------
-# The four MCP servers. A bundle can carry a server's NAME but never the server:
-# its transport and credentials are deployment configuration. Register them under
-# `mcp.servers` (Enterprise -> MCP, or `openclaw mcp add`) as `acme-screening`,
-# `acme-ledger`, `acme-tracker` and `acme-filing`; until then the MCP tab reports
-# them unregistered and the steps that attach them fall closed. Everything else —
-# the corpora, the seeded objects, the two skills — resolves on a stock install.
+# The five MCP servers, and the data behind them. A bundle can carry a server's
+# NAME but never the server: its transport and credentials are deployment
+# configuration. Register them under `mcp.servers` (Enterprise -> MCP, or
+# `openclaw mcp add`) as `acme-screening`, `acme-ledger`, `acme-tracker`,
+# `acme-filing` and `acme-core-banking`; until then the MCP tab reports them
+# unregistered and the steps that attach them fall closed.
+#
+# There are no seeded customers or accounts here, and that is the point. Core
+# banking owns them, so this work-map declares what a customer IS and which
+# operations a step may perform on one, and reads the values from the system that
+# holds them. The corpora and the two skills still resolve on a stock install.
 #
 # `governanceMode: enforce` at the bottom is what makes an import into an
 # `observe` or `off` deployment report a downgrade: everything above is written as
@@ -219,35 +224,6 @@ trees:
                 returns: boolean
                 expression: $status == 'active'
                 description: Whether the account may transact today.
-            # Seeded instances. These ids are what a test prompt should name — the
-            # other domains seed their own, and every id prefix is unique so a reply
-            # can never be graded against the wrong record.
-            objects:
-              - entity: customer
-                properties:
-                  { customer-id: CU-1001, name: Nadia Osei, tier: priority, risk-rating: standard, jurisdiction: SG }
-              - entity: customer
-                properties:
-                  { customer-id: CU-1002, name: Rafael Lima, tier: standard, risk-rating: elevated, jurisdiction: BR }
-              - entity: customer
-                properties:
-                  { customer-id: CU-1003, name: Hana Sato, tier: standard, risk-rating: standard, jurisdiction: JP }
-              - entity: account
-                properties: { account-id: AC-2001, customer-id: CU-1001, product: current, status: active, balance: 18400 }
-              - entity: account
-                properties: { account-id: AC-2002, customer-id: CU-1002, product: savings, status: active, balance: 620 }
-              - entity: account
-                properties: { account-id: AC-2003, customer-id: CU-1003, product: current, status: frozen, balance: 5100 }
-              - entity: document
-                properties: { document-id: DOC-3001, kind: passport, verified: true }
-              - entity: document
-                properties: { document-id: DOC-3002, kind: proof-of-address, verified: false }
-            links:
-              - { relationship: customer-holds-account, from: CU-1001, to: AC-2001 }
-              - { relationship: customer-holds-account, from: CU-1002, to: AC-2002 }
-              - { relationship: customer-holds-account, from: CU-1003, to: AC-2003 }
-              - { relationship: customer-evidenced-by-document, from: CU-1001, to: DOC-3001 }
-              - { relationship: customer-evidenced-by-document, from: CU-1002, to: DOC-3002 }
             # The domain's corpora. Declared here rather than at the root for the
             # same reason the object types are: a foundation named at the root
             # would be queryable from all 30 steps. Each node with a non-empty list
@@ -352,26 +328,30 @@ trees:
                   title: Open the account
                   description: Create the account record once the review clears.
                   ontology:
-                    # `invoke_action` named LITERALLY. A glob such as `invoke_*`
-                    # satisfies the ordinary tool gate and is still refused as a
-                    # write opt-in, so a step that writes has to spell it out.
-                    allowedTools: [search_objects, compute_function, invoke_action, message]
+                    allowedTools: [search_objects, compute_function, message]
+                    # An OUTWARD action. Core banking owns accounts, so nothing is
+                    # written here: the model calls the service, and this
+                    # declaration is what the gate holds that call to. Declaring one
+                    # also closes the server — `acme-core-banking` is attached, but
+                    # only the operation named below is reachable from this step.
+                    mcpServers: [acme-core-banking]
                     actions:
                       - id: open-account
                         title: Open an account
-                        description: Create the account record for a cleared applicant.
+                        description: Book the account for a cleared applicant in core banking.
                         parameters:
-                          # The target type's primary key. Without it no call can
-                          # name the object it writes and every invocation fails
-                          # validation, however well-formed the rest looks.
-                          - { id: account-id, type: id, required: true }
+                          # Required parameters are the contract, not documentation:
+                          # the call is refused before it leaves unless it carries
+                          # every one of them.
                           - { id: customer-id, type: id, required: true }
                           - { id: product, type: string, required: true }
-                          - { id: status, type: string, required: true }
+                          - { id: reason, type: string, required: true }
                         preconditions:
                           - The KYC review cleared and the risk rating is recorded.
                         effects:
-                          - { entity: account, kind: create, description: Books the new account. }
+                          - kind: call
+                            tool: "acme-core-banking__open_account"
+                            description: Books the new account in the system that owns it.
                     guidance: >-
                       Gather all four parameters from the steps above before calling:
                       the new account id, the customer it belongs to, the product, and
@@ -388,20 +368,25 @@ trees:
                   title: Update the customer profile
                   description: Change a stored customer field on request.
                   ontology:
-                    allowedTools: [search_objects, invoke_action, knowledge_search, message]
+                    allowedTools: [search_objects, knowledge_search, message]
                     knowledgeFoundations: [acme.privacy-standard]
+                    mcpServers: [acme-core-banking]
                     actions:
                       - id: update-customer-profile
                         title: Update a customer profile
                         parameters:
                           - { id: customer-id, type: id, required: true }
-                          - { id: tier, type: string }
+                          - { id: field, type: string, required: true }
+                          - { id: value, type: string, required: true }
+                          - { id: reason, type: string, required: true }
                         effects:
-                          - { entity: customer, kind: update, description: Rewrites the stored profile. }
+                          - kind: call
+                            tool: "acme-core-banking__update_customer"
+                            description: Rewrites the profile where it actually lives.
                     guidance: >-
-                      Read the customer's current record first, then write only the
-                      fields the request actually names. An omitted parameter leaves
-                      that field alone, while a guessed one overwrites something real.
+                      Read the customer's current record first, then change only the
+                      field the request actually names. This leaves the workflow — the
+                      write lands in core banking and cannot be taken back from here.
                     expectedOutput: What changed, on which customer id.
                     audit: true
 
@@ -447,17 +432,20 @@ trees:
                   title: Close the account
                   description: Mark an account closed once its balance is settled.
                   ontology:
-                    allowedTools: [search_objects, compute_function, invoke_action, message]
+                    allowedTools: [search_objects, compute_function, message]
+                    mcpServers: [acme-core-banking]
                     actions:
                       - id: close-account
                         title: Close an account
                         parameters:
                           - { id: account-id, type: id, required: true }
-                          - { id: status, type: string, required: true }
+                          - { id: reason, type: string, required: true }
                         preconditions:
                           - The balance is zero and no dispute is open.
                         effects:
-                          - { entity: account, kind: update, description: Marks the account closed. }
+                          - kind: call
+                            tool: "acme-core-banking__close_account"
+                            description: Closes the account in the system that owns it.
                     guidance: >-
                       Check the account's standing before closing it: the balance
                       settled and no dispute open. Closing is not reversible from this
@@ -575,35 +563,6 @@ trees:
                     returns: string
                     expression: "$score >= 80 ? 'urgent' : ($score >= 50 ? 'standard' : 'low')"
                     description: Queue band for an alert, from its model score.
-                objects:
-                  # AL-6002 is the case the fixture is built around: two sub-10k
-                  # transfers to one counterparty on consecutive days, which the AML
-                  # corpus calls structuring.
-                  - entity: transaction
-                    properties:
-                      { transaction-id: TX-4001, account-id: AC-2002, amount: 9800, counterparty: Vega Trading FZE, booked-on: "2026-07-30" }
-                  - entity: transaction
-                    properties:
-                      { transaction-id: TX-4002, account-id: AC-2002, amount: 9600, counterparty: Vega Trading FZE, booked-on: "2026-07-31" }
-                  - entity: transaction
-                    properties:
-                      { transaction-id: TX-4003, account-id: AC-2001, amount: 120, counterparty: Cafe Mori, booked-on: "2026-08-01" }
-                  - entity: alert
-                    properties: { alert-id: AL-6001, account-id: AC-2001, rule: velocity, score: 41, status: closed }
-                  - entity: alert
-                    properties: { alert-id: AL-6002, account-id: AC-2002, rule: structuring, score: 88, status: open }
-                  - entity: investigation-case
-                    properties: { case-id: CS-7001, alert-id: AL-6002, status: open, analyst: unassigned }
-                  - entity: sar
-                    properties: { sar-id: SR-8001, case-id: CS-7001, narrative: draft pending disposition }
-                links:
-                  - { relationship: account-books-transaction, from: AC-2002, to: TX-4001 }
-                  - { relationship: account-books-transaction, from: AC-2002, to: TX-4002 }
-                  - { relationship: account-books-transaction, from: AC-2001, to: TX-4003 }
-                  - { relationship: alert-raised-on-account, from: AL-6001, to: AC-2001 }
-                  - { relationship: alert-raised-on-account, from: AL-6002, to: AC-2002 }
-                  - { relationship: case-investigates-alert, from: CS-7001, to: AL-6002 }
-                  - { relationship: case-files-sar, from: CS-7001, to: SR-8001 }
               children:
                 - id: finops.risk.monitoring.alert-triage
                   title: Triage the alert queue
@@ -691,6 +650,21 @@ trees:
                                   - The evidence step recorded what the disposition rests on.
                                 effects:
                                   - { entity: investigation-case, kind: update, description: Records the outcome. }
+                              # A GRAPH effect. The case is born in this workflow, so
+                              # the edge back to the alert it answers is ours to write
+                              # — and it is what lets get_neighbors walk from an alert
+                              # to its disposition afterwards. The endpoints come from
+                              # the parameters: each end reads the parameter named
+                              # after that object type's primaryKey.
+                              - id: attach-case-to-alert
+                                title: Attach the case to its alert
+                                parameters:
+                                  - { id: case-id, type: id, required: true }
+                                  - { id: alert-id, type: id, required: true }
+                                effects:
+                                  - kind: link
+                                    relationship: case-investigates-alert
+                                    description: Relates the case to the alert that raised it.
                             guidance: >-
                               Close the case only against evidence already recorded on
                               it. If the evidence step has not run, say so and stop — a
@@ -706,26 +680,31 @@ trees:
                     allowedTools: [search_objects, get_neighbors, invoke_action, knowledge_search, message]
                     knowledgeFoundations: [acme.aml-policy]
                     actions:
-                      # An UPDATE, not a create: the case's report already exists as
-                      # an empty draft (`case-files-sar` links CS-7001 to SR-8001),
-                      # and drafting is writing the narrative onto it. A create
-                      # effect here would be refused for an id that already exists
-                      # (ontology-actions.ts), so the model's only way out would be
-                      # to invent a second SAR for one case.
+                      # The report is born in this workflow — no upstream system
+                      # holds it — so this is where it comes into being, and the
+                      # edge to the case that raised it is written in the same step.
+                      # A create is refused for an id that already exists
+                      # (ontology-actions.ts), which is what stops a second SAR
+                      # being drafted for one case.
                       - id: draft-sar
                         title: Write the SAR narrative
-                        description: Write the narrative onto the report the case already carries.
+                        description: Open the report for a reportable case and write its narrative.
                         parameters:
-                          # The target type's primary key, and nothing that would
-                          # silently rewrite the case link: an update merges over the
-                          # stored object, so every property named here is a write.
                           - { id: sar-id, type: id, required: true }
                           - { id: narrative, type: string, required: true }
                         preconditions:
                           - The case is disposed as reportable.
-                          - The report was found through the case's own link, not guessed.
                         effects:
-                          - { entity: sar, kind: update, description: Records the narrative. }
+                          - { entity: sar, kind: create, description: Opens the report and records the narrative. }
+                      - id: attach-sar-to-case
+                        title: Attach the report to its case
+                        parameters:
+                          - { id: case-id, type: id, required: true }
+                          - { id: sar-id, type: id, required: true }
+                        effects:
+                          - kind: link
+                            relationship: case-files-sar
+                            description: Relates the case to the report it filed.
                     guidance: >-
                       This step drafts the narrative and stops there. Filing it is a
                       reporting step with its own regulator-facing server, and sending
@@ -763,14 +742,6 @@ trees:
                     returns: string
                     expression: "$score >= 700 ? 'prime' : ($score >= 600 ? 'near-prime' : 'subprime')"
                     description: Lending band for a bureau score.
-                objects:
-                  - entity: credit-report
-                    properties: { report-id: CR-9001, customer-id: CU-1001, bureau: northstar, score: 742 }
-                  - entity: credit-report
-                    properties: { report-id: CR-9002, customer-id: CU-1002, bureau: northstar, score: 588 }
-                links:
-                  - { relationship: customer-assessed-by-report, from: CU-1001, to: CR-9001 }
-                  - { relationship: customer-assessed-by-report, from: CU-1002, to: CR-9002 }
                 # Narrower than the domain above: underwriting judges credit, not
                 # data handling, so the privacy corpus is dropped for this branch.
                 # The credit corpus is the reason this branch exists — the AML
@@ -790,8 +761,9 @@ trees:
                   title: Decide the exposure
                   description: Approve, decline, or refer the application and record the rating.
                   ontology:
-                    allowedTools: [search_objects, compute_function, invoke_action, knowledge_search, message]
+                    allowedTools: [search_objects, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.aml-policy, acme.credit-policy]
+                    mcpServers: [acme-core-banking]
                     actions:
                       - id: record-underwriting-decision
                         title: Record the underwriting decision
@@ -804,12 +776,14 @@ trees:
                           # the expectedOutput would be a claim nothing backs.
                           - { id: credit-decision, type: string, required: true }
                           # The LENDING band, not the onboarding desk's KYC rating.
-                          # Objects are stored tree-wide, so writing this into the
-                          # shared `risk-rating` would overwrite an onboarding
-                          # judgement with a word from another vocabulary.
+                          # Named apart from the onboarding desk's KYC rating on
+                          # purpose: one word from another vocabulary landing in the
+                          # wrong field is the failure this parameter list prevents.
                           - { id: credit-rating, type: string, required: true }
                         effects:
-                          - { entity: customer, kind: update, description: Stores the decision and the lending band it rests on. }
+                          - kind: call
+                            tool: "acme-core-banking__record_lending_decision"
+                            description: Stores the decision where the customer record lives.
                     guidance: >-
                       Record the decision the scoring step reached, together with the
                       lending band it rested on. Do not re-derive the band here: the
@@ -895,29 +869,6 @@ trees:
                 returns: number
                 expression: coalesce($amount, 0)
                 description: The claimed amount, or zero when it has not been stated.
-            objects:
-              - entity: policy
-                properties: { policy-id: PL-5001, customer-id: CU-1001, product: motor, coverage-limit: 20000 }
-              - entity: policy
-                properties: { policy-id: PL-5002, customer-id: CU-1003, product: home, coverage-limit: 50000 }
-              - entity: claim
-                properties: { claim-id: CL-6101, policy-id: PL-5001, amount: 1800, status: submitted, fraud-score: 12 }
-              - entity: claim
-                properties: { claim-id: CL-6102, policy-id: PL-5002, amount: 7400, status: under-review, fraud-score: 71 }
-              - entity: claim
-                properties: { claim-id: CL-6103, policy-id: PL-5001, amount: 240, status: settled, fraud-score: 5 }
-              - entity: document
-                properties: { document-id: DOC-3101, kind: repair-estimate, verified: true }
-              - entity: document
-                properties: { document-id: DOC-3102, kind: police-report, verified: false }
-            links:
-              - { relationship: customer-holds-policy, from: CU-1001, to: PL-5001 }
-              - { relationship: customer-holds-policy, from: CU-1003, to: PL-5002 }
-              - { relationship: claim-against-policy, from: CL-6101, to: PL-5001 }
-              - { relationship: claim-against-policy, from: CL-6102, to: PL-5002 }
-              - { relationship: claim-against-policy, from: CL-6103, to: PL-5001 }
-              - { relationship: claim-evidenced-by-document, from: CL-6101, to: DOC-3101 }
-              - { relationship: claim-evidenced-by-document, from: CL-6102, to: DOC-3102 }
             knowledgeFoundations: [acme.claims-handbook, acme.privacy-standard]
           children:
             - id: finops.claims.intake
@@ -1068,11 +1019,6 @@ trees:
                     returns: number
                     expression: min($amount, 2500)
                     description: What this claim pays without a human approver.
-                objects:
-                  - entity: payment
-                    properties: { payment-id: PM-7101, claim-id: CL-6103, paid-amount: 240, rail: sepa }
-                links:
-                  - { relationship: payment-settles-claim, from: PM-7101, to: CL-6103 }
                 knowledgeFoundations: [acme.claims-handbook]
               children:
                 - id: finops.claims.settlement.authority
@@ -1128,27 +1074,34 @@ trees:
                     # is a narrow route, not a wider grant.
                     mcpServers: [acme-ledger]
                     actions:
-                      # Two effects, because paying is two facts: the money left AND
-                      # the claim is closed. An action writes only what it declares,
-                      # so a payment-only version leaves the claim `accepted` forever
-                      # and the one-payment-per-claim constraint has nothing to read.
+                      # TWO actions, because paying is two facts that cannot be one
+                      # write: the money leaves the ledger, and the claim file this
+                      # workflow owns records that it did. An outward call cannot be
+                      # rolled back into a local transaction, so an action is either
+                      # outward or local — never both.
                       - id: issue-claim-payment
                         title: Issue a claim payment
-                        description: Record the repayment and settle the claim it closes.
+                        description: Move the money in the ledger that holds it.
                         parameters:
-                          # Both primary keys: `payment-id` names the row created,
-                          # `claim-id` names the claim updated (and is also stored on
-                          # the payment). `status` belongs to `claim` alone and
-                          # `paid-amount` to `payment` alone, so neither crosses over.
-                          - { id: payment-id, type: id, required: true }
                           - { id: claim-id, type: id, required: true }
                           - { id: paid-amount, type: number, required: true }
-                          - { id: status, type: string, required: true }
+                          - { id: reason, type: string, required: true }
                         preconditions:
                           - The authority step cleared the amount against the claim's derived cap.
                           - The claim is decided and not referred to fraud.
                         effects:
-                          - { entity: payment, kind: create, description: Records the money leaving. }
+                          - kind: call
+                            tool: "acme-ledger__post_payment"
+                            description: Records the money leaving, in the ledger that owns it.
+                      - id: settle-claim
+                        title: Settle the claim
+                        description: Record on the claim file that the payment went out.
+                        parameters:
+                          - { id: claim-id, type: id, required: true }
+                          - { id: status, type: string, required: true }
+                        preconditions:
+                          - The payment call returned, and its reference is in hand.
+                        effects:
                           - { entity: claim, kind: update, description: Marks the claim settled. }
                     guidance: >-
                       The authority step beside this one decides whether the desk may
@@ -1221,14 +1174,6 @@ trees:
                 to: claim
                 cardinality: one-to-many
                 description: The claims a filing summarizes.
-            objects:
-              - entity: regulatory-report
-                properties: { report-id: RP-9101, period: 2026-Q2, status: filed }
-              - entity: regulatory-report
-                properties: { report-id: RP-9102, period: 2026-Q3, status: draft }
-            links:
-              - { relationship: report-covers-sar, from: RP-9102, to: SR-8001 }
-              - { relationship: report-covers-claim, from: RP-9102, to: CL-6102 }
             # Two corpora, and only one of them is shared: acme.aml-policy is also
             # reachable from the whole risk domain, while acme.regulatory-code is
             # reachable from nowhere else in this work-map. A corpus is not owned by
@@ -1601,7 +1546,7 @@ requiredTools:
     search_objects,
   ]
 requiredSkills: [taskflow, taskflow-inbox-triage]
-requiredMcpServers: [acme-filing, acme-ledger, acme-screening, acme-tracker]
+requiredMcpServers: [acme-core-banking, acme-filing, acme-ledger, acme-screening, acme-tracker]
 # The mode this work-map's deny-by-default behavior actually needs. Import compares
 # it against the receiving deployment and reports a DOWNGRADE, so an operator
 # importing into `observe` or `off` is told that what they read above will be

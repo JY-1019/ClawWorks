@@ -408,13 +408,34 @@ graph that the agent operates on directly:
   addressable instances.
 - `relationships`: typed links between two entity types (`from` and `to`, with
   an optional `cardinality` and `inverse`).
-- `actions`: typed operations. An action's `effects` name the entity it creates
-  or updates and the properties it writes. Declaring an effect is the write
-  authorization for that object type.
+- `actions`: typed operations. An action's `effects` are its authorization, and
+  they come in three kinds:
+  - `create` / `update` / `delete` name an object type this step may write, and
+    the properties it writes; `read` names one it only reads.
+  - `link` / `unlink` name a `relationships` id, relating two objects the
+    action's parameters identify. Each end reads the parameter named after that
+    end's `primaryKey`; `from` and `to` name the parameter outright when both
+    ends are the same object type.
+  - `call` names a TOOL, and means the action happens outside this workflow. The
+    model makes that call and the governance gate holds it to the action's
+    declared parameters first, so a required reason code or case id cannot be
+    omitted from a write that lands in another system. Declaring one also closes
+    the step: an attached MCP server's other tools stop being reachable from it,
+    and the action's own tool is granted without repeating it in `allowedTools`.
+
+  An action is either outward or local, never both — an external call cannot join
+  the local write transaction, so the import refuses a mixed one. An outward
+  action does not need the `invoke_action` opt-in; calling `invoke_action` on one
+  returns a pointer to the tool instead.
+
 - `functions`: derived values written in a small closed, type-checked expression
   language and evaluated against one object.
-- `objects` and `links`: seed instances and edges the tree ships with. A
-  re-import replaces the seeds while rows a run created at runtime are preserved.
+
+A work-map declares object TYPES, never instances. Every row in the store was
+created by an action during a run, so a re-import changes what may be written and
+never the data. Data a system upstream owns — a customer, an account, a
+transaction — is read from that system and written back to it through an outward
+action; what lives here is what the workflow itself produces.
 
 Object types are tree-scoped, so instances are stored once per tree. But each
 node only sees the types, properties, relationships, actions, and functions on
@@ -988,9 +1009,9 @@ event log of run lifecycle plus governance decisions.
     needs the type's identity field, and a function's expression is parsed and its
     property reads checked against what the step can address — so a definition the
     importer would accept but the runtime could not resolve is refused at the
-    field. An action with no create/update/delete effect is flagged, because the
-    write path refuses to run one. Seeded `objects` and `links` are still authored
-    by importing the work-map.
+    field. A local action with no create/update/delete effect is flagged, because
+    the write path refuses to run one; an outward action is exempt, since its call
+    is how it happens.
   - _History_ lists recent runs and shows a per-execution inspector with the plan
     steps, their ontology scope, and the governance trace.
   - Continuing an interrupted run happens there too. An execution that ended part
