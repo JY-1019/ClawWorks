@@ -1311,9 +1311,10 @@ with a fresh cache and rolls back the install if the alias is still missing.
 plugin sources. Use it for the ClawWorks plugin SDK/runtime API floor that the
 package was built against. It can be stricter than `minHostVersion` when a
 plugin package needs a newer API but still keeps a lower install hint for other
-flows. Official ClawWorks release sync bumps existing official plugin API floors
-to the ClawWorks release version by default, but plugin-only releases can keep a
-lower floor when the package intentionally supports older hosts. Do not use the
+flows. Official release sync bumps existing official plugin API floors to the upstream
+release this fork descends from, not to the ClawWorks version, because the floor
+is compared against the upstream version a host advertises. Plugin-only releases
+can keep a lower floor when the package intentionally supports older hosts. Do not use the
 package version alone as the compatibility contract. `peerDependencies.openclaw`
 remains npm package metadata; ClawWorks uses the `openclaw.compat.pluginApi`
 contract for install compatibility decisions.

@@ -217,12 +217,21 @@ release state.
   exports, and plugin SDK API baseline. `pnpm release:check` re-runs those
   guards in check mode and reports every generated drift failure it finds in one
   pass before running package release checks.
-- Plugin version sync updates official plugin package versions and existing
-  `openclaw.compat.pluginApi` floors to the ClawWorks release version by
-  default. Treat that field as the plugin SDK/runtime API floor, not just a copy
-  of the package version: for plugin-only releases that intentionally remain
-  compatible with older ClawWorks hosts, keep the floor at the oldest supported
-  host API and document that choice in the plugin release proof.
+- Plugin version sync aligns official plugin packages to the upstream release
+  this fork descends from (`clawworks.upstream.version`), not to the ClawWorks
+  version. Those packages keep upstream's names, and `openclaw.compat.pluginApi`
+  is compared against the upstream version a host advertises, so a ClawWorks
+  `0.x` target would both break compatibility checks and leave ranges the sync
+  script can no longer repair. Treat that field as the plugin SDK/runtime API
+  floor, not just a copy of the package version: for plugin-only releases that
+  intentionally remain compatible with older hosts, keep the floor at the oldest
+  supported host API and document that choice in the plugin release proof.
+- ClawWorks does not republish `@openclaw/*` plugin packages. Every plugin in
+  `extensions/` carries an upstream package name, so the npm release marks them
+  `alreadyPublished` and skips them, which is the intended outcome rather than a
+  gap. A fork change to a plugin therefore ships only when that plugin is
+  bundled into the core dist; shipping a change to an externalized official
+  plugin would require a package name this project owns.
 - Run the manual `Full Release Validation` workflow before release approval to
   kick off all pre-release test boxes from one entrypoint. It accepts a branch,
   tag, or full commit SHA, dispatches manual `CI`, and dispatches
@@ -753,7 +762,9 @@ orchestrates the trusted-publisher workflows in the order the release needs:
 
 1. Check out the release tag and resolve its commit SHA.
 2. Verify the tag is reachable from `main` or `release/*`.
-3. Run `pnpm plugins:sync:check`.
+3. Run `pnpm plugins:sync:check`. It aligns plugin packages to the upstream
+   release rather than the ClawWorks version; see the plugin version sync bullet
+   above for why.
 4. Dispatch `Plugin NPM Release` with `publish_scope=all-publishable` and
    `ref=<release-sha>`.
 5. Dispatch `Plugin ClawHub Release` with the same scope and SHA.

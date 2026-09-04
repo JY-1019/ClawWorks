@@ -75,6 +75,77 @@ describe("syncPluginVersions", () => {
     expect(updatedPackage.openclaw?.build?.openclawVersion).toBe("2026.4.1");
   });
 
+  it("targets the upstream lineage version rather than the fork's own semver", () => {
+    // Plugin packages carry upstream's identifiers, and the pluginApi floor they
+    // publish is what a host's compatibility version is compared against, so a
+    // fork release must not drag them into its own version domain.
+    const rootDir = makeTempDir(tempDirs, "openclaw-sync-plugin-versions-upstream-");
+
+    writeJson(path.join(rootDir, "package.json"), {
+      name: "openclaw",
+      version: "0.1.0-beta.1",
+      clawworks: { upstream: { version: "2026.6.10" } },
+    });
+    writeJson(path.join(rootDir, "extensions/imessage/package.json"), {
+      name: "@openclaw/imessage",
+      version: "2026.3.30",
+      peerDependencies: { openclaw: ">=2026.3.30" },
+      openclaw: {
+        compat: { pluginApi: ">=2026.3.30" },
+        build: { openclawVersion: "2026.3.30" },
+      },
+    });
+
+    syncPluginVersions(rootDir);
+    const updatedPackage = JSON.parse(
+      fs.readFileSync(path.join(rootDir, "extensions/imessage/package.json"), "utf8"),
+    ) as {
+      version?: string;
+      peerDependencies?: Record<string, string>;
+      openclaw?: { compat?: { pluginApi?: string }; build?: { openclawVersion?: string } };
+    };
+
+    expect(updatedPackage.version).toBe("2026.6.10");
+    expect(updatedPackage.peerDependencies?.openclaw).toBe(">=2026.6.10");
+    expect(updatedPackage.openclaw?.compat?.pluginApi).toBe(">=2026.6.10");
+    expect(updatedPackage.openclaw?.build?.openclawVersion).toBe("2026.6.10");
+  });
+
+  it("refuses to sync when the fork block carries no usable upstream version", () => {
+    // Falling back to the fork's own `0.x` here would rewrite every plugin floor
+    // into a domain the range pattern no longer matches, so the script cannot
+    // repair it afterwards. Fail closed instead.
+    const rootDir = makeTempDir(tempDirs, "openclaw-sync-plugin-versions-invalid-");
+
+    writeJson(path.join(rootDir, "package.json"), {
+      name: "openclaw",
+      version: "0.1.0-beta.1",
+      clawworks: { upstream: { repository: "openclaw/openclaw" } },
+    });
+    writeJson(path.join(rootDir, "extensions/imessage/package.json"), {
+      name: "@openclaw/imessage",
+      version: "2026.3.30",
+    });
+
+    expect(() => syncPluginVersions(rootDir)).toThrow(/clawworks\.upstream/u);
+  });
+
+  it("refuses to sync when the fork block omits its upstream object entirely", () => {
+    const rootDir = makeTempDir(tempDirs, "openclaw-sync-plugin-versions-no-upstream-");
+
+    writeJson(path.join(rootDir, "package.json"), {
+      name: "openclaw",
+      version: "0.1.0-beta.1",
+      clawworks: { channel: "beta" },
+    });
+    writeJson(path.join(rootDir, "extensions/imessage/package.json"), {
+      name: "@openclaw/imessage",
+      version: "2026.3.30",
+    });
+
+    expect(() => syncPluginVersions(rootDir)).toThrow(/clawworks\.upstream\.version/u);
+  });
+
   it("reports pending version sync without writing in check mode", () => {
     const rootDir = makeTempDir(tempDirs, "openclaw-sync-plugin-versions-check-");
 

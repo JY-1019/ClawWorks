@@ -5,6 +5,11 @@ import { join, resolve } from "node:path";
 type PackageJson = {
   name?: string;
   version?: string;
+  clawworks?: {
+    upstream?: {
+      version?: string;
+    };
+  };
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   openclaw?: {
@@ -25,6 +30,7 @@ type SyncPluginVersionsOptions = {
 };
 
 const OPENCLAW_VERSION_RANGE_RE = /^>=\d{4}\.\d{1,2}\.\d{1,2}(?:[-.][^"\s]+)?$/u;
+const UPSTREAM_VERSION_RE = /^\d{4}\.\d{1,2}\.\d{1,2}(?:[-.][^"\s]+)?$/u;
 
 function syncOpenClawDependencyRange(
   deps: Record<string, string> | undefined,
@@ -103,7 +109,30 @@ export function syncPluginVersions(
   const write = options.write ?? true;
   const rootPackagePath = join(rootDir, "package.json");
   const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8")) as PackageJson;
-  const targetVersion = rootPackage.version;
+  // Plugin packages keep upstream's identifiers and are consumed by the OpenClaw
+  // plugin ecosystem, so every version they carry -- the package version, the
+  // `openclaw` dependency ranges, the `pluginApi` floor, and the build record --
+  // stays in the upstream release domain rather than this fork's own semver. The
+  // floor is also what `resolveCompatibilityHostVersion` is compared against, and
+  // OPENCLAW_VERSION_RANGE_RE only recognises `>=YYYY.M.D`, so writing a `0.x`
+  // target would both break compatibility checks and leave ranges this script can
+  // no longer repair. `build.openclawVersion` rides along on purpose: the package
+  // contract reports it as `builtWithOpenClawVersion` and defaults it to the
+  // package version when absent, so a fork-domain value here would disagree with
+  // the fallback for the very same package.
+  // Keyed on the fork block itself, not on the nested `upstream`: a manifest that
+  // declares `clawworks` but omits or nulls `upstream` would otherwise fall through
+  // to the fork's own `0.x` and perform exactly the rewrite described above, which
+  // no longer matches the range pattern this script repairs with. The root fallback
+  // is reserved for a true upstream checkout, which carries no fork block at all.
+  const forkMetadata = rootPackage.clawworks;
+  const upstreamVersion = forkMetadata?.upstream?.version?.trim();
+  if (forkMetadata && !UPSTREAM_VERSION_RE.test(upstreamVersion ?? "")) {
+    throw new Error(
+      "Root package.json declares clawworks but no valid clawworks.upstream.version.",
+    );
+  }
+  const targetVersion = upstreamVersion ?? rootPackage.version;
   if (!targetVersion) {
     throw new Error("Root package.json missing version.");
   }
