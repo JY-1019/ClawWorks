@@ -15,6 +15,13 @@
 # they are NOT in here: register `acme-tracker` under `mcp.servers` and
 # `acme.returns-kb` under the LightRAG plugin first, or the attachments below
 # resolve to nothing.
+#
+# No `capabilityGrants: explicit` on purpose. This map teaches the DEFAULT,
+# inherited semantics: an allowlist is what a step runs without asking, an
+# omission raises a one-off approval, and only `deniedTools` refuses outright.
+# Turning grants explicit is the next lesson, not this one — it makes skills, MCP
+# servers and knowledge foundations deny-by-default, and on a native harness it
+# also requires the root to grant an attached server's tool globs whole.
 schema: clawworks.workflow-tree
 schemaVersion: 1
 id: acme.returns
@@ -71,11 +78,18 @@ root:
         # work-map to deny-by-default for MCP: every step without an attachment
         # now reaches no server at all.
         #
-        # No allowedTools here on purpose. On the embedded runtime the
-        # attachment already grants this server's tools. If you narrow this step
-        # (or the root) with an allowlist, a Claude CLI or Codex-backed run also
-        # needs the tool globs, in every spelling each harness may report:
+        # No allowedTools here on purpose: on the embedded runtime the
+        # attachment already grants this server's tools.
+        #
+        # This map is written for that runtime. A Claude CLI or Codex-backed run
+        # is handed its servers ONCE, at launch, and the ceiling is computed
+        # across every executable path in the plan — so the allowlists on
+        # returns.triage and returns.decide, which have nothing to do with the
+        # tracker, are each enough to withhold it from the whole run. To run this
+        # on a native harness, add the server's globs to THOSE two steps as well,
+        # in every spelling each harness may report:
         #   allowedTools:
+        #     - knowledge_search        # or message, on returns.decide
         #     - "acme-tracker__*"
         #     - "mcp__acme-tracker__*"
         #     - "acme_tracker__*"

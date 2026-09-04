@@ -11,22 +11,31 @@ read_when:
 # Enterprise tutorial
 
 [ClawWorks Enterprise](/concepts/clawworks-enterprise) explains the model.
-This builds one: a three-step returns desk whose steps each reach exactly one
-thing, assembled from the Control UI, running against two containers on your own
-machine.
+This builds one: a three-step returns desk assembled from the Control UI,
+running against two containers on your own machine.
 
-By the end, a customer question walks a route where the first step may only read
-the policy handbook, the second may only call the order tracker, the third may
-only reply — and `exec` is refused everywhere.
+By the end, a customer question walks a route where each step works with what it
+was given — the policy handbook, the order tracker, the reply — and `exec`,
+`write`, and `edit` are refused on every one of them.
 
-| Step             | May call                      | May retrieve      | Know-how       |
+| Step             | Runs without asking           | May retrieve      | Know-how       |
 | ---------------- | ----------------------------- | ----------------- | -------------- |
 | `returns.triage` | `knowledge_search`            | `acme.returns-kb` | —              |
 | `returns.lookup` | the `acme-tracker` MCP server | —                 | —              |
 | `returns.decide` | `message`                     | —                 | `refund-reply` |
 
-Plus one rule on the root that reaches all three: `exec`, `write`, and `edit`
-are denied.
+Read that first column precisely, because it is the lesson the rest of the
+tutorial rests on. This work-map uses **inherited scopes**, the default: a step's
+allow-list is what it may call _without asking_, and a tool no list on its path
+names raises a one-off human approval instead of being refused. Only the root's
+`deniedTools` is a wall. So `returns.lookup`, which lists no tools at all, is not
+sealed off — it is un-narrowed, and the MCP attachment is what gives it the
+tracker.
+
+Deny-by-default — where an unlisted skill, server, or corpus is withheld outright
+rather than raising a prompt — is
+[`capabilityGrants: explicit`](/concepts/clawworks-enterprise#capability-grants),
+and it is the first thing to reach for once this map makes sense.
 
 Everything in this tutorial lives in
 [`examples/enterprise/tutorial/`](https://github.com/openclaw/openclaw/tree/main/examples/enterprise/tutorial)
@@ -397,9 +406,12 @@ written straight away, through the same whole-tree replace the editor uses.
     rather than running. Adding the first foundation does the same for
     retrieval — before it, the step could query every registered foundation.
 
-    Replying and reading stay available regardless: `message`, `read`, and
-    `memory_search` are a floor, so a step granted one knowledge source can
-    still answer. A `deniedTools` entry overrules even that.
+    That includes replying. `message`, `read`, and `memory_search` are a floor
+    that survives an allow-list only under
+    [`capabilityGrants: explicit`](/concepts/clawworks-enterprise#capability-grants),
+    and this work-map uses inherited scopes — so on this step a reply is an
+    omission like any other and asks before it runs. That is why the step that
+    answers, `returns.decide`, lists `message` itself.
 
   </Step>
   <Step title="Attach the tracker to the lookup step">
@@ -410,19 +422,38 @@ written straight away, through the same whole-tree replace the editor uses.
     from now on a step with no attachment reaches no server at all. A work-map
     that never mentions MCP keeps the ungoverned behavior instead.
 
-    Leave this step's tool allow-list empty. On the embedded runtime the
-    attachment itself grants the server's tools. If you later narrow this step
-    or the root with an allow-list, a Claude CLI or Codex-backed run also needs
-    the server's tool globs, in every spelling each harness may report:
+    Leave this step's own tool allow-list empty: on the embedded runtime the
+    attachment itself grants the server's tools, and the per-call gate reads
+    each tool's registration, so nothing more is needed.
+
+    **On a native harness it is not enough — and not only on this step.** A
+    Claude CLI or Codex-backed run receives its servers once, at launch, with no
+    per-call gate afterwards, so the ceiling is computed across *every*
+    executable path in the plan. Any non-empty `allowedTools` on any planned
+    step that cannot admit the server whole withholds it from the entire run.
+    Here that is `returns.triage` (`knowledge_search`) and `returns.decide`
+    (`message`): either one strips `acme-tracker` before it starts, even though
+    the lookup step scopes nothing.
+
+    So if your agent runs on one of those backends, add the server's globs to
+    **those two steps as well** — in every spelling, since each harness renames
+    the server its own way (ClawWorks maps punctuation to `-`, Codex to `_`, and
+    either may carry the `mcp__` prefix):
 
     ```yaml
     allowedTools:
-      ["acme-tracker__*", "mcp__acme-tracker__*", "acme_tracker__*", "mcp__acme_tracker__*"]
+      [
+        knowledge_search,
+        "acme-tracker__*",
+        "mcp__acme-tracker__*",
+        "acme_tracker__*",
+        "mcp__acme_tracker__*",
+      ]
     ```
 
-    Those runtimes report a flattened tool name with no MCP origin, so the gate
-    cannot tell the server's tool from an ordinary one and bounds the run at
-    launch instead. See
+    The reason is that those runtimes report a flattened tool name with no MCP
+    origin, so the gate cannot tell the server's tool from an ordinary one and
+    bounds the run at launch instead. See
     [MCP servers](/concepts/clawworks-enterprise#mcp-servers).
 
   </Step>
@@ -578,8 +609,10 @@ openclaw enterprise runs show <runId>
     in mcp.servers** (an attachment naming a server config that does not exist —
     nothing launches under that name).
 
-    On a native harness, also confirm the tool globs, in all four spellings, if
-    any step on the path narrows `allowedTools`.
+    On a native harness, also confirm the tool globs, in all four spellings, on
+    every planned step that narrows `allowedTools` — not only the attaching
+    one. One unrelated allow-list is enough to withhold the server from the
+    whole run.
 
   </Step>
   <Step title="Nothing is enforced">
