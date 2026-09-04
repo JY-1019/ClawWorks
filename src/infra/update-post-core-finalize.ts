@@ -22,6 +22,7 @@ import path from "node:path";
 import { GATEWAY_SERVICE_RUNTIME_PID_ENV } from "../daemon/constants.js";
 import { resolveGatewayInstallEntrypoint } from "../daemon/gateway-entrypoint.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import { readPackageCompatibilityHostVersion } from "./package-json.js";
 import { trimLogTail } from "./restart-sentinel.js";
 import { resolveStableNodePath } from "./stable-node-path.js";
 import {
@@ -173,9 +174,14 @@ export async function runPostCoreFinalizeAfterGatewayUpdate(params: {
     entrypoint,
     ...(perStepTimeoutMs === undefined ? {} : { timeoutMs: perStepTimeoutMs }),
   });
-  // Pin the finalizer's host-compat resolution to the just-installed core
-  // version so plugins reconcile against the new core, not the running process.
-  const compatHostVersion = result.after?.version ?? undefined;
+  // Pin the finalizer's host-compat resolution to the just-installed core so
+  // plugins reconcile against the new core, not the running process. Plugin
+  // ranges are written against OpenClaw releases, so this reads that root's
+  // upstream lineage version rather than its package version -- otherwise a
+  // `>=2026.x` range is judged against this fork's `0.1.x` and the finalizer's
+  // plugin-update pass can disable working external plugins mid-update.
+  const compatHostVersion =
+    (await readPackageCompatibilityHostVersion(result.root)) ?? result.after?.version ?? undefined;
   // Outer whole-process backstop, decoupled from the per-step `--timeout` above.
   const processTimeoutMs = Math.max(
     FINALIZE_PROCESS_TIMEOUT_FLOOR_MS,

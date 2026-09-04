@@ -846,6 +846,12 @@ describe("update-cli", () => {
     });
     vi.spyOn(updateCliShared, "readPackageName").mockImplementation(readPackageName);
     vi.spyOn(updateCliShared, "readPackageVersion").mockImplementation(readPackageVersion);
+    // These roots are synthetic and carry no `clawworks.upstream.version`, which is
+    // exactly the case where the real reader falls back to the package version, so
+    // the compatibility reader shares the package-version mock.
+    vi.spyOn(updateCliShared, "readPackageCompatibilityHostVersion").mockImplementation(
+      readPackageVersion,
+    );
     vi.spyOn(updateCliShared, "resolveGlobalManager").mockImplementation(resolveGlobalManager);
     readPackageName.mockResolvedValue("openclaw");
     readPackageVersion.mockResolvedValue("1.0.0");
