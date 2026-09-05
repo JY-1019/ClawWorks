@@ -21,8 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="#why-i-built-this">Why</a> ·
-  <a href="#the-gap-it-closes">The gap</a> ·
+  <a href="#why-this-exists">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#what-it-looks-like">Screens</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -33,67 +32,43 @@
 
 ---
 
-## Why I built this
+## Why this exists
 
-A harness is an exoskeleton for the model: it holds the tools, the context, the loop. I wanted one a
-level down — an exoskeleton on **the structure of the work itself**. Not only "here is what you may
-pick up", but "here is the procedure, here is where in it you stand, here is what this step may
-touch." The model still reasons freely. What it is _doing_ stops being something it improvises turn
-by turn.
+Most agent tooling is a **harness**: it holds the model's tools, its context, and its loop. That
+solves a real problem, and ClawWorks keeps all of it — it is built on one.
 
-That is a different problem from making the agent more capable.
+What a harness does not carry is the **work**. It knows which tools exist; it does not know which
+step of your process a run is on, what that step is allowed to touch, or how the last run of it
+went. For one person exploring, that is fine. For an organization putting an agent in front of its
+own records, it is usually what decides whether the thing can be deployed at all.
 
-**An enterprise needs predictability, visibility, and stability before cleverness.** A team deciding
-whether to deploy an agent is not asking how smart it is. They are asking what it is allowed to do,
-what it actually did, and whether tomorrow's run behaves like today's. A stock deployment answers all
-three with a transcript and a shrug.
+Three questions tend to come before capability does:
 
-**Workflow and the tool-calling loop should meet, not compete.** A workflow engine is predictable and
-cannot cope with a request nobody phrased in advance; an agent loop copes with anything and cannot
-tell you where in the process it was. So the process is a versioned tree of steps and the loop runs
-_inside_ a step, with the cursor moving when the model says the step is done rather than after a
-fixed number of turns. Procedure lives in the tree; judgment stays in the loop. That is the
-exoskeleton in concrete form.
+- **Predictability** — will tomorrow's run behave like today's, or does it turn on how the request
+  happened to be phrased?
+- **Visibility** — afterward, which step was it on, what did it reach, and what was refused?
+- **Stability** — when a rule changes, does it change in one reviewable place, or across prompts?
 
-**Governance belongs under the agent engine, not inside the harness.** Rules in the harness inherit
-whatever that harness happens to see, and get rebuilt every time the runtime changes. Here the gate
-sits on the execution path in the product, so the rules travel with the work-map. The honest limit:
-a gate still has to be _reached_. A runtime that brings its own tools — an ACP-backed turn — never
-reaches the per-call gate, so scope that agent itself rather than trusting a grant to hold it.
+ClawWorks answers those by binding a run to a **work-map**: a versioned tree of steps, where each
+step declares the tools, skills, MCP servers, and knowledge it may reach. The gate that answers "may
+this step do this?" sits on the execution path, and every decision it makes lands in a trace.
 
-**Forgetting is not the same as deciding.** No author lists every tool a real request will need, so
-an author's silence can be escalated to a human while a written denial blocks and stays blocked —
-and under `enforce`, anything left unresolved resolves closed. Which silences ask and which are
-refused is in [the table below](#the-design-principle-omissions-ask-decisions-block).
+### Harness and work-map
 
-**Govern the platform; do not replace it.** The gateway, channels, and plugin system are upstream's
-and stay upstream's. Import specifiers, package names, manifest and config keys, environment
-variables, and state paths are frozen rather than renamed, so a third-party plugin still runs
-unmodified. Forking away from an ecosystem to add governance would cost more than the governance is
-worth.
+The two are not alternatives. The loop still reasons freely inside a step; what stops being
+improvised turn by turn is _what the run is doing_.
 
-## The gap it closes
+|                       | A harness                      | A work-map on top of it                       |
+| --------------------- | ------------------------------ | --------------------------------------------- |
+| What it models        | The model's turn               | A step of a process                           |
+| Bounds a tool call by | How the agent was configured   | What _this step_ declared                     |
+| Where the rules live  | Prompt text and runtime config | A versioned tree, imported and diffable       |
+| Changing runtime      | Rules re-expressed per harness | Rules travel with the work-map                |
+| After the run         | A transcript to read           | Bindings, transitions, and decisions to query |
 
-A capable agent connected to your real systems creates a problem that better prompting does not
-solve: **you cannot say afterward what it was allowed to do.**
-
-Ask a stock agent deployment the questions an operator actually needs answered —
-
-- Which step of the process was this run on when it called that tool?
-- Was it _supposed_ to be able to reach the refund API from there?
-- What did it ask for and get refused?
-- Which document did that claim come from?
-
-— and the honest answer is a transcript to read and a guess to make. Permissions live in one
-place, business process lives in someone's head, and the audit trail is chat history.
-
-ClawWorks closes that gap by putting the process **on the execution path**. An agent run is
-bound to a **work-map**: a versioned tree of steps where each step declares the tools, skills,
-MCP servers, and knowledge it may reach. The gate that answers "may this step do this?" is the
-same gate the run passes through, and every decision it makes lands in an inspectable trace.
-
-The result is an agent you can hand a real operation to — customer support, order resolution,
-financial operations — and still answer to.
+The honest limit is worth stating up front: a gate has to be _reached_. A runtime that brings its
+own tools — an ACP-backed turn — never reaches the per-call gate, so scope that agent itself rather
+than trusting a grant to hold it.
 
 ## How it works
 
@@ -120,13 +95,11 @@ flowchart TB
   B --> T
 ```
 
-**1 · Selection.** Imported work-maps are narrowed to those serving the run's trigger, then a
-model judges which one governs. The run records _how_ it was bound — `planner`, `no-match`,
-`only-candidate`, `unavailable`, or `fallback` — so a binding is never a mystery. The
-distinction is load-bearing: `fallback` (a planner answered unusably) fails **closed onto a
-work-map**, because a crafted request must not become a way out of governance, while
-`unavailable` (no planner configured at all) falls back to the default tree, because otherwise
-every request on that machine — a poem included — would run under whichever work-map sorts first.
+**1 · Selection.** Imported work-maps are narrowed to those serving the run's trigger, then a model
+judges which one governs. The run records _how_ it was bound — `planner`, `no-match`,
+`only-candidate`, `unavailable`, or `fallback` — so a binding is never a mystery. A planner that
+answers unusably fails **closed onto a work-map**: a crafted request must not become a way out of
+governance.
 
 **2 · Decomposition.** The chosen subtree is flattened depth-first. For embedded and CLI runs
 the whole subtree's guidance is injected once as a static step digest, so the model sees every
@@ -155,14 +128,12 @@ no interactive channel — cron, headless — resolves it as a refusal rather th
 ### Operating on a typed object graph
 
 When a step declares a typed object model, the agent gets tools scoped to that node:
-`search_objects` lists instances of a declared type, `get_neighbors` walks a declared
-relationship, `compute_function` evaluates a declared function, and `invoke_action` performs a
-declared action — writing exactly the objects and links its `effects` authorize.
-
-Read tools appear whenever a run declares an ontology; `invoke_action` appears only when the
-tree opts into writes. Every tool is bounded to the active node's path and to addressable types,
-so **a step can never read, traverse into, or write an object type outside its own contract.**
-Writes are recorded to the trace as `action.invoked` events.
+`search_objects` and `get_neighbors` read declared types and relationships, `compute_function`
+evaluates a declared function, and `invoke_action` writes exactly the objects and links its
+`effects` authorize. Read tools appear whenever a run declares an ontology; `invoke_action` only
+when the tree opts into writes, and each write is traced as an `action.invoked` event. Every tool is
+bounded to the active node's path, so **a step can never read, traverse into, or write an object
+type outside its own contract.**
 
 ## What it looks like
 
@@ -189,16 +160,16 @@ inspector shows both the declared types and the instances currently in the store
 
 ## What ClawWorks adds
 
-| Capability                | What it does                                                                                                                                             |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Work-maps**             | Versioned, importable step trees (`clawworks.workflow-tree`). Runs advance through leaf steps under a model-driven cursor.                               |
-| **Ontology bindings**     | Each step declares `allowedTools`, `knowledgeFoundations`, `contextHints`, and `audit`. A step reaches what it declared — nothing inherited by accident. |
-| **Explicit grants**       | Tools, skills, MCP servers, and knowledge foundations granted per step, browsable and bindable from the Control UI.                                      |
-| **Governance policies**   | Action-scoped allow/deny with approval flows. Compile plain-language intent into a reviewable policy.                                                    |
-| **Knowledge foundations** | Governed retrieval through `knowledge_search`, scoped per step, with foundation targeting, a routing glossary, and citations. Bundled LightRAG adapter.  |
-| **Run traces**            | Lifecycle and governance decisions written to SQLite and anchored to the transcript. Inspectable from CLI, gateway, or Control UI.                       |
-| **Typed object graph**    | Palantir-style ontology types with `OntologyFunction`, a closed and type-checked expression language. Effects are the write authorization.               |
-| **Operator surface**      | Per-node inspector with live object instances, force-directed ontology graph, route visualization in the assistant bubble, step-level role prompts.      |
+| Capability                | What it does                                                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Work-maps**             | Versioned, importable step trees (`clawworks.workflow-tree`), advanced by a model-driven cursor.                      |
+| **Ontology bindings**     | A step declares `allowedTools`, `knowledgeFoundations`, `contextHints`, `audit` — and reaches nothing it did not.     |
+| **Explicit grants**       | Tools, skills, MCP servers, and knowledge granted per step, bindable from the Control UI.                             |
+| **Governance policies**   | Action-scoped allow/deny with approval flows; plain-language intent compiles into a reviewable policy.                |
+| **Knowledge foundations** | Governed retrieval via `knowledge_search`, scoped per step, with citations. Bundled LightRAG adapter.                 |
+| **Run traces**            | Lifecycle and governance decisions in SQLite, anchored to the transcript. Readable from CLI, gateway, or Control UI.  |
+| **Typed object graph**    | Palantir-style types with `OntologyFunction`, a closed type-checked expression language. Effects authorize the write. |
+| **Operator surface**      | Per-node inspector with live instances, ontology graph, route visualization, step-level role prompts.                 |
 
 ## Governance modes
 
@@ -207,13 +178,7 @@ Enterprise mode is **on by default and backward compatible**. The built-in trees
 ordinary assistant until you import a work-map or declare a policy. Only imported work-maps ever
 govern a request.
 
-```jsonc
-{
-  "enterprise": {
-    "mode": "enforce", // enforce | observe | off
-  },
-}
-```
+Set `enterprise.mode` to `enforce`, `observe`, or `off`.
 
 | Mode                  | Behavior                                                                                        |
 | --------------------- | ----------------------------------------------------------------------------------------------- |
@@ -297,31 +262,10 @@ openclaw enterprise policy compile "refunds over $500 need approval"
 ### Knowledge foundations
 
 Foundations are retrieval sources `knowledge_search` can query, scoped by the active step's
-`knowledgeFoundations` allow-list and gated by `knowledge` policies. The tool is offered only
-when at least one foundation is registered. The bundled LightRAG adapter exposes one or more
-LightRAG API servers:
-
-```jsonc
-{
-  "plugins": {
-    "entries": {
-      "lightrag": {
-        "enabled": true,
-        "config": {
-          "foundations": [
-            {
-              "id": "acme.support-kb",
-              "serverUrl": "http://localhost:9621",
-              "kind": "remote",
-              "mode": "mix",
-            },
-          ],
-        },
-      },
-    },
-  },
-}
-```
+`knowledgeFoundations` allow-list and gated by `knowledge` policies. The tool is offered only when at
+least one foundation is registered. A bundled LightRAG adapter registers one or more LightRAG API
+servers; configuration and the other adapters are in
+[ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md).
 
 ## Built on OpenClaw
 
@@ -330,22 +274,18 @@ Peter Steinberger and the OpenClaw community. The gateway, channels, nodes, canv
 plugin system are inherited from upstream and work as documented there — ClawWorks adds the
 governance layer on top rather than replacing any of it.
 
-**Compatibility is a hard constraint, not a coincidence.** The CLI name, package name, config
-keys, `OPENCLAW_*` environment variables, `~/.openclaw` state paths, `openclaw.plugin.json` and
-its schema keys, and the `@openclaw/*` plugin SDK **deliberately keep their original
-identifiers**. Third-party plugins published for OpenClaw load in ClawWorks unmodified, and that
-is verified with a before/after diff of the generated Plugin SDK API baseline.
-
-The rebrand is display-name only, and it stops at a reviewed boundary — a blanket rename was
-written, reviewed, and reverted because it broke credential redaction, OAuth sidecar migration,
-the Canvas bridge, and the SDK's public export. See [`AGENTS.md`](AGENTS.md) for exactly where
-it stops and why. A doc that says `OpenClaw` next to ClawWorks prose is usually a machine value
-quoted verbatim, not a miss.
+**Compatibility is a hard constraint, not a coincidence.** The CLI name, package name, config keys,
+`OPENCLAW_*` environment variables, `~/.openclaw` state paths, `openclaw.plugin.json` and its schema
+keys, and the `@openclaw/*` plugin SDK **deliberately keep their original identifiers**, and the
+host advertises the upstream release it descends from, so a plugin range written against OpenClaw is
+satisfied. The rebrand is display-name only and stops at a reviewed boundary; a doc that says
+`OpenClaw` next to ClawWorks prose is usually a machine value quoted verbatim, not a miss. See
+[`AGENTS.md`](AGENTS.md) for where it stops and why.
 
 ### Inherited platform capabilities
 
 - **[Local-first Gateway](https://docs.openclaw.ai/gateway)** — one control plane for sessions, channels, tools, and events
-- **[Multi-channel inbox](https://docs.openclaw.ai/channels)** — WhatsApp, Telegram, Slack, Discord, Google Chat, Signal, iMessage, IRC, Microsoft Teams, Matrix, Feishu, LINE, Mattermost, Nextcloud Talk, Nostr, Synology Chat, Tlon, Twitch, Zalo, WeChat, QQ, WebChat, macOS, iOS/Android
+- **[Multi-channel inbox](https://docs.openclaw.ai/channels)** — WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Microsoft Teams, Matrix, WebChat and ~15 more
 - **[Multi-agent routing](https://docs.openclaw.ai/gateway/configuration)** — isolated agents per channel, account, or peer
 - **[Voice Wake](https://docs.openclaw.ai/nodes/voicewake) + [Talk Mode](https://docs.openclaw.ai/nodes/talk)** — wake words on macOS/iOS, continuous voice on Android
 - **[Live Canvas](https://docs.openclaw.ai/platforms/mac/canvas)** — agent-driven visual workspace with A2UI
@@ -377,9 +317,6 @@ on is never ambiguous:
   },
 }
 ```
-
-The package `name` stays `openclaw` — see [Built on OpenClaw](#built-on-openclaw) for why those
-identifiers are frozen.
 
 ## Security
 
@@ -441,12 +378,11 @@ enterprise settings under the `enterprise` section.
 
 ## Credits
 
-ClawWorks stands on [OpenClaw](https://github.com/openclaw/openclaw) by Peter Steinberger and
-its contributors. The upstream project remains the right place for platform bugs, channel
-support, and plugin SDK questions — see its [issue tracker](https://github.com/openclaw/openclaw/issues)
-and [Discord](https://discord.gg/clawd).
-
-For ClawWorks itself — the governance layer, ontology, work-maps, and enterprise surfaces — use
-this repository's [issues](https://github.com/JY-1019/ClawWorks/issues).
+ClawWorks stands on [OpenClaw](https://github.com/openclaw/openclaw) by Peter Steinberger and its
+contributors. A bug that reproduces on stock OpenClaw belongs in its
+[issue tracker](https://github.com/openclaw/openclaw/issues); the governance layer belongs in
+[this repository's](https://github.com/JY-1019/ClawWorks/issues). Vulnerabilities go to neither
+tracker — [`SECURITY.md`](SECURITY.md) routes them to a private advisory on whichever side owns the
+weakness.
 
 Licensed under the [MIT License](LICENSE). Copyright (c) 2026 OpenClaw Foundation.
