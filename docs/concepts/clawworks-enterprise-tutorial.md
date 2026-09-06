@@ -128,10 +128,12 @@ The Knowledge screen does it without hand-editing config.
 <Steps>
   <Step title="Open Knowledge">
     Sidebar -> **Knowledge** (`/knowledge`). Under **Connect a knowledge
-    source**, press **Connect a source** and pick the **lightrag** adapter.
+    source**, press **Connect a source**.
 
-    The form is built from that adapter's own config schema, so the fields you
-    see are the ones it declares.
+    The form is built from the adapter's own config schema, so the fields you
+    see are the ones it declares. If more than one knowledge adapter is
+    installed, a chip row above the fields asks which one; with only LightRAG
+    installed the form simply names it.
 
   </Step>
   <Step title="Fill it in">
@@ -154,6 +156,13 @@ The Knowledge screen does it without hand-editing config.
       `remote` would leave the corpus read-only from here. It is an operator
       declaration, not something inferred from the URL.
 
+    <Frame caption="The registration form, built from the LightRAG adapter's own config schema">
+      <img
+        src="/assets/screens/tutorial/knowledge-register-form.png"
+        alt="The Connect a knowledge source form with the foundation id, server URL, description, and kind filled in"
+      />
+    </Frame>
+
     Press **Add to config**, then **Save & Publish**. Publishing reloads the
     adapter — nothing is retrievable before that.
 
@@ -173,14 +182,26 @@ The Knowledge screen does it without hand-editing config.
     Indexing runs a model over the text, so give it a minute; the answers in
     section 7 depend on it finishing.
 
+    <Frame caption="Registered, reachable, and holding the three indexed documents">
+      <img
+        src="/assets/screens/tutorial/knowledge-registered.png"
+        alt="The registered acme.returns-kb foundation, a reachable connection test, and its three indexed documents"
+      />
+    </Frame>
+
+    **Show files** appears because you declared `kind: local`. A `remote`
+    foundation lists no files and offers no upload — the same screen, minus the
+    document management this declaration turned on.
+
   </Step>
 </Steps>
 
 ## 3. Register the MCP server
 
 Registering an MCP server is the ordinary ClawWorks act — one entry under
-`mcp.servers`. Under enterprise governance it is only half the job: a registered
-server stays unreachable until a step attaches it, which happens in section 6.
+`mcp.servers`. Under enterprise governance it is only half the job: once a
+work-map attaches any server, every server no step attaches becomes unreachable
+to it. That switch is thrown in section 6.
 
 <Steps>
   <Step title="Open Enterprise -> MCP">
@@ -209,13 +230,32 @@ server stays unreachable until a step attaches it, which happens in section 6.
     dial two different servers. The preview says which transport it assumed if
     you leave it out.
 
+    <Frame caption="The pasted snippet, and the entry it would register">
+      <img
+        src="/assets/screens/tutorial/mcp-register-json.png"
+        alt="The Register an MCP server form in Paste JSON mode, with the acme-tracker snippet and a preview of the entry it registers"
+      />
+    </Frame>
+
     Press **Add to config**, then **Save & Publish**.
 
   </Step>
   <Step title="Read the state it lands in">
-    The server is now listed and labelled **not attached to any step** —
-    registered and unreachable. That is the correct state right now, not an
-    error.
+    The server is now listed, and the screen says what it is not: no work-map
+    governs MCP yet, so `acme-tracker` is reachable as an ordinary tool. That is
+    the correct state right now, not an error.
+
+    <Frame caption="Registered, and not yet governed by anything">
+      <img
+        src="/assets/screens/tutorial/mcp-registered.png"
+        alt="The Enterprise MCP screen listing acme-tracker, with a notice that no work-map governs MCP yet"
+      />
+    </Frame>
+
+    Governance starts in section 6: the moment one step attaches this server,
+    the whole work-map flips to deny-by-default for MCP, and this screen starts
+    labelling any server no step attaches **not attached to any step**.
+
   </Step>
 </Steps>
 
@@ -238,9 +278,20 @@ and the enterprise layer never installs one.
 
   </Step>
   <Step title="Confirm the gateway sees it">
-    Sidebar -> **Enterprise** -> **Skills**. `refund-reply` appears under
-    **Other installed skills**, and moves under **Declared by** once a step
-    declares it in section 6.
+    Sidebar -> **Enterprise** -> **Skills**. `refund-reply` appears in the
+    catalog, marked **workspace** and **eligible**.
+
+    <Frame caption="The skill catalog: installed and eligible, declared by nothing yet">
+      <img
+        src="/assets/screens/tutorial/skills-installed.png"
+        alt="The Enterprise Skills screen listing refund-reply as a workspace skill that is eligible"
+      />
+    </Frame>
+
+    The list is flat until a work-map declares one. Once a step names this skill
+    in section 6, the screen splits into **Declared by Returns desk** and
+    **Other installed skills** — which is how you check a declaration reached
+    the gateway.
 
     This screen is agent-scoped: skills resolve against an agent's filter, so it
     names the agent it answered for rather than implying one list for the whole
@@ -363,9 +414,27 @@ and the enterprise layer never installs one.
 ## 6. Bind the capabilities
 
 This is where the registrations become reach. Select a node on **Worktree** and
-the **Step bindings** panel opens under it: one block per capability kind, each
-with an **Add** button that searches the matching catalog. Every confirmation is
-written straight away, through the same whole-tree replace the editor uses.
+the **Step bindings** panel opens under it: one block per capability kind —
+**Tools** (an Allowed row and a Denied row), **Skills**, **MCP servers**,
+**Knowledge** — each with an **Add** button that searches the matching catalog.
+Every confirmation is written straight away, through the same whole-tree replace
+the editor uses.
+
+Every Add opens the same picker: a search box over the catalog, checkboxes, a
+free-text box for what no catalog can enumerate (a glob, a group, a skill
+installed for another agent), and — above the confirm button — the warning that
+says what this particular entry changes.
+
+<Frame caption="Adding knowledge_search to returns.triage. The warning is the lesson: the first entry turns an empty list into an allowlist.">
+  <img
+    src="/assets/screens/tutorial/bindings-picker.png"
+    alt="The binding picker searching the tool catalog for knowledge_search, with knowledge_search checked and a warning that adding the first entry turns the step into an allowlist"
+  />
+</Frame>
+
+The four blocks are per node, and each of the four steps below binds a different
+one. Read each screenshot as the answer to one question: what may this step call
+without asking, and what is it refused outright?
 
 <Steps>
   <Step title="Deny the dangerous tools on the root">
@@ -380,6 +449,13 @@ written straight away, through the same whole-tree replace the editor uses.
     down the branch takes it back. Matching is case-insensitive and aliases
     apply, so `exec` also covers `bash`.
 
+    <Frame caption="The root: three denials, and nothing else bound. Every step below inherits the wall.">
+      <img
+        src="/assets/screens/tutorial/bindings-root.png"
+        alt="Step bindings for the root node: the Denied tools row holds exec, write, and edit, and the allowed, skills, MCP, and knowledge rows are empty"
+      />
+    </Frame>
+
   </Step>
   <Step title="Tell the root what the job is">
     Still on the root, open **Role prompt** and type:
@@ -393,6 +469,13 @@ written straight away, through the same whole-tree replace the editor uses.
     cannot call a tool its scope withholds, however the prompt is worded — and
     that is the whole point of keeping instruction and authority in different
     fields.
+
+    <Frame caption="Instruction, in its own box, above the bindings that decide what is actually permitted">
+      <img
+        src="/assets/screens/tutorial/role-prompt.png"
+        alt="The Role prompt box on the root node holding the saved sentence, with Save role prompt and Revert buttons"
+      />
+    </Frame>
 
   </Step>
   <Step title="Give the triage step the handbook">
@@ -413,6 +496,13 @@ written straight away, through the same whole-tree replace the editor uses.
     omission like any other and asks before it runs. That is why the step that
     answers, `returns.decide`, lists `message` itself.
 
+    <Frame caption="returns.triage: one tool, one foundation, and the root's three denials showing through as inherited">
+      <img
+        src="/assets/screens/tutorial/bindings-triage.png"
+        alt="Step bindings for returns.triage: allowed tools holds knowledge_search, the denied row shows exec, edit and write inherited from a parent step, and knowledge holds acme.returns-kb"
+      />
+    </Frame>
+
   </Step>
   <Step title="Attach the tracker to the lookup step">
     Select **Look up the order**, then **MCP servers -> Add** -> `acme-tracker`.
@@ -425,6 +515,13 @@ written straight away, through the same whole-tree replace the editor uses.
     Leave this step's own tool allow-list empty: on the embedded runtime the
     attachment itself grants the server's tools, and the per-call gate reads
     each tool's registration, so nothing more is needed.
+
+    <Frame caption="returns.lookup: the tracker attached, and no tool allowlist of its own">
+      <img
+        src="/assets/screens/tutorial/bindings-lookup.png"
+        alt="Step bindings for returns.lookup: the MCP servers row holds acme-tracker while the allowed tools, skills, and knowledge rows are empty"
+      />
+    </Frame>
 
     **On a native harness it is not enough — and not only on this step.** A
     Claude CLI or Codex-backed run receives its servers once, at launch, with no
@@ -467,6 +564,17 @@ written straight away, through the same whole-tree replace the editor uses.
     appended to the step digest, so the model has the house style when it
     reaches the step — but naming a skill never grants a tool the step
     withholds. If guidance and enforcement disagree, enforcement wins.
+
+    <Frame caption="returns.decide: the only step that may speak, and the only one carrying the house style">
+      <img
+        src="/assets/screens/tutorial/bindings-decide.png"
+        alt="Step bindings for returns.decide: allowed tools holds message and the skills row declares refund-reply"
+      />
+    </Frame>
+
+    Go back to **Enterprise -> Skills** now and the flat catalog has split:
+    `refund-reply` sits under **Declared by Returns desk**, with everything else
+    under **Other installed skills**.
 
   </Step>
   <Step title="Turn on auditing for the two working steps">
