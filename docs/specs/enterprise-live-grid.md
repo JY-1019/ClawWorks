@@ -29,11 +29,21 @@ pnpm openclaw enterprise bundle import examples/enterprise/financial-operations.
 pnpm openclaw gateway restart
 ```
 
-The M group also needs the four MCP servers the bundle names. It carries their
+**The bundle ships no rows.** Object instances left the work-map format on
+2026-09-04: the systems of record own the data, so on a fresh import the store is
+empty and every row below that names an id — `CL-6102`, `AC-2002`, `TX-4001`,
+`SR-8001`, `RP-9102` — presumes you put that record there first, either through
+the work-map's own actions or through the MCP servers you registered. A run that
+answers "there is no such claim" against an empty store is **correct**, and grades
+as a pass on routing while the record half of the case is simply not exercised
+yet. Only the R group, which grades where a request lands, is fully judgeable
+without data.
+
+The M group also needs the five MCP servers the bundle names. It carries their
 NAMES but never the servers — transport and credentials are deployment
-configuration — and `acme-screening`, `acme-ledger`, `acme-tracker` and
-`acme-filing` are fictional. **Point all four names at whatever MCP server you
-already run.** They do not have to implement `create_issue`, `transfer` or
+configuration — and `acme-core-banking`, `acme-screening`, `acme-ledger`,
+`acme-tracker` and `acme-filing` are fictional. **Point all five names at whatever
+MCP server you already run.** They do not have to implement `create_issue`, `transfer` or
 `delete_issue`: what these rows grade is the gate's decision recorded in the
 trace, which is taken before the call is dispatched. One registration per name,
 for example:
@@ -76,7 +86,7 @@ and it shows in `runs show` as a selected-node count far above a handful.
 | R2  | "Claim CL-6102 just came in. Which queue does it go to?" | `finops.claims.intake.triage`            | `compute_function`                                      | **refer** — `claim-triage-band` on a fraud score of 71. Must NOT bind `finops.risk.monitoring.alert-triage`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | R3  | "What lending band does CU-1002 fall in?"                | `finops.risk.underwriting.scoring`       | `get_neighbors` → `compute_function`                    | **subprime** — the report id is not in the request, so it has to come from the customer's `customer-assessed-by-report` link before `bureau-band` runs on CR-9002 (score 588). A trace that computes without resolving the report guessed the id. Must NOT bind `finops.claims.adjudication.decision`. Asking whether to lend is the DECISION step's question, not this one's; the case is worded to ask for the band.                                                                                                                                                                        |
 | R4  | "Decide claim CL-6101."                                  | `finops.claims.adjudication.decision`    | `search_objects` → `invoke_action`                      | 1,800 against PL-5001's 20,000 limit, fraud score 12 → accepted, `decide-claim` recorded. Must NOT bind `finops.risk.underwriting.decision`.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| R5  | "Case CS-7001 is reportable. Write the SAR."             | `finops.risk.monitoring.sar-filing`      | `get_neighbors` → `invoke_action`                       | Finds SR-8001 through the case's `case-files-sar` link and writes the narrative onto it. `draft-sar` is an **update**, so inventing a second SAR id is a fail. Must NOT bind `finops.reporting.regulatory.submission`, which **submits** rather than drafts.                                                                                                                                                                                                                                                                                                                                  |
+| R5  | "Case CS-7001 is reportable. Write the SAR."             | `finops.risk.monitoring.sar-filing`      | `get_neighbors` → `invoke_action`                       | Opens the report with `draft-sar`, which is a **create** carrying the `case-id` of the case it answers, then relates it back with `attach-sar-to-case`. A create is refused for an id that already exists, so re-running must not mint a second report for one case. Must NOT bind `finops.reporting.regulatory.submission`, which **submits** rather than drafts.                                                                                                                                                                                                                            |
 | R6  | "Submit the Q3 return."                                  | `finops.reporting.regulatory.submission` | `search_objects` → `knowledge_search` → `invoke_action` | Moves RP-9102 from `draft` to `filed`. The deadline is a written rule, so the citation of `code/deadlines.md` (45 days after period end) has to come from retrieval, not memory. Its `period` is already stored and must not be rewritten. Must NOT bind the risk domain's drafting step. The sibling `…regulatory.preparation` compiles a period's figures and cannot file, so binding it is a miss — it was the miss this case caught while the filing step was still named for SARs. Re-running after the report is `filed` should decline to file a duplicate rather than write it twice. |
 | R7  | "Rate the onboarding risk on CU-1002."                   | `finops.customer.onboarding.risk-rating` | `get_neighbors` → `knowledge_search`                    | **elevated** — DOC-3002 is the only evidence linked and it is unverified, which `kyc/rating.md` says raises the band. The rating is the CUSTOMER risk, not a credit band: must NOT bind `finops.risk.underwriting.scoring`, and a reply quoting a bureau score has answered the wrong question.                                                                                                                                                                                                                                                                                               |
 

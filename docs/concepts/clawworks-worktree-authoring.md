@@ -240,11 +240,11 @@ satisfy this, and it doubles as the planner's per-node signal.
 Every field is optional. The block splits into three lanes, and mixing them up
 is the most common authoring mistake:
 
-| Lane               | Fields                                                                  | Enforced?                                                                                                                                               |
-| ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Enforced scope** | `allowedTools`, `deniedTools`, `mcpServers`, `knowledgeFoundations`     | Yes. The per-call gate reads these.                                                                                                                     |
-| **Advisory**       | `contextHints`, `guidance`, `expectedOutput`, `skills`, `constraints`   | No. Rendered into the digest; enforcement wins on conflict.                                                                                             |
-| **Object model**   | `entities`, `relationships`, `actions`, `functions`, `objects`, `links` | Partly. Shapes are enforced at import; `actions.effects` is the write authorization. All but `objects`/`links` are editable per node in the Control UI. |
+| Lane               | Fields                                                                | Enforced?                                                                                                                              |
+| ------------------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Enforced scope** | `allowedTools`, `deniedTools`, `mcpServers`, `knowledgeFoundations`   | Yes. The per-call gate reads these.                                                                                                    |
+| **Advisory**       | `contextHints`, `guidance`, `expectedOutput`, `skills`, `constraints` | No. Rendered into the digest; enforcement wins on conflict.                                                                            |
+| **Object model**   | `entities`, `relationships`, `actions`, `functions`                   | Partly. Shapes are enforced at import; `actions.effects` is the write authorization. All four are editable per node in the Control UI. |
 
 Plus `audit: true`, which records a trace event for every tool decision under
 the node, including default allows.
@@ -361,7 +361,7 @@ entities:
 | `id`           | dotted id                                   | Unique within the object type.                          |
 | `type`         | `string`, `number`, `boolean`, `date`, `id` | `date` is an ISO-8601 string; `id` is an opaque string. |
 | `primaryKey`   | boolean                                     | At most one per type, tree-wide.                        |
-| `required`     | boolean                                     | A seeded object must set it to a non-null value.        |
+| `required`     | boolean                                     | A written object must set it to a non-null value.       |
 | `description`  | string                                      | Operator-facing.                                        |
 
 Object types are **tree-scoped**: declaring `claim` on two nodes adds to the same
@@ -371,7 +371,7 @@ a node only addresses the types on its own root-to-node path, so a sibling
 branch's types are never reachable from the current step.
 
 Only a type with a `primaryKey` has addressable instances. Without one it cannot
-be seeded, cannot be written by an action, and cannot be looked up.
+be written by an action and cannot be looked up.
 
 ### Relationships
 
@@ -386,8 +386,8 @@ relationships:
 ```
 
 `cardinality` is one of `one-to-one`, `one-to-many`, `many-to-one`,
-`many-to-many`, and it is a contract rather than a label: seeded links are
-checked against it. Link types dedupe by `[from, to, id]`, so redeclaring one
+`many-to-many`, and it is a contract rather than a label: the edges an action
+writes are checked against it. Link types dedupe by `[from, to, id]`, so redeclaring one
 with a different `cardinality` or `inverse` is an error rather than a silent
 last-wins.
 
@@ -408,11 +408,28 @@ actions:
       - { entity: claim, kind: update, description: Records the decision. }
 ```
 
-- `effects` **are** the write scope: `kind` is `read`, `create`, `update`, or
-  `delete`, and `entity` must be an object type declared somewhere in the tree.
-  An action with no write effect can change nothing.
-- `parameters` must include the target type's primary key for any write effect,
-  or no call can name the object it writes and every invocation fails
+- `effects` **are** the write scope, in three families:
+  - **Local** — `kind` is `read`, `create`, `update`, or `delete`, and `entity`
+    must be an object type declared somewhere in the tree. An `update` is not an
+    upsert: it fails against an id nothing created. A `create` is refused for an
+    id that already exists, and must satisfy every property the type declares
+    required **tree-wide**, not just on this node's path.
+  - **Graph** — `{ kind: link | unlink, relationship }` relates two objects over a
+    declared relationship. Each end resolves from the parameter named after that
+    end type's primary key; give `from`/`to` outright when both ends are the same
+    type. This is the only way an edge comes into being, so a work-map whose steps
+    never link has nothing for `get_neighbors` to walk.
+  - **Outward** — `{ kind: call, tool }` says the action happens in the system that
+    owns the data. The runtime cannot place that call itself, so the model calls
+    the tool and the governance gate holds it to this action's declared parameters
+    before anything leaves. Two consequences worth knowing before you write one:
+    a satisfied outward action grants its own tool without an `allowedTools`
+    entry, and declaring one **closes the rest of that MCP server** on this step.
+  - An action is outward **or** local, never both: an external call cannot join
+    the local write transaction, and a call that has already left cannot be rolled
+    back when a later write fails.
+- `parameters` must include the target type's primary key for any local write
+  effect, or no call can name the object it writes and every invocation fails
   validation.
 - `tools` narrows which tools this action covers for governance `actions`
   selectors. **Omit it to cover every tool.** An empty array is accepted for
@@ -436,23 +453,22 @@ shape of that object type and against the declared `returns` — so a typo'd
 property reference fails the import with a path instead of returning null in the
 middle of a run.
 
-### Seeded objects and links
+### Where instances come from
 
-```yaml
-objects:
-  - entity: employee
-    properties: { id: EMP-1, name: Ada Ruiz }
-  - entity: claim
-    properties: { id: CLM-1, employee-id: EMP-1, amount: 64, status: submitted }
-links:
-  - { relationship: submitted, from: EMP-1, to: CLM-1 }
-```
+A work-map declares the **vocabulary** — types, relationships, functions, and the
+operations a step may perform — and never the data. It carries no object
+instances: every row in the store is one a run created through an action, and
+everything else lives in the system that owns it, reached through an outward
+call.
 
-Seeds are typed data and are validated as such. A re-import replaces the seeds
-while rows a run created at runtime are preserved.
-
-Link endpoints name **object ids**, not entity ids, and both must be objects
-seeded in this tree with the endpoint types the relationship declares.
+That is worth designing around before you write the actions. An `update` fails
+against a row nothing created, so any type your steps update needs a step that
+creates it, or the values have to come from an outward call instead. A type
+whose records genuinely belong to an upstream system — customers, accounts,
+transactions — usually wants outward actions and no local effects at all; a type
+this workflow brings into being — a report it drafts, a case file it opens —
+wants a `create` at the step where it is born, plus a `link` back to whatever
+raised it.
 
 ## The expression language
 
@@ -537,26 +553,6 @@ one place in the file. The checks that are easy to trip:
 - `function "..." computes over undeclared object type "..."`.
 - `function "..." reads "$x", which object type "..." does not declare`.
 - `function "..." declares returns "..." but its expression yields ...`.
-
-**Seeded objects**
-
-- `seeded object references undeclared object type "..."`.
-- `object type "..." declares no primaryKey, so its instances have no identity to seed`.
-- `object type "..." does not declare property "..."`.
-- `property "..." is declared "..." but the seeded value is ...`.
-- `object type "..." declares "..." required, but the seeded object does not set it`.
-- `seeded object must carry a non-blank primaryKey "..."`.
-- A primary key with leading or trailing whitespace: the tools trim ids, so the
-  object would be stored under a name nothing can look up.
-- `duplicate "<type>" object "<id>"`.
-
-**Seeded links**
-
-- `seeded link references undeclared link type "..."`.
-- A link type declared with more than one endpoint pair, so a seed cannot say
-  which one it means.
-- `link "..." from "..." is not a seeded "..." object`.
-- `link "..." is one-to-many, so "..." may appear on its to side only once`.
 
 **Blank and unsafe strings**
 
@@ -694,22 +690,42 @@ root:
         # approved without a human.
         expression: min($amount, 100)
         description: What this claim can be approved without a human.
-    objects:
-      - entity: employee
-        properties: { id: EMP-1, name: Ada Ruiz }
-      - entity: claim
-        properties:
-          {
-            id: CLM-1,
-            employee-id: EMP-1,
-            amount: 64,
-            status: submitted,
-            submitted-on: "2026-08-01",
-          }
-    links:
-      - { relationship: submitted, from: EMP-1, to: CLM-1 }
 
   children:
+    - id: expenses.intake
+      title: File the claim
+      description: Open the claim record and attach it to the employee who submitted it.
+      ontology:
+        allowedTools: [invoke_action, message]
+        actions:
+          # The claim is born here. Nothing else creates one, and an update is not
+          # an upsert, so without this step the two below have no row to work on.
+          - id: file-claim
+            title: File a claim
+            parameters:
+              - { id: id, type: id, required: true }
+              - { id: employee-id, type: id, required: true }
+              - { id: amount, type: number, required: true }
+              - { id: status, type: string, required: true }
+            effects:
+              - { entity: claim, kind: create, description: Opens the claim record. }
+          # A GRAPH effect: each end resolves from the parameter named after that
+          # type's primary key. This is the only way the edge comes into being, so
+          # without it get_neighbors has nothing to walk in the step below.
+          - id: attach-claim-to-employee
+            title: Attach the claim to its employee
+            parameters:
+              - { id: id, type: id, required: true }
+              - { id: employee-id, type: id, required: true }
+            effects:
+              - kind: link
+                relationship: submitted
+                from: employee-id
+                to: id
+                description: Relates the employee to the claim they submitted.
+        expectedOutput: The claim id it opened, and the employee it belongs to.
+        audit: true
+
     - id: expenses.check
       title: Check the claim
       description: Find the claim, read who submitted it, and work out what it is worth.
@@ -823,23 +839,51 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
           "expression": "min($amount, 100)",
           "description": "What this claim can be approved without a human."
         }
-      ],
-      "objects": [
-        { "entity": "employee", "properties": { "id": "EMP-1", "name": "Ada Ruiz" } },
-        {
-          "entity": "claim",
-          "properties": {
-            "id": "CLM-1",
-            "employee-id": "EMP-1",
-            "amount": 64,
-            "status": "submitted",
-            "submitted-on": "2026-08-01"
-          }
-        }
-      ],
-      "links": [{ "relationship": "submitted", "from": "EMP-1", "to": "CLM-1" }]
+      ]
     },
     "children": [
+      {
+        "id": "expenses.intake",
+        "title": "File the claim",
+        "description": "Open the claim record and attach it to the employee who submitted it.",
+        "ontology": {
+          "allowedTools": ["invoke_action", "message"],
+          "actions": [
+            {
+              "id": "file-claim",
+              "title": "File a claim",
+              "parameters": [
+                { "id": "id", "type": "id", "required": true },
+                { "id": "employee-id", "type": "id", "required": true },
+                { "id": "amount", "type": "number", "required": true },
+                { "id": "status", "type": "string", "required": true }
+              ],
+              "effects": [
+                { "entity": "claim", "kind": "create", "description": "Opens the claim record." }
+              ]
+            },
+            {
+              "id": "attach-claim-to-employee",
+              "title": "Attach the claim to its employee",
+              "parameters": [
+                { "id": "id", "type": "id", "required": true },
+                { "id": "employee-id", "type": "id", "required": true }
+              ],
+              "effects": [
+                {
+                  "kind": "link",
+                  "relationship": "submitted",
+                  "from": "employee-id",
+                  "to": "id",
+                  "description": "Relates the employee to the claim they submitted."
+                }
+              ]
+            }
+          ],
+          "expectedOutput": "The claim id it opened, and the employee it belongs to.",
+          "audit": true
+        }
+      },
       {
         "id": "expenses.check",
         "title": "Check the claim",
@@ -972,12 +1016,12 @@ before editing the file again.
 One shipped example lives in the source repository, at
 `examples/enterprise/financial-operations.clawworks-bundle.yaml`. It is a bundle,
 so it imports and runs as-is: 46 nodes across four domains — 30 of them
-executable steps — a seeded object model per domain, six inlined knowledge
-corpora, four MCP servers, nine ontology writes, and `capabilityGrants: explicit`
-throughout. Read it for the shape of a
+executable steps — an object model per domain, six inlined knowledge corpora,
+five MCP servers, nine steps that declare actions, and `capabilityGrants:
+explicit` throughout. Read it for the shape of a
 real work-map rather than for a minimal one — every binding in it is load-bearing,
 and the comments say which failure each one exists to prevent. The only thing it
-cannot ship is the four MCP servers themselves; register them under `mcp.servers`
+cannot ship is the five MCP servers themselves; register them under `mcp.servers`
 and the attachments resolve.
 
 ## Before you import

@@ -15,8 +15,13 @@
  * fixture drifts from what an operator actually imports, and the old split let
  * five of the six shipped examples ship broken — declaring actions no run could
  * call and foundations no run could query — while the golden lane stayed green
- * against a seventh file nobody deployed. Every id, tool scope, attachment and
- * seeded row asserted below is one an operator gets.
+ * against a seventh file nobody deployed. Every id, tool scope and attachment
+ * asserted below is one an operator gets.
+ *
+ * The example declares no object instances: the systems of record own the data,
+ * so every row this file reads back is one these checks CREATED through the
+ * work-map's own actions. That is the product's claim, and it is why the reads
+ * below open with a write.
  *
  * Three small work-maps are still built INLINE at the end, for semantics one tree
  * cannot carry: the inherited (non-explicit) grant mode, a root tool grant
@@ -79,13 +84,14 @@ const FOUNDATIONS = [
 ];
 
 /**
- * The four servers the example attaches, plus one the operator registered and no
+ * The five servers the example attaches, plus one the operator registered and no
  * step attaches. Only a REGISTERED server is gated, so leaving the spare out
  * would let the isolation checks pass on the tool scope alone.
  */
 const MCP_CONFIG = {
   mcp: {
     servers: {
+      "acme-core-banking": { command: "npx" },
       "acme-screening": { command: "npx" },
       "acme-ledger": { command: "npx" },
       "acme-tracker": { command: "npx" },
@@ -115,13 +121,26 @@ async function main(): Promise<number> {
   const { createKnowledgeSearchTool } =
     await import("../src/agents/tools/knowledge-search-tool.js");
 
-  /** One MCP call at the run's active step, under the embedded runtime's spelling. */
-  const mcpVerdict = (runId: string, server: string, tool: string) =>
+  /**
+   * One MCP call at the run's active step, under the embedded runtime's spelling.
+   * `args` matter wherever the step declares an outward action: that lane holds the
+   * call to the action's declared parameters before anything leaves.
+   */
+  const mcpVerdict = (runId: string, server: string, tool: string, args?: unknown) =>
     evaluateEnterpriseToolCall({
       runId,
       toolName: `${server}__${tool}`,
       mcpTool: { serverName: server, safeServerName: server, toolName: tool },
+      toolParams: args,
     });
+
+  /**
+   * The error an ontology tool reported, or "" when it succeeded. Read from the
+   * payload rather than the rendered text: JSON.stringify escapes the quotes these
+   * messages put around ids, so a plain substring would never match.
+   */
+  const toolError = (result: unknown): string =>
+    (result as { details?: { error?: string } }).details?.error ?? "";
 
   /** Open a mediated run on one route of the shipped example. */
   const openRun = (runId: string, prompt: string, routes: string[]) =>
@@ -165,7 +184,7 @@ async function main(): Promise<number> {
   expectEqual(
     "it names the MCP servers an operator must register",
     [...(imported.requiredMcpServers ?? [])].toSorted(),
-    ["acme-filing", "acme-ledger", "acme-screening", "acme-tracker"],
+    ["acme-core-banking", "acme-filing", "acme-ledger", "acme-screening", "acme-tracker"],
   );
   // A skill whose `requires.bins` is missing on the host is filtered out of the
   // run, which would make the skills axis inert on exactly the machines this
@@ -183,67 +202,138 @@ async function main(): Promise<number> {
   );
   invalidateWorkflowTreeRegistry();
 
-  // ---- 2. The seeded data is reachable THROUGH THE PRODUCTION TOOLS, from the
-  // step that owns it. Calling the store and the expression evaluator directly
-  // would stay green even if the tools' active-step scoping, argument adapters,
-  // or result mapping broke.
+  // ---- 2. A row this work-map OWNS, written and then read back THROUGH THE
+  // PRODUCTION TOOLS. The example declares no instances any more, so a read has to
+  // open with a write. The SAR is the artifact to use: no upstream system holds it,
+  // which is why its step CREATES it rather than updating something a file seeded.
+  //
+  // Calling the store helper directly would skip the tools' own argument adapter
+  // and scope resolution, so a regression that broke the wired-up tool would still
+  // leave this green.
   {
     const runId = "golden-reads";
-    await openRun(runId, "AC-2002 거래 검토", [
-      "finops.risk.monitoring.investigation.transaction-review",
-    ]);
+    await openRun(runId, "CS-9001 케이스 SAR 초안 작성", ["finops.risk.monitoring.sar-filing"]);
 
-    const search = await createSearchObjectsTool({ runId }).execute("g1", {
-      entity: "transaction",
+    const drafted = await createInvokeActionTool({ runId }).execute("g1", {
+      action: "draft-sar",
+      args: {
+        "sar-id": "SR-9001",
+        "case-id": "CS-9001",
+        narrative: "Structuring across two same-counterparty transfers.",
+      },
+    });
+    record(
+      "the create action opens the report this work-map owns",
+      !JSON.stringify(drafted).includes('"error"'),
+      JSON.stringify(drafted).slice(0, 120),
+    );
+    // A create must satisfy the type EVERY branch declares, not only the one it
+    // runs under: `sar` marks `case-id` required in the reporting domain as well,
+    // so an action that did not carry it could never write a legal object.
+    expectEqual(
+      "the row it wrote carries the properties the action declared",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "sar", limit: 10 }).map((row) => [
+        row.objectId,
+        row.properties["case-id"],
+        row.properties.narrative,
+      ]),
+      [["SR-9001", "CS-9001", "Structuring across two same-counterparty transfers."]],
+    );
+    // Creating the same id twice is refused, which is what stops a second report
+    // being opened for one case.
+    const again = await createInvokeActionTool({ runId }).execute("g2", {
+      action: "draft-sar",
+      args: { "sar-id": "SR-9001", "case-id": "CS-9001", narrative: "second attempt" },
+    });
+    record(
+      "a create is refused for an id that already exists",
+      JSON.stringify(again).includes("already exists"),
+      JSON.stringify(again).slice(0, 120),
+    );
+
+    // The GRAPH effect. Seeded links are gone, so an edge exists only because an
+    // action wrote one — and without this, get_neighbors would have nothing to walk
+    // anywhere in the example.
+    const linked = await createInvokeActionTool({ runId }).execute("g3", {
+      action: "attach-sar-to-case",
+      args: { "case-id": "CS-9001", "sar-id": "SR-9001" },
+    });
+    record(
+      "the graph effect relates the report to the case that raised it",
+      !JSON.stringify(linked).includes('"error"'),
+      JSON.stringify(linked).slice(0, 120),
+    );
+
+    const search = await createSearchObjectsTool({ runId }).execute("g4", {
+      entity: "sar",
       limit: 50,
     });
     const searchText = JSON.stringify(search);
     record(
-      "search_objects returns the seeded transactions",
-      ["TX-4001", "TX-4002", "TX-4003"].every((id) => searchText.includes(id)),
+      "search_objects returns it through the tool an agent would call",
+      searchText.includes("SR-9001"),
       searchText.slice(0, 110),
     );
 
-    const neighbors = await createGetNeighborsTool({ runId }).execute("g2", {
-      entity: "account",
-      objectId: "AC-2002",
+    const neighbors = await createGetNeighborsTool({ runId }).execute("g5", {
+      entity: "sar",
+      objectId: "SR-9001",
     });
     const neighborText = JSON.stringify(neighbors);
     record(
-      "get_neighbors walks the seeded links off an account",
-      neighborText.includes("TX-4001") &&
-        neighborText.includes("TX-4002") &&
-        neighborText.includes("account-books-transaction"),
+      "get_neighbors walks the edge that action wrote",
+      neighborText.includes("CS-9001") && neighborText.includes("case-files-sar"),
       neighborText.slice(0, 110),
-    );
-
-    const computed = await createComputeFunctionTool({ runId }).execute("g3", {
-      function: "alert-priority",
-      objectId: "AL-6002",
-    });
-    // Compare the payload's value, not the rendered text: a band that regressed
-    // to "not urgent" would still contain "urgent" as a substring.
-    expectEqual(
-      "compute_function bands the alert from its stored score",
-      // AL-6002 scores 88, and the expression bands 80+ as urgent.
-      (computed as { details?: { value?: unknown } }).details?.value,
-      "urgent",
     );
 
     // Sibling isolation, through the tool an agent would actually call. `payment`
     // is declared one branch away under finops.claims.settlement, so this step
     // cannot address it at all — the ontology, not just the tool scope, is what
     // stops a monitoring step from reading claim money.
-    const offBranch = await createSearchObjectsTool({ runId }).execute("g4", {
+    const offBranch = await createSearchObjectsTool({ runId }).execute("g6", {
       entity: "payment",
       limit: 5,
     });
     const offBranchText = JSON.stringify(offBranch);
     record(
       "a sibling domain's object type is not addressable here",
-      offBranchText.includes("not in the ontology of this workflow step") &&
-        !offBranchText.includes("PM-7101"),
+      offBranchText.includes("not in the ontology of this workflow step"),
       offBranchText.slice(0, 140),
+    );
+    endEnterpriseRun({ runId, status: "completed" });
+  }
+
+  // ---- 2b. The derived-value tool, and the lifecycle gap it now sits on.
+  //
+  // Every function the example declares — alert-priority, bureau-band,
+  // claim-triage-band, auto-payable-amount, account-in-good-standing,
+  // claim-amount-or-zero — is written over an alert, a credit report, a claim, an
+  // account or a customer, and NO action in the work-map creates one of those:
+  // they belong to the systems the outward calls address. So the honest thing to
+  // pin is that the tool resolves, is in scope, and reports the missing row rather
+  // than inventing a band. The day a step gains a create for one of those types,
+  // this check has to be rewritten — which is the pressure it is here to apply.
+  {
+    const runId = "golden-derived";
+    await openRun(runId, "알림 큐 분류", ["finops.risk.monitoring.alert-triage"]);
+    expectEqual(
+      "compute_function is in scope on the step that bands alerts",
+      evaluateEnterpriseToolCall({ runId, toolName: "compute_function" })?.blocked ?? false,
+      false,
+    );
+    const computed = await createComputeFunctionTool({ runId }).execute("g7", {
+      function: "alert-priority",
+      objectId: "AL-0001",
+    });
+    const computedText = JSON.stringify(computed);
+    record(
+      // Naming the missing OBJECT matters: an out-of-scope function would also
+      // produce an error, and passing on that would hide the tool losing its scope.
+      "and reports the absent row instead of banding one it never read",
+      toolError(computed).includes("AL-0001") &&
+        !computedText.includes("urgent") &&
+        !computedText.includes("standard"),
+      computedText.slice(0, 140),
     );
     endEnterpriseRun({ runId, status: "completed" });
   }
@@ -392,91 +482,118 @@ async function main(): Promise<number> {
       true,
     );
 
-    // ---- 6. The declared action executes through the PRODUCTION tool and writes
-    // its object. Calling the store helper directly would skip the tool's own
-    // argument adapter and scope resolution, so a regression that broke the
-    // wired-up tool would still leave this green.
-    //
-    // A `create` effect also needs the target type's primary key among the
-    // action's parameters; without it every invocation fails validation, and a
-    // fixture that only LOOKS executable lets the ontology path rot unnoticed.
-    const invoked = await createInvokeActionTool({ runId }).execute("golden-call", {
-      action: "issue-claim-payment",
-      args: {
-        "payment-id": "PM-7199",
-        "claim-id": "CL-6101",
-        "paid-amount": 1800,
-        status: "settled",
-      },
+    // ---- 6. The OUTWARD action, judged before anything leaves. The ledger owns
+    // the money, so paying is not a write into our store: the model calls the
+    // ledger's own tool and this lane holds that call to the action's contract.
+    // Nothing reports back afterwards, which is why the check has to happen here.
+    const goodCall = mcpVerdict(runId, "acme-ledger", "post_payment", {
+      "claim-id": "CL-6101",
+      "paid-amount": 1800,
+      reason: "Authority step cleared the derived cap.",
     });
-    const invokedText = JSON.stringify(invoked);
+    expectEqual(
+      "a call that satisfies the outward action is allowed to leave",
+      goodCall?.decision.effect,
+      "allow",
+    );
+    expectEqual(
+      "and the trail records which action authorized it",
+      goodCall?.decision.outwardActionId,
+      "issue-claim-payment",
+    );
+    // Required-ness is the whole point: an external system takes the call whatever
+    // we think of it, so a missing reason code can never be recovered afterwards.
+    const missingReason = mcpVerdict(runId, "acme-ledger", "post_payment", {
+      "claim-id": "CL-6101",
+      "paid-amount": 1800,
+    });
     record(
-      "invoke_action runs the declared action",
-      !invokedText.includes('"error"'),
-      invokedText.slice(0, 120),
+      "a call missing a required parameter is denied before it leaves",
+      missingReason?.decision.effect === "deny" &&
+        missingReason.decision.reason.includes('requires "reason"'),
+      missingReason?.decision.reason ?? "no verdict",
     );
-    expectEqual(
-      "the payment it created is readable",
-      searchOntologyObjects({ treeId: TREE_ID, entity: "payment", limit: 50 })
-        .map((row) => row.objectId)
-        .toSorted(),
-      ["PM-7101", "PM-7199"],
+    const wrongType = mcpVerdict(runId, "acme-ledger", "post_payment", {
+      "claim-id": "CL-6101",
+      "paid-amount": "1800",
+      reason: "typed as text",
+    });
+    record(
+      "and so is one that passes a declared parameter as the wrong type",
+      wrongType?.decision.effect === "deny" &&
+        wrongType.decision.reason.includes('declares "paid-amount" as number'),
+      wrongType?.decision.reason ?? "no verdict",
     );
-    // Both effects, and neither crossed into the other. An action writes only what
-    // it declares, so a payment-only version would leave the claim `submitted`
-    // forever; a shared `amount` property would have let the paid figure overwrite
-    // the claim's own. That is why `payment` calls its column `paid-amount`.
-    expectEqual(
-      "paying settles the claim without rewriting the amount it was filed for",
-      searchOntologyObjects({ treeId: TREE_ID, entity: "claim", limit: 50 })
-        .filter((row) => row.objectId === "CL-6101")
-        .map((row) => `${row.properties.status}:${row.properties.amount}`),
-      ["settled:1800"],
+    // Declaring an outward action CLOSES the server it names. An attachment
+    // otherwise grants every tool on it, so a step that carefully declared "post a
+    // payment" would still leave the ledger's other operations one call away.
+    const undeclared = mcpVerdict(runId, "acme-ledger", "reverse_payment", {
+      "claim-id": "CL-6101",
+    });
+    record(
+      "an operation the step declares no action for is closed off",
+      undeclared?.decision.effect === "deny" &&
+        undeclared.decision.reason.includes("is not one of the outward actions"),
+      undeclared?.decision.reason ?? "no verdict",
     );
     endEnterpriseRun({ runId, status: "completed" });
   }
 
-  // ---- 7. The two UPDATE actions, against the drafts the fixture seeds. A
-  // create effect refuses an id that already exists (ontology-actions.ts), so a
-  // work-map whose only write for an existing record is a create leaves the model
-  // no move but inventing a second one. Both of these write onto the seeded row
-  // and merge over it, which is also what proves the stored properties an update
-  // does not name survive.
+  // ---- 7. The LOCAL half of the same step, and the lifecycle rule underneath it.
+  //
+  // Paying is two facts that cannot be one write: the money leaves the ledger, and
+  // the claim file this workflow owns records that it did. An outward call cannot
+  // join a local transaction and cannot be rolled back when a later write fails,
+  // so the example splits them — and `settle-claim` is an UPDATE, which is not an
+  // upsert. With instances gone from the file, that is load-bearing: an update
+  // against a row nothing created must say so rather than quietly conjure one,
+  // because a claim invented here would satisfy no branch's declared shape.
   {
-    const sarId = "golden-sar-update";
-    await openRun(sarId, "CS-7001 보고서 작성", ["finops.risk.monitoring.sar-filing"]);
-    const drafted = await createInvokeActionTool({ runId: sarId }).execute("sar-call", {
-      action: "draft-sar",
-      args: { "sar-id": "SR-8001", narrative: "Structuring across TX-4001 and TX-4002." },
+    const settleId = "golden-settle-claim";
+    await openRun(settleId, "CL-6101 지급 기록", ["finops.claims.settlement.payment"]);
+    const settled = await createInvokeActionTool({ runId: settleId }).execute("settle-call", {
+      action: "settle-claim",
+      args: { "claim-id": "CL-6101", status: "settled" },
     });
+    const settledText = JSON.stringify(settled);
     record(
-      "the drafting action writes onto the report the case already carries",
-      !JSON.stringify(drafted).includes('"error"'),
-      JSON.stringify(drafted).slice(0, 120),
+      "an update against a row no step created is refused, not upserted",
+      toolError(settled).includes('no "claim" object with id "CL-6101" to update'),
+      settledText.slice(0, 140),
     );
     expectEqual(
-      "the narrative lands and the case link survives the merge",
-      searchOntologyObjects({ treeId: TREE_ID, entity: "sar", limit: 10 }).map((row) => [
-        row.objectId,
-        row.properties["case-id"],
-        row.properties.narrative,
-      ]),
-      [["SR-8001", "CS-7001", "Structuring across TX-4001 and TX-4002."]],
+      "and nothing was written",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "claim", limit: 10 }).length,
+      0,
     );
-    endEnterpriseRun({ runId: sarId, status: "completed" });
+    endEnterpriseRun({ runId: settleId, status: "completed" });
 
+    // The same rule at the other end of the tree, on the step that files. This is
+    // the only place a period's return moves to `filed`, and `period` is
+    // deliberately not a parameter: an update writes every property it is handed,
+    // so making it one would let a filing quietly restate which period it covers.
     const filingId = "golden-filing-update";
-    await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.submission"]);
-    await createInvokeActionTool({ runId: filingId }).execute("file-call", {
+    await openRun(filingId, "드래프트된 Q3 보고 제출", ["finops.reporting.regulatory.submission"]);
+    const filed = await createInvokeActionTool({ runId: filingId }).execute("file-call", {
       action: "file-regulatory-report",
       args: { "report-id": "RP-9102", status: "filed" },
     });
-    expectEqual(
-      "submitting the return moves its status without rewriting its period",
-      searchOntologyObjects({ treeId: TREE_ID, entity: "regulatory-report", limit: 10 })
-        .map((row) => `${row.objectId}:${row.properties.period}:${row.properties.status}`)
-        .toSorted(),
-      ["RP-9101:2026-Q2:filed", "RP-9102:2026-Q3:filed"],
+    record(
+      "filing a return that was never compiled is refused for the same reason",
+      toolError(filed).includes('no "regulatory-report" object with id "RP-9102" to update'),
+      JSON.stringify(filed).slice(0, 140),
+    );
+    const declared = await createInvokeActionTool({ runId: filingId }).execute("bad-action", {
+      action: "draft-sar",
+      args: { "sar-id": "SR-9002", "case-id": "CS-9001", narrative: "wrong step" },
+    });
+    const declaredText = JSON.stringify(declared);
+    record(
+      "and an action another domain declares is not invocable from here",
+      toolError(declared).includes(
+        'action "draft-sar" is not in the ontology of this workflow step',
+      ),
+      declaredText.slice(0, 140),
     );
     endEnterpriseRun({ runId: filingId, status: "completed" });
   }
@@ -490,17 +607,22 @@ async function main(): Promise<number> {
     const ledgerId = "golden-mcp-ledger";
     await openRun(ledgerId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
     expectEqual(
-      "the payment step may call the ledger it attached",
-      mcpVerdict(ledgerId, "acme-ledger", "transfer")?.decision.effect,
+      "the payment step may call the ledger operation its action declares",
+      mcpVerdict(ledgerId, "acme-ledger", "post_payment", {
+        "claim-id": "CL-6101",
+        "paid-amount": 1800,
+        reason: "cleared",
+      })?.decision.effect,
       "allow",
     );
-    // Any tool of the attached server, not just a named one: the attachment grants
-    // the server, and requiring the tool names too would make attaching in the UI
-    // insufficient.
+    // An attachment grants the server's WHOLE tool surface — attaching in the UI
+    // has to be enough — until a step narrows it by declaring an outward action.
+    // This step does, so the rest of the ledger is closed here; the tracker checks
+    // below are the other half, where nothing is declared and everything is open.
     expectEqual(
-      "the attachment covers the server's other tools too",
+      "declaring an outward action closes that server's other tools",
       mcpVerdict(ledgerId, "acme-ledger", "anything")?.decision.effect,
-      "allow",
+      "deny",
     );
     const crossDomain = mcpVerdict(ledgerId, "acme-screening", "lookup");
     record(
@@ -661,18 +783,34 @@ async function main(): Promise<number> {
     );
 
     // The two sources deliberately DISAGREE. The handbook's written figure is the
-    // DESK's authority ($5,000); this claim's own derived cap is 2,500. A reply
-    // that quotes 5,000 for CL-6102 has answered a record question from a policy
-    // passage — the exact confusion this fixture exists to catch, and it is only
-    // detectable because the numbers differ.
+    // DESK's authority ($5,000); a claim's own cap is derived as min(amount, 2500).
+    // A reply that quotes 5,000 as a particular claim's cap has answered a record
+    // question from a policy passage — the confusion this fixture exists to catch,
+    // and it is only detectable because the numbers differ.
+    //
+    // The two halves are asserted separately now. Since instances left the example
+    // no run can create a `claim`, so the derived half cannot be computed against a
+    // real row here: what IS provable is that the declaration the step carries is
+    // not the handbook's number, and that the tool refuses to produce a cap for a
+    // claim nothing opened rather than falling back on the passage it just read.
+    const settlementScope = getEnterpriseActiveRun(claimsId)
+      ?.plan.nodes.flatMap((node) => node.ontology.functions ?? [])
+      .find((fn) => fn.id === "auto-payable-amount");
+    record(
+      "the derived cap is declared over the record, not copied from the handbook",
+      Boolean(settlementScope?.expression.includes("2500")) &&
+        !settlementScope?.expression.includes("5000"),
+      settlementScope?.expression ?? "auto-payable-amount is not in this step's scope",
+    );
     const cap = await createComputeFunctionTool({ runId: claimsId }).execute("k2", {
       function: "auto-payable-amount",
       objectId: "CL-6102",
     });
-    expectEqual(
-      "the record's derived cap is not the handbook's number",
-      (cap as { details?: { value?: unknown } }).details?.value,
-      2500,
+    const capText = JSON.stringify(cap);
+    record(
+      "and no cap is produced for a claim no step opened",
+      capText.includes("error") && !capText.includes("5000") && !capText.includes("2500"),
+      capText.slice(0, 140),
     );
     endEnterpriseRun({ runId: claimsId, status: "completed" });
 
@@ -1084,7 +1222,6 @@ async function main(): Promise<number> {
               ],
             },
           ],
-          objects: [{ entity: "widget", properties: { "widget-id": "WG-1", price: 40 } }],
         },
         children: [
           {
@@ -1115,7 +1252,7 @@ async function main(): Promise<number> {
       const runId = "golden-inherited";
       const mediation = await beginEnterpriseRun({
         runId,
-        prompt: "look at WG-1",
+        prompt: "look at a widget",
         routePlanner: async () => ({
           kind: "decided",
           treeId: INHERITED_TREE_ID,

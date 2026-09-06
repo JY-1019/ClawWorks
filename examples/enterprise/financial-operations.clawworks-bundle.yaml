@@ -33,14 +33,14 @@
 #                    the root grants no tools at all (see the root comment).
 #   ontology         object types are declared by the DOMAIN that operates on
 #                    them, never at the root, so claims cannot address a `sar`
-#                    and risk cannot address a `payment`. Seeded instances ship
-#                    below, so the ids in a test prompt are real.
+#                    and risk cannot address a `payment`. No instances ship
+#                    below: the systems of record own the data (see below).
 #   knowledge        six corpora, inlined. One is reachable from two domains
 #                    (acme.aml-policy: risk and reporting), one from three
 #                    (acme.privacy-standard), two are locked to a single domain
 #                    (acme.regulatory-code, acme.credit-policy), and one step holds
 #                    a corpus AND the object store so the model has to choose.
-#   MCP              four servers, each attached to the steps that need it and
+#   MCP              five servers, each attached to the steps that need it and
 #                    denied everywhere else. One server is attached in two
 #                    different domains; one step attaches a server and then takes
 #                    a single destructive operation back with `deniedTools`. On a
@@ -353,10 +353,11 @@ trees:
                             tool: "acme-core-banking__open_account"
                             description: Books the new account in the system that owns it.
                     guidance: >-
-                      Gather all four parameters from the steps above before calling:
-                      the new account id, the customer it belongs to, the product, and
-                      the opening status. Never invent an id to satisfy the call — name
-                      the missing one and stop.
+                      Gather all three parameters from the steps above before
+                      calling: the customer the account belongs to, the product, and
+                      the reason the desk is opening it. Core banking mints the account
+                      id, so do not invent one — if a parameter is missing, name it and
+                      stop.
                     expectedOutput: The new account id, or the reason it was not opened.
                     audit: true
 
@@ -691,6 +692,10 @@ trees:
                         description: Open the report for a reportable case and write its narrative.
                         parameters:
                           - { id: sar-id, type: id, required: true }
+                          # The case this report answers. `sar` declares `case-id`
+                          # required, and a create must satisfy the type every branch
+                          # declares, so leaving it out made the action unsatisfiable.
+                          - { id: case-id, type: id, required: true }
                           - { id: narrative, type: string, required: true }
                         preconditions:
                           - The case is disposed as reportable.
@@ -1209,11 +1214,11 @@ trees:
                     mcpServers: [acme-filing]
                     knowledgeFoundations: [acme.regulatory-code, acme.aml-policy]
                     actions:
-                      # An UPDATE for the same reason as draft-sar: the period's
-                      # return is already seeded as a draft (RP-9102), and
-                      # submitting it moves its status. `period` is deliberately not
-                      # a parameter — it is stored, and an update writes every
-                      # property it is handed.
+                      # An UPDATE, because the return is compiled before it is
+                      # filed and submitting only moves its status. `period` is
+                      # deliberately not a parameter — it is stored, and an update
+                      # writes every property it is handed, so passing the period
+                      # here would let a filing quietly restate which one it covers.
                       - id: file-regulatory-report
                         title: Submit a regulatory return
                         description: Move a drafted return to filed once its reports are complete.
