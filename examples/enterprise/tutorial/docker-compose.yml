@@ -29,7 +29,9 @@ services:
       WORKING_DIR: /app/data/rag_storage
       INPUT_DIR: /app/data/inputs
     ports:
-      - "${LIGHTRAG_PORT:-9621}:9621"
+      # The tutorial leaves LightRAG auth optional, so never publish it beyond
+      # the local machine where ClawWorks connects to it.
+      - "127.0.0.1:${LIGHTRAG_PORT:-9621}:9621"
     volumes:
       - ./data/rag_storage:/app/data/rag_storage
       - ./data/inputs:/app/data/inputs
@@ -46,5 +48,5 @@ services:
     environment:
       PORT: "9700"
     ports:
-      - "${TRACKER_PORT:-9700}:9700"
+      - "127.0.0.1:${TRACKER_PORT:-9700}:9700"
     restart: unless-stopped

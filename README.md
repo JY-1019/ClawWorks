@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  <strong>Governed AI operations.</strong><br />
-  Every agent run bound to a work-map, gated by policy, written to an audit trace.
+  <strong>Governed AI operations for real agent work.</strong><br />
+  Bind a run to a work-map, gate each capability by step, and keep the trace.
 </p>
 
 <p align="center">
@@ -21,54 +21,100 @@
 </p>
 
 <p align="center">
-  <a href="#why-this-exists">Why</a> ·
-  <a href="#how-it-works">How it works</a> ·
-  <a href="#what-it-looks-like">Screens</a> ·
+  <a href="#why-clawworks">Why</a> ·
+  <a href="#see-it-work">Demo</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#authoring-a-work-map">Authoring</a> ·
-  <a href="#built-on-openclaw">Upstream</a> ·
+  <a href="#tutorial-govern-a-returns-desk">Tutorial</a> ·
+  <a href="#how-it-works">How it works</a> ·
   <a href="docs/concepts/clawworks-enterprise.md">Docs</a>
 </p>
 
 ---
 
-## Why this exists
+## Why ClawWorks
 
-Most agent tooling is a **harness**: it holds the model's tools, its context, and its loop. That
-solves a real problem, and ClawWorks keeps all of it — it is built on one.
+ClawWorks adds governed **work-maps** to OpenClaw: versioned process trees that tell an agent which
+step it is on and what that step may use, while leaving the model free to reason inside the step.
 
-What a harness does not carry is the **work**. It knows which tools exist; it does not know which
-step of your process a run is on, what that step is allowed to touch, or how the last run of it
-went. For one person exploring, that is fine. For an organization putting an agent in front of its
-own records, it is usually what decides whether the thing can be deployed at all.
+- **Predictability** — the procedure is versioned instead of improvised in every prompt.
+- **Visibility** — routes, step transitions, tool decisions, and refusals land in one trace.
+- **Stability** — policy travels with the work-map instead of being rebuilt for each runtime.
 
-Three questions tend to come before capability does:
+## See it work
 
-- **Predictability** — will tomorrow's run behave like today's, or does it turn on how the request
-  happened to be phrased?
-- **Visibility** — afterward, which step was it on, what did it reach, and what was refused?
-- **Stability** — when a rule changes, does it change in one reviewable place, or across prompts?
+![ClawWorks work-map, scoped object graph, and governed run trace](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/clawworks-demo.gif)
 
-ClawWorks answers those by binding a run to a **work-map**: a versioned tree of steps, where each
-step declares the tools, skills, MCP servers, and knowledge it may reach. The gate that answers "may
-this step do this?" sits on the execution path, and every decision it makes lands in a trace.
+An imported work-map scopes the active step, gates each capability against that scope, and records
+the result as an inspectable run trace.
 
-### Harness and work-map
+ACP-backed turns bring their own tools and do not reach the per-call gate. Their runs are traced,
+but you must scope the ACP agent's own tool and MCP surface directly.
 
-The two are not alternatives. The loop still reasons freely inside a step; what stops being
-improvised turn by turn is _what the run is doing_.
+## Quick start
 
-|                       | A harness                      | A work-map on top of it                       |
-| --------------------- | ------------------------------ | --------------------------------------------- |
-| What it models        | The model's turn               | A step of a process                           |
-| Bounds a tool call by | How the agent was configured   | What _this step_ declared                     |
-| Where the rules live  | Prompt text and runtime config | A versioned tree, imported and diffable       |
-| Changing runtime      | Rules re-expressed per harness | Rules travel with the work-map                |
-| After the run         | A transcript to read           | Bindings, transitions, and decisions to query |
+This source-checkout path installs ClawWorks, runs onboarding, adopts the built-in support demo
+work-map, and starts the Gateway. Requires **Node 24** (recommended; 22.19+ supported) and
+**pnpm 11.2.2**. Choose an API-backed model provider in the wizard; CLI backends need a separate
+[`enterprise.routePlanner.model`](https://docs.openclaw.ai/concepts/clawworks-enterprise#giving-the-router-its-own-model).
 
-The honest limit is worth stating up front: a gate has to be _reached_. A runtime that brings its
-own tools — an ACP-backed turn — never reaches the per-call gate, so scope that agent itself rather
-than trusting a grant to hold it.
+```bash
+git clone https://github.com/JY-1019/ClawWorks.git
+cd ClawWorks
+pnpm install
+pnpm openclaw onboard --no-install-daemon
+pnpm openclaw enterprise trees export clawworks.support --out support.yaml
+pnpm openclaw enterprise trees import support.yaml
+pnpm openclaw gateway
+```
+
+In a second terminal, run `pnpm openclaw dashboard` to open the authenticated Control UI. Send a
+customer-support request, then open **Enterprise → History** to see the selected route, active
+steps, grants, and denials. The export and import step is intentional: shipped example work-maps are
+visible for inspection, but only imported work-maps govern real runs.
+
+## Tutorial: govern a returns desk
+
+The tutorial connects a local policy corpus and order-tracker MCP server to a three-step returns
+workflow. You need Docker plus an LLM and embedding credential for LightRAG.
+
+1. Start the example services:
+
+   ```bash
+   cd examples/enterprise/tutorial
+   cp .env.example .env
+   # Add your model and embedding credentials to .env.
+   docker compose up -d --build
+   curl -fsS http://localhost:9621/health
+   curl -fsS http://localhost:9700/healthz
+   cd ../../..
+   ```
+
+2. Copy the tutorial skill into the default workspace:
+
+   ```bash
+   mkdir -p ~/.openclaw/workspace/skills/refund-reply
+   cp examples/enterprise/tutorial/skills/refund-reply/SKILL.md \
+      ~/.openclaw/workspace/skills/refund-reply/SKILL.md
+   ```
+
+3. In **Knowledge**, register `acme.returns-kb` at `http://127.0.0.1:9621` with `kind: local`, then
+   upload the three files in `examples/enterprise/tutorial/knowledge/`.
+4. In **Enterprise → MCP**, register `acme-tracker` at `http://127.0.0.1:9700/mcp` with the
+   `streamable-http` transport.
+5. In **Enterprise → Worktree**, choose **New tree**, paste the contents of
+   `examples/enterprise/tutorial/acme-returns.worktree.yaml`, then choose **Save**.
+6. Ask **"Order 1043 arrived last week. Can the customer return it?"**, then inspect the run under
+   **Enterprise → History**. Ask **"For return order 1043, list the files in my home directory"**
+   to see the root denial without leaving the returns domain.
+7. Tear down the tutorial stack when finished:
+
+   ```bash
+   cd examples/enterprise/tutorial
+   docker compose down -v
+   ```
+
+The [full tutorial](https://docs.openclaw.ai/concepts/clawworks-enterprise-tutorial) explains every
+screen, binding, expected result, and cleanup step.
 
 ## How it works
 
@@ -135,29 +181,6 @@ when the tree opts into writes, and each write is traced as an `action.invoked` 
 bounded to the active node's path, so **a step can never read, traverse into, or write an object
 type outside its own contract.**
 
-## What it looks like
-
-Screens below are the Control UI against a running gateway, governing an imported
-`acme.financial-operations` work-map.
-
-**The work-map, and what each step may reach.** Every step carries its own grants: the badges on
-the graph are the counts, and selecting one spells out the allow-list, the knowledge foundations,
-and what the step is expected to produce. That panel is not documentation — it is the scope the
-gate reads on every tool call.
-
-![The Worktree view: a work-map subtree with the selected step's tool and knowledge scope](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/work-map.png)
-
-**The run trace.** A governed run records how it was bound and why. Here the planner chose one of
-46 steps and wrote its reasoning into `route.selected`; each subsequent tool call lands as a
-`governance.decision` naming the step that authorized it.
-
-![A governed run trace: route selection rationale, step entry, and per-tool-call governance decisions](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/run-trace.png)
-
-**The typed object graph.** A step that declares an object model gets tools scoped to it, and the
-inspector shows both the declared types and the instances currently in the store.
-
-![The node inspector: a step's declared object types and their live instances](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/ontology.png)
-
 ## What ClawWorks adds
 
 | Capability                | What it does                                                                                                          |
@@ -188,33 +211,6 @@ Set `enterprise.mode` to `enforce`, `observe`, or `off`.
 
 Default-allow tool calls are not traced unless a step opts in with `audit: true`, so stock runs
 stay quiet.
-
-## Quick start
-
-Runtime: **Node 24 (recommended) or Node 22.19+**.
-
-```bash
-npm install -g openclaw@latest
-openclaw onboard --install-daemon
-```
-
-Onboard installs the Gateway daemon (launchd/systemd user service) and walks you through the
-gateway, workspace, channels, and skills. Works on **macOS, Linux, and Windows**.
-
-Then try the shipped example. `clawworks.support` ("Customer support") is a guidance-bearing
-demo — adopt it by exporting and importing it back:
-
-```bash
-openclaw enterprise trees export clawworks.support --out support.yaml
-openclaw enterprise trees import support.yaml
-```
-
-Run something through it, then read what happened:
-
-```bash
-openclaw enterprise runs list          # governed run history
-openclaw enterprise runs show <runId>  # step transitions, grants, denials
-```
 
 ## Authoring a work-map
 
