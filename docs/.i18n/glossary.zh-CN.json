@@ -1256,6 +1256,10 @@
     "target": "企业实时路由用例表"
   },
   {
+    "source": "Enterprise Golden Cases",
+    "target": "企业黄金用例"
+  },
+  {
     "source": "Enterprise Worktree Remaining Features",
     "target": "企业 Worktree 待办功能"
   }

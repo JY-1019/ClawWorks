@@ -1,0 +1,269 @@
+# Hands-on golden case: local incident records, real tool results, no external services.
+# Import with the CLI, restart the Gateway, then explore it in the UI:
+# pnpm openclaw enterprise bundle import examples/enterprise/golden/service-incident.clawworks-bundle.yaml
+# Follow docs/specs/enterprise-live-grid.md, using fresh incident/note ids for each replay.
+# Nothing here restarts a service, pages an engineer, or sends a customer message.
+schema: clawworks.workflow-bundle
+schemaVersion: 1
+trees:
+  - schema: clawworks.workflow-tree
+    schemaVersion: 1
+    id: demo.service-incident
+    version: 1.0.0
+    name: Service incident desk (golden case)
+    description: >-
+      Fictional service incident exercises: register, prioritize, assign, record
+      evidence, resolve, and report local incidents; draft unsent customer updates.
+    capabilityGrants: explicit
+    root:
+      id: desk
+      title: Service incident desk
+      ontology:
+        audit: true
+        deniedTools:
+          [exec, process, browser, web_fetch, web_search, write, edit, apply_patch, message]
+        guidance: >-
+          This is a fictional, local-only exercise. Use the exact values and ids
+          the user supplies; ask for missing required values. Never invent an
+          existing record, an action result, an external repair, or a sent message.
+          Read persisted records with search_objects before updating or linking
+          them. A successful local write is not evidence of a real service change.
+      children:
+        - id: desk.incidents
+          title: Incident operations
+          description: Create and maintain local incident records and their evidence.
+          ontology:
+            knowledgeFoundations: [demo.incident-playbook]
+            entities:
+              - id: incident
+                title: Incident
+                properties:
+                  - { id: incident-id, type: id, primaryKey: true, required: true }
+                  - { id: service, type: string, required: true }
+                  - { id: title, type: string, required: true }
+                  - { id: status, type: string, required: true }
+                  - { id: affected-users, type: number, required: true }
+                  - { id: elapsed-minutes, type: number, required: true }
+                  - { id: owner, type: string }
+                  - { id: resolution, type: string }
+              - id: incident-note
+                title: Internal evidence note
+                properties:
+                  - { id: note-id, type: id, primaryKey: true, required: true }
+                  - { id: incident-id, type: id, required: true }
+                  - { id: summary, type: string, required: true }
+            relationships:
+              - id: incident-has-note
+                from: incident
+                to: incident-note
+                cardinality: one-to-many
+                inverse: evidence-for-incident
+                description: Internal evidence recorded for a local incident.
+          children:
+            - id: desk.incidents.intake
+              title: Register an incident
+              description: Create a new fictional incident from the user's supplied facts.
+              ontology:
+                allowedTools: [search_objects, invoke_action]
+                guidance: >-
+                  Require incident-id, service, title, status, affected-users,
+                  and elapsed-minutes. Check whether the id already exists; do not
+                  overwrite or silently pick another id. Call open-incident once
+                  and report only the object id returned in its writes.
+                actions:
+                  - id: open-incident
+                    title: Open a local incident
+                    tools: [invoke_action]
+                    parameters:
+                      - { id: incident-id, type: id, required: true }
+                      - { id: service, type: string, required: true }
+                      - { id: title, type: string, required: true }
+                      - { id: status, type: string, required: true }
+                      - { id: affected-users, type: number, required: true }
+                      - { id: elapsed-minutes, type: number, required: true }
+                    effects: [{ entity: incident, kind: create }]
+                expectedOutput: The created incident id and the supplied facts, not a repair claim.
+            - id: desk.incidents.triage
+              title: Compute incident priority
+              description: Read a stored incident, compute its priority, and cite the playbook.
+              ontology:
+                allowedTools: [search_objects, compute_function, knowledge_search]
+                guidance: >-
+                  Search the playbook for "priority" and cite the returned source.
+                  For a policy-only question, explain the rule without requiring
+                  an incident id or creating a record. When asked to classify a
+                  specific incident, read it and call compute_function with
+                  incident-priority and its exact objectId. Do not estimate its
+                  priority from prose or claim that computing it changed the record.
+                functions:
+                  - id: incident-priority
+                    title: Incident priority
+                    entity: incident
+                    expression: '$affected-users >= 100 || $elapsed-minutes >= 30 ? "urgent" : "standard"'
+                    returns: string
+                expectedOutput: The function's returned value, stored inputs, and playbook citation.
+            - id: desk.incidents.assign
+              title: Assign an incident owner
+              description: Update a local incident's owner and status, without paging anyone.
+              ontology:
+                allowedTools: [search_objects, invoke_action]
+                guidance: >-
+                  Require the exact incident-id, owner, and status. Read the
+                  incident, call assign-incident, and read it back. Record only
+                  the user's chosen owner; this does not send an assignment or page.
+                actions:
+                  - id: assign-incident
+                    title: Record owner and status
+                    tools: [invoke_action]
+                    parameters:
+                      - { id: incident-id, type: id, required: true }
+                      - { id: owner, type: string, required: true }
+                      - { id: status, type: string, required: true }
+                    effects: [{ entity: incident, kind: update }]
+                expectedOutput: Stored owner and status, with an explicit local-only qualification.
+            - id: desk.incidents.evidence
+              title: Attach internal evidence
+              description: Create an evidence note and link it to an existing local incident.
+              ontology:
+                allowedTools: [search_objects, invoke_action, get_neighbors]
+                guidance: >-
+                  Require an existing incident-id, a fresh note-id, and the
+                  exact summary to record. Read the incident first. Call
+                  add-incident-note once, then get_neighbors from the incident
+                  over incident-has-note. Confirm the neighbor's stored summary,
+                  not merely its id. Do not generate diagnostic evidence.
+                actions:
+                  - id: add-incident-note
+                    title: Create and attach an evidence note
+                    tools: [invoke_action]
+                    parameters:
+                      - { id: incident-id, type: id, required: true }
+                      - { id: note-id, type: id, required: true }
+                      - { id: summary, type: string, required: true }
+                    effects:
+                      - { entity: incident-note, kind: create }
+                      - { relationship: incident-has-note, kind: link }
+                expectedOutput: One note creation, one graph link, and the persisted neighbor properties.
+            - id: desk.incidents.resolve
+              title: Record incident resolution
+              description: Record the user's stated resolution; never perform or infer a real repair.
+              ontology:
+                allowedTools: [search_objects, invoke_action, knowledge_search]
+                guidance: >-
+                  Search the playbook for "resolution". Require the incident-id,
+                  the user's explicitly supplied status, and their resolution
+                  summary. Read the existing incident, call resolve-incident,
+                  and read it back. A local status of resolved records the user's
+                  statement; it does not verify service health.
+                actions:
+                  - id: resolve-incident
+                    title: Record a local resolution
+                    tools: [invoke_action]
+                    parameters:
+                      - { id: incident-id, type: id, required: true }
+                      - { id: status, type: string, required: true }
+                      - { id: resolution, type: string, required: true }
+                    effects: [{ entity: incident, kind: update }]
+                expectedOutput: Persisted status and resolution, without claiming external verification.
+            - id: desk.incidents.report
+              title: Review the incident record
+              description: Read-only report of the incident, its graph evidence, and the playbook.
+              ontology:
+                allowedTools: [search_objects, get_neighbors, knowledge_search]
+                deniedTools: [invoke_action]
+                guidance: >-
+                  Read the incident and its incident-has-note neighbors. Search
+                  the playbook for "review" and cite its source. Separate stored
+                  facts, user-supplied evidence, and anything not verified. Do not
+                  alter records while reporting.
+                expectedOutput: A read-only incident summary with actual evidence and clear unknowns.
+        - id: desk.communications
+          title: Customer communications
+          description: Explain communication policy and draft an unsent update from public fields.
+          ontology:
+            knowledgeFoundations: [demo.communication-policy]
+            deniedTools: [invoke_action]
+            # Redeclare only the public projection: internal fields and notes
+            # belong to the sibling operations branch, not this audience.
+            entities:
+              - id: incident
+                title: Incident status for customers
+                properties:
+                  - { id: incident-id, type: id, primaryKey: true, required: true }
+                  - { id: service, type: string, required: true }
+                  - { id: status, type: string, required: true }
+          children:
+            - id: desk.communications.policy
+              title: Explain the update policy
+              description: Answer customer-update policy questions without opening internal incident notes.
+              ontology:
+                allowedTools: [knowledge_search]
+                guidance: >-
+                  Search demo.communication-policy for "customer update" and
+                  cite the returned source. This branch cannot retrieve the
+                  internal incident playbook. Explain that boundary if asked.
+                expectedOutput: The customer-update rule and its actual source citation.
+            - id: desk.communications.draft
+              title: Draft an unsent customer update
+              description: Draft from the stored incident id, service, and status; do not send it.
+              ontology:
+                allowedTools: [search_objects, knowledge_search]
+                guidance: >-
+                  Read the incident's public fields and search the communication
+                  policy for "customer update". Produce a clearly labeled UNSENT
+                  DRAFT. Do not quote internal notes, owner, title, affected-user
+                  counts, or resolution details; they are not exposed here. Do
+                  not promise a recovery time or claim this draft was delivered.
+                expectedOutput: An unsent draft based only on public fields, plus its policy citation.
+knowledgeFoundations:
+  - id: demo.incident-playbook
+    descriptor:
+      kind: remote
+      displayName: Incident playbook (bundled example)
+      description: Fictional priority thresholds, local resolution records, and evidence review.
+      detail: Inlined read-only example content; no remote server is contacted.
+    snippets:
+      - foundationId: demo.incident-playbook
+        title: Priority thresholds
+        source: playbook/priority.md
+        text: >-
+          Incident priority is urgent when affected-users is at least 100 OR
+          elapsed-minutes is at least 30; otherwise it is standard. Compute
+          incident-priority from the stored record. The elapsed minutes are a
+          supplied snapshot, not a running timer. Priority does not change state.
+      - foundationId: demo.incident-playbook
+        title: Recording a resolution
+        source: playbook/resolution.md
+        text: >-
+          Record a resolution only from the user's supplied summary and status.
+          The exercise may use open, investigating, and resolved as status values;
+          these words are conventions, not a validated state machine. A local
+          resolved status does not verify a deployment, restart, or health check.
+      - foundationId: demo.incident-playbook
+        title: Evidence review
+        source: playbook/review.md
+        text: >-
+          An incident review reads stored fields and incident-has-note neighbors.
+          Each note is user-supplied evidence, not an independently verified log.
+          Separate facts from unknowns. A review must not edit the incident or
+          its evidence. Cite the source used to explain this review policy.
+  - id: demo.communication-policy
+    descriptor:
+      kind: remote
+      displayName: Customer communication policy (bundled example)
+      description: Public incident fields, unsent customer drafts, and unverified recovery times.
+      detail: Inlined read-only example content; no remote server is contacted.
+    snippets:
+      - foundationId: demo.communication-policy
+        title: Customer updates
+        source: communications/customer-updates.md
+        text: >-
+          A customer update may name the incident-id, service, and recorded
+          status. Omit internal notes, owner, title, impact counts, and resolution
+          details. Label the result UNSENT DRAFT. Never claim delivery or promise
+          a recovery time. A recorded resolved status is not an independent health
+          check; make that distinction when discussing recovery.
+requiredTools: [compute_function, get_neighbors, invoke_action, knowledge_search, search_objects]
+requiredSkills: []
+requiredMcpServers: []
+governanceMode: enforce

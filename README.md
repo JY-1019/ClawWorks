@@ -25,6 +25,7 @@
   <a href="#see-it-work">Demo</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#tutorial-govern-a-returns-desk">Tutorial</a> ·
+  <a href="#golden-cases">Golden cases</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="docs/concepts/clawworks-enterprise.md">Docs</a>
 </p>
@@ -40,42 +41,118 @@ step it is on and what that step may use, while leaving the model free to reason
 - **Visibility** — routes, step transitions, tool decisions, and refusals land in one trace.
 - **Stability** — policy travels with the work-map instead of being rebuilt for each runtime.
 
+Use it when an agent needs to follow an inspectable process: a support desk checking a returns
+policy, an analyst assembling evidence, or an operator drafting a report. A **work-map** is the
+process, a **step binding** is its permitted tools and sources, and **History** is the evidence of
+what actually happened. Instructions guide the model; bindings and governance enforce access.
+
+The Control UI is the operator's starting point:
+
+| I want to…                                      | Where to do it                                              |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| Import a process with its policy                | CLI bundle import once, then **Worktree**                   |
+| Build or edit a definition                      | **Worktree → New tree / Edit**; inspect and save the source |
+| Change a step's instructions                    | Select its **Role prompt** / instruction editor             |
+| Grant tools, knowledge, MCP servers, and skills | Select a node's **Step bindings**                           |
+| Connect and upload external policy documents    | **Knowledge**: connect a source, upload, and check indexing |
+| Register an external tool server                | **MCP**: register it, then attach it to a step              |
+| Inspect a run or investigate a refusal          | **History**: route, steps, and governance decisions         |
+
+Installation, starting local services, and copying a skill file still need a terminal. The
+tutorial identifies those steps explicitly; it does not assume every setup task has a UI button.
+
 ## See it work
 
-![ClawWorks work-map, scoped object graph, and governed run trace](https://raw.githubusercontent.com/JY-1019/ClawWorks/main/docs/assets/screens/clawworks-demo.gif)
+![Financial work-map, scoped object graph, and run history](docs/assets/screens/clawworks-demo.gif)
 
-An imported work-map scopes the active step, gates each capability against that scope, and records
-the result as an inspectable run trace.
+The existing GIF tours the financial work-map, its ontology inspector, and run history. It is a
+recorded UI example, **not a current live banking test**: its object rows include historical seed
+data. Today's financial bundle imports definitions and policy corpora, **not customer, account,
+transaction, or report records**. An empty object list after import is expected.
 
 ACP-backed turns bring their own tools and do not reach the per-call gate. Their runs are traced,
 but you must scope the ACP agent's own tool and MCP surface directly.
 
 ## Quick start
 
-This source-checkout path installs ClawWorks, runs onboarding, adopts the built-in support demo
-work-map, and starts the Gateway. Requires **Node 24** (recommended; 22.19+ supported) and
-**pnpm 11.2.2**. Choose an API-backed model provider in the wizard; CLI backends need a separate
-[`enterprise.routePlanner.model`](https://docs.openclaw.ai/concepts/clawworks-enterprise#giving-the-router-its-own-model).
+Start with the **service-incident golden case**: a complete local workflow with
+policy retrieval, typed records, a priority calculation, evidence links, and an
+unsent public update. No Docker, external MCP server, or preloaded business data
+is needed. Live Chat needs a configured model and router; provider usage may incur charges.
+
+### 1. Install and import the demo
+
+Requires **Node 24** (recommended; 22.19+ supported) and **pnpm 11.2.2**. This branch
+contains the new showcase:
 
 ```bash
-git clone https://github.com/JY-1019/ClawWorks.git
+git clone --branch codex/readme-quickstart-tutorial https://github.com/JY-1019/ClawWorks.git
 cd ClawWorks
 pnpm install
+pnpm build
 pnpm openclaw onboard --no-install-daemon
-pnpm openclaw enterprise trees export clawworks.support --out support.yaml
-pnpm openclaw enterprise trees import support.yaml
+pnpm openclaw enterprise bundle import examples/enterprise/golden/service-incident.clawworks-bundle.yaml
 pnpm openclaw gateway
 ```
 
-In a second terminal, run `pnpm openclaw dashboard` to open the authenticated Control UI. Send a
-customer-support request, then open **Enterprise → History** to see the selected route, active
-steps, grants, and denials. The export and import step is intentional: shipped example work-maps are
-visible for inspection, but only imported work-maps govern real runs.
+Keep that terminal running. In a second terminal, from the same checkout:
+
+```bash
+pnpm openclaw dashboard
+```
+
+This opens the authenticated Control UI. Use an admin connection for authoring.
+For the first tour, choose an embedded/API-backed agent. A CLI-backed agent also needs
+an API-accessible routing model through
+[`enterprise.routePlanner.model`](docs/concepts/clawworks-enterprise.md#giving-the-router-its-own-model);
+its CLI login alone does not configure the router. Do not expose the dashboard publicly.
+
+Already running a Gateway? Import the bundle, then restart that Gateway instead of
+starting a second process. A bundle includes the inline policy; do not paste it into
+a raw tree editor. Setup uses the CLI so the tour works without a newer bundle-import
+button. The remaining core tour uses Chat, Worktree, and History.
+
+### 2. Inspect the work-map
+
+In **Worktree**, select `demo.service-incident` and check **enforce** mode.
+Its two branches separate internal incident handling from public communications.
+Select a leaf to inspect **Step bindings**, instructions, **Ontology**, **Actions**,
+**Objects**, and **Derived values**.
+
+The bundle contains **11 nodes, 8 executable steps, 2 policy corpora with 4 snippets,
+2 object types, 1 relationship, 4 actions, and 1 function**. It has no required MCP
+servers or skills. Empty Objects tables are expected before you create an incident.
+
+### 3. Create, calculate, and verify
+
+In **Chat**, send these as separate requests:
+
+> Open fictional demo incident INC-1001 for the Checkout service. Title: Checkout requests are timing out. Status: open. Affected users: 240. Elapsed minutes: 45. Record only these supplied test facts.
+
+> For demo incident INC-1001, read the stored impact fields and run incident-priority. Explain the result and cite the incident playbook. Do not change the record.
+
+Check all three:
+
+- **History** selects `demo.service-incident`: intake for the first request, triage for the second.
+- **Worktree → intake step → Objects** contains `INC-1001` with the supplied values.
+- In **Chat**, enable **Toggle tool calls and tool results**. The `compute_function`
+  output is **urgent**; `knowledge_search` returns `demo.incident-playbook` with
+  source `playbook/priority.md` (100+ affected users **or** 30+ elapsed minutes).
+
+A correct answer alone is not proof. Read actual tool results, not only the History
+summary. Use fresh IDs on repeat runs: live objects persist and duplicate creates
+must not overwrite them. The [full golden-case tour](docs/specs/enterprise-live-grid.md)
+continues with assignment, evidence links, scoped public drafts, resolution, governance,
+instruction editing, revisions, and export.
 
 ## Tutorial: govern a returns desk
 
-The tutorial connects a local policy corpus and order-tracker MCP server to a three-step returns
-workflow. You need Docker plus an LLM and embedding credential for LightRAG.
+Next, connect real local services and build a three-step process:
+**read policy → look up order → decide and reply**. The
+[full UI tutorial](docs/concepts/clawworks-enterprise-tutorial.md) shows each screen; the
+[local-stack guide](examples/enterprise/tutorial/README.md) describes its files and expected results.
+Run the Gateway and Docker on the same host for the loopback URLs below. LightRAG needs an LLM
+and an embedding binding; `.env.example` includes hosted and local-Ollama options.
 
 1. Start the example services:
 
@@ -89,7 +166,7 @@ workflow. You need Docker plus an LLM and embedding credential for LightRAG.
    cd ../../..
    ```
 
-2. Copy the tutorial skill into the default workspace:
+2. Copy the tutorial skill into the default workspace (use your agent's actual workspace if customized):
 
    ```bash
    mkdir -p ~/.openclaw/workspace/skills/refund-reply
@@ -98,14 +175,23 @@ workflow. You need Docker plus an LLM and embedding credential for LightRAG.
    ```
 
 3. In **Knowledge**, register `acme.returns-kb` at `http://127.0.0.1:9621` with `kind: local`, then
-   upload the three files in `examples/enterprise/tutorial/knowledge/`.
+   upload the three files in `examples/enterprise/tutorial/knowledge/`. Wait for **Indexed**;
+   **Test connection** only proves the server is reachable, not that indexing or querying works.
 4. In **Enterprise → MCP**, register `acme-tracker` at `http://127.0.0.1:9700/mcp` with the
    `streamable-http` transport.
-5. In **Enterprise → Worktree**, choose **New tree**, paste the contents of
-   `examples/enterprise/tutorial/acme-returns.worktree.yaml`, then choose **Save**.
+5. Import the tutorial tree from the checkout root:
+
+   ```bash
+   pnpm openclaw enterprise trees import examples/enterprise/tutorial/acme-returns.worktree.yaml
+   ```
+
+   Restart the running Gateway after this CLI import, then refresh **Worktree**.
+   Restart a foreground process in its terminal; for a service-managed Gateway,
+   use `pnpm openclaw gateway restart`.
+
 6. Ask **"Order 1043 arrived last week. Can the customer return it?"**, then inspect the run under
    **Enterprise → History**. Ask **"For return order 1043, list the files in my home directory"**
-   to see the root denial without leaving the returns domain.
+   to test the root denial. Confirm that `acme.returns` was selected before grading the refusal.
 7. Tear down the tutorial stack when finished:
 
    ```bash
@@ -113,8 +199,31 @@ workflow. You need Docker plus an LLM and embedding credential for LightRAG.
    docker compose down -v
    ```
 
-The [full tutorial](https://docs.openclaw.ai/concepts/clawworks-enterprise-tutorial) explains every
-screen, binding, expected result, and cleanup step.
+The demo tracker is **read-only**: it returns order and shipment facts. It does not issue refunds,
+email labels, or submit escalations. Expect an eligibility decision and a next step, not a completed
+financial transaction. Teardown stops the services but retains the bind-mounted `data/` index.
+
+## Golden cases
+
+The [feature tour](docs/specs/enterprise-live-grid.md) now follows one incident end to end:
+
+**retrieve policy → create incident → calculate priority → assign owner → link evidence →
+draft a public update → record resolution → inspect the read-only report**.
+
+The public branch sees only the incident ID, service, and status; internal notes and fields
+stay outside its retrieval scope. A draft does not send a message, and a local `resolved`
+status does not prove a production repair.
+
+| Check                 | Run it                                                   | What it proves                                                                                                               |
+| --------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Service-desk showcase | `pnpm test src/enterprise/golden-showcase.test.ts`       | Real tool lifecycle, priority boundaries, graph readback, citations, field scope, and denied writes with an injected planner |
+| Financial reference   | `pnpm enterprise:golden`                                 | The separate multi-domain reference's offline mediation and capability contracts                                             |
+| Live operator tour    | [Follow the prompts](docs/specs/enterprise-live-grid.md) | Actual model routing and UI inspectability; record tool evidence for each case                                               |
+
+Offline checks use isolated temporary state and need no model credentials or external services.
+They do not certify browser interactions, provider behavior, or real external operations.
+The financial reference remains available for deeper routing and integration work; its fictional
+MCP names are not provisioned services and its business records are not preloaded.
 
 ## How it works
 
@@ -334,12 +443,14 @@ the [exposure runbook](https://docs.openclaw.ai/gateway/security/exposure-runboo
 
 **ClawWorks-specific** (this repository)
 
-| Document                                                            | Contents                                                                                                       |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md)       | Modes, work-maps, mediation, ontology operations, MCP servers, policies, knowledge foundations, run inspection |
-| [Worktree Authoring](docs/concepts/clawworks-worktree-authoring.md) | The work-map format, field by field, YAML and JSON                                                             |
-| [Enterprise CLI](docs/cli/enterprise.md)                            | Trees, bundles, policies, run traces                                                                           |
-| [`AGENTS.md`](AGENTS.md)                                            | Repository rules, naming boundary, test lanes                                                                  |
+| Document                                                              | Contents                                                                                                       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md)         | Modes, work-maps, mediation, ontology operations, MCP servers, policies, knowledge foundations, run inspection |
+| [Worktree Authoring](docs/concepts/clawworks-worktree-authoring.md)   | The work-map format, field by field, YAML and JSON                                                             |
+| [Enterprise tutorial](docs/concepts/clawworks-enterprise-tutorial.md) | Guided UI setup, local services, sample questions, expected results, and cleanup                               |
+| [Golden cases](docs/specs/enterprise-live-grid.md)                    | Offline checks and live acceptance for routing, sources, actions, and capability boundaries                    |
+| [Enterprise CLI](docs/cli/enterprise.md)                              | Trees, bundles, policies, run traces                                                                           |
+| [`AGENTS.md`](AGENTS.md)                                              | Repository rules, naming boundary, test lanes                                                                  |
 
 **Inherited platform docs** — [Getting started](https://docs.openclaw.ai/start/getting-started) ·
 [Channels](https://docs.openclaw.ai/channels) ·
@@ -365,12 +476,13 @@ Build and validate:
 
 ```bash
 pnpm build
-pnpm check
-pnpm test
+pnpm test src/enterprise/golden-showcase.test.ts
+pnpm enterprise:golden
 ```
 
-Enterprise changes must keep the golden checks green. Config lives in `~/.openclaw/`, with
-enterprise settings under the `enterprise` section.
+Enterprise changes must keep the golden checks green. Choose focused tests for the changed
+surface; use the repository's [testing guidance](.agents/skills/openclaw-testing/SKILL.md) for
+broader or remote checks. Config lives in `~/.openclaw/`, with enterprise settings under `enterprise`.
 
 ## Credits
 

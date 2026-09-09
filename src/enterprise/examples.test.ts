@@ -8,14 +8,10 @@ import { collectWorkflowTreeWarnings } from "./tree-warnings.js";
 import type { WorkflowNodeDefinition, WorkflowTreeDefinition } from "./types.js";
 
 /**
- * `examples/enterprise/` ships ONE work-map on purpose.
- *
- * There used to be six, each demonstrating a single axis with the others switched
- * off, and the combination an operator actually deploys — thirty steps, four MCP
- * servers, six corpora and nine ontology writes constraining each other at once —
- * was the one shape none of them had. These tests hold the surviving example to
- * that bar: scale, per-domain ontology scoping, deny-by-default grants, and a
- * self-contained import.
+ * The root financial example tests the large, multi-domain reference: scale,
+ * per-domain ontology scoping, explicit grants, and self-contained knowledge.
+ * The separate golden/ service desk is the hands-on, external-service-free tour;
+ * golden-showcase.test.ts exercises that exact bundle through production tools.
  */
 const EXAMPLES_DIR = join(process.cwd(), "examples", "enterprise");
 const EXAMPLE_FILE = "financial-operations.clawworks-bundle.yaml";
@@ -145,8 +141,8 @@ function scopesByNode(root: WorkflowNodeDefinition): Map<string, NodeScope> {
 
 describe("the shipped enterprise example", () => {
   it("is the only one, and it validates", () => {
-    // One example, deliberately. A second file here means somebody added an axis
-    // demo beside the work-map that already carries every axis — fold it in.
+    // Keep one financial reference here; the hands-on golden/ tour has its own
+    // lifecycle proof rather than duplicating this reference's inventory checks.
     expect(readdirSync(EXAMPLES_DIR).filter((file) => file.endsWith(".yaml"))).toEqual([
       EXAMPLE_FILE,
     ]);
