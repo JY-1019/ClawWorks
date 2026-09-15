@@ -25,7 +25,6 @@
   <a href="#see-it-work">Demo</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#tutorial-govern-a-returns-desk">Tutorial</a> ·
-  <a href="#golden-cases">Golden cases</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="docs/concepts/clawworks-enterprise.md">Docs</a>
 </p>
@@ -75,10 +74,10 @@ but you must scope the ACP agent's own tool and MCP surface directly.
 
 ## Quick start
 
-Start with the **service-incident golden case**: a complete local workflow with
-policy retrieval, typed records, a priority calculation, evidence links, and an
-unsent public update. No Docker, external MCP server, or preloaded business data
-is needed. Live Chat needs a configured model and router; provider usage may incur charges.
+Start with the **service-incident demo**: a local workflow with policy retrieval,
+typed records, and a priority calculation. No Docker, external MCP server, or preloaded
+business data is needed. Live Chat needs a configured model and router; provider usage
+may incur charges.
 
 ### 1. Install and import the demo
 
@@ -141,9 +140,7 @@ Check all three:
 
 A correct answer alone is not proof. Read actual tool results, not only the History
 summary. Use fresh IDs on repeat runs: live objects persist and duplicate creates
-must not overwrite them. The [full golden-case tour](docs/specs/enterprise-live-grid.md)
-continues with assignment, evidence links, scoped public drafts, resolution, governance,
-instruction editing, revisions, and export.
+must not overwrite them.
 
 ## Tutorial: govern a returns desk
 
@@ -202,28 +199,6 @@ and an embedding binding; `.env.example` includes hosted and local-Ollama option
 The demo tracker is **read-only**: it returns order and shipment facts. It does not issue refunds,
 email labels, or submit escalations. Expect an eligibility decision and a next step, not a completed
 financial transaction. Teardown stops the services but retains the bind-mounted `data/` index.
-
-## Golden cases
-
-The [feature tour](docs/specs/enterprise-live-grid.md) now follows one incident end to end:
-
-**retrieve policy → create incident → calculate priority → assign owner → link evidence →
-draft a public update → record resolution → inspect the read-only report**.
-
-The public branch sees only the incident ID, service, and status; internal notes and fields
-stay outside its retrieval scope. A draft does not send a message, and a local `resolved`
-status does not prove a production repair.
-
-| Check                 | Run it                                                   | What it proves                                                                                                               |
-| --------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Service-desk showcase | `pnpm test src/enterprise/golden-showcase.test.ts`       | Real tool lifecycle, priority boundaries, graph readback, citations, field scope, and denied writes with an injected planner |
-| Financial reference   | `pnpm enterprise:golden`                                 | The separate multi-domain reference's offline mediation and capability contracts                                             |
-| Live operator tour    | [Follow the prompts](docs/specs/enterprise-live-grid.md) | Actual model routing and UI inspectability; record tool evidence for each case                                               |
-
-Offline checks use isolated temporary state and need no model credentials or external services.
-They do not certify browser interactions, provider behavior, or real external operations.
-The financial reference remains available for deeper routing and integration work; its fictional
-MCP names are not provisioned services and its business records are not preloaded.
 
 ## How it works
 
@@ -448,7 +423,6 @@ the [exposure runbook](https://docs.openclaw.ai/gateway/security/exposure-runboo
 | [ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md)         | Modes, work-maps, mediation, ontology operations, MCP servers, policies, knowledge foundations, run inspection |
 | [Worktree Authoring](docs/concepts/clawworks-worktree-authoring.md)   | The work-map format, field by field, YAML and JSON                                                             |
 | [Enterprise tutorial](docs/concepts/clawworks-enterprise-tutorial.md) | Guided UI setup, local services, sample questions, expected results, and cleanup                               |
-| [Golden cases](docs/specs/enterprise-live-grid.md)                    | Offline checks and live acceptance for routing, sources, actions, and capability boundaries                    |
 | [Enterprise CLI](docs/cli/enterprise.md)                              | Trees, bundles, policies, run traces                                                                           |
 | [`AGENTS.md`](AGENTS.md)                                              | Repository rules, naming boundary, test lanes                                                                  |
 
