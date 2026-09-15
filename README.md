@@ -25,6 +25,7 @@
   <a href="#see-it-work">Demo</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#tutorial-govern-a-returns-desk">Tutorial</a> ·
+  <a href="#golden-cases">Golden cases</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="docs/concepts/clawworks-enterprise.md">Docs</a>
 </p>
@@ -199,6 +200,22 @@ and an embedding binding; `.env.example` includes hosted and local-Ollama option
 The demo tracker is **read-only**: it returns order and shipment facts. It does not issue refunds,
 email labels, or submit escalations. Expect an eligibility decision and a next step, not a completed
 financial transaction. Teardown stops the services but retains the bind-mounted `data/` index.
+
+## Golden cases
+
+The [golden-case catalog](docs/specs/enterprise-live-grid.md) is grounded in the examples that
+ship in this repository:
+
+| Example                                                                                                        | Use it to prove                                                                                          |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`service-incident.clawworks-bundle.yaml`](examples/enterprise/golden/service-incident.clawworks-bundle.yaml)  | Self-contained routing, local records, derived priority, graph links, scoped knowledge, and hard denials |
+| [`tutorial/`](examples/enterprise/tutorial/README.md)                                                          | A real local knowledge service, read-only MCP order data, an installed skill, and inherited grants       |
+| [`financial-operations.clawworks-bundle.yaml`](examples/enterprise/financial-operations.clawworks-bundle.yaml) | Multi-domain isolation, external-action contracts, knowledge and skill scope, and lifecycle boundaries   |
+
+The catalog gives copyable requests, required evidence, and regression signals for each example.
+The financial bundle contains no preloaded business records or MCP transports; register its named
+systems only to test their scoped calls. Positive record-dependent cases remain blocked until the
+example has a supported ingest or create owner for those records.
 
 ## How it works
 
@@ -423,6 +440,7 @@ the [exposure runbook](https://docs.openclaw.ai/gateway/security/exposure-runboo
 | [ClawWorks Enterprise](docs/concepts/clawworks-enterprise.md)         | Modes, work-maps, mediation, ontology operations, MCP servers, policies, knowledge foundations, run inspection |
 | [Worktree Authoring](docs/concepts/clawworks-worktree-authoring.md)   | The work-map format, field by field, YAML and JSON                                                             |
 | [Enterprise tutorial](docs/concepts/clawworks-enterprise-tutorial.md) | Guided UI setup, local services, sample questions, expected results, and cleanup                               |
+| [Golden cases](docs/specs/enterprise-live-grid.md)                    | Acceptance requests and regression evidence grounded in the shipped enterprise examples                        |
 | [Enterprise CLI](docs/cli/enterprise.md)                              | Trees, bundles, policies, run traces                                                                           |
 | [`AGENTS.md`](AGENTS.md)                                              | Repository rules, naming boundary, test lanes                                                                  |
 
