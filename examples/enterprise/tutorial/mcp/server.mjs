@@ -24,6 +24,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * refund-window question it exists to demonstrate.
  */
 const ORDERS = {
+  // User-supplied ids must not resolve inherited Object.prototype members as orders.
+  __proto__: null,
   1043: {
     customer: "Dana Whitfield",
     status: "delivered",
