@@ -524,7 +524,8 @@ function buildOpenAIAttributionPolicy(
     ...identity,
     headers: {
       originator: OPENCLAW_ATTRIBUTION_ORIGINATOR,
-      version: identity.version,
+      // ChatGPT interprets `version` as the Codex client version, not our product version.
+      // Keep product attribution in User-Agent to avoid rejecting supported models.
       "User-Agent": formatOpenClawUserAgent(identity.version),
     },
   };

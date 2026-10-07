@@ -842,7 +842,6 @@ describe("openai transport stream", () => {
 
     expectRecordFields(headers, {
       originator: "openclaw",
-      version: "2026.3.22",
       "User-Agent": "openclaw/2026.3.22",
       "X-Provider": "model",
       "X-Caller": "request",
@@ -850,7 +849,7 @@ describe("openai transport stream", () => {
   });
 
   it("adds OpenClaw attribution to native OpenAI Codex transport headers", () => {
-    vi.stubEnv("OPENCLAW_VERSION", "2026.3.22");
+    vi.stubEnv("OPENCLAW_VERSION", "0.1.0-beta.1");
     const headers = testing.buildOpenAIClientHeaders(
       {
         id: "gpt-5.4-codex",
@@ -873,9 +872,9 @@ describe("openai transport stream", () => {
 
     expectRecordFields(headers, {
       originator: "openclaw",
-      version: "2026.3.22",
-      "User-Agent": "openclaw/2026.3.22",
+      "User-Agent": "openclaw/0.1.0-beta.1",
     });
+    expect(headers).not.toHaveProperty("version");
     expect(headers.Accept).toBeUndefined();
     expect(headers.accept).toBeUndefined();
   });

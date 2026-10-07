@@ -344,7 +344,6 @@ describe("buildProviderStreamFamilyHooks", () => {
     expect(capturedHeaders).toEqual({
       "User-Agent": `openclaw/${VERSION}`,
       originator: "openclaw",
-      version: VERSION,
     });
 
     const openRouterHooks = OPENROUTER_THINKING_STREAM_HOOKS;
