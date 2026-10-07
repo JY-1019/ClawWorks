@@ -1,0 +1,139 @@
+# Routing-only acceptance cases. Expected leaves are fixed before model execution.
+# These requests are NOT sent to business tools by a routing-only evaluator.
+schema: clawworks.routing-cases
+schemaVersion: 1
+trees:
+  - examples/enterprise/financial-operations.clawworks-bundle.yaml
+  - examples/enterprise/golden/service-incident.clawworks-bundle.yaml
+  - examples/enterprise/tutorial/acme-returns.worktree.yaml
+cases:
+  - id: ROUTE01
+    category: domain-collision
+    request: 금융 결제 처리 코드의 변수 이름을 바꾸는 TypeScript 리팩터링 방법을 설명해줘. 고객 계좌나 거래를 조회하거나 바꾸는 요청은 아니야.
+    expected:
+      # General assistance is a valid candidate. Only domain selection matters here;
+      # its guidance-free preparation/response stages need not have one exact shape.
+      kind: execute
+      treeId: clawworks.assist
+  - id: ROUTE02
+    category: minimal-route
+    request: Acme 주문 1043의 배송 상태만 확인해줘. 반품 정책과 환불 가능 여부는 필요 없어.
+    expected:
+      kind: execute
+      treeId: acme.returns
+      leaves: [returns.lookup]
+  - id: ROUTE03
+    category: minimal-route
+    request: Acme 반품 기간은 주문일부터 세는지 배송일부터 세는지 정책만 찾아줘. 특정 주문은 조회하지 마.
+    expected:
+      kind: execute
+      treeId: acme.returns
+      leaves: [returns.triage]
+  - id: ROUTE04
+    category: multi-step
+    request: Acme 주문 1043의 실제 배송일을 확인하고 반품 정책과 대조해서 반품 가능한지 알려줘. 실제 환불은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.returns
+      leaves: [returns.triage, returns.lookup, returns.decide]
+  - id: ROUTE05
+    category: sibling-disambiguation
+    request: 조사 사건 CASE-42의 의심거래보고서 서술 초안만 작성해줘. 감독기관 제출이나 분기 보고 수치 집계는 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.risk.monitoring.sar-filing]
+  - id: ROUTE06
+    category: sibling-disambiguation
+    request: 이미 작성 완료된 SAR-42를 감독기관에 제출해줘. 초안 작성이나 기간별 수치 집계는 필요 없어.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.reporting.regulatory.submission]
+  - id: ROUTE07
+    category: sibling-disambiguation
+    request: 이번 분기 감독기관 보고에 필요한 수치와 누락 항목만 모아줘. 보고서는 제출하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.reporting.regulatory.preparation]
+  - id: ROUTE08
+    category: clarification
+    request: 의심거래보고서 SAR-42 좀 처리해줘.
+    expected:
+      kind: clarify
+      treeId: acme.financial-operations
+  - id: ROUTE09
+    category: multi-branch
+    request: 조사 중인 계좌 ACC-42의 거래 패턴을 검토하고, 별도로 이번 기간의 경보·사건·청구 현황을 경영진용으로 요약해줘. 거래상대방 조사, 사건 종결, SAR 작성, 감독기관 제출은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.risk.monitoring.investigation.transaction-review, finops.reporting.management]
+  - id: ROUTE10
+    category: sibling-disambiguation
+    request: 신규 고객 C-42의 관할 지역, 상품, 신원 확인 증거에 따른 고객 위험등급을 매겨줘. 대출 신용평가나 한도 승인, 계좌 개설은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.customer.onboarding.risk-rating]
+  - id: ROUTE11
+    category: multi-branch
+    request: 보험 청구 CL-42가 약관상 보장되는지 확인하고, 별도로 담당 창구가 지급할 권한이 있는지만 판단해줘. 사기 조사, 청구 승인·거절 기록, 실제 지급은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.claims.adjudication.coverage-check, finops.claims.settlement.authority]
+  - id: ROUTE12
+    category: domain-collision
+    request: 서비스 장애가 났을 때 고객에게 얼마나 자주 상황을 알려야 하는지 안내 정책만 설명해줘. 내부 장애 기록이나 노트는 열지 마.
+    expected:
+      kind: execute
+      treeId: demo.service-incident
+      leaves: [desk.communications.policy]
+  - id: ROUTE13
+    category: multi-branch
+    request: 장애 INC-42의 저장된 영향 수치로 우선순위를 계산하고, 공개 가능한 서비스명과 상태만 써서 고객 안내 초안을 만들어줘. 담당자·상태는 바꾸지 말고 실제 전송도 하지 마.
+    expected:
+      kind: execute
+      treeId: demo.service-incident
+      leaves: [desk.incidents.triage, desk.communications.draft]
+  - id: ROUTE14
+    category: multilingual
+    request: For claim CL-42, check policy coverage and the desk's payment authority only. Do not investigate fraud, record an approval or rejection, or issue a payment.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.claims.adjudication.coverage-check, finops.claims.settlement.authority]
+  - id: ROUTE15
+    category: missing-record
+    request: Acme 주문 DOES-NOT-EXIST의 배송 상태를 실제로 조회해줘. 없으면 없다고 알려주고 정책 조회나 환불 판단은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.returns
+      leaves: [returns.lookup]
+  - id: ROUTE16
+    category: scope-conflict
+    request: Acme 주문 1043이 반품 가능한지 판단해줘. 단, 주문 정보도 정책도 읽지 말고 내가 제공한 정보 외에는 사용하지 마. 나는 주문 번호 외에는 아는 게 없어.
+    expected:
+      kind: clarify
+      treeId: acme.returns
+  - id: ROUTE17
+    category: clarification
+    request: 보험 청구 CL-42 건 좀 진행해줘.
+    expected:
+      kind: clarify
+      treeId: acme.financial-operations
+  - id: ROUTE18
+    category: clarification
+    request: 서비스 장애 INC-42 관련해서 처리해줘.
+    expected:
+      kind: clarify
+      treeId: demo.service-incident
+  - id: ROUTE19
+    category: explicit-action
+    request: SAR-43 초안은 작성 완료했고 사전 확인도 끝났어. 이제 감독기관에 제출해줘.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      leaves: [finops.reporting.regulatory.submission]
