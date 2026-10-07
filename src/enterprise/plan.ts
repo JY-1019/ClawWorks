@@ -644,7 +644,9 @@ export function buildEnterprisePromptSection(
   if (
     !tracksSteps &&
     plan.mcpGoverned !== true &&
-    !plan.nodes.some((node) => ontologyHasGuidance(node.ontology))
+    // A single-scope work-map never tracks steps, but its authored description
+    // still tells the model what to do; do not silently drop that instruction.
+    !plan.nodes.some((node) => ontologyHasGuidance(node.ontology) || Boolean(node.description))
   ) {
     return "";
   }

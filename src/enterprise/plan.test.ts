@@ -321,6 +321,25 @@ describe("firstUnfinishedStep", () => {
 });
 
 describe("buildEnterprisePromptSection", () => {
+  it("preserves a single-scope node's description without inventing step tracking", () => {
+    const description = "Ask for the order id before explaining the refund policy.";
+    const plan = buildEnterpriseRunPlan({
+      runId: "run-description",
+      requestText: "refund please",
+      mode: "enforce",
+      tree: {
+        ...REFUND_TREE,
+        root: { id: "refunds", title: "Refund assistance", description },
+      },
+      matchedBy: "planner",
+    });
+
+    expect(planTracksSteps(plan)).toBe(false);
+    const section = buildEnterprisePromptSection(plan);
+    expect(section).toContain(description);
+    expect(section).not.toContain("Call complete_step");
+  });
+
   it("returns an empty string for guidance-free built-in trees (prompt-neutral default)", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-3",
