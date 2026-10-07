@@ -183,6 +183,39 @@ describe("projectContextEngineAssemblyForCodex", () => {
     expect(result.promptText.length).toBeLessThan(25_000);
   });
 
+  it.each([24_000, 80_000])(
+    "preserves the full-history tail and omitted count at budget %i",
+    (maxChars) => {
+      const messages = Array.from({ length: 200 }, (_, index) =>
+        textMessage(index % 2 ? "assistant" : "user", `${index}: ${"맥락😀".repeat(700)}`),
+      );
+      // Empty messages must not add separators to either the tail or omitted count.
+      messages.splice(195, 0, textMessage("assistant", ""));
+      const fullContext = messages
+        .flatMap((message) => {
+          const text = (message as { content: [{ type: "text"; text: string }] }).content[0].text;
+          return text ? [`[${message.role}]\n${text}`] : [];
+        })
+        .join("\n\n");
+      const expected = fitCodexProjectedContextForTurnStart({
+        promptText: fullContext,
+        contextRange: { start: 0, end: fullContext.length },
+        maxChars,
+      });
+      const result = projectContextEngineAssemblyForCodex({
+        assembledMessages: messages,
+        originalHistoryMessages: [],
+        prompt: "최근 내용을 정리해줘",
+        maxRenderedContextChars: maxChars,
+      });
+      const range = result.promptContextRange!;
+      expect(result.promptText.slice(range.start, range.end)).toBe(expected);
+      expect(result.promptText).toContain("199:");
+      expect(result.promptText).not.toContain("\n0: 맥락");
+      expect(result.promptText.isWellFormed()).toBe(true);
+    },
+  );
+
   it("can scale the rendered context cap for larger Codex context windows", () => {
     const result = projectContextEngineAssemblyForCodex({
       assembledMessages: Array.from({ length: 12 }, (_, index) =>

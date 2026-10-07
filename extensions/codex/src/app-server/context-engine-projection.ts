@@ -49,13 +49,11 @@ export function projectContextEngineAssemblyForCodex(params: {
   const prompt = params.prompt.trim();
   const contextMessages = dropDuplicateTrailingPrompt(params.assembledMessages, prompt);
   const maxRenderedContextChars = normalizeRenderedContextMaxChars(params.maxRenderedContextChars);
-  const renderedContext = renderMessagesForCodexContext(contextMessages, {
+  const boundedContext = renderMessagesForCodexContext(contextMessages, {
+    maxRenderedContextChars,
     maxTextPartChars: resolveTextPartMaxChars(maxRenderedContextChars),
     toolPayloadMode: params.toolPayloadMode ?? "elide",
   });
-  const boundedContext = renderedContext
-    ? truncateOlderContext(renderedContext, maxRenderedContextChars)
-    : undefined;
   const promptPrefix = boundedContext
     ? [CONTEXT_HEADER, CONTEXT_SAFETY_NOTE, "", CONTEXT_OPEN].join("\n") + "\n"
     : undefined;
@@ -256,15 +254,35 @@ function dropDuplicateTrailingPrompt(messages: AgentMessage[], prompt: string): 
 
 function renderMessagesForCodexContext(
   messages: AgentMessage[],
-  options: { maxTextPartChars: number; toolPayloadMode: "elide" | "preserve" },
+  options: {
+    maxRenderedContextChars: number;
+    maxTextPartChars: number;
+    toolPayloadMode: "elide" | "preserve";
+  },
 ): string {
-  return messages
-    .map((message) => {
-      const text = renderMessageBody(message, options);
-      return text ? `[${message.role}]\n${text}` : undefined;
-    })
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n");
+  const tail: string[] = [];
+  let totalChars = 0;
+  let tailChars = 0;
+  // Count older rendered messages for the existing truncation marker, but keep
+  // only the newest context budget. Joining the entire history both allocates
+  // it and lets the returned substring retain that large backing string.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const body = renderMessageBody(messages[index], options);
+    if (!body) {
+      continue;
+    }
+    const text = `[${messages[index].role}]\n${body}`;
+    totalChars += text.length + (totalChars > 0 ? 2 : 0);
+    if (tailChars < options.maxRenderedContextChars) {
+      tail.push(text);
+      tailChars += text.length + (tail.length > 1 ? 2 : 0);
+    }
+  }
+  return truncateOlderContext(
+    tail.toReversed().join("\n\n"),
+    options.maxRenderedContextChars,
+    totalChars,
+  );
 }
 
 function renderMessageBody(
@@ -490,8 +508,8 @@ function truncateText(text: string, maxChars: number): string {
     : text;
 }
 
-function truncateOlderContext(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
+function truncateOlderContext(text: string, maxChars: number, originalChars = text.length): string {
+  if (originalChars <= maxChars) {
     return text;
   }
   if (maxChars <= 0) {
@@ -500,9 +518,9 @@ function truncateOlderContext(text: string, maxChars: number): string {
 
   const buildMarker = (omittedChars: number): string =>
     `[truncated ${omittedChars} chars from older context]\n`;
-  let marker = buildMarker(text.length - maxChars);
+  let marker = buildMarker(originalChars - maxChars);
   let tailChars = Math.max(0, maxChars - marker.length);
-  marker = buildMarker(text.length - tailChars);
+  marker = buildMarker(originalChars - tailChars);
   if (marker.length >= maxChars) {
     return marker.slice(0, maxChars);
   }
