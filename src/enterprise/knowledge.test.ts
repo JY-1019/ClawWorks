@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearBundleKnowledgeFoundations,
   clearEnterpriseKnowledgeFoundations,
@@ -363,6 +363,54 @@ describe("resolveEnterpriseKnowledge", () => {
     expect(result.skipped).toEqual([]);
   });
 
+  it.each([
+    { foundations: undefined },
+    { foundations: ["acme.missing", "acme.empty", "acme.missing"] },
+  ])(
+    "distinguishes an unavailable declared source from an empty search (targets: $foundations)",
+    async ({ foundations }) => {
+      registerEnterpriseActiveRun(run({ knowledgeFoundations: ["acme.missing", "acme.empty"] }));
+      registerEnterpriseKnowledgeFoundation("acme.empty", foundation("shipping details"));
+      // A different work-map owning this id must not make it available here.
+      registerBundleKnowledgeFoundation("acme.other", "acme.missing", foundation("refund"));
+
+      const result = await resolveEnterpriseKnowledge({
+        runId: "run-k",
+        query: "refund",
+        foundations,
+      });
+      expect(result).toEqual({
+        mediated: true,
+        snippets: [],
+        skipped: [{ foundationId: "acme.missing", reason: "knowledge foundation unavailable" }],
+      });
+    },
+  );
+
+  it("reports an unavailable target even when the node does not narrow knowledge", async () => {
+    registerEnterpriseActiveRun(run({}));
+    const result = await resolveEnterpriseKnowledge({
+      runId: "run-k",
+      query: "refund",
+      foundations: ["acme.missing"],
+    });
+    expect(result.skipped).toEqual([
+      { foundationId: "acme.missing", reason: "knowledge foundation unavailable" },
+    ]);
+  });
+
+  it("does not report an ancestor's unavailable source excluded by the current node", async () => {
+    registerEnterpriseActiveRun(
+      branchedRun({
+        activeNodeId: "billing",
+        rootFoundations: ["acme.billing-kb", "acme.legal-kb"],
+      }),
+    );
+    registerEnterpriseKnowledgeFoundation("acme.billing-kb", foundation("refund"));
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(result.skipped).toEqual([]);
+  });
+
   it("skips a requested foundation outside the step allow-list without querying it", async () => {
     registerEnterpriseActiveRun(run({ knowledgeFoundations: ["acme.a"] }));
     registerEnterpriseKnowledgeFoundation("acme.a", foundation("refund a"));
@@ -494,6 +542,31 @@ describe("resolveEnterpriseKnowledge", () => {
       resolveEnterpriseKnowledge({ runId: "run-k", query: "refund", signal: controller.signal }),
     ).rejects.toThrow(/aborted/);
   });
+
+  it.each(["before", "during"] as const)(
+    "stops retrieval when cancelled %s an adapter that ignores the signal",
+    async (timing) => {
+      registerEnterpriseActiveRun(run({}));
+      const controller = new AbortController();
+      const reason = new Error("operator cancelled retrieval");
+      const first = vi.fn(async () => {
+        controller.abort(reason);
+        return [{ foundationId: "acme.a", text: "stale result" }];
+      });
+      const next = vi.fn(async () => []);
+      registerEnterpriseKnowledgeFoundation("acme.a", { retrieve: first });
+      registerEnterpriseKnowledgeFoundation("acme.b", { retrieve: next });
+      if (timing === "before") {
+        controller.abort(reason);
+      }
+
+      await expect(
+        resolveEnterpriseKnowledge({ runId: "run-k", query: "refund", signal: controller.signal }),
+      ).rejects.toBe(reason);
+      expect(first).toHaveBeenCalledTimes(timing === "before" ? 0 : 1);
+      expect(next).not.toHaveBeenCalled();
+    },
+  );
 
   it("records but does not skip denials in observe mode", async () => {
     const events: SinkEvent[] = [];

@@ -553,6 +553,7 @@ export async function resolveEnterpriseKnowledge(params: {
   limit?: number;
   signal?: AbortSignal;
 }): Promise<KnowledgeRetrievalResult> {
+  params.signal?.throwIfAborted();
   const run = getEnterpriseActiveRun(params.runId);
   if (!run) {
     return { snippets: [], skipped: [], mediated: false };
@@ -585,26 +586,22 @@ export async function resolveEnterpriseKnowledge(params: {
 
   const snippets: KnowledgeSnippet[] = [];
   const skipped: SkippedKnowledgeFoundation[] = [];
-  // Report requested ids the step's ontology forbids before querying: the
-  // targeting arg must surface a denial, never silently widen scope past the
-  // allow-list. Sorted for a deterministic model-facing order.
-  if (requested) {
-    for (const foundationId of [...requested].toSorted()) {
-      if (!foundationAllowedByPath(path, foundationId, grantsExplicitly)) {
+  // Include authored sources even when their adapter is missing: unavailable
+  // knowledge must not look like a successful search with no matching facts.
+  // The path and policy gates still decide access before adapter resolution.
+  const candidates =
+    requested ??
+    new Set([
+      ...retrievalFoundationIds(run.plan.treeId),
+      ...path.flatMap((step) => step.ontology.knowledgeFoundations ?? []),
+    ]);
+  for (const foundationId of [...candidates].toSorted()) {
+    params.signal?.throwIfAborted();
+    if (!foundationAllowedByPath(path, foundationId, grantsExplicitly)) {
+      if (requested) {
         skipped.push({ foundationId, reason: "not in this step's knowledge allow-list" });
       }
-    }
-  }
-  // Scope to plugin foundations (deployment-wide) plus bundle foundations THIS
-  // run's tree owns. A bundle imported for another workflow is invisible here, so
-  // its knowledge never leaks into an unrelated run whose ontology omits an
-  // allow-list (which the path gate below reads as allow-all).
-  for (const foundationId of retrievalFoundationIds(run.plan.treeId)) {
-    if (!foundationAllowedByPath(path, foundationId, grantsExplicitly)) {
-      continue; // outside the step's ontology allow-list; not a governance denial
-    }
-    if (requested && !requested.has(foundationId)) {
-      continue; // model narrowed the search to a subset that excludes this one
+      continue;
     }
     const decision = evaluateKnowledgeRetrievalGovernance({
       plan: run.plan,
@@ -634,6 +631,7 @@ export async function resolveEnterpriseKnowledge(params: {
     }
     const adapter = resolveRetrievalAdapter(run.plan.treeId, foundationId);
     if (!adapter) {
+      skipped.push({ foundationId, reason: "knowledge foundation unavailable" });
       continue;
     }
     try {
@@ -643,6 +641,9 @@ export async function resolveEnterpriseKnowledge(params: {
         limit,
         ...(params.signal ? { signal: params.signal } : {}),
       });
+      // Adapters may ignore cancellation. Do not publish their late results or
+      // start another foundation's retrieval after the caller has cancelled.
+      params.signal?.throwIfAborted();
       // Cap at the host boundary: a misbehaving adapter must not exceed the
       // advertised per-foundation limit in the model-facing output.
       snippets.push(...results.slice(0, limit));
@@ -661,6 +662,7 @@ export async function resolveEnterpriseKnowledge(params: {
       skipped.push({ foundationId, reason: "retrieval failed" });
     }
   }
+  // Candidate ids are sorted, including unavailable and explicitly requested ids.
   return { snippets, skipped, mediated: true };
 }
 
