@@ -311,17 +311,9 @@ function mergeScopes(...items: Array<string[] | undefined>): string[] | undefine
   return [...scopes];
 }
 
-function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  const rightSet = new Set(right);
-  for (const value of left) {
-    if (!rightSet.has(value)) {
-      return false;
-    }
-  }
-  return true;
+function containsStringSet(existing: readonly string[], incoming: readonly string[]): boolean {
+  const existingSet = new Set(existing);
+  return incoming.every((value) => existingSet.has(value));
 }
 
 function resolveRequestedRoles(input: { role?: string; roles?: string[] }): string[] {
@@ -332,7 +324,7 @@ function resolveRequestedScopes(input: { scopes?: string[] }): string[] {
   return normalizeDeviceAuthScopes(input.scopes);
 }
 
-function samePendingApprovalSnapshot(
+function pendingApprovalCoversRequest(
   existing: DevicePairingPendingRequest,
   incoming: Omit<DevicePairingPendingRequest, "requestId" | "ts" | "isRepair">,
 ): boolean {
@@ -342,9 +334,11 @@ function samePendingApprovalSnapshot(
   if (normalizeRole(existing.role) !== normalizeRole(incoming.role)) {
     return false;
   }
+  // Reconnects may request only part of an already merged approval. Replacing
+  // its id without expanding access makes the operator's inspected id unusable.
   if (
-    !sameStringSet(resolveRequestedRoles(existing), resolveRequestedRoles(incoming)) ||
-    !sameStringSet(resolveRequestedScopes(existing), resolveRequestedScopes(incoming))
+    !containsStringSet(resolveRequestedRoles(existing), resolveRequestedRoles(incoming)) ||
+    !containsStringSet(resolveRequestedScopes(existing), resolveRequestedScopes(incoming))
   ) {
     return false;
   }
@@ -618,7 +612,7 @@ export async function requestDevicePairing(
       pendingById: state.pendingById,
       existing: pendingForDevice,
       incoming: req,
-      canRefreshSingle: (existing, incoming) => samePendingApprovalSnapshot(existing, incoming),
+      canRefreshSingle: (existing, incoming) => pendingApprovalCoversRequest(existing, incoming),
       refreshSingle: (existing, incoming) =>
         refreshPendingDevicePairingRequest(existing, incoming, isRepair),
       buildReplacement: ({ existing, incoming }) => {

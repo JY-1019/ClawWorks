@@ -293,6 +293,31 @@ describe("device pairing tokens", () => {
     expect(second.request.ts).toBe(originalTs);
   });
 
+  test("keeps an inspected merged approval id across subset-scope reconnects", async () => {
+    const baseDir = await makeDevicePairingDir();
+    const identity = { deviceId: "device-1", publicKey: "public-key-1", role: "operator" };
+    const scopes = ["operator.approvals", "operator.pairing"];
+    const first = await requestDevicePairing({ ...identity, scopes }, baseDir);
+
+    // Listing devices and requesting a tool approval use different scopes on
+    // the same device. Neither changes the access the operator already saw.
+    for (const scope of ["operator.pairing", "operator.approvals", "operator.pairing"]) {
+      const reconnect = await requestDevicePairing({ ...identity, scopes: [scope] }, baseDir);
+      expect(reconnect.created).toBe(false);
+      expect(reconnect.request.requestId).toBe(first.request.requestId);
+      expect(reconnect.request.ts).toBe(first.request.ts);
+      expect(reconnect.request.scopes).toEqual(scopes);
+    }
+    expect(await getPairedDevice(identity.deviceId, baseDir)).toBeNull();
+    const approved = await approveDevicePairing(
+      first.request.requestId,
+      { callerScopes: scopes },
+      baseDir,
+    );
+    expect(approved?.status).toBe("approved");
+    expect((await listDevicePairing(baseDir)).pending).toHaveLength(0);
+  });
+
   test("supersedes pending requests when requested roles/scopes change", async () => {
     const baseDir = await makeDevicePairingDir();
     const first = await requestDevicePairing(
@@ -1934,5 +1959,4 @@ describe("device pairing tokens", () => {
     ).rejects.toThrow(/paired\.json/);
     await expect(readFile(pairedPath, "utf8")).resolves.toBe("{not-json}");
   });
-
 });
