@@ -163,8 +163,8 @@ describe("Code Mode", () => {
   });
 
   afterEach(() => {
+    testing.clearRuns();
     vi.useRealTimers();
-    testing.activeRuns.clear();
     testing.resumingRunIds.clear();
     testing.setTypescriptRuntimeForTest(null);
     clearCodeModeNamespacesForTest();
@@ -1343,6 +1343,7 @@ describe("Code Mode", () => {
   });
 
   it("marks yield suspensions and resumes the snapshot with wait", async () => {
+    vi.useFakeTimers();
     const { config, catalogRef, tools: codeModeTools } = createCodeModeHarness();
     applyCodeModeCatalog({
       tools: [...codeModeTools, pluginTool("fake_noop", "Noop")],
@@ -1374,10 +1375,69 @@ describe("Code Mode", () => {
 
     expect(resumed.status).toBe("completed");
     expect(resumed.value).toBe("done");
+    expect(testing.activeRuns.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
     expect(resumed.output).toEqual([
       { type: "text", text: "before" },
       { type: "text", text: "after" },
     ]);
+  });
+
+  it("releases suspended snapshots after their TTL without another tool call", async () => {
+    vi.useFakeTimers();
+    const { config, catalogRef, tools: codeModeTools } = createCodeModeHarness();
+    applyCodeModeCatalog({
+      tools: [...codeModeTools, pluginTool("fake_noop", "Noop")],
+      config,
+      sessionId: "session-code-mode",
+      sessionKey: "agent:main:main",
+      runId: "run-code-mode",
+      catalogRef,
+    });
+    const result = resultDetails(
+      await codeModeTools[0].execute("idle-expiry", {
+        code: 'await yield_control("pause"); return "done";',
+      }),
+    );
+    expect(result.status).toBe("waiting");
+    expect(testing.activeRuns.size).toBe(1);
+    const state = testing.activeRuns.get(String(result.runId))!;
+    await vi.advanceTimersByTimeAsync(state.expiresAt - Date.now());
+    expect(testing.activeRuns.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reports expiry when a suspended run expires during a wait", async () => {
+    vi.useFakeTimers();
+    const { config, catalogRef, tools: codeModeTools } = createCodeModeHarness();
+    applyCodeModeCatalog({
+      tools: [
+        ...codeModeTools,
+        pluginToolWithExecute("fake_slow", "Slow helper", async () => new Promise<never>(() => {})),
+      ],
+      config,
+      sessionId: "session-code-mode",
+      sessionKey: "agent:main:main",
+      runId: "run-code-mode",
+      catalogRef,
+    });
+    const first = resultDetails(
+      await codeModeTools[0].execute("expiry-during-wait", {
+        code: "await tools.fake_slow({}); return 'done';",
+      }),
+    );
+    expect(first.status).toBe("waiting");
+    const state = testing.activeRuns.get(String(first.runId))!;
+    await vi.advanceTimersByTimeAsync(state.expiresAt - Date.now() - 50);
+    const wait = codeModeTools[1].execute("wait-near-expiry", { runId: first.runId });
+    await vi.advanceTimersByTimeAsync(state.config.timeoutMs);
+    expect(resultDetails(await wait)).toMatchObject({
+      status: "failed",
+      error: "code mode run is unavailable or expired.",
+    });
+    expect(testing.activeRuns.size).toBe(0);
+    expect(testing.resumingRunIds.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("fails yield suspension when snapshot expiry would exceed the Date range", async () => {

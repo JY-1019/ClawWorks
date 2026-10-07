@@ -115,6 +115,7 @@ type CodeModeRunState = {
   output: unknown[];
   createdAt: number;
   expiresAt: number;
+  expiryTimer: ReturnType<typeof setTimeout>;
   runtime: ToolSearchRuntime;
   namespaceRuntime: CodeModeNamespaceRuntime;
 };
@@ -255,11 +256,16 @@ function toToolSearchConfig(config: CodeModeConfig): ToolSearchConfig {
   };
 }
 
+function deleteActiveRun(runId: string): void {
+  clearTimeout(activeRuns.get(runId)?.expiryTimer);
+  activeRuns.delete(runId);
+  resumingRunIds.delete(runId);
+}
+
 function removeExpiredRuns(now = Date.now()): void {
   for (const [runId, state] of activeRuns) {
     if (!isFutureDateTimestampMs(state.expiresAt, { nowMs: now })) {
-      activeRuns.delete(runId);
-      resumingRunIds.delete(runId);
+      deleteActiveRun(runId);
     }
   }
 }
@@ -796,6 +802,10 @@ function storeSnapshotState(params: {
   if (expiresAt === undefined) {
     throw new ToolInputError("code mode run expiry is unavailable.");
   }
+  // Idle sessions may never call exec/wait again. Expire the snapshot without
+  // another request, and keep only the run ID in the timer's callback arguments.
+  const expiryTimer = setTimeout(deleteActiveRun, expiresAt - now, runId);
+  expiryTimer.unref();
   activeRuns.set(runId, {
     runId,
     parentToolCallId: params.parentToolCallId,
@@ -806,6 +816,7 @@ function storeSnapshotState(params: {
     output: params.output,
     createdAt: now,
     expiresAt,
+    expiryTimer,
     runtime: params.runtime,
     namespaceRuntime: params.namespaceRuntime,
   });
@@ -1069,6 +1080,11 @@ async function runWait(params: {
   resumingRunIds.add(state.runId);
   try {
     const ready = await waitForPending(state.pending, state.config.timeoutMs);
+    // Expiry can run while bridge work is pending. Never return another waiting
+    // response (or resume a worker) for a snapshot the timer already released.
+    if (!activeRuns.has(state.runId)) {
+      throw new ToolInputError("code mode run is unavailable or expired.");
+    }
     if (!ready) {
       const pending = state.pending.filter((entry) => !entry.settled);
       return {
@@ -1081,7 +1097,7 @@ async function runWait(params: {
       };
     }
 
-    activeRuns.delete(state.runId);
+    deleteActiveRun(state.runId);
     const settledRequests: SettledBridgeRequest[] = [];
     for (const entry of state.pending) {
       settledRequests.push(entry.settled ?? (await entry.promise));
@@ -1267,6 +1283,11 @@ export function addClientToolsToCodeModeCatalog(params: {
 
 /** Test-only hooks and state accessors for Code Mode worker orchestration. */
 export const testing = {
+  clearRuns: () => {
+    for (const runId of activeRuns.keys()) {
+      deleteActiveRun(runId);
+    }
+  },
   activeRuns,
   resumingRunIds,
   codeModeWorkerUrl,
