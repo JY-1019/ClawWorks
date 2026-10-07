@@ -267,6 +267,11 @@ export async function loadKnowledgeFoundations(state: KnowledgeState) {
     state.knowledgeFoundations = result.foundations;
     forgetRemovedFoundations(state, result.foundations);
     state.knowledgePhase = "ready";
+    // Indexing finishes asynchronously. Refresh must also update the visible
+    // files, or a completed upload keeps looking pending until it is reopened.
+    if (state.knowledgeFilesOpenFor) {
+      await loadKnowledgeDocuments(state, state.knowledgeFilesOpenFor);
+    }
   } catch (err) {
     if (requestSeq !== listRequestSeq) {
       return;

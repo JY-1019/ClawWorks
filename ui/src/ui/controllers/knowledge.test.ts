@@ -78,6 +78,52 @@ describe("loadKnowledgeFoundations", () => {
     expect(ctx.request).not.toHaveBeenCalled();
   });
 
+  it("refreshes the open file list after indexing finishes", async () => {
+    ctx.state.knowledgeFilesOpenFor = "local.kb";
+    ctx.state.knowledgeDocuments = {
+      "local.kb": { phase: "ready", documents: [{ id: "d1", name: "a.md", status: "pending" }] },
+    };
+    const documents = [{ id: "d1", name: "a.md", status: "indexed" }];
+    ctx.request.mockResolvedValueOnce({ foundations: [foundation("local.kb", { kind: "local" })] });
+    ctx.request.mockResolvedValueOnce({ status: "ok", documents });
+
+    await loadKnowledgeFoundations(ctx.state);
+
+    expect(ctx.request).toHaveBeenLastCalledWith("enterprise.knowledge.documents.list", {
+      foundationId: "local.kb",
+    });
+    expect(ctx.state.knowledgeDocuments["local.kb"]).toEqual({ phase: "ready", documents });
+    expect(ctx.state.knowledgeFilesOpenFor).toBe("local.kb");
+  });
+
+  it("keeps a document refresh failure recoverable without losing the source list", async () => {
+    ctx.state.knowledgeFilesOpenFor = "local.kb";
+    ctx.request.mockResolvedValueOnce({ foundations: [foundation("local.kb", { kind: "local" })] });
+    ctx.request.mockRejectedValueOnce(new Error("offline"));
+
+    await loadKnowledgeFoundations(ctx.state);
+
+    expect(ctx.state.knowledgePhase).toBe("ready");
+    expect(ctx.state.knowledgeDocuments["local.kb"]).toEqual({
+      phase: "unavailable",
+      status: "failed",
+    });
+  });
+
+  it("clears data if read permission is lost during the document refresh", async () => {
+    ctx.state.knowledgeFilesOpenFor = "local.kb";
+    ctx.request.mockResolvedValueOnce({ foundations: [foundation("local.kb", { kind: "local" })] });
+    ctx.request.mockRejectedValueOnce(
+      new GatewayRequestError({ code: "UNAUTHORIZED", message: "missing scope: operator.read" }),
+    );
+
+    await loadKnowledgeFoundations(ctx.state);
+
+    expect(ctx.state.knowledgePhase).toBe("failed");
+    expect(ctx.state.knowledgeFoundations).toEqual([]);
+    expect(ctx.state.knowledgeDocuments).toEqual({});
+  });
+
   it("lets a newer load supersede an in-flight one", async () => {
     let releaseFirst: ((value: unknown) => void) | undefined;
     ctx.request.mockImplementationOnce(

@@ -352,6 +352,83 @@ describe("renderKnowledge files section", () => {
     expect(input?.disabled).toBe(false);
   });
 
+  it("offers a keyboard-focusable upload button that opens the file picker", () => {
+    const container = renderInto(
+      buildProps({
+        foundations: [local()],
+        filesOpenFor: "acme.kb",
+        documents: { "acme.kb": { phase: "ready", documents: [] } },
+      }),
+    );
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const click = vi.spyOn(input, "click");
+    const button = findButton(container, "Upload document");
+    expect(button?.tabIndex).toBe(0);
+    button?.click();
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it("lets readers retry a failed file load without closing the panel", () => {
+    const onOpenFiles = vi.fn();
+    const container = renderInto(
+      buildProps({
+        foundations: [local()],
+        filesOpenFor: "acme.kb",
+        canManageFiles: false,
+        documents: { "acme.kb": { phase: "unavailable", status: "failed" } },
+        onOpenFiles,
+      }),
+    );
+    const refresh = [...container.querySelectorAll("button")].filter(
+      (button) => button.textContent?.trim() === "Refresh",
+    );
+    expect(refresh).toHaveLength(2);
+    refresh[1].click();
+    expect(onOpenFiles).toHaveBeenCalledWith("acme.kb");
+    expect(findButton(container, "Hide files")?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("summarizes each document state without calling pending or unknown files indexed", () => {
+    const container = renderInto(
+      buildProps({
+        foundations: [local()],
+        filesOpenFor: "acme.kb",
+        documents: {
+          "acme.kb": {
+            phase: "ready",
+            documents: ["indexed", "indexed", "processing", "pending", "failed", "unknown"].map(
+              (status, index) => ({
+                id: String(index),
+                name: `${index}.md`,
+                status: status as "indexed" | "processing" | "pending" | "failed" | "unknown",
+              }),
+            ),
+          },
+        },
+      }),
+    );
+    const summary = container.querySelector('[role="status"]');
+    for (const text of ["Indexed: 2", "Indexing: 1", "Pending: 1", "Failed: 1", "Unknown: 1"]) {
+      expect(summary?.textContent).toContain(text);
+    }
+  });
+
+  it("disables refresh and upload while disconnected", () => {
+    const container = renderInto(
+      buildProps({
+        foundations: [local()],
+        filesOpenFor: "acme.kb",
+        connected: false,
+        documents: { "acme.kb": { phase: "ready", documents: [] } },
+      }),
+    );
+    const actions = [...container.querySelectorAll("button")].filter((button) =>
+      ["Refresh", "Upload document"].includes(button.textContent?.trim() ?? ""),
+    );
+    expect(actions).toHaveLength(3);
+    expect(actions.every((button) => button.disabled)).toBe(true);
+  });
+
   it("blocks upload while another foundation's upload is in flight", () => {
     // Uploads are serialized tab-wide, so an enabled-looking control on a
     // second foundation would silently no-op when picked.

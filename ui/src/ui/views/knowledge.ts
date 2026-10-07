@@ -103,7 +103,7 @@ export function renderKnowledge(props: KnowledgeProps) {
           <div class="card-title">${t("knowledge.title")}</div>
           <div class="card-sub">${t("knowledge.subtitle")}</div>
         </div>
-        <button class="btn" ?disabled=${loading} @click=${props.onRefresh}>
+        <button class="btn" ?disabled=${loading || !props.connected} @click=${props.onRefresh}>
           ${loading ? t("common.loading") : t("common.refresh")}
         </button>
       </div>
@@ -576,6 +576,7 @@ function renderFiles(foundation: EnterpriseKnowledgeFoundationSummary, props: Kn
   return html`<div style="margin-top: 8px;">
     <button
       class="btn"
+      aria-expanded=${String(open)}
       @click=${() => (open ? props.onCloseFiles() : props.onOpenFiles(foundation.id))}
     >
       ${open ? t("knowledge.filesHide") : t("knowledge.filesShow")}
@@ -596,30 +597,56 @@ function renderFilesPanel(foundation: EnterpriseKnowledgeFoundationSummary, prop
   // "not-registered" answer means a pick would just come back refused.
   const canUpload = props.canManageFiles && state?.phase === "ready";
   return html`<div style="margin-top: 8px;">
-    <div class="row" style="justify-content: space-between; align-items: center;">
+    <div
+      class="row"
+      style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
+    >
       <div class="card-sub">${t("knowledge.files")}</div>
-      ${canUpload
-        ? html`<label class="btn" style=${uploadBlocked ? "opacity: 0.6;" : nothing}>
-            ${uploadingThis ? t("knowledge.uploading") : t("knowledge.upload")}
-            <input
-              type="file"
-              style="display: none;"
-              ?disabled=${uploadBlocked}
-              @change=${(event: Event) => {
-                const input = event.target as HTMLInputElement;
-                const file = input.files?.[0];
-                if (file) {
-                  props.onUpload(foundation.id, file);
-                }
-                // Reset so re-picking the same file fires change again.
-                input.value = "";
-              }}
-            />
-          </label>`
-        : nothing}
+      <div class="row" style="gap: 8px; flex-wrap: wrap;">
+        <button
+          type="button"
+          class="btn"
+          ?disabled=${!props.connected || !state || state.phase === "loading" || uploadBlocked}
+          @click=${() => props.onOpenFiles(foundation.id)}
+        >
+          ${t("common.refresh")}
+        </button>
+        ${canUpload
+          ? html`<div>
+              <button
+                type="button"
+                class="btn"
+                ?disabled=${uploadBlocked || !props.connected}
+                @click=${(event: MouseEvent) => {
+                  (event.currentTarget as HTMLElement).parentElement
+                    ?.querySelector<HTMLInputElement>('input[type="file"]')
+                    ?.click();
+                }}
+              >
+                ${uploadingThis ? t("knowledge.uploading") : t("knowledge.upload")}
+              </button>
+              <input
+                type="file"
+                hidden
+                ?disabled=${uploadBlocked || !props.connected}
+                @change=${(event: Event) => {
+                  const input = event.target as HTMLInputElement;
+                  const file = input.files?.[0];
+                  if (file) {
+                    props.onUpload(foundation.id, file);
+                  }
+                  // Reset so re-picking the same file fires change again.
+                  input.value = "";
+                }}
+              />
+            </div>`
+          : nothing}
+      </div>
     </div>
     ${props.documentNotice
-      ? html`<div class="callout" style="margin-top: 8px;">${props.documentNotice}</div>`
+      ? html`<div class="callout" role="status" style="margin-top: 8px;">
+          ${props.documentNotice}
+        </div>`
       : nothing}
     ${renderDocuments(foundation, state, props)}
   </div>`;
@@ -641,9 +668,20 @@ function renderDocuments(
   if (state.documents.length === 0) {
     return html`<div class="muted" style="margin-top: 8px;">${t("knowledge.filesEmpty")}</div>`;
   }
-  return html`<div class="list" style="margin-top: 8px;">
-    ${state.documents.map((document) => renderDocument(foundation, document, props))}
-  </div>`;
+  const statuses = ["indexed", "processing", "pending", "failed", "unknown"] as const;
+  return html`<div class="chip-row" role="status" aria-atomic="true" style="margin-top: 8px;">
+      ${statuses.map((status) => {
+        const count = state.documents.filter((document) => document.status === status).length;
+        return count > 0
+          ? html`<span class="chip" style=${`color: ${documentStatusColor(status)};`}>
+              ${documentStatusLabel(status)}: ${count}
+            </span>`
+          : nothing;
+      })}
+    </div>
+    <div class="list" style="margin-top: 8px;">
+      ${state.documents.map((document) => renderDocument(foundation, document, props))}
+    </div>`;
 }
 
 function renderDocument(

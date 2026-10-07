@@ -182,6 +182,13 @@ The Knowledge screen does it without hand-editing config.
     Indexing runs a model over the text, so give it a minute; the answers in
     section 7 depend on it finishing.
 
+    Press **Refresh** beside **Files** to check progress without closing the
+    list. The counts separate indexed, indexing, pending, failed, and unknown
+    documents; a successful connection check alone does not mean indexing is
+    finished. The page-level **Refresh** also reloads the open file list. If
+    loading fails, use the same file-list **Refresh** to retry. **Upload document**
+    works with the keyboard too: focus it and press Enter or Space.
+
     <Frame caption="Registered, reachable, and holding the three indexed documents">
       <img
         src="/assets/screens/tutorial/knowledge-registered.png"
