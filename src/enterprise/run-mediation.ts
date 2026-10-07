@@ -101,6 +101,7 @@ const pendingBegins = new Map<string, Promise<EnterpriseRunMediation>>();
 export type EnterpriseRunMediation =
   | { kind: "off" }
   | { kind: "blocked"; reason: string }
+  | { kind: "clarification"; question: string }
   | { kind: "mediated"; plan: EnterpriseRunPlan; promptSection: string };
 
 export type BeginEnterpriseRunParams = {
@@ -289,6 +290,15 @@ async function beginEnterpriseRunInternal(
         ...(params.routePlanner ? { planner: params.routePlanner } : {}),
         ...(params.signal ? { signal: params.signal } : {}),
       });
+
+  // A clarification is a reply, not an executable plan. Return before registering
+  // a run so ambiguous intent cannot read records or gain a step's capabilities.
+  if (selection.next.kind === "clarify") {
+    if (params.signal?.aborted) {
+      return { kind: "off" };
+    }
+    return { kind: "clarification", question: selection.next.question };
+  }
 
   const plan = buildPlanFor({
     tree: selection.tree,

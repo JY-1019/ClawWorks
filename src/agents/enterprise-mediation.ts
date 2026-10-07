@@ -433,6 +433,13 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
   if (mediation.kind === "off") {
     return { params, mediated: false };
   }
+  if (mediation.kind === "clarification") {
+    return {
+      params,
+      mediated: false,
+      blockedResult: { payloads: [{ text: mediation.question }], meta: { durationMs: 0 } },
+    };
+  }
   if (mediation.kind === "blocked") {
     return {
       params,

@@ -37,6 +37,20 @@ function planner(deps: {
 }
 
 describe("parseWorkflowPlannerResponse", () => {
+  it("parses a bounded clarification and rejects a blank question", () => {
+    expect(
+      parseWorkflowPlannerResponse(
+        '{"kind":"clarification","treeId":"t","question":"Draft or submit?"}',
+      ),
+    ).toEqual({
+      kind: "clarification",
+      treeId: "t",
+      question: "Draft or submit?",
+    });
+    expect(
+      parseWorkflowPlannerResponse('{"kind":"clarification","treeId":"t","question":" "}'),
+    ).toEqual({ kind: "failed" });
+  });
   it("parses a bare object", () => {
     expect(
       parseWorkflowPlannerResponse('{"treeId":"t","routes":["a.b"],"rationale":"why"}'),

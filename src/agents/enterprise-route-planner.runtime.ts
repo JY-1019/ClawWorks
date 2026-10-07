@@ -57,6 +57,11 @@ const responseSchema = z.object({
   routes: z.array(z.string()),
   rationale: z.string().optional(),
 });
+const clarificationSchema = z.object({
+  kind: z.literal("clarification"),
+  treeId: z.string().trim().min(1),
+  question: z.string().trim().min(1).max(1000),
+});
 
 const SYSTEM_PROMPT = [
   "You route a request into a governed workflow tree.",
@@ -70,6 +75,8 @@ const SYSTEM_PROMPT = [
   "   work-map that happens to mention payments. Language does not matter — a request",
   "   in any language belongs to the work-map that covers its subject.",
   '   If no work-map covers the request, return "treeId": null.',
+  "   Missing records, missing knowledge, or an unsupported detail within a domain",
+  "   do not make the request unrelated to that domain. Keep its governing work-map.",
   "",
   "2. Inside that work-map, select the MINIMUM set of nodes whose subtrees answer the",
   "   request. Selecting a node runs its entire subtree, so:",
@@ -81,9 +88,16 @@ const SYSTEM_PROMPT = [
   "   - Never invent an id. Copy ids exactly as given, and only from the chosen work-map.",
   "   - Sibling branches are often near-synonyms; read the titles and pick by meaning,",
   "     not by keyword overlap.",
+  "   - Honor the user's explicit scope and excluded branches. Do not select an",
+  "     excluded branch just because it could supply the requested information.",
   '   With "treeId": null, return an empty "routes" array.',
   "",
-  'Your ENTIRE response must be exactly one JSON object: {"treeId": "<tree.id>" or null, "routes": ["<node.id>", ...], "rationale": "<one sentence>"}.',
+  "If materially different workflow intents fit (such as preparing versus submitting),",
+  "or the request cannot be answered within the user's explicitly limited scope,",
+  "ask one concise clarification in the user's language instead of guessing a route",
+  "or a record. Do not ask merely because a named record might not exist: route its lookup.",
+  'For clarification return exactly {"kind":"clarification","treeId":"<candidate tree.id>","question":"<question>"}. No steps or tools will execute.',
+  'Otherwise return exactly {"treeId": "<tree.id>" or null, "routes": ["<node.id>", ...], "rationale": "<one sentence>"}.',
   "The first character must be { and the last must be }. No preamble, no explanation, no code fence.",
 ].join("\n");
 
@@ -120,6 +134,10 @@ export function parseWorkflowPlannerResponse(text: string): WorkflowPlanDecision
     parsed = JSON.parse(stripped);
   } catch {
     return { kind: "failed" };
+  }
+  if (parsed && typeof parsed === "object" && "kind" in parsed && parsed.kind === "clarification") {
+    const clarification = clarificationSchema.safeParse(parsed);
+    return clarification.success ? clarification.data : { kind: "failed" };
   }
   const result = responseSchema.safeParse(parsed);
   if (!result.success) {

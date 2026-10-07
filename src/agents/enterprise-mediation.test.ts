@@ -2,12 +2,13 @@
  * Tests the shared runner enterprise mediation glue: param injection,
  * run-start blocking, raw-run skips, and outcome→trace status mapping.
  */
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import * as enterpriseMediation from "../enterprise/run-mediation.js";
 import { clearEnterpriseRunMediationForTest } from "../enterprise/run-mediation.js";
 import { getEnterpriseActiveRun } from "../enterprise/runtime.js";
 import { getEnterpriseRunRecord } from "../enterprise/trace-store.sqlite.js";
@@ -51,6 +52,20 @@ afterAll(() => {
 });
 
 describe("applyEnterpriseMediation", () => {
+  it("returns clarification as a normal reply without starting the agent", async () => {
+    const begin = vi.spyOn(enterpriseMediation, "beginEnterpriseRun").mockResolvedValue({
+      kind: "clarification",
+      question: "Draft or submit?",
+    });
+    try {
+      const outcome = await applyEnterpriseMediation(makeParams());
+      expect(outcome.mediated).toBe(false);
+      expect(outcome.blockedResult?.payloads).toEqual([{ text: "Draft or submit?" }]);
+      expect(outcome.blockedResult?.meta.error).toBeUndefined();
+    } finally {
+      begin.mockRestore();
+    }
+  });
   it("mediates default runs without touching the system prompt (guidance-free tree)", async () => {
     const params = makeParams({ extraSystemPrompt: "existing" });
     const outcome = await applyEnterpriseMediation(params);

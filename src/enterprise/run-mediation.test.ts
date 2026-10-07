@@ -40,6 +40,48 @@ function latestEventKinds(runId: string): string[] {
 }
 
 describe("beginEnterpriseRun", () => {
+  it("asks for clarification without registering a run or exposing tools", async () => {
+    const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
+    const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
+    const treeId = "clarify.test";
+    importWorkflowTreeContent({
+      content: JSON.stringify({
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: treeId,
+        version: "1.0.0",
+        name: "Filing",
+        root: {
+          id: "filing",
+          title: "Filing",
+          children: [
+            { id: "filing.draft", title: "Draft" },
+            { id: "filing.submit", title: "Submit" },
+          ],
+        },
+      }),
+      format: "json",
+    });
+    invalidateWorkflowTreeRegistry();
+    try {
+      const runId = nextRunId();
+      const result = await beginEnterpriseRun({
+        runId,
+        prompt: "Handle a filing",
+        routePlanner: async () => ({
+          kind: "clarification",
+          treeId,
+          question: "Draft or submit?",
+        }),
+      });
+      expect(result).toEqual({ kind: "clarification", question: "Draft or submit?" });
+      expect(getEnterpriseActiveRun(runId)).toBeUndefined();
+      expect(getEnterpriseRunRecord(runId)).toBeNull();
+    } finally {
+      removeImportedWorkflowTree(treeId);
+      invalidateWorkflowTreeRegistry();
+    }
+  });
   it("returns off and registers nothing when enterprise mode is off", async () => {
     const runId = nextRunId();
     const mediation = await beginEnterpriseRun({

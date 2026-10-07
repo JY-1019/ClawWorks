@@ -86,6 +86,28 @@ describe("resolveRouteNodeIds", () => {
   });
 });
 
+describe("workflow clarification", () => {
+  it("returns a question without an executable selection for ambiguous intent", async () => {
+    const selection = await planFor("Handle a filing", async () => ({
+      kind: "clarification",
+      treeId: TREE.id,
+      question: "Prepare a draft or submit it?",
+    }));
+    expect(selection.tree.id).toBe(TREE.id);
+    expect(selection.next).toEqual({ kind: "clarify", question: "Prepare a draft or submit it?" });
+  });
+
+  it("does not accept a clarification naming an unknown work-map", async () => {
+    const selection = await planFor("x", async () => ({
+      kind: "clarification",
+      treeId: "invented",
+      question: "Which one?",
+    }));
+    expect(selection.treeSource).toBe("fallback");
+    expect(selection.next).toEqual({ kind: "execute" });
+  });
+});
+
 describe("buildRouteCandidateDigest", () => {
   it("renders every node as an indented, selectable id", () => {
     const digest = buildRouteCandidateDigest(TREE);
@@ -293,11 +315,11 @@ describe("selectWorkflowPlan", () => {
     expect(selection.route.nodeIds).toBeNull();
   });
 
-  it("skips route planning for a chosen tree too small to be worth it", async () => {
+  it("honors a selected route even when the chosen tree is small", async () => {
     const tiny: PlannableTree = {
       id: "acme.tiny",
       name: "Tiny",
-      root: node("tiny", "Tiny", [node("tiny.a", "A")]),
+      root: node("tiny", "Tiny", [node("tiny.a", "A"), node("tiny.b", "B")]),
     };
     const selection = await selectWorkflowPlan({
       trees: [tiny, DEFAULT_TREE],
@@ -307,6 +329,8 @@ describe("selectWorkflowPlan", () => {
     });
     expect(selection.tree.id).toBe("acme.tiny");
     expect(selection.treeSource).toBe("planner");
-    expect(selection.route.source).toBe("whole-tree");
+    expect(selection.route.source).toBe("planner");
+    expect(selection.route.routes).toEqual(["tiny.a"]);
+    expect([...selection.route.nodeIds!]).toEqual(["tiny.a", "tiny"]);
   });
 });

@@ -61,12 +61,14 @@ const SUMMARY_MAX_CHARS = 120;
 const TREE_SUMMARY_MAX_CHARS = 600;
 
 /**
- * What the injected planner must return. Three outcomes, kept distinct because
+ * What the injected planner must return. Outcomes are kept distinct because
  * selectWorkflowPlan treats each differently — collapsing any two of them either
  * drops requests out of governance or drags every request into a work-map:
  *
  * - `decided` — the model answered. `treeId: null` inside it is itself an answer
  *   ("no work-map applies") and is honored.
+ * - `clarification` — the domain is known, but intent needs a user answer before
+ *   any workflow steps or business tools may execute.
  * - `unavailable` — the planner could not be consulted AT ALL: no model is
  *   configured or authorized for it. That is a property of the install, not of
  *   the request, and no request can provoke it.
@@ -75,6 +77,7 @@ const TREE_SUMMARY_MAX_CHARS = 600;
  */
 export type WorkflowPlanDecision =
   | { kind: "decided"; treeId: string | null; routes: string[]; rationale?: string }
+  | { kind: "clarification"; treeId: string; question: string }
   | { kind: "unavailable" }
   | { kind: "failed" };
 
@@ -126,6 +129,7 @@ export type EnterpriseWorkflowSelection<
   /** Model text when the model chose; a fixed explanation otherwise. */
   treeRationale: string;
   route: EnterpriseRouteSelection;
+  next: { kind: "execute" } | { kind: "clarify"; question: string };
 };
 
 const planDecisionSchema = z.object({
@@ -289,7 +293,13 @@ function selectionWithoutModel<TTree extends WorkflowTreeDefinition>(
   treeRationale: string,
   routeRationale: string,
 ): EnterpriseWorkflowSelection<TTree> {
-  return { tree, treeSource, treeRationale, route: wholeTree(routeRationale) };
+  return {
+    tree,
+    treeSource,
+    treeRationale,
+    route: wholeTree(routeRationale),
+    next: { kind: "execute" },
+  };
 }
 
 /**
@@ -406,6 +416,17 @@ export async function selectWorkflowPlan<TTree extends WorkflowTreeDefinition>(p
   if (decision.kind === "failed") {
     return failClosed("workflow planner returned no decision");
   }
+  if (decision.kind === "clarification") {
+    const tree = byId.get(decision.treeId.trim());
+    const question = decision.question.trim();
+    if (!tree || !question || question.length > 1000) {
+      return failClosed("workflow planner returned an invalid clarification");
+    }
+    return {
+      ...selectionWithoutModel(tree, "planner", "request needs clarification", "no steps executed"),
+      next: { kind: "clarify", question },
+    };
+  }
 
   const parsed = planDecisionSchema.safeParse(decision);
   if (!parsed.success) {
@@ -430,18 +451,13 @@ export async function selectWorkflowPlan<TTree extends WorkflowTreeDefinition>(p
   }
 
   const treeRationale = parsed.data.rationale?.trim() || `selected ${tree.id}`;
-  if (countTreeNodes(tree) < MIN_NODES_TO_PLAN) {
-    return selectionWithoutModel(
-      tree,
-      "planner",
-      treeRationale,
-      `tree has ${countTreeNodes(tree)} nodes; planning it is not worth a model call`,
-    );
-  }
+  // The model call has already selected routes. Expanding a small tree here
+  // would discard that choice and introduce unrelated steps and tool ceilings.
   return {
     tree,
     treeSource: "planner",
     treeRationale,
     route: resolveRoute(tree, parsed.data.routes, parsed.data.rationale),
+    next: { kind: "execute" },
   };
 }
