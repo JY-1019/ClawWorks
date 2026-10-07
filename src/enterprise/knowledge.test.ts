@@ -18,6 +18,8 @@ import {
 } from "./knowledge.js";
 import {
   clearEnterpriseActiveRunsForTest,
+  completeEnterpriseStep,
+  reopenEnterpriseStep,
   registerEnterpriseActiveRun,
   type EnterpriseActiveRun,
 } from "./runtime.js";
@@ -62,6 +64,53 @@ function run(opts: {
     createdAt: 0,
   };
   return { plan, policies: opts.policies ?? [], ...(opts.sink ? { sink: opts.sink } : {}) };
+}
+
+/**
+ * A two-branch work-map: root, plus `billing` and `legal` leaves that each attach
+ * a DIFFERENT foundation. The single-node `run` above cannot express the question
+ * these cases exist for — whether a step reaches only the sources wired to it —
+ * because path intersection needs a path.
+ */
+function branchedRun(opts: {
+  activeNodeId: "root" | "billing" | "legal";
+  rootFoundations?: string[];
+}): EnterpriseActiveRun {
+  const plan: EnterpriseRunPlan = {
+    runId: "run-k",
+    treeId: "acme.ops",
+    treeVersion: "1.0.0",
+    treeName: "Ops",
+    matchedBy: "planner",
+    requestSummary: "help",
+    nodes: [
+      {
+        nodeId: "root",
+        parentId: null,
+        seq: 0,
+        title: "Root",
+        ontology: opts.rootFoundations ? { knowledgeFoundations: opts.rootFoundations } : {},
+      },
+      {
+        nodeId: "billing",
+        parentId: "root",
+        seq: 1,
+        title: "Billing",
+        ontology: { knowledgeFoundations: ["acme.billing-kb"] },
+      },
+      {
+        nodeId: "legal",
+        parentId: "root",
+        seq: 2,
+        title: "Legal",
+        ontology: { knowledgeFoundations: ["acme.legal-kb"] },
+      },
+    ],
+    activeNodeId: opts.activeNodeId,
+    mode: "enforce",
+    createdAt: 0,
+  };
+  return { plan, policies: [] };
 }
 
 function foundation(...texts: string[]): InMemoryKnowledgeFoundation {
@@ -142,6 +191,36 @@ describe("InMemoryKnowledgeFoundation", () => {
 });
 
 describe("resolveEnterpriseKnowledge", () => {
+  it("changes explicit source grants on advance and reopen without retaining a sibling grant", async () => {
+    const active = branchedRun({ activeNodeId: "billing" });
+    active.plan.capabilityGrants = "explicit";
+    registerEnterpriseActiveRun(active);
+    registerEnterpriseKnowledgeFoundation("acme.billing-kb", foundation("refund billing"));
+    registerEnterpriseKnowledgeFoundation("acme.legal-kb", foundation("refund legal"));
+
+    const retrieve = () =>
+      resolveEnterpriseKnowledge({
+        runId: "run-k",
+        query: "refund",
+        foundations: ["acme.billing-kb", "acme.legal-kb"],
+      });
+    for (const allowed of ["acme.billing-kb", "acme.legal-kb", "acme.billing-kb"]) {
+      const result = await retrieve();
+      expect(result.snippets.map((snippet) => snippet.foundationId)).toEqual([allowed]);
+      expect(result.skipped).toEqual([
+        {
+          foundationId: allowed === "acme.billing-kb" ? "acme.legal-kb" : "acme.billing-kb",
+          reason: "not in this step's knowledge allow-list",
+        },
+      ]);
+      if (allowed === "acme.billing-kb") {
+        expect(completeEnterpriseStep({ runId: "run-k" }).kind).toBe("advanced");
+      } else {
+        expect(reopenEnterpriseStep({ runId: "run-k", nodeId: "billing" }).kind).toBe("reopened");
+      }
+    }
+  });
+
   it("returns an unmediated result for unknown runs", async () => {
     const result = await resolveEnterpriseKnowledge({ runId: "nope", query: "refund" });
     expect(result).toEqual({ snippets: [], skipped: [], mediated: false });
