@@ -683,3 +683,15 @@ Beyond `api.runtime`, the API object also provides:
 - [Plugin internals](/plugins/architecture) — capability model and registry
 - [SDK entry points](/plugins/sdk-entrypoints) — `definePluginEntry` options
 - [SDK overview](/plugins/sdk-overview) — subpath reference
+
+### Governed MCP dispatch in agent harnesses
+
+`openclaw/plugin-sdk/agent-harness-runtime` exposes `createRunMcpTools` for a
+harness that cannot enforce step permissions on its native MCP calls. Pass trusted
+tool-construction options, agent-eligible configured server names, the names
+already emitted natively, reserved tool names, and the run allowlist. The helper
+connects only attached servers withheld by the native ceiling, applies effective
+tool policy, and retains MCP provenance. Dispatch returned tools through the
+standard before-tool-call hook; exposing them does not grant execution. Dispose
+the returned runtime in the attempt's outer `finally`, including startup errors.
+Plugin-provided and already-native servers are not duplicated.

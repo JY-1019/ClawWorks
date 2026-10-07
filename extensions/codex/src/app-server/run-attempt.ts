@@ -34,6 +34,7 @@ import {
   supportsModelTools,
   enterpriseRunAdmitsHostedTool,
   enterpriseRunGovernsToolNames,
+  getPluginToolMeta,
   resolveRunWithheldSkillEnvKeys,
   runAgentCleanupStep,
   type FastModeAutoProgressState,
@@ -431,6 +432,49 @@ export async function runCodexAppServerAttempt(
     clientFactory?: CodexAppServerClientFactory;
   } = {},
 ): Promise<EmbeddedRunAttemptResult> {
+  let mcpTools: Awaited<
+    ReturnType<typeof import("openclaw/plugin-sdk/agent-harness-runtime").createRunMcpTools>
+  >;
+  let loaded = false;
+  try {
+    return await runCodexAppServerAttemptInternal(
+      params,
+      options,
+      async (toolOptions, reservedNames, nativeServerNames) => {
+        if (!loaded) {
+          const { createRunMcpTools } = await import("openclaw/plugin-sdk/agent-harness-runtime");
+          mcpTools = await createRunMcpTools({
+            options: toolOptions,
+            eligibleServerNames: resolveCodexEmittedUserMcpServerNames(params.config, {
+              agentId: toolOptions.agentId,
+            }),
+            nativeServerNames,
+            reservedToolNames: reservedNames,
+            toolsAllow: params.toolsAllow,
+          });
+          loaded = true;
+        }
+        return mcpTools?.tools ?? [];
+      },
+    );
+  } finally {
+    await mcpTools?.dispose();
+  }
+}
+
+async function runCodexAppServerAttemptInternal(
+  params: EmbeddedRunAttemptParams,
+  options: NonNullable<Parameters<typeof runCodexAppServerAttempt>[1]>,
+  loadMcpTools: (
+    options: Parameters<
+      NonNullable<import("./dynamic-tool-build.js").DynamicToolBuildParams["loadMcpTools"]>
+    >[0],
+    reservedNames: string[],
+    nativeServerNames: readonly string[],
+  ) => ReturnType<
+    NonNullable<import("./dynamic-tool-build.js").DynamicToolBuildParams["loadMcpTools"]>
+  >,
+): Promise<EmbeddedRunAttemptResult> {
   const attemptStartedAt = Date.now();
   const profilerEnabled = isCodexAppServerProfilerEnabled(params.config);
   const codexModelCallTrace = freezeDiagnosticTraceContext(
@@ -811,9 +855,21 @@ export async function runCodexAppServerAttempt(
           ...(onCodexToolOutcome ? { onToolOutcome: onCodexToolOutcome } : {}),
         }
       : params;
+  const nativeMcpServerNames = nativeToolSurfaceEnabled
+    ? resolveCodexEmittedUserMcpServerNames(params.config, {
+        agentId: sessionAgentId,
+        runId: params.runId,
+        peerServerNames: Object.keys(bundleMcpThreadConfig.configPatch?.mcp_servers ?? {}),
+      })
+    : [];
+  const loadAttemptMcpTools: NonNullable<
+    import("./dynamic-tool-build.js").DynamicToolBuildParams["loadMcpTools"]
+  > = (toolOptions, reservedNames) =>
+    loadMcpTools(toolOptions, reservedNames, nativeMcpServerNames);
   let persistentWebSearchAllowed: boolean | undefined;
   let webSearchAllowed = false;
   const tools = await buildDynamicTools({
+    loadMcpTools: loadAttemptMcpTools,
     params: dynamicToolParams,
     resolvedWorkspace,
     effectiveWorkspace,
@@ -845,6 +901,7 @@ export async function runCodexAppServerAttempt(
     },
   });
   const registeredTools = await buildDynamicTools({
+    loadMcpTools: loadAttemptMcpTools,
     params: dynamicToolParams,
     resolvedWorkspace,
     effectiveWorkspace,
@@ -875,7 +932,11 @@ export async function runCodexAppServerAttempt(
       connectionClass: appServer.connectionClass,
       governsToolNames: enterpriseRunGovernsToolNames(params.runId),
     }),
-    directToolNames: resolveCodexDynamicToolDirectNames(params),
+    // Host MCP hooks use this exact catalog key, without namespace flattening.
+    directToolNames: [
+      ...resolveCodexDynamicToolDirectNames(params),
+      ...tools.filter((tool) => getPluginToolMeta(tool)?.mcp).map((tool) => tool.name),
+    ],
     hookContext: {
       agentId: sessionAgentId,
       config: params.config,
@@ -1485,6 +1546,7 @@ export async function runCodexAppServerAttempt(
           ? CODEX_NATIVE_HOOK_RELAY_TTL_GRACE_MS
           : undefined,
       events: nativeHookRelayEvents,
+      hostTools: tools,
       agentId: sessionAgentId,
       sessionId: params.sessionId,
       sessionKey: sandboxSessionKey,

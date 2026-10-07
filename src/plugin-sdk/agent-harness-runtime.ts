@@ -472,3 +472,11 @@ export function classifyAgentHarnessTerminalOutcome(
 function hasVisibleAssistantText(assistantTexts: readonly string[]): boolean {
   return assistantTexts.some((text) => text.trim().length > 0);
 }
+
+/** Build host-dispatched MCP tools; callers must dispose after every attempt, including startup failures. */
+export async function createRunMcpTools(
+  params: Parameters<typeof import("../agents/run-mcp-tools.js").createRunMcpTools>[0],
+) {
+  const { createRunMcpTools: create } = await import("../agents/run-mcp-tools.js");
+  return create(params);
+}

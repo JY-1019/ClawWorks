@@ -104,6 +104,11 @@ export type NativeHookRelayRegistration = {
   config?: OpenClawConfig;
   runId: string;
   channelId?: string;
+  /** Trusted host tool catalog only; never infer MCP origin from a native name. */
+  mcpTools?: ReadonlyMap<
+    string,
+    NonNullable<Parameters<typeof runBeforeToolCallHook>[0]["mcpTool"]>
+  >;
   allowedEvents: readonly NativeHookRelayEvent[];
   expiresAtMs: number;
   signal?: AbortSignal;
@@ -135,6 +140,7 @@ export type RegisterNativeHookRelayParams = {
   ttlMs?: number;
   command?: NativeHookRelayCommandOptions;
   signal?: AbortSignal;
+  mcpTools?: NativeHookRelayRegistration["mcpTools"];
 };
 
 export type NativeHookRelayCommandOptions = {
@@ -436,6 +442,7 @@ export function registerNativeHookRelay(
     runId: params.runId,
     ...(params.channelId ? { channelId: params.channelId } : {}),
     allowedEvents,
+    mcpTools: params.mcpTools,
     expiresAtMs,
     ...(params.signal ? { signal: params.signal } : {}),
   };
@@ -563,7 +570,7 @@ export function buildNativeHookRelayCommand(params: {
       ? ["openclaw"]
       : [params.nodeExecutable ?? process.execPath, executable];
   const nicePrefix = resolveNativeHookRelayNicePrefix(params.nice);
-  return shellQuoteArgs([
+  const commandArgs = [
     ...nicePrefix,
     ...argv,
     "hooks",
@@ -580,6 +587,21 @@ export function buildNativeHookRelayCommand(params: {
       : []),
     "--timeout",
     String(timeoutMs),
+  ];
+  if (params.event !== "pre_tool_use" || params.preToolUseUnavailable === "noop") {
+    return shellQuoteArgs(commandArgs);
+  }
+  // Codex treats ordinary hook process failures as non-blocking. Keep this small
+  // guard independent of dist: an unavailable CLI must produce exit 2 + stderr,
+  // even when an upgrade/build removes its modules before relay code can load.
+  const guard =
+    "const r = require('node:child_process').spawnSync(process.argv[1], process.argv.slice(2), {stdio: 'inherit'}); if (r.status !== 0) { process.stderr.write('ClawWorks pre-tool policy hook unavailable; tool execution blocked.\\n'); process.exitCode = 2; }";
+  return shellQuoteArgs([
+    params.nodeExecutable ?? process.execPath,
+    "-e",
+    guard,
+    "--",
+    ...commandArgs,
   ]);
 }
 
@@ -1399,6 +1421,9 @@ async function runNativeHookRelayPreToolUse(params: {
   const approvalMode = readNativeHookRelayApprovalMode(params.invocation.rawPayload);
   const outcome = await runBeforeToolCallHook({
     toolName,
+    mcpTool: params.invocation.toolName
+      ? params.registration.mcpTools?.get(params.invocation.toolName)
+      : undefined,
     params: toolInput,
     ...(params.invocation.toolUseId ? { toolCallId: params.invocation.toolUseId } : {}),
     ...(approvalMode === "report" ? { approvalMode: "defer" } : {}),

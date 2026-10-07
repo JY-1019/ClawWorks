@@ -4,6 +4,8 @@
  * and provider allowlist normalization.
  */
 import {
+  applyEmbeddedAttemptToolsAllow,
+  getPluginToolMeta,
   buildAgentHookContextChannelFields,
   buildEmbeddedAttemptToolRunContext,
   embeddedAgentLog,
@@ -78,6 +80,10 @@ export type DynamicToolBuildParams = {
   forceHeartbeatTool?: boolean;
   ignoreDisableMessageTool?: boolean;
   ignoreRuntimePlan?: boolean;
+  loadMcpTools?: (
+    options: OpenClawCodingToolsOptions,
+    reservedNames: string[],
+  ) => Promise<OpenClawDynamicTool[]>;
   onYieldDetected: () => void;
   onCodexAppServerEvent?: (event: CodexDynamicToolBuildEvent) => void;
   onPersistentWebSearchPolicyResolved?: (allowed: boolean) => void;
@@ -229,7 +235,7 @@ export async function buildDynamicTools(input: DynamicToolBuildParams) {
   toolBuildStages.mark("load-agent-harness-tools");
   const sessionKeys = resolveOpenClawCodingToolsSessionKeys(params, input.sandboxSessionKey);
   const nativeExecutionPolicy = resolveCodexNativeExecutionPolicyForDynamicTools(input);
-  const allTools = createOpenClawCodingTools({
+  const toolOptions: OpenClawCodingToolsOptions = {
     agentId: input.sessionAgentId,
     ...buildEmbeddedAttemptToolRunContext(params),
     exec: {
@@ -316,7 +322,14 @@ export async function buildDynamicTools(input: DynamicToolBuildParams) {
     },
     onToolOutcome: params.onToolOutcome,
     allocateToolOutcomeOrdinal: params.allocateToolOutcomeOrdinal,
-  });
+  };
+  const allTools = createOpenClawCodingTools(toolOptions);
+  allTools.push(
+    ...((await input.loadMcpTools?.(
+      toolOptions,
+      allTools.map((tool) => tool.name),
+    )) ?? []),
+  );
   toolBuildStages.mark("create-openclaw-coding-tools");
   const preNormalizationDiagnostics: RuntimeToolSchemaDiagnostic[] = [];
   const readableAllToolProjection = filterProviderNormalizableTools(allTools);
@@ -924,10 +937,13 @@ export function filterCodexDynamicToolsForAllowlist<T extends { name: string }>(
   const allowSet = new Set(
     toolsAllow.map((name) => normalizeCodexDynamicToolName(name)).filter(Boolean),
   );
+  const allowedTools = new Set(
+    applyEmbeddedAttemptToolsAllow(tools, toolsAllow, { toolMeta: getPluginToolMeta }),
+  );
   return tools.filter((tool) => {
     const normalized = normalizeCodexDynamicToolName(tool.name);
     return (
-      allowSet.has(normalized) ||
+      allowedTools.has(tool) ||
       (normalized === "sandbox_exec" && allowSet.has("exec")) ||
       (normalized === "sandbox_process" && (allowSet.has("exec") || allowSet.has("process"))) ||
       (normalized === CODEX_NODE_EXEC_DYNAMIC_TOOL_NAME && allowSet.has("exec")) ||

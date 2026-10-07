@@ -1236,6 +1236,11 @@ describe("Codex app-server dynamic tool build", () => {
     ]);
   });
 
+  it("preserves MCP glob allowlists on the dynamic surface", () => {
+    const tools = [{ name: "tracker__status" }, { name: "other__status" }];
+    expect(filterCodexDynamicToolsForAllowlist(tools, ["tracker__*"])).toEqual([tools[0]]);
+  });
+
   it("treats an explicit empty Codex dynamic toolsAllow as no tools", () => {
     const tools = ["message", "web_search"].map((name) => ({ name }));
 

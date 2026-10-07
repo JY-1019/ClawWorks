@@ -5,12 +5,13 @@ import fs from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { updateSessionStore, type SessionEntry } from "../../config/sessions.js";
 // The plan-free registry, not enterprise/runtime.js: this is the module the relay
 // predicate reads, and it stays clear of the planner package alias.
 import {
   clearEnterpriseActiveRunsForTest,
+  getEnterpriseActiveRun,
   registerEnterpriseActiveRun,
 } from "../../enterprise/active-runs.js";
 import type { EnterpriseRunPlan } from "../../enterprise/types.js";
@@ -22,6 +23,7 @@ import { createMockPluginRegistry } from "../../plugins/hooks.test-helpers.js";
 import { patchPluginSessionExtension } from "../../plugins/host-hook-state.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
+import { PluginApprovalResolutions } from "../../plugins/types.js";
 import {
   testing,
   buildNativeHookRelayCommand,
@@ -31,6 +33,18 @@ import {
   registerNativeHookRelay,
   resolveNativeHookRelayDeferredToolApproval,
 } from "./native-hook-relay.js";
+
+const isolatedRegistry = vi.hoisted(() => ({ directory: "" }));
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  const files = await import("node:fs/promises");
+  isolatedRegistry.directory = await files.mkdtemp(`${actual.tmpdir()}/relay-tests-`);
+  // Registry pruning must never see a developer's running gateway bridge files.
+  return { ...actual, tmpdir: () => isolatedRegistry.directory };
+});
+afterAll(async () => {
+  await fs.rm(isolatedRegistry.directory, { recursive: true, force: true });
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -44,7 +58,11 @@ afterEach(() => {
 });
 
 /** Minimal governed run: only the mode reaches the relay's pre-tool decision. */
-function registerGovernedRun(params: { runId: string; mode: "enforce" | "observe" }): void {
+function registerGovernedRun(params: {
+  runId: string;
+  mode: "enforce" | "observe";
+  ontology?: EnterpriseRunPlan["nodes"][number]["ontology"];
+}): void {
   const plan: EnterpriseRunPlan = {
     runId: params.runId,
     treeId: "acme.support",
@@ -52,7 +70,15 @@ function registerGovernedRun(params: { runId: string; mode: "enforce" | "observe
     treeName: "Support",
     matchedBy: "planner",
     requestSummary: "help",
-    nodes: [{ nodeId: "support", parentId: null, seq: 0, title: "Support", ontology: {} }],
+    nodes: [
+      {
+        nodeId: "support",
+        parentId: null,
+        seq: 0,
+        title: "Support",
+        ontology: params.ontology ?? {},
+      },
+    ],
     activeNodeId: "support",
     mode: params.mode,
     createdAt: 0,
@@ -272,15 +298,15 @@ describe("native hook relay registry", () => {
         allowedEvents: ["pre_tool_use"],
       },
     );
-    expect(relay.commandForEvent("pre_tool_use")).toBe(
+    expect(relay.commandForEvent("pre_tool_use")).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
-    expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 900 })).toBe(
+    expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 900 })).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 900`,
     );
-    expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 2_000 })).toBe(
+    expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 2_000 })).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
@@ -567,7 +593,7 @@ describe("native hook relay registry", () => {
     expect(relay.shouldRelayEvent("post_tool_use")).toBe(false);
     expect(relay.shouldRelayEvent("before_agent_finalize")).toBe(false);
     expect(relay.shouldRelayEvent("permission_request")).toBe(true);
-    expect(relay.commandForEvent("pre_tool_use")).toBe(
+    expect(relay.commandForEvent("pre_tool_use")).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --pre-tool-use-unavailable noop --timeout 1234`,
     );
@@ -589,7 +615,7 @@ describe("native hook relay registry", () => {
     });
 
     expect(relay.shouldRelayEvent("pre_tool_use")).toBe(true);
-    expect(relay.commandForEvent("pre_tool_use")).toBe(
+    expect(relay.commandForEvent("pre_tool_use")).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
@@ -609,7 +635,7 @@ describe("native hook relay registry", () => {
     });
 
     expect(relay.shouldRelayEvent("pre_tool_use")).toBe(true);
-    expect(relay.commandForEvent("pre_tool_use")).toBe(
+    expect(relay.commandForEvent("pre_tool_use")).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
@@ -646,7 +672,7 @@ describe("native hook relay registry", () => {
     });
 
     expect(relay.shouldRelayEvent("pre_tool_use")).toBe(true);
-    expect(relay.commandForEvent("pre_tool_use")).toBe(
+    expect(relay.commandForEvent("pre_tool_use")).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
@@ -669,7 +695,7 @@ describe("native hook relay registry", () => {
     });
 
     expect(relay.shouldRelayEvent("pre_tool_use")).toBe(false);
-    expect(relay.commandForEvent("pre_tool_use")).toBe(
+    expect(relay.commandForEvent("pre_tool_use")).toContain(
       "/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id " +
         `${relay.relayId} --generation ${relay.generation} --event pre_tool_use ` +
         "--pre-tool-use-unavailable noop --timeout 1234",
@@ -1364,6 +1390,54 @@ describe("native hook relay registry", () => {
       command: "pnpm test",
     });
   });
+
+  it.each([true, false])(
+    "uses only registered host MCP identity for explicit grants (registered=%s)",
+    async (trusted) => {
+      registerGovernedRun({
+        runId: "mcp-origin",
+        mode: "enforce",
+        ontology: { mcpServers: ["tracker"] },
+      });
+      const run = getEnterpriseActiveRun("mcp-origin")!;
+      run.plan.capabilityGrants = "explicit";
+      run.plan.mcpGoverned = true;
+      run.mcpServers = ["tracker"];
+      const identity = { serverName: "tracker", safeServerName: "tracker", toolName: "status" };
+      const relay = registerNativeHookRelay({
+        provider: "codex",
+        sessionId: "mcp-session",
+        runId: "mcp-origin",
+        mcpTools: trusted ? new Map([["tracker__status", identity]]) : undefined,
+      });
+      const response = await invokeNativeHookRelay({
+        provider: "codex",
+        relayId: relay.relayId,
+        event: "pre_tool_use",
+        rawPayload: {
+          hook_event_name: "PreToolUse",
+          tool_name: "tracker__status",
+          tool_input: {},
+          tool_use_id: "mcp-call",
+          openclaw_approval_mode: "report",
+          mcpTool: identity,
+        },
+      });
+      expect(response.exitCode).toBe(0);
+      const requester = vi.fn(async () => ({
+        blocked: false as const,
+        params: {},
+        approvalResolution: PluginApprovalResolutions.ALLOW_ONCE,
+      }));
+      testing.setNativeHookRelayDeferredToolApprovalRequesterForTests(requester);
+      await resolveNativeHookRelayDeferredToolApproval({
+        relayId: relay.relayId,
+        generation: relay.generation,
+        toolUseId: "mcp-call",
+      });
+      expect(requester).toHaveBeenCalledTimes(trusted ? 0 : 1);
+    },
+  );
 
   it("reports whether a relay already observed a tool use invocation", async () => {
     const relay = registerNativeHookRelay({

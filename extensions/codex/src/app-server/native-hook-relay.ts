@@ -5,6 +5,8 @@
 import { createHash } from "node:crypto";
 import {
   registerNativeHookRelay,
+  getPluginToolMeta,
+  type AnyAgentTool,
   type EmbeddedRunAttemptParams,
   type NativeHookRelayEvent,
   type NativeHookRelayRegistrationHandle,
@@ -124,11 +126,18 @@ export function createCodexNativeHookRelay(params: {
   attemptTimeoutMs: number;
   startupTimeoutMs: number;
   turnStartTimeoutMs: number;
+  hostTools?: readonly AnyAgentTool[];
   signal: AbortSignal;
 }): NativeHookRelayRegistrationHandle | undefined {
   if (params.options?.enabled === false) {
     return undefined;
   }
+  const mcpTools = new Map(
+    (params.hostTools ?? []).flatMap((tool) => {
+      const identity = getPluginToolMeta(tool)?.mcp;
+      return identity ? [[tool.name, identity] as const] : [];
+    }),
+  );
   return registerNativeHookRelay({
     provider: "codex",
     relayId: buildCodexNativeHookRelayId({
@@ -147,6 +156,7 @@ export function createCodexNativeHookRelay(params: {
     runId: params.runId,
     ...(params.channelId ? { channelId: params.channelId } : {}),
     allowedEvents: params.events,
+    mcpTools,
     ttlMs: resolveCodexNativeHookRelayTtlMs({
       explicitTtlMs: params.options?.ttlMs,
       attemptTimeoutMs: params.attemptTimeoutMs,
