@@ -469,6 +469,13 @@ When a request starts an enterprise-mediated run:
    `enterprise workflow planner: model unavailable` in the gateway log: a backend
    without a direct API credential (a CLI or subscription runtime) cannot plan.
 
+   When the planner identifies materially different intents or a conflict with
+   the user's explicit scope, it can return a clarification question. That reply
+   starts no workflow execution and exposes no business tools. Reply with the
+   intended task and record ID so the next request can select a route. This is
+   model-backed judgment, not a guarantee that every ambiguity will be detected.
+   Once the planner selects routes, they are honored even for a small tree.
+
 2. **Decomposition** flattens the chosen subtree into a depth-first plan. For
    embedded and CLI runs the whole subtree's guidance is injected once as a
    static step digest so the model sees every step's rules up front (this keeps
@@ -728,6 +735,14 @@ An MCP tool is recognized by what it _is_, never by how its name reads: every to
 the MCP runtime materializes carries the server it came from, and the per-call gate
 reads that registration. A core tool spelled like `<server>__<tool>` is therefore
 never mistaken for one.
+
+On Codex app-server runs, attached, agent-eligible configured servers that the
+native launch ceiling withholds are dispatched through ClawWorks dynamic tools.
+These tools retain catalog server identity and pass the same per-call scope and
+approval gate as embedded tools. A lookup step can therefore use its attached
+server even when the preceding triage step allows only `knowledge_search`; a call
+from triage is still refused. Already-native servers are not duplicated. Plugin
+servers and standalone CLI backends retain their launch ceiling.
 
 That registration exists on the embedded runtime. A native harness (Codex, the
 Claude CLI) reports tool calls through a hook that carries no origin and passes
