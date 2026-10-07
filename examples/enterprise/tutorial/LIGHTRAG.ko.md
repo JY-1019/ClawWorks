@@ -46,12 +46,12 @@ Gateway를 같은 호스트에서 실행한 뒤 **Knowledge → Connect a source
 
 ```bash
 curl --fail --silent --show-error --max-time 120 \
-  http://127.0.0.1:9621/query \
+  http://127.0.0.1:9621/query/data \
   -H 'Content-Type: application/json' \
-  --data '{"query":"When does the Acme return window start?","mode":"mix","top_k":5,"include_references":true,"include_chunk_content":true}'
+  --data '{"query":"When does the Acme return window start?","mode":"mix","top_k":5,"chunk_top_k":5}'
 ```
 
-`response` 문장만 보지 말고 `references[].file_path`와 비어 있지 않은 `references[].content`를 확인하세요. ClawWorks 어댑터는 이 청크를 `snippets`로 변환합니다. 답변 문자열만 있고 청크가 없다면 “정책 검색 통과”가 아닙니다. 요청·응답 필드는 [LightRAG query router](https://github.com/HKUDS/LightRAG/blob/main/lightrag/api/routers/query_routes.py)와 [현재 어댑터](../../../extensions/lightrag/src/adapter.ts)를 기준으로 합니다.
+`status`가 `success`이고 `data.chunks[].file_path`와 비어 있지 않은 `data.chunks[].content`가 반환되는지 확인하세요. 검색 실패는 결과 없음과 구분합니다. ClawWorks 어댑터는 이 청크를 `snippets`로 변환합니다. 답변 문자열만 있고 청크가 없다면 “정책 검색 통과”가 아닙니다. 요청·응답 필드는 [LightRAG query router](https://github.com/HKUDS/LightRAG/blob/main/lightrag/api/routers/query_routes.py)와 [현재 어댑터](../../../extensions/lightrag/src/adapter.ts)를 기준으로 합니다.
 
 ## 4. Chat과 노드 범위 검증하기
 

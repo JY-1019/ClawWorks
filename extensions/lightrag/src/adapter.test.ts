@@ -31,17 +31,19 @@ function buildAdapter(overrides: Partial<LightRagAdapterOptions> = {}) {
 }
 
 describe("LightRagKnowledgeFoundation", () => {
-  it("posts to /query with mode, limit, and api key, mapping references to snippets", async () => {
+  it("posts to /query/data with mode, limit, and api key, mapping raw chunks to snippets", async () => {
     const { fetchImpl, calls } = mockFetch({
-      response: "synthesized answer (ignored)",
-      references: [
-        {
-          reference_id: "doc-1",
-          file_path: "kb/refunds.md",
-          content: ["Refund window is 30 days"],
-        },
-        { reference_id: "doc-2", file_path: "kb/ship.md", content: ["Free shipping over $50"] },
-      ],
+      status: "success",
+      data: {
+        chunks: [
+          {
+            reference_id: "doc-1",
+            file_path: "kb/refunds.md",
+            content: "Refund window is 30 days",
+          },
+          { reference_id: "doc-2", file_path: "kb/ship.md", content: "Free shipping over $50" },
+        ],
+      },
     });
     const adapter = buildAdapter({
       serverUrl: "http://localhost:9621/",
@@ -57,15 +59,14 @@ describe("LightRagKnowledgeFoundation", () => {
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("http://localhost:9621/query"); // trailing slash normalized
+    expect(calls[0].url).toBe("http://localhost:9621/query/data"); // trailing slash normalized
     expect((calls[0].init.headers as Record<string, string>)["X-API-Key"]).toBe("secret-token");
     const sent = JSON.parse(calls[0].init.body as string);
     expect(sent).toMatchObject({
       query: "refund policy",
       mode: "hybrid",
       top_k: 5,
-      include_references: true,
-      include_chunk_content: true,
+      chunk_top_k: 5,
     });
     expect(snippets).toEqual([
       {
@@ -85,7 +86,8 @@ describe("LightRagKnowledgeFoundation", () => {
 
   it("caps flattened chunks at the limit and skips blank chunks", async () => {
     const { fetchImpl } = mockFetch({
-      references: [{ reference_id: "d", content: ["a", "  ", "b", "c"] }],
+      status: "success",
+      data: { chunks: ["a", "  ", "b", "c"].map((content) => ({ reference_id: "d", content })) },
     });
     const adapter = buildAdapter({ fetchImpl });
     const snippets = await adapter.retrieve({ foundationId: "kb", query: "hello", limit: 2 });
@@ -109,7 +111,7 @@ describe("LightRagKnowledgeFoundation", () => {
   });
 
   it("forwards the abort signal to fetch", async () => {
-    const { fetchImpl, calls } = mockFetch({ references: [] });
+    const { fetchImpl, calls } = mockFetch({ status: "success", data: { chunks: [] } });
     const adapter = buildAdapter({ fetchImpl });
     const controller = new AbortController();
     await adapter.retrieve({
@@ -119,6 +121,17 @@ describe("LightRagKnowledgeFoundation", () => {
       signal: controller.signal,
     });
     expect(calls[0].init.signal).toBe(controller.signal);
+  });
+
+  it.each([
+    { status: "failure", data: { chunks: [] } },
+    { response: "No context", references: [] },
+    { status: "success", data: {} },
+  ])("does not treat retrieval failure or malformed data as no matches: %j", async (body) => {
+    const { fetchImpl } = mockFetch(body);
+    await expect(
+      buildAdapter({ fetchImpl }).retrieve({ foundationId: "kb", query: "refund", limit: 5 }),
+    ).rejects.toThrow("retrieval failed");
   });
 
   describe("describe", () => {
@@ -228,94 +241,76 @@ describe("LightRagKnowledgeFoundation", () => {
 });
 
 describe("LightRagKnowledgeFoundation documents", () => {
-  it("flattens the status-grouped document list and normalizes each state", async () => {
-    const { fetchImpl, calls } = mockFetch({
-      statuses: {
-        processed: [
+  it("reads every paginated document page and preserves processing/error details", async () => {
+    const calls: Captured[] = [];
+    const pages = [
+      {
+        documents: [
           {
-            id: "doc-1",
+            id: "one",
+            status: "processed",
             file_path: "handbook.pdf",
             content_summary: "Company handbook",
             content_length: 5000,
             chunks_count: 12,
-            updated_at: "2026-01-02T03:04:05",
           },
-        ],
-        parsing: [{ id: "doc-2", file_path: "ship.md" }],
-        failed: [{ id: "doc-3", file_path: "broken.txt", error_msg: "parse error" }],
-      },
-    });
-    const adapter = buildAdapter({ serverUrl: "http://localhost:9621/", fetchImpl });
-
-    const documents = await adapter.listDocuments();
-
-    expect(calls[0].url).toBe("http://localhost:9621/documents");
-    expect(calls[0].init.method).toBe("GET");
-    // Sorted by name so a server that only groups still renders stably.
-    expect(documents.map((entry) => entry.name)).toEqual(["broken.txt", "handbook.pdf", "ship.md"]);
-    expect(documents.find((entry) => entry.id === "doc-1")).toEqual({
-      id: "doc-1",
-      name: "handbook.pdf",
-      status: "indexed",
-      summary: "Company handbook",
-      contentLength: 5000,
-      chunkCount: 12,
-      updatedAt: "2026-01-02T03:04:05",
-    });
-    // Mid-pipeline states collapse to "processing"; the inspector shows
-    // progress, not LightRAG's internal phases.
-    expect(documents.find((entry) => entry.id === "doc-2")?.status).toBe("processing");
-    expect(documents.find((entry) => entry.id === "doc-3")).toMatchObject({
-      status: "failed",
-      error: "parse error",
-    });
-  });
-
-  it("omits fields a still-indexing document reports as null", async () => {
-    // Verbatim shape from a live LightRAG server right after upload. Carrying
-    // the nulls through would render "null chunk(s)" in the inspector and break
-    // the optional-number contract these fields declare.
-    const { fetchImpl } = mockFetch({
-      statuses: {
-        pending: [
           {
-            id: "doc-9073fc83",
-            file_path: "notes.txt",
-            content_summary: "",
-            content_length: 0,
+            id: "two",
+            status: "parsing",
+            file_path: "ship.md",
             chunks_count: null,
             error_msg: null,
-            updated_at: "2026-07-20T05:21:53.409222+00:00",
+            content_summary: "",
           },
         ],
+        pagination: { page: 1, has_next: true },
+      },
+      {
+        documents: [
+          { id: "three", status: "failed", file_path: "broken.txt", error_msg: "indexing failed" },
+        ],
+        pagination: { page: 2, has_next: false },
+      },
+    ];
+    const adapter = buildAdapter({
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify(pages[calls.length - 1]));
       },
     });
-    const adapter = buildAdapter({ fetchImpl });
-
-    const [document] = await adapter.listDocuments();
-
-    expect(document).not.toHaveProperty("chunkCount");
-    expect(document).not.toHaveProperty("error");
-    // An empty summary is "no preview available", not a blank preview.
-    expect(document).not.toHaveProperty("summary");
-    expect(document).toMatchObject({ id: "doc-9073fc83", status: "pending", contentLength: 0 });
+    const documents = await adapter.listDocuments();
+    expect(calls.map((c) => c.url)).toEqual([
+      "http://x/documents/paginated",
+      "http://x/documents/paginated",
+    ]);
+    expect(calls.map((c) => JSON.parse(c.init.body as string).page)).toEqual([1, 2]);
+    expect(calls[0].init.method).toBe("POST");
+    expect(documents.map((d) => d.name)).toEqual(["broken.txt", "handbook.pdf", "ship.md"]);
+    expect(documents[0]).toMatchObject({ status: "failed", error: "indexing failed" });
+    expect(documents[1]).toMatchObject({ status: "indexed", chunkCount: 12, contentLength: 5000 });
+    expect(documents[2]).toEqual({ id: "two", name: "ship.md", status: "processing" });
   });
 
-  it("maps an unrecognized pipeline state to unknown rather than dropping the row", async () => {
-    // LightRAG can add states faster than this adapter tracks them.
+  it("keeps unknown pipeline states visible and omits rows without a document id", async () => {
     const { fetchImpl } = mockFetch({
-      statuses: { teleporting: [{ id: "d", file_path: "a.md" }] },
+      documents: [
+        { id: "d", status: "new-state", file_path: "a.md" },
+        { status: "processed", file_path: "ghost.md" },
+      ],
+      pagination: { page: 1, has_next: false },
     });
-    const adapter = buildAdapter({ fetchImpl });
-    expect((await adapter.listDocuments())[0].status).toBe("unknown");
+    expect(await buildAdapter({ fetchImpl }).listDocuments()).toEqual([
+      { id: "d", name: "a.md", status: "unknown" },
+    ]);
   });
 
-  it("skips documents with no id, which could not be deleted anyway", async () => {
-    const { fetchImpl } = mockFetch({
-      statuses: { processed: [{ file_path: "ghost.md" }, { id: "real", file_path: "real.md" }] },
-    });
-    const adapter = buildAdapter({ fetchImpl });
-    expect((await adapter.listDocuments()).map((entry) => entry.id)).toEqual(["real"]);
+  it.each([
+    { documents: [], pagination: { page: 1, has_next: true } },
+    { documents: [], pagination: { page: 2, has_next: false } },
+    { documents: [] },
+  ])("rejects non-progressing or malformed pagination: %j", async (body) => {
+    const { fetchImpl } = mockFetch(body);
+    await expect(buildAdapter({ fetchImpl }).listDocuments()).rejects.toThrow("invalid pagination");
   });
 
   it("throws on a non-200 document list so the host reports a failure", async () => {

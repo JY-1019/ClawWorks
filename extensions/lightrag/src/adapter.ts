@@ -1,5 +1,5 @@
 // LightRAG knowledge foundation adapter: retrieves context chunks from a
-// LightRAG API server (`POST /query`) and maps them onto ClawWorks knowledge
+// LightRAG API server (`POST /query/data`) and maps them onto ClawWorks knowledge
 // snippets. The server, api key, and query mode come from plugin config.
 import type {
   KnowledgeDocumentRemovalOutcome,
@@ -92,13 +92,14 @@ const DOCUMENT_STATUS_BY_LIGHTRAG_STATE: Record<string, KnowledgeDocumentStatus>
 };
 
 /**
- * One `statuses[<state>][]` entry in a LightRAG `GET /documents` response.
+ * One document from LightRAG `POST /documents/paginated`.
  * The nullables are not defensive typing: a freshly uploaded document really is
  * served as `{"chunks_count": null, "error_msg": null, "content_summary": ""}`
  * until indexing fills them in.
  */
 type LightRagDocument = {
   id?: string;
+  status: string;
   file_path?: string;
   content_summary?: string | null;
   content_length?: number | null;
@@ -108,22 +109,17 @@ type LightRagDocument = {
 };
 
 type LightRagDocumentsResponse = {
-  statuses?: Record<string, LightRagDocument[] | undefined>;
+  documents: LightRagDocument[];
+  pagination: { page: number; has_next: boolean };
 };
 
 type LightRagUploadResponse = { status?: string; message?: string; track_id?: string };
 type LightRagDeleteResponse = { status?: string; message?: string };
 
-/** One `references[]` entry in a LightRAG /query response. */
-type LightRagReference = {
-  reference_id?: string;
-  file_path?: string;
-  content?: string[];
-};
-
+/** Structured retrieval keeps backend failure distinct from an empty successful result. */
 type LightRagQueryResponse = {
-  response?: string;
-  references?: LightRagReference[];
+  status: string;
+  data?: { chunks?: Array<{ content: string; reference_id?: string; file_path?: string }> };
 };
 
 export class LightRagKnowledgeFoundation implements KnowledgeFoundationAdapter {
@@ -192,27 +188,35 @@ export class LightRagKnowledgeFoundation implements KnowledgeFoundationAdapter {
     }
   }
 
-  /**
-   * `GET /documents` returns documents grouped by pipeline state
-   * (`{statuses: {processed: [...], failed: [...]}}`), so the grouping is
-   * flattened here and the state carried per document instead.
-   */
+  /** Read all pages: a first-page-only list hides older failed or indexed uploads. */
   async listDocuments(): Promise<KnowledgeFoundationDocument[]> {
-    const response = await this.request("GET", "/documents");
-    if (!response.ok) {
-      throw new Error(`LightRAG document list failed: HTTP ${response.status}`);
-    }
-    const body = (await response.json()) as LightRagDocumentsResponse;
     const documents: KnowledgeFoundationDocument[] = [];
-    for (const [state, entries] of Object.entries(body.statuses ?? {})) {
-      for (const entry of entries ?? []) {
-        if (!entry.id) {
-          continue; // no stable handle means no delete target; skip rather than render a dead row
+    for (let page = 1; ; page += 1) {
+      const response = await this.request("POST", "/documents/paginated", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ page, page_size: 200, sort_field: "id", sort_direction: "asc" }),
+      });
+      if (!response.ok) {
+        throw new Error(`LightRAG document list failed: HTTP ${response.status}`);
+      }
+      const body = (await response.json()) as LightRagDocumentsResponse;
+      if (
+        !Array.isArray(body.documents) ||
+        body.pagination?.page !== page ||
+        typeof body.pagination?.has_next !== "boolean" ||
+        (body.pagination.has_next && body.documents.length === 0)
+      ) {
+        throw new Error("LightRAG document list returned invalid pagination");
+      }
+      for (const entry of body.documents) {
+        if (entry.id) {
+          documents.push(mapDocument(entry, entry.status));
         }
-        documents.push(mapDocument(entry, state));
+      }
+      if (!body.pagination.has_next) {
+        break;
       }
     }
-    // Stable order for a list the server groups rather than sorts.
     return documents.toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
 
@@ -277,15 +281,14 @@ export class LightRagKnowledgeFoundation implements KnowledgeFoundationAdapter {
     }
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const headers = this.headers({ "content-type": "application/json" });
-    const response = await fetchImpl(`${this.baseUrl}/query`, {
+    const response = await fetchImpl(`${this.baseUrl}/query/data`, {
       method: "POST",
       headers,
       body: JSON.stringify({
         query: params.query,
         mode: this.options.mode,
         top_k: params.limit,
-        include_references: true,
-        include_chunk_content: true,
+        chunk_top_k: params.limit,
       }),
       ...(params.signal ? { signal: params.signal } : {}),
     });
@@ -295,7 +298,24 @@ export class LightRagKnowledgeFoundation implements KnowledgeFoundationAdapter {
       );
     }
     const body = (await response.json()) as LightRagQueryResponse;
-    return mapReferencesToSnippets(body.references ?? [], params.foundationId, params.limit);
+    // /query synthesizes prose and can mask a failed retrieval as an empty answer.
+    // /query/data exposes retrieval status and raw chunks, without answer generation.
+    if (body.status !== "success" || !Array.isArray(body.data?.chunks)) {
+      throw new Error(`LightRAG retrieval failed for foundation "${params.foundationId}"`);
+    }
+    return body.data.chunks
+      .filter((chunk) => typeof chunk.content === "string" && chunk.content.trim())
+      .slice(0, params.limit)
+      .map((chunk) =>
+        Object.assign(
+          {
+            foundationId: params.foundationId,
+            text: chunk.content.trim(),
+          },
+          chunk.reference_id ? { title: chunk.reference_id } : {},
+          chunk.file_path ? { source: chunk.file_path } : {},
+        ),
+      );
   }
 }
 
@@ -347,28 +367,3 @@ async function responseDetail(response: Response): Promise<string> {
 }
 
 /** Flatten LightRAG references into snippets, capped at the requested limit. */
-function mapReferencesToSnippets(
-  references: readonly LightRagReference[],
-  foundationId: string,
-  limit: number,
-): KnowledgeSnippet[] {
-  const snippets: KnowledgeSnippet[] = [];
-  for (const reference of references) {
-    for (const chunk of reference.content ?? []) {
-      if (snippets.length >= limit) {
-        return snippets;
-      }
-      const text = chunk.trim();
-      if (!text) {
-        continue;
-      }
-      snippets.push({
-        foundationId,
-        text,
-        ...(reference.reference_id ? { title: reference.reference_id } : {}),
-        ...(reference.file_path ? { source: reference.file_path } : {}),
-      });
-    }
-  }
-  return snippets;
-}
