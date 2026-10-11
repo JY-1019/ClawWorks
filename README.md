@@ -22,6 +22,7 @@
 
 <p align="center">
   <a href="#why-clawworks">Why</a> ·
+  <a href="#architecture-from-agent-loop-to-governed-workflow">Architecture</a> ·
   <a href="#see-it-work">Demo</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#tutorial-govern-a-returns-desk">Tutorial</a> ·
@@ -37,20 +38,38 @@
 ClawWorks adds governed **work-maps** to OpenClaw: versioned process trees that tell an agent which
 step it is on and what that step may use, while leaving the model free to reason inside the step.
 
-- **Predictability** — the procedure is versioned instead of improvised in every prompt.
-- **Visibility** — routes, step transitions, tool decisions, and refusals land in one trace.
-- **Stability** — policy travels with the work-map instead of being rebuilt for each runtime.
+Business processes often have defined steps, while an agent may need several rounds of reasoning
+and tool use to finish one step. ClawWorks connects those two structures: **the work-map defines
+the process and scope; the model reasons inside each step.**
 
-Use it when an agent needs to follow an inspectable process: a support desk checking a returns
-policy, an analyst assembling evidence, or an operator drafting a report. A **work-map** is the
-process, a **step binding** is its permitted tools and sources, and **History** is the evidence of
-what actually happened. Instructions guide the model; bindings and governance enforce access.
+The design starts with three questions:
+
+1. **How can a sequential workflow and an agent's tool-calling loop work together?**
+   A versioned tree defines the route and its ordered steps. Within the active step, the agent
+   can gather evidence, call tools, inspect results, and reason again. `complete_step` advances
+   the cursor one step at a time, so a step can take several tool calls without handing control
+   of the entire process to the model.
+2. **Where should governance sit in the execution path?**
+   At run start and before governed tool execution. Each step declares its capabilities and
+   information sources; structured policies decide whether a call is allowed, needs human
+   approval, or is denied. Explicit denials cannot be overridden by an Allow once decision.
+   These checks complement the inherited tool permissions and execution guards.
+3. **How can agentic behavior be easy to understand, manage, and extend?**
+   Give operators a visible structure for workflows, tools, knowledge, and policies. The Control
+   UI lets them edit definitions and bindings, inspect typed objects, and investigate run traces.
+   Versioned definitions and portable bundles provide a foundation for new processes, while
+   plugins, skills, knowledge adapters, and MCP servers supply their capabilities.
+
+Use it for a support desk checking a returns policy, an analyst assembling evidence, or an
+operator handling an incident. A **work-map** is the process, a **step binding** is its scope,
+and **History** records how it ran. This makes procedures more predictable, decisions visible,
+and policy maintainable alongside the process it governs.
 
 The Control UI is the operator's starting point:
 
 | I want to…                                      | Where to do it                                              |
 | ----------------------------------------------- | ----------------------------------------------------------- |
-| Import a process with its policy                | CLI bundle import once, then **Worktree**                   |
+| Import a process with its policy                | **Worktree → Import bundle**; review, then apply            |
 | Build or edit a definition                      | **Worktree → New tree / Edit**; inspect and save the source |
 | Change a step's instructions                    | Select its **Role prompt** / instruction editor             |
 | Grant tools, knowledge, MCP servers, and skills | Select a node's **Step bindings**                           |
@@ -82,11 +101,11 @@ may incur charges.
 
 ### 1. Install and import the demo
 
-Requires **Node 24** (recommended; 22.19+ supported) and **pnpm 11.2.2**. This branch
-contains the new showcase:
+Requires **Node 24** (recommended; 22.19+ supported) and **pnpm 11.2.2**.
+The commands below run ClawWorks from the repository source:
 
 ```bash
-git clone --branch codex/readme-quickstart-tutorial https://github.com/JY-1019/ClawWorks.git
+git clone https://github.com/JY-1019/ClawWorks.git
 cd ClawWorks
 pnpm install
 pnpm build
@@ -109,8 +128,9 @@ its CLI login alone does not configure the router. Do not expose the dashboard p
 
 Already running a Gateway? Import the bundle, then restart that Gateway instead of
 starting a second process. A bundle includes the inline policy; do not paste it into
-a raw tree editor. Setup uses the CLI so the tour works without a newer bundle-import
-button. The remaining core tour uses Chat, Worktree, and History.
+a raw tree editor. Alternatively, start the Gateway and use **Worktree → Import bundle** to select the same file.
+Review replacement effects, dependency gaps, and governance conflicts before applying it.
+The remaining core tour uses Chat, Worktree, and History.
 
 ### 2. Inspect the work-map
 
@@ -219,28 +239,77 @@ example has a supported ingest or create owner for those records.
 
 ## How it works
 
-ClawWorks mediates a run in four stages. Governance sits **on** the path, not beside it.
+### Architecture: from agent loop to governed workflow
+
+In the comparison below, blue marks the shared runtime and mint
+marks ClawWorks additions. It is a conceptual execution map, rather than a comparison against a
+pinned upstream release. The governed path describes calls that reach the ClawWorks tool gate;
+ACP-owned tool execution remains outside that boundary.
 
 ```mermaid
 flowchart TB
-  R["Inbound request<br/>(channel, CLI, cron)"] --> S
-
-  subgraph MED["Mediation"]
+  subgraph BASE["OpenClaw baseline · model-directed execution"]
     direction TB
-    S["1 · Selection<br/><i>a model judges which work-map governs</i>"]
-    D["2 · Decomposition<br/><i>subtree flattened into a depth-first plan</i>"]
-    A["3 · Step advancement<br/><i>cursor moves on complete_step</i>"]
-    G["4 · Tool-call gate<br/><i>ontology merged root→active, then policies</i>"]
-    S --> D --> A --> G
+    BR["Request · channels / CLI / scheduled triggers"] --> BG["Gateway + session"]
+    BG --> BC["Context assembly · history / instructions / skills / tools"]
+    BC --> BL["LLM inference"]
+    BL -->|tool call| BP["Tool policy + execution guards"]
+    BP -->|allow| BX["Execute tool"]
+    BP -->|ask| BH["Human approval"]
+    BP -->|deny| BD["Reject call"]
+    BH -->|approved| BX
+    BH -->|denied| BD
+    BX --> BO["Result / error"]
+    BD --> BO
+    BO -->|repeat| BL
+    BL -->|answer| BF["Final response"]
+    BO -.-> BS["Session history + runtime events"]
+    BF -.-> BS
   end
 
-  G -->|in scope| X["Execute"]
-  G -->|omitted| P["Ask: Allow once / Deny"]
-  G -->|denied| B["Hard block"]
-  X --> T[("Run trace<br/>SQLite")]
-  P --> T
-  B --> T
+  subgraph CW["ClawWorks · model reasoning within a versioned work-map"]
+    direction TB
+    CR["Request · channels / CLI / scheduled triggers"] --> CG["Gateway + session"]
+    CG --> CM["Work-map mediation · select tree + route / depth-first plan / run-start policy"]
+    CM --> CA["Active step · root-to-current scope"]
+    CA --> CL["LLM inference"]
+    CL -->|tool call| CP["Per-call governance · step scope / policy / arguments"]
+    CP -->|allow| CX["Tool guards + execution"]
+    CP -->|ask| CH["Human approval · Allow once / Deny"]
+    CP -->|explicit deny| CD["Reject call"]
+    CH -->|approved| CX
+    CH -->|denied or timeout| CD
+    CX --> CO["Result / evidence"]
+    CD --> CO
+    CO -->|repeat within step| CL
+    CL -->|complete_step| CC["Advance cursor"]
+    CC -->|next step| CA
+    CL -->|answer| CF["Final response · steps may remain incomplete"]
+    CO -.-> CK["Scoped resources · knowledge + citations / typed objects + relationships / functions + action effects"]
+    CM -.-> CT[("SQLite run trace")]
+    CC -.-> CT
+    CP -.-> CT
+    CO -.-> CT
+    CF -.-> CT
+  end
+
+  classDef shared fill:#192b3c,stroke:#6caeff,color:#ffffff
+  classDef added fill:#113c39,stroke:#64efda,color:#ffffff
+  class BR,BG,BC,BL,BP,BX,BO,BF,BS,CR,CG,CL,CX,CO,CF shared
+  class CM,CA,CP,CC,CK,CT added
 ```
+
+Selection establishes the work-map and route; run-start policy evaluates the selected plan before
+execution. The active step then supplies the scope for each governed call. An allow decision still
+passes through existing execution guards. A result returns to the model, which can continue within
+that step or call `complete_step` to move forward. History connects the route, step transitions,
+and recorded policy decisions to the execution.
+
+**A final answer does not prove that every step completed.** The model can finish early; inspect
+History for unfinished steps. For eligible interrupted executions, an admin can choose
+**Continue this run** in History or beside the conversation composer. This arms a continuation;
+the next eligible request in the same session and transcript that routes to the same work-map
+starts at the first unfinished step. It does not immediately launch work.
 
 **1 · Selection.** Imported work-maps are narrowed to those serving the run's trigger, then a model
 judges which one governs. The run records _how_ it was bound — `planner`, `no-match`,
@@ -255,7 +324,7 @@ step's rules up front and the prompt cache stays stable.
 **3 · Step advancement.** The active node moves when the model calls `complete_step` — a step
 lasts as long as its work does, instead of expiring after one provider turn.
 
-**4 · The tool-call gate.** Each call is evaluated against the active node's ontology merged
+**4 · The tool-call gate.** Each governed call is evaluated against the active node's ontology merged
 down the root-to-active path, then against configured governance policies.
 
 ### The design principle: omissions ask, decisions block
@@ -269,7 +338,7 @@ an author _forgot_ from what an author _decided_:
 | Entry in a step's `deniedTools`                   | **Hard block**                                                                  | Somebody wrote that denial; escalating it to a prompt would make writing one mean nothing |
 | `deny` policy in `enterprise.governance.policies` | **Hard block**, and it wins anywhere on the path                                | Same reason — including on a step _below_ the one whose list omitted the tool             |
 
-Nothing runs unapproved, and it **fails closed**: an approval times out to deny, and a run with
+On this governed path in `enforce` mode, a call requiring approval **fails closed**: an approval times out to deny, and a run with
 no interactive channel — cron, headless — resolves it as a refusal rather than passing it.
 
 ### Operating on a typed object graph
@@ -353,8 +422,12 @@ openclaw enterprise trees list                  # what governs this install
 openclaw enterprise trees validate acme.yaml    # check before importing
 openclaw enterprise trees import acme.yaml
 openclaw enterprise bundle export acme.support  # tree + tree-scoped knowledge
-openclaw enterprise policy compile "refunds over $500 need approval"
+openclaw enterprise policy compile "require approval before the issue-refund action"
 ```
+
+The policy compiler proposes a rule for review; it does not apply it. Policies match identifiers
+(tree, step, tool, action, knowledge), not numeric thresholds or record attributes. Natural-language
+preconditions and constraints are guidance, not executable business-rule validation.
 
 ### Knowledge foundations
 
@@ -391,10 +464,12 @@ satisfied. The rebrand is display-name only and stops at a reviewed boundary; a 
 ## Versioning
 
 ClawWorks tracks **its own semantic version**, independent of the calendar releases it derives
-from. The current line is `0.1.0-beta.1`.
+from. The current package version is `0.1.0-beta.1`. This README describes the current source checkout;
+new source changes may precede a tagged release. Use `package.json` for version and upstream
+provenance, and pin a release or commit for reproducible deployments.
 
 **Beta means:** the governance surfaces — work-maps, grants, policies, traces — are usable and
-covered by the enterprise golden checks, but the work-map schema and gateway methods may still
+exercised by enterprise tests and example scenarios, but the work-map schema and gateway methods may still
 change between beta releases. Pin an exact version if you depend on them.
 
 The upstream fork point is recorded in `package.json`, so which OpenClaw release this is built
