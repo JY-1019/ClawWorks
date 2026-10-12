@@ -40,9 +40,15 @@ export function loadMemoryEmbeddingCache(params: {
   const out = new Map<string, number[]>();
   const batchSize = 400;
   for (const identity of params.providerIdentities) {
+    // Earlier identities win. Only unresolved hashes need alias lookups; rereading
+    // hits would load duplicate vectors during every cached reindex.
+    const missing = unique.filter((hash) => !out.has(hash));
+    if (missing.length === 0) {
+      break;
+    }
     const baseParams: SQLInputValue[] = [identity.provider, identity.model, identity.providerKey];
-    for (let start = 0; start < unique.length; start += batchSize) {
-      const batch = unique.slice(start, start + batchSize);
+    for (let start = 0; start < missing.length; start += batchSize) {
+      const batch = missing.slice(start, start + batchSize);
       const placeholders = batch.map(() => "?").join(", ");
       const rows = params.db
         .prepare(

@@ -105,6 +105,51 @@ describe("memory embedding cache", () => {
     }
   });
 
+  it.each([
+    { activeCount: 401, expectedQueries: 2 },
+    { activeCount: 400, expectedQueries: 3 },
+  ])(
+    "queries only unresolved hashes across aliases ($activeCount active hits)",
+    ({ activeCount, expectedQueries }) => {
+      const db = createDb();
+      try {
+        const hashes = Array.from({ length: 401 }, (_, index) => `hash-${index}`);
+        const identities = ["current", "alias", "unused"].map((providerKey) => ({
+          provider: "local",
+          model: "embedding-model",
+          providerKey,
+        }));
+        for (const [index, identity] of identities.entries()) {
+          upsertMemoryEmbeddingCache({
+            db,
+            enabled: true,
+            provider: { id: identity.provider, model: identity.model },
+            providerKey: identity.providerKey,
+            entries: hashes.slice(0, index === 0 ? activeCount : hashes.length).map((hash) => ({
+              hash,
+              embedding: [index + 1],
+            })),
+          });
+        }
+        const prepare = vi.spyOn(db, "prepare");
+        const cached = loadMemoryEmbeddingCache({
+          db,
+          enabled: true,
+          providerIdentities: identities,
+          hashes: [...hashes, hashes[0]],
+        });
+
+        expect(cached.size).toBe(401);
+        for (const [index, hash] of hashes.entries()) {
+          expect(cached.get(hash)).toEqual([index < activeCount ? 1 : 2]);
+        }
+        expect(prepare).toHaveBeenCalledTimes(expectedQueries);
+      } finally {
+        db.close();
+      }
+    },
+  );
+
   it("reuses cached embeddings on forced reindex instead of scheduling new embeds", () => {
     const cached = new Map<string, number[]>([
       ["alpha", [0.1, 0.2]],
