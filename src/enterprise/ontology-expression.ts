@@ -539,6 +539,16 @@ function evaluateCall(node: Extract<Node, { kind: "call" }>, scope: OntologyScop
 }
 
 function evaluate(node: Node, scope: OntologyScope): OntologyValue {
+  const value = evaluateNode(node, scope);
+  // Check intermediate results too: overflow can otherwise become a successful
+  // comparison or serialize as null, hiding a failed numeric computation.
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new EvalError("expression produced a non-finite number");
+  }
+  return value;
+}
+
+function evaluateNode(node: Node, scope: OntologyScope): OntologyValue {
   switch (node.kind) {
     case "literal":
       return node.value;

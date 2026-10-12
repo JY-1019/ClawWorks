@@ -124,6 +124,28 @@ describe("inferOntologyExpressionType", () => {
 });
 
 describe("evaluateOntologyExpression", () => {
+  it.each([
+    "$amount * 2",
+    "-$amount * 2",
+    "$amount / 0.5",
+    "($amount * 2) > 0",
+    "min($amount * 2, 1)",
+    "($amount * 2) - ($amount * 2)",
+  ])("reports numeric overflow instead of returning a misleading result: %s", (source) => {
+    expect(evaluate(source, { amount: Number.MAX_VALUE })).toEqual({
+      ok: false,
+      error: "expression produced a non-finite number",
+    });
+  });
+
+  it("keeps overflow checks lazy and accepts finite numeric limits", () => {
+    const scope = { amount: Number.MAX_VALUE };
+    expect(evaluate("$amount", scope)).toEqual({ ok: true, value: Number.MAX_VALUE });
+    expect(evaluate("true ? 1 : $amount * 2", scope)).toEqual({ ok: true, value: 1 });
+    expect(evaluate("false && $amount * 2 > 0", scope)).toEqual({ ok: true, value: false });
+    expect(evaluate("coalesce(1, $amount * 2)", scope)).toEqual({ ok: true, value: 1 });
+  });
+
   it("evaluates arithmetic, comparison, boolean, and ternary", () => {
     expect(evaluate("1 + 2 * 3")).toEqual({ ok: true, value: 7 });
     expect(evaluate("(1 + 2) * 3")).toEqual({ ok: true, value: 9 });
