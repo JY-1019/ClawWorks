@@ -1,0 +1,41 @@
+schema: clawworks.routing-cases
+schemaVersion: 1
+trees:
+  - examples/enterprise/golden/combined-return.clawworks-bundle.yaml
+  - examples/enterprise/financial-operations.clawworks-bundle.yaml
+  - examples/enterprise/golden/service-incident.clawworks-bundle.yaml
+cases:
+  - id: COMBINED01
+    category: deep-combined-node
+    request: Acme 주문 1043을 MCP로 조회하고 반품 정책을 검색해서 반품 자격을 심사해 줘. 사례 CASE-1043과 증거 EVIDENCE-1043을 저장하고 연결한 뒤 계산 결과와 연결된 증거를 검증해 줘. 실제 환불이나 메시지 발송은 하지 마.
+    expected:
+      kind: execute
+      treeId: demo.combined-return
+      leaves: [operations.orders.returns.cases.assess]
+  - id: COMBINED02
+    category: deep-combined-node
+    request: Assess return eligibility for Acme order 1051. Fetch the order, retrieve the policy, save case CASE-1051 with evidence EVIDENCE-1051, compute eligibility, and verify the linked evidence. Do not execute a refund.
+    expected:
+      kind: execute
+      treeId: demo.combined-return
+      leaves: [operations.orders.returns.cases.assess]
+  - id: COMBINED03
+    category: policy-only
+    request: Acme 반품 자격의 기간과 금액 기준만 설명해 줘. 특정 주문 조회나 사례 생성은 하지 마.
+    expected:
+      kind: execute
+      treeId: demo.combined-return
+      leaves: [operations.orders.returns.policy]
+  - id: COMBINED04
+    category: delivery-only
+    request: Acme 주문 1044의 운송사와 배송 추적 이력만 조회해 줘. 반품 심사는 필요 없어.
+    expected:
+      kind: execute
+      treeId: demo.combined-return
+      leaves: [operations.orders.delivery]
+  - id: COMBINED05
+    category: domain-collision
+    request: TypeScript 코드에서 return 문을 어떻게 쓰는지 설명해 줘. 고객 주문이나 반품 업무 요청이 아니야.
+    expected:
+      kind: execute
+      treeId: clawworks.assist

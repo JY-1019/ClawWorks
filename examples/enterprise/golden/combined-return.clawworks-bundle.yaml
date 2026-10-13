@@ -1,0 +1,187 @@
+# Import this bundle and register the existing tutorial MCP server as acme-tracker.
+# node examples/enterprise/tutorial/mcp/server.mjs
+# The server provides fictional orders; no refund or customer message is sent.
+schema: clawworks.workflow-bundle
+schemaVersion: 1
+trees:
+  - schema: clawworks.workflow-tree
+    schemaVersion: 1
+    id: demo.combined-return
+    version: 1.0.0
+    name: Customer operations — combined return assessment
+    description: >-
+      Fictional Acme customer operations: order tracking, delivery questions,
+      returns policy, and evidence-backed return assessments. A complete return
+      assessment fetches an order from MCP, retrieves the return policy, records
+      a local case with linked evidence, and computes eligibility in one step.
+    capabilityGrants: explicit
+    root:
+      id: operations
+      title: Customer operations
+      ontology:
+        audit: true
+        allowedTools:
+          - knowledge_search
+          - search_objects
+          - invoke_action
+          - compute_function
+          - get_neighbors
+          - acme-tracker__*
+          - acme_tracker__*
+          - mcp__acme-tracker__*
+          - mcp__acme_tracker__*
+        deniedTools:
+          [exec, process, browser, web_fetch, web_search, write, edit, apply_patch, message]
+        guidance: >-
+          This exercise uses fictional orders and local case records. Never
+          claim a refund, shipment, or customer message was issued. Ask for any
+          missing ids. Use real tool results, and state when a dependency fails.
+      children:
+        - id: operations.accounts
+          title: Account help
+          description: Explain account support options; no order assessment.
+        - id: operations.orders
+          title: Order operations
+          description: Delivery tracking, order records, and returns.
+          children:
+            - id: operations.orders.delivery
+              title: Delivery tracking
+              description: Read shipment scans only; no return eligibility assessment.
+              ontology:
+                mcpServers: [acme-tracker]
+                guidance: Use shipment_track for the supplied order id.
+            - id: operations.orders.returns
+              title: Returns
+              description: Policy questions and evidence-backed return case assessments.
+              children:
+                - id: operations.orders.returns.policy
+                  title: Explain the return policy
+                  description: Policy-only questions; no order lookup or case creation.
+                  ontology:
+                    allowedTools: [knowledge_search]
+                    knowledgeFoundations: [demo.return-policy]
+                - id: operations.orders.returns.cases
+                  title: Return case work
+                  description: Assess a specific order and retain the actual evidence.
+                  children:
+                    - id: operations.orders.returns.cases.assess
+                      title: Assess and record a return
+                      description: >-
+                        Complete one return assessment by combining MCP order
+                        lookup, knowledge search, local ontology actions,
+                        eligibility computation, and linked evidence verification.
+                      ontology:
+                        mcpServers: [acme-tracker]
+                        knowledgeFoundations: [demo.return-policy]
+                        allowedTools:
+                          - knowledge_search
+                          - search_objects
+                          - invoke_action
+                          - compute_function
+                          - get_neighbors
+                          - acme-tracker__*
+                          - acme_tracker__*
+                          - mcp__acme-tracker__*
+                          - mcp__acme_tracker__*
+                        guidance: >-
+                          Require an order id and fresh case-id and evidence-id.
+                          First call order_status on acme-tracker. Search the
+                          bundled return policy for "return eligibility".
+                          Stop if the order is unknown, not delivered, or either
+                          lookup fails. Read case and evidence ids to prevent
+                          replacing existing records. Record only the returned
+                          order id, daysSinceDelivery, and total, plus the actual
+                          policy source and a factual evidence summary. Call
+                          record-return-assessment once. Then compute
+                          return-eligible for the stored case objectId, and get its
+                          return-has-evidence neighbors. Report the computed
+                          value, retrieved source, and persisted evidence. Stay
+                          on this one step for the entire assessment.
+                        expectedOutput: >-
+                          Order facts, cited policy, computed eligibility, case
+                          id, and linked evidence. This is a local assessment;
+                          it does not authorize or execute a refund.
+                        entities:
+                          - id: return-case
+                            title: Return assessment
+                            properties:
+                              - { id: case-id, type: id, primaryKey: true, required: true }
+                              - { id: order-id, type: string, required: true }
+                              - { id: days-since-delivery, type: number, required: true }
+                              - { id: total, type: number, required: true }
+                          - id: return-evidence
+                            title: Retrieved assessment evidence
+                            properties:
+                              - { id: evidence-id, type: id, primaryKey: true, required: true }
+                              - { id: policy-source, type: string, required: true }
+                              - { id: summary, type: string, required: true }
+                        relationships:
+                          - id: return-has-evidence
+                            from: return-case
+                            to: return-evidence
+                            cardinality: one-to-many
+                        actions:
+                          - id: record-return-assessment
+                            title: Record a case and link its retrieved evidence
+                            tools: [invoke_action]
+                            parameters:
+                              - { id: case-id, type: id, required: true }
+                              - { id: order-id, type: string, required: true }
+                              - { id: days-since-delivery, type: number, required: true }
+                              - { id: total, type: number, required: true }
+                              - { id: evidence-id, type: id, required: true }
+                              - { id: policy-source, type: string, required: true }
+                              - { id: summary, type: string, required: true }
+                            effects:
+                              - { entity: return-case, kind: create }
+                              - { entity: return-evidence, kind: create }
+                              - { relationship: return-has-evidence, kind: link }
+                        functions:
+                          - id: return-eligible
+                            title: Standard return eligibility
+                            entity: return-case
+                            expression: "$days-since-delivery >= 0 && $days-since-delivery <= 30 && $total <= 200"
+                            returns: boolean
+                    - id: operations.orders.returns.cases.escalate
+                      title: Explain manual review
+                      description: Explain escalation for exceptional returns; never create an assessment.
+                      ontology:
+                        allowedTools: [knowledge_search]
+                        knowledgeFoundations: [demo.return-policy]
+            - id: operations.orders.billing
+              title: Billing questions
+              description: Explain billing support; no return eligibility assessment.
+        - id: operations.catalog
+          title: Product questions
+          description: Product information requests; no order lookup or return assessment.
+knowledgeFoundations:
+  - id: demo.return-policy
+    descriptor:
+      kind: remote
+      displayName: Fictional return policy (bundled)
+      description: Return eligibility and manual review thresholds for the demo.
+      detail: Inlined read-only policy; no knowledge server is contacted.
+    snippets:
+      - foundationId: demo.return-policy
+        title: Return eligibility
+        source: returns/eligibility.md
+        text: >-
+          Return eligibility in this fictional exercise requires a delivered
+          order, 0 through 30 days since delivery inclusive, and a total no
+          greater than USD 200. Orders outside those limits need manual review.
+          Save retrieved facts and the policy source in a local case, compute
+          return-eligible, and verify linked evidence. A local eligible result
+          neither approves nor executes a refund.
+requiredTools:
+  - compute_function
+  - get_neighbors
+  - invoke_action
+  - knowledge_search
+  - search_objects
+  - acme-tracker__*
+  - acme_tracker__*
+  - mcp__acme-tracker__*
+  - mcp__acme_tracker__*
+requiredSkills: []
+requiredMcpServers: [acme-tracker]
+governanceMode: enforce
