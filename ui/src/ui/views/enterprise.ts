@@ -1,6 +1,7 @@
 // Control UI view renders the enterprise inspection screen: recent governed
 // runs, a per-execution step/trace inspector, and the workflow-tree registry.
 import { html, nothing, type TemplateResult } from "lit";
+import { ref } from "lit/directives/ref.js";
 import type {
   EnterpriseKnowledgeFoundationSummary,
   EnterpriseOntologyObject,
@@ -17,32 +18,39 @@ import type {
 import { isToolAllowedByPolicies } from "../../../../src/agents/tool-policy-match.js";
 import { t } from "../../i18n/index.ts";
 import type { OntologyEntity } from "../components/ontology-graph.ts";
-import "../components/modal-dialog.ts";
-import "../components/ontology-graph.ts";
-import "../components/workflow-tree-graph.ts";
 import type {
   EnterpriseCatalogErrors,
   EnterpriseCatalogPhase,
+  EnterpriseGuidanceDraft,
+  EnterpriseListErrors,
   EnterpriseNodeDraft,
   EnterpriseNodeDraftError,
   EnterpriseBindingDetail,
   EnterpriseBindingPicker,
   EnterpriseBindingPickerFailure,
+  EnterpriseBundleDraft,
+  EnterpriseBundleStatus,
   EnterpriseMcpDraft,
   EnterpriseOntologyDraft,
   EnterpriseOntologyDraftBody,
   EnterpriseOntologyEntryDraftError,
   EnterpriseTreeConfirm,
+  EnterpriseTreeDraft,
+  EnterpriseTreeDraftError,
   EnterpriseTreeEditFormat,
 } from "../controllers/enterprise.ts";
+import "../components/modal-dialog.ts";
+import "../components/ontology-graph.ts";
+import "../components/workflow-tree-graph.ts";
 import { parseMcpServerImport } from "../controllers/mcp-server-import.ts";
+import { enterpriseResumeRefusalMessage } from "../enterprise-resume.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import {
   collectNodeOntologyGraph,
   declaredExecutableEntityIds,
-  declaredExecutableRelationshipIds,
   declaredNodePathEntityIds,
   collectOntologyGraph,
+  nodePathTo,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
 import {
@@ -55,12 +63,14 @@ import {
   type OntologyValueTypeName,
 } from "./enterprise-tree-edit.ts";
 import type { McpServerRow } from "./mcp.ts";
-import { renderSkillStatusChips } from "./skills-shared.ts";
+import { isSkillAvailable, renderSkillStatusChips } from "./skills-shared.ts";
 
 export type EnterpriseProps = {
   loading: boolean;
   runs: EnterpriseRunSummary[];
   trees: EnterpriseTreeSummary[];
+  historyOnlyTreeIds: string[];
+  listErrors: EnterpriseListErrors;
   importErrors: EnterpriseTreesListResult["importErrors"];
   storeError: string | null;
   selectedExecutionId: string | null;
@@ -80,27 +90,44 @@ export type EnterpriseProps = {
   nodeObjectsEntity: string | null;
   nodeObjects: EnterpriseOntologyObject[];
   nodeObjectsLoading: boolean;
+  nodeObjectsError: string | null;
   treeEditing: boolean;
+  visualEditing?: boolean;
+  treeDraft: EnterpriseTreeDraft | null;
   treeEditContent: string;
   treeEditFormat: EnterpriseTreeEditFormat;
   treeSaving: boolean;
   treeSaveIssues: EnterpriseTreeImportIssue[] | null;
+  /** Authoring checks computed from the authoritative selected work-map. */
+  treeWarnings: EnterpriseTreeImportIssue[] | null;
   treeSaveError: string | null;
   treeConfirm: EnterpriseTreeConfirm | null;
+  bundleDraft: EnterpriseBundleDraft | null;
+  bundleStatus: EnterpriseBundleStatus | null;
   treeVersions: EnterpriseTreeVersionSummary[];
   treeVersionsLoading: boolean;
+  treeVersionsError: string | null;
   // Whether the session holds operator.admin: tree import/remove are admin-only,
   // so mutation controls are hidden without it (reads stay available).
   canEdit: boolean;
-  // P5 dynamic node creation: the open "add child node" form (under a selected
-  // node), or null. Submit splices the child and loads the editor for Save.
+  // Dynamic node creation: the open "add child node" form under a selected node.
+  // Submit splices and saves the child through the shared tree-import path.
   nodeDraft: EnterpriseNodeDraft | null;
   error: string | null;
   onRefresh: () => void;
   onSelectRun: (executionId: string) => void;
   onSelectTree: (treeId: string) => void;
   onBeginEdit: () => void;
+  onBeginRawEdit?: () => void;
+  onBeginSettings: () => void;
   onBeginNew: () => void;
+  onEditNew: (patch: Partial<Omit<EnterpriseTreeDraft, "error">>) => void;
+  onCancelNew: () => void;
+  onSubmitNew: () => void;
+  onImportFile: (file: File) => void;
+  onPreviewBundleFile: (file: File) => void;
+  onCancelBundlePreview: () => void;
+  onApplyBundle: () => void;
   onEditContent: (content: string) => void;
   onEditFormat: (format: EnterpriseTreeEditFormat) => void;
   onCancelEdit: () => void;
@@ -109,20 +136,25 @@ export type EnterpriseProps = {
   onCancelConfirm: () => void;
   onConfirm: () => void;
   onExport: (treeId: string, format: EnterpriseTreeEditFormat) => void;
+  onExportBundle: (treeId: string, format: EnterpriseTreeEditFormat) => void;
   onLoadVersion: (treeId: string, revision: number) => void;
-  onSelectNode: (nodeId: string | null) => void;
+  onSelectNode: (nodeId: string | null) => boolean;
   onSelectNodeEntity: (entity: string) => void;
   /** Switch the selected work-map between explicit and inherited capability grants. */
   onToggleCapabilityGrants: () => void;
+  /** Remove empty MCP markers after an explicit confirmation. */
+  onDisableMcpGovernance: () => void;
   onBeginAddNode: (parentId: string) => void;
-  onEditNodeDraft: (patch: { id?: string; title?: string }) => void;
+  onEditNodeDraft: (patch: { id?: string; title?: string; description?: string }) => void;
   onCancelAddNode: () => void;
   onSubmitAddNode: () => void;
+  onRemoveNode: (nodeId: string) => void;
   // The open "grant a tool" / "declare a skill" / "allow a knowledge foundation"
   // picker for the selected step, or null. Confirming applies the picks straight
   // through enterprise.trees.import.
   bindingPicker: EnterpriseBindingPicker | null;
   onOpenBindingPicker: (nodeId: string, field: NodeOntologyListField) => void;
+  onEnableMcpGovernance: (nodeId: string) => void;
   /**
    * Detach one entry. Separate from the picker: the picker collects a selection,
    * while this is already a specific entry on a specific step.
@@ -140,9 +172,12 @@ export type EnterpriseProps = {
     origin: "step" | "inherited";
   }) => void;
   onCloseBindingDetail: () => void;
-  /** In-progress role-prompt edit, or null when nothing is being edited. */
-  guidanceDraft: { treeId: string; nodeId: string; text: string } | null;
-  onGuidanceDraft: (nodeId: string, text: string) => void;
+  /** In-progress step-behavior edit, or null when nothing is being edited. */
+  guidanceDraft: EnterpriseGuidanceDraft | null;
+  onGuidanceDraft: (
+    nodeId: string,
+    patch: Partial<Omit<EnterpriseGuidanceDraft, "treeId" | "nodeId" | "expectedHash">>,
+  ) => void;
   onSaveGuidance: (nodeId: string) => void;
   onCancelGuidance: () => void;
   /** The one open ontology form, or null. */
@@ -151,25 +186,38 @@ export type EnterpriseProps = {
   onEditOntologyDraft: (patch: Partial<EnterpriseOntologyDraft>) => void;
   onSubmitOntologyDraft: () => void;
   onCancelOntologyDraft: () => void;
-  onRemoveOntologyEntity: (nodeId: string, entityId: string) => void;
-  onRemoveOntologyProperty: (nodeId: string, entityId: string, propertyId: string) => void;
+  onRemoveOntologyEntity: (nodeId: string, entityId: string, entityIndex?: number) => void;
+  onRemoveOntologyProperty: (
+    nodeId: string,
+    entityId: string,
+    propertyId: string,
+    entityIndex?: number,
+    propertyIndex?: number,
+  ) => void;
   onRemoveOntologyRelationship: (
     nodeId: string,
-    link: { id: string; from: string; to: string },
+    link: { id: string; from: string; to: string; index?: number },
   ) => void;
-  onRemoveOntologyAction: (nodeId: string, actionId: string) => void;
+  onRemoveOntologyAction: (nodeId: string, actionId: string, actionIndex?: number) => void;
   onRemoveOntologyActionEffect: (
     nodeId: string,
-    effect:
+    effect: { actionIndex?: number; effectIndex?: number } & (
       | { actionId: string; entity: string; kind: OntologyEffectKindName }
       | { actionId: string; kind: "call"; tool: string }
-      | { actionId: string; kind: "link" | "unlink"; relationship: string },
+      | { actionId: string; kind: "link" | "unlink"; relationship: string }
+    ),
   ) => void;
   onRemoveOntologyActionParameter: (
     nodeId: string,
-    parameter: { actionId: string; parameterId: string },
+    parameter: {
+      actionId: string;
+      parameterId: string;
+      actionIndex?: number;
+      parameterIndex?: number;
+    },
   ) => void;
-  onRemoveOntologyFunction: (nodeId: string, functionId: string) => void;
+  onRemoveOntologyFunction: (nodeId: string, functionId: string, functionIndex?: number) => void;
+  onRemoveOntologyConstraint: (nodeId: string, target: { index: number; id: string }) => void;
   onBindingPickerQuery: (query: string) => void;
   onBindingPickerCustom: (value: string) => void;
   onToggleBindingPickerValue: (value: string) => void;
@@ -266,20 +314,27 @@ function ontologyEntryErrorMessage(error: EnterpriseOntologyEntryDraftError): st
  */
 function renderCatalogEmpty(
   phase: EnterpriseCatalogPhase,
-  error: string | null,
+  error: string | null | undefined,
   emptyMessage: string,
 ): TemplateResult | typeof nothing {
   if (error) {
-    return html`<div class="callout danger" style="margin-top: 12px;">${error}</div>`;
+    return html`<div class="callout danger" role="alert" style="margin-top: 12px;">${error}</div>`;
   }
-  if (phase !== "ready") {
+  if (error === undefined || phase === "unloaded") {
     return html`<div class="muted" style="margin-top: 12px;">${t("common.loading")}</div>`;
   }
   return html`<div class="muted" style="margin-top: 12px;">${emptyMessage}</div>`;
 }
 
 /** One catalog entry the picker can offer, with what it is for. */
-type BindingOption = { value: string; description?: string };
+type BindingOption = { value: string; description?: string; disabled?: boolean };
+
+/** Match the model-facing snapshot that enterprise mediation can actually grant. */
+function isModelUsableSkill(skill: SkillStatusEntry): boolean {
+  // `modelVisible` is authoritative on current gateways. Fall back for older
+  // status payloads that predate the field instead of hiding every skill.
+  return skill.modelVisible ?? isSkillAvailable(skill);
+}
 
 /**
  * Example shape for the picker's typed entry, per binding kind. Only tool scopes
@@ -313,7 +368,7 @@ function customEntryLabel(field: NodeOntologyListField): string {
  */
 function pickerEmptyMessage(params: {
   phase: EnterpriseCatalogPhase;
-  error: string | null;
+  error: string | null | undefined;
   hasQuery: boolean;
   catalogExhausted: boolean;
 }): string {
@@ -366,17 +421,28 @@ type OntologyEntryAdder = {
  */
 function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): TemplateResult {
   const { field, nodeId } = adder;
+  const canEnableMcpGovernance = field === "mcpServers" && !workMapHasMcpMarker(props);
   return html`
     <section class="binding-group">
       <header class="binding-group__head">
         <span class="binding-group__title">${adder.title}</span>
         <code class="binding-group__key">${BINDING_FIELD_META[field].configKey}</code>
         <span class="chip">${adder.values.length}</span>
+        ${props.canEdit && canEnableMcpGovernance
+          ? html`<button
+              type="button"
+              class="btn btn--sm"
+              ?disabled=${nodeMutationLocked(props)}
+              @click=${() => props.onEnableMcpGovernance(nodeId)}
+            >
+              ${t("enterprise.entryDraft.requireMcpAttachments")}
+            </button>`
+          : nothing}
         ${props.canEdit
           ? html`<button
               type="button"
               class="btn btn--sm"
-              ?disabled=${props.treeSaving}
+              ?disabled=${nodeMutationLocked(props)}
               @click=${() => props.onOpenBindingPicker(nodeId, field)}
             >
               ${t("enterprise.entryDraft.add")}
@@ -404,15 +470,27 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
           : nothing}
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
         ${adder.constrainingAncestors?.length
-          ? html`<div class="callout">
-              ${t("enterprise.entryDraft.ancestorGateApproval", {
-                nodeIds: adder.constrainingAncestors.join(", "),
-              })}
-            </div>`
+          ? html`<div class="callout">${ancestorGateCallout(adder)}</div>`
           : nothing}
       </div>
     </section>
   `;
+}
+
+/**
+ * The ancestor-gate callout for a row.
+ *
+ * Knowledge gets its own wording because the RULE is different, not just the
+ * noun: an ancestor's allow-list intersects retrieval away with no approval
+ * prompt, no denial record, and no `deniedTools` equivalent to point at — so the
+ * tool copy's "otherwise it needs a one-off approval" would send an operator to
+ * ship a step whose retrieval silently returns nothing.
+ */
+function ancestorGateCallout(adder: OntologyEntryAdder): string {
+  const nodeIds = (adder.constrainingAncestors ?? []).join(", ");
+  return adder.field === "knowledgeFoundations"
+    ? t("enterprise.entryDraft.ancestorGateKnowledge", { nodeIds })
+    : t("enterprise.entryDraft.ancestorGateApproval", { nodeIds });
 }
 
 /**
@@ -456,13 +534,90 @@ function renderBindingChip(params: {
           class="chip-remove"
           title=${t("enterprise.entryDraft.removeTitle", { entry: value })}
           aria-label=${t("enterprise.entryDraft.removeTitle", { entry: value })}
-          ?disabled=${props.treeSaving}
-          @click=${() => props.onRemoveBinding(adder.nodeId, adder.field, value)}
+          ?disabled=${nodeMutationLocked(props)}
+          @click=${() => removeBindingFromStep(props, adder, value)}
         >
           ×
         </button>`
       : nothing}</span
   >`;
+}
+
+function removeBindingFromStep(
+  props: EnterpriseProps,
+  adder: OntologyEntryAdder,
+  value: string,
+): void {
+  const removesLastLocalScope = lastLocalScopeRemovalWidens(props, adder, value);
+  const warning =
+    removesLastLocalScope && adder.field === "allowedTools"
+      ? t("enterprise.entryDraft.removeLastAllowedTool")
+      : removesLastLocalScope && adder.field === "knowledgeFoundations"
+        ? t("enterprise.entryDraft.removeLastKnowledgeFoundation")
+        : null;
+  if (!warning || window.confirm(warning)) {
+    props.onRemoveBinding(adder.nodeId, adder.field, value);
+  }
+}
+
+/**
+ * Whether dropping this step's final local allow-list entry exposes a capability
+ * the current path does not admit. Explicit grants can still widen to an ancestor
+ * grant, while an inherited path constrained to the same entry does not widen.
+ */
+function lastLocalScopeRemovalWidens(
+  props: EnterpriseProps,
+  adder: OntologyEntryAdder,
+  value: string,
+): boolean {
+  if (
+    adder.values.length !== 1 ||
+    (adder.field !== "allowedTools" && adder.field !== "knowledgeFoundations")
+  ) {
+    return false;
+  }
+  const explicit = props.treeDetail?.capabilityGrants === "explicit";
+  const ancestorIds = constrainingAncestorIds(props, adder.nodeId, adder.field);
+  if (ancestorIds.length === 0) {
+    return !explicit && (adder.field === "knowledgeFoundations" || value.trim() !== "*");
+  }
+  if (adder.field === "knowledgeFoundations") {
+    return inheritedKnowledgeFoundations(props, adder.nodeId).some(
+      (foundation) => foundation !== value,
+    );
+  }
+
+  const nodes = props.treeDetail?.nodes ?? [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const node = byId.get(adder.nodeId);
+  if (!node) {
+    return false;
+  }
+  const { allowedTools: _allowedTools, ...ontologyWithoutAllow } = node.ontology;
+  const unscopedNode = { ...node, ontology: ontologyWithoutAllow };
+  byId.set(node.id, unscopedNode);
+  const after = toolPolicyPath(unscopedNode, byId);
+  const candidates = new Set([
+    ...props.toolGroups.flatMap((group) => group.tools.map((tool) => tool.id)),
+    ...after.path.slice(1).flatMap((ancestor) => ancestor.ontology.allowedTools ?? []),
+  ]);
+  const localPolicy = { allow: [value] };
+  const explicitFloor = new Set(["message", "read", "memory_search"]);
+  return [...candidates].some((candidate) => {
+    const normalized = candidate.trim().toLowerCase();
+    if (normalized === "complete_step" || (explicit && explicitFloor.has(normalized))) {
+      return false;
+    }
+    const namedByAncestor = after.path.slice(1).some((ancestor) => {
+      const allow = ancestor.ontology.allowedTools ?? [];
+      return allow.length > 0 && isToolAllowedByPolicies(candidate, [{ allow }]);
+    });
+    return (
+      (!explicit || namedByAncestor) &&
+      isToolAllowedByPolicies(candidate, after.policies) &&
+      !isToolAllowedByPolicies(candidate, [...after.policies, localPolicy])
+    );
+  });
 }
 
 /**
@@ -533,7 +688,9 @@ function renderBindingPicker(
     ? props.mcpServersKnown
       ? "ready"
       : "loading"
-    : props.catalogPhase;
+    : catalogError === undefined || props.catalogPhase === "unloaded"
+      ? "loading"
+      : "ready";
   return html`
     <openclaw-modal-dialog
       label=${adder.title}
@@ -571,7 +728,7 @@ function renderBindingPicker(
                   <input
                     type="checkbox"
                     .checked=${picker.selected.includes(option.value)}
-                    ?disabled=${!idle}
+                    ?disabled=${!idle || option.disabled === true}
                     @change=${() => props.onToggleBindingPickerValue(option.value)}
                   />
                   <span class="binding-picker__option-main">
@@ -617,11 +774,7 @@ function renderBindingPicker(
           : nothing}
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
         ${adder.constrainingAncestors?.length
-          ? html`<div class="callout">
-              ${t("enterprise.entryDraft.ancestorGateApproval", {
-                nodeIds: adder.constrainingAncestors.join(", "),
-              })}
-            </div>`
+          ? html`<div class="callout">${ancestorGateCallout(adder)}</div>`
           : nothing}
         ${writing ? html`<div class="callout">${t("enterprise.picker.saving")}</div>` : nothing}
         ${picker.failure ? renderPickerFailure(picker.failure) : nothing}
@@ -661,9 +814,11 @@ function renderPickerFailure(failure: EnterpriseBindingPickerFailure): TemplateR
     // A refusal the server sent no issues for still has to read as a refusal, not
     // as an empty list under a heading promising reasons.
     if (failure.issues.length === 0) {
-      return html`<div class="callout danger">${t("enterprise.entryDraft.importRejected")}</div>`;
+      return html`<div class="callout danger" role="alert">
+        ${t("enterprise.entryDraft.importRejected")}
+      </div>`;
     }
-    return html`<div class="callout danger">
+    return html`<div class="callout danger" role="alert">
       <div>${t("enterprise.saveInvalid")}</div>
       ${failure.issues.map(
         (issue) => html`<div class="muted">
@@ -675,11 +830,13 @@ function renderPickerFailure(failure: EnterpriseBindingPickerFailure): TemplateR
   if (failure.kind === "import-refused") {
     // The gateway's own message names the reason (permissions, a stale revision);
     // dropping it would leave a refusal with nothing to act on.
-    return html`<div class="callout danger">
+    return html`<div class="callout danger" role="alert">
       ${t("enterprise.entryDraft.importRefused", { message: failure.message })}
     </div>`;
   }
-  return html`<div class="callout danger">${ontologyEntryErrorMessage(failure.kind)}</div>`;
+  return html`<div class="callout danger" role="alert">
+    ${ontologyEntryErrorMessage(failure.kind)}
+  </div>`;
 }
 
 /**
@@ -749,11 +906,14 @@ function stepsAlsoDeclaring(
  * visible, so reporting a failed load as "still loading" leaves the operator
  * watching a dialog that will never fill in.
  */
-function catalogUnavailable(props: EnterpriseProps, error: string | null): TemplateResult | null {
+function catalogUnavailable(
+  props: EnterpriseProps,
+  error: string | null | undefined,
+): TemplateResult | null {
   if (error) {
-    return html`<div class="callout danger">${error}</div>`;
+    return html`<div class="callout danger" role="alert">${error}</div>`;
   }
-  return props.catalogPhase === "ready"
+  return error !== undefined && props.catalogPhase !== "unloaded"
     ? null
     : html`<div class="muted">${t("enterprise.bindingDetail.catalogPending")}</div>`;
 }
@@ -895,8 +1055,8 @@ function renderMcpDetailBody(props: EnterpriseProps, entry: string): TemplateRes
 
 /** What a knowledge foundation covers, and whether THIS work-map can retrieve it. */
 function renderKnowledgeDetailBody(props: EnterpriseProps, entry: string): TemplateResult {
-  const foundation = props.foundations.find((candidate) => candidate.id === entry);
-  const { ids: retrievableIds, ownershipKnown } = retrievableFoundations(props);
+  const { usable, ids: retrievableIds, ownershipKnown } = retrievableFoundations(props);
+  const foundation = usable.find((candidate) => candidate.id === entry);
   if (!foundation) {
     return (
       catalogUnavailable(props, props.catalogErrors.foundations) ??
@@ -1028,8 +1188,8 @@ function renderBindingDetail(
             ? html`<button
                 type="button"
                 class="btn danger"
-                ?disabled=${props.treeSaving}
-                @click=${() => props.onRemoveBinding(detail.nodeId, detail.field, detail.entry)}
+                ?disabled=${nodeMutationLocked(props)}
+                @click=${() => removeBindingFromStep(props, adder, detail.entry)}
               >
                 ${t("enterprise.bindingDetail.detach")}
               </button>`
@@ -1076,14 +1236,6 @@ function constrainingAncestorIds(
   return ids;
 }
 
-/**
- * MCP servers this step inherits from its ancestors.
- *
- * Governance grants an attachment down the whole branch (pathAttachesMcpServer in
- * src/enterprise/governance.ts), so a leaf with no `mcpServers` of its own is not
- * necessarily server-less — and telling the operator it can call none would
- * contradict what the run actually allows.
- */
 /**
  * Foundations the step actually inherits: the INTERSECTION of every ancestor list
  * that declares one, which is what foundationAllowedByPath enforces — each
@@ -1143,6 +1295,7 @@ function inheritedDeniedTools(props: EnterpriseProps, nodeId: string): string[] 
   return [...inherited].toSorted((a, b) => a.localeCompare(b));
 }
 
+/** MCP attachments inherited from ancestors apply to every descendant step. */
 function inheritedMcpServers(props: EnterpriseProps, nodeId: string): string[] {
   const nodes = props.treeDetail?.nodes;
   if (!nodes) {
@@ -1510,7 +1663,9 @@ function renderDeclaredOnlySkillRow(
       <div class="list-title">
         <code>${name}</code>
         ${installStatusKnown
-          ? html`<span class="chip chip-warn">${t("enterprise.bindings.skillNotInstalled")}</span>`
+          ? html`<span class="chip chip-warn"
+              >${t("enterprise.bindings.skillNotModelVisible")}</span
+            >`
           : nothing}
       </div>
       ${renderCatalogUsage(usage.get(name), usageLabel)}
@@ -1541,25 +1696,20 @@ function workMapGrantsKnowledgeExplicitly(props: EnterpriseProps): boolean {
 }
 
 /**
- * Does the selected work-map govern MCP by attachment? A tree that never declares
- * one keeps pre-feature behavior (see mcpGoverned in src/enterprise/plan.ts), so
- * calling its servers "unattached and unreachable" would promise a restriction
- * nothing is enforcing.
- */
-/**
  * Does the selected work-map DECLARE the field? Presence, matching the runtime's
  * opt-in (treeDeclaresMcpAttachment): an explicit `mcpServers: []` opts in, so a
  * length test would hide exactly the state an operator needs to see. Independent
  * of mode — adding an attachment changes the tree, never the mode.
  */
+function workMapHasMcpMarker(props: EnterpriseProps): boolean {
+  return (props.treeDetail?.nodes ?? []).some((node) => node.ontology.mcpServers !== undefined);
+}
+
 function workMapDeclaresMcp(props: EnterpriseProps): boolean {
   // Explicit grants imply it, exactly as buildEnterpriseRunPlan does: such a
   // work-map reaches only what it attaches, so its servers are governed even
   // though no step named the field.
-  return (
-    props.treeDetail?.capabilityGrants === "explicit" ||
-    (props.treeDetail?.nodes ?? []).some((node) => node.ontology.mcpServers !== undefined)
-  );
+  return props.treeDetail?.capabilityGrants === "explicit" || workMapHasMcpMarker(props);
 }
 
 /**
@@ -1599,7 +1749,7 @@ function renderEnterpriseMcp(props: EnterpriseProps): TemplateResult {
           <div class="card-title">${t("enterprise.mcpTab.title")}</div>
           <div class="card-sub">${t("enterprise.mcpTab.subtitle")}</div>
         </div>
-        ${props.canEdit && !props.mcpDraft
+        ${props.canEdit && !props.mcpDraft && !props.mcpRemoveConfirm
           ? html`<button
               type="button"
               class="btn"
@@ -1707,9 +1857,14 @@ function renderMcpServerRow(params: {
   const attachments = params.usage.get(server.name);
   const editing = props.mcpDraft?.editing === server.name;
   const blocked = props.mcpRegisterBlockedReason;
+  const controlsBlocked =
+    blocked !== null || props.mcpDraft !== null || props.mcpRemoveConfirm !== null;
   return html`<div class="list-item list-item-stacked ${editing ? "list-item-selected" : ""}">
-    <div class="row" style="justify-content: space-between; gap: 12px; align-items: flex-start;">
-      <div class="list-main">
+    <div
+      class="row"
+      style="justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap;"
+    >
+      <div class="list-main" style="flex: 1 1 240px;">
         <div class="list-title">
           <code>${server.name}</code>
           <span class="chip">${server.transport}</span>
@@ -1729,10 +1884,10 @@ function renderMcpServerRow(params: {
         ${renderCatalogUsage(attachments, usageLabel)}
       </div>
       ${props.canEdit
-        ? html`<div class="row" style="gap: 8px;">
+        ? html`<div class="row" style="gap: 8px; flex-wrap: wrap; margin-left: auto;">
             <button
               class="btn btn--sm"
-              ?disabled=${blocked !== null}
+              ?disabled=${controlsBlocked}
               title=${blocked ?? ""}
               @click=${() => props.onToggleMcpServer(server.name, !server.enabled)}
             >
@@ -1740,7 +1895,7 @@ function renderMcpServerRow(params: {
             </button>
             <button
               class="btn btn--sm"
-              ?disabled=${blocked !== null}
+              ?disabled=${controlsBlocked}
               title=${blocked ?? ""}
               @click=${() => props.onBeginMcpEdit(server.name)}
             >
@@ -1748,7 +1903,7 @@ function renderMcpServerRow(params: {
             </button>
             <button
               class="btn btn--sm danger"
-              ?disabled=${blocked !== null}
+              ?disabled=${controlsBlocked}
               title=${blocked ?? ""}
               @click=${() => props.onRequestRemoveMcpServer(server.name)}
             >
@@ -1777,7 +1932,12 @@ function renderMcpRemoveConfirm(props: EnterpriseProps): TemplateResult | typeof
       <div class="card-sub">${t("enterprise.mcpTab.removeBody")}</div>
       <div class="row" style="justify-content: flex-end; gap: 8px; margin-top: 12px;">
         <button class="btn" @click=${props.onCancelRemoveMcpServer}>${t("common.cancel")}</button>
-        <button class="btn danger" @click=${props.onConfirmRemoveMcpServer}>
+        <button
+          class="btn danger"
+          ?disabled=${!props.canEdit || !props.canRegisterMcp || props.mcpDraft !== null}
+          title=${props.mcpRegisterBlockedReason ?? ""}
+          @click=${props.onConfirmRemoveMcpServer}
+        >
           ${t("enterprise.mcpTab.remove")}
         </button>
       </div>
@@ -1968,6 +2128,7 @@ function renderMcpDraft(props: EnterpriseProps, draft: EnterpriseMcpDraft): Temp
               (mode) => html`<button
                 type="button"
                 class="chip ${draft.mode === mode ? "list-item-selected" : ""}"
+                aria-pressed=${draft.mode === mode ? "true" : "false"}
                 @click=${() => props.onEditMcpDraft({ mode })}
               >
                 ${mode === "fields"
@@ -1981,7 +2142,7 @@ function renderMcpDraft(props: EnterpriseProps, draft: EnterpriseMcpDraft): Temp
         ? renderMcpDraftJson(props, draft)
         : renderMcpDraftFields(props, draft)}
       ${draft.error
-        ? html`<div class="callout danger" style="margin-top: 8px;">
+        ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
             ${mcpDraftErrorMessage(draft)}
           </div>`
         : nothing}
@@ -2048,6 +2209,7 @@ function renderMcpDraftFields(props: EnterpriseProps, draft: EnterpriseMcpDraft)
         (transport) => html`<button
           type="button"
           class="chip ${draft.transport === transport ? "list-item-selected" : ""}"
+          aria-pressed=${draft.transport === transport ? "true" : "false"}
           @click=${() => props.onEditMcpDraft({ transport })}
         >
           ${transport}
@@ -2205,7 +2367,7 @@ function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
   // is loading or failed would hide a real dependency behind a transient error.
   // Only the "not installed" verdict waits for a clean answer (same rule as the
   // binding rows): before that, absent means unknown rather than missing.
-  const skillsKnown = props.catalogPhase === "ready" && !props.catalogErrors.skills;
+  const skillsKnown = props.catalogErrors.skills === null;
   const installed = new Set(props.skills.map((skill) => skill.name));
   const declaredOnly = [...usage.keys()].filter((name) => !installed.has(name));
   const hasDeclaredSection = treeName !== null && declared.length + declaredOnly.length > 0;
@@ -2253,6 +2415,9 @@ function renderEnterpriseSkills(props: EnterpriseProps): TemplateResult {
 
 export function renderEnterprise(props: EnterpriseProps) {
   const section = props.section;
+  const refreshBlockedByTreeDraft =
+    hasPendingEnterpriseDraft(props) && !props.treeSaveError && !props.treeIssue && !props.error;
+  const refreshBlockedByMcp = props.mcpDraft !== null || props.mcpRemoveConfirm !== null;
   return html`
     <section class="card">
       <div class="row" style="justify-content: space-between;">
@@ -2260,20 +2425,42 @@ export function renderEnterprise(props: EnterpriseProps) {
           <div class="card-title">${t("enterprise.title")}</div>
           <div class="card-sub">${t("enterprise.subtitle")}</div>
         </div>
-        <button class="btn" ?disabled=${props.loading} @click=${props.onRefresh}>
+        <button
+          class="btn"
+          ?disabled=${props.loading ||
+          !props.connected ||
+          refreshBlockedByTreeDraft ||
+          refreshBlockedByMcp}
+          @click=${props.onRefresh}
+        >
           ${props.loading ? t("common.loading") : t("common.refresh")}
         </button>
       </div>
       ${props.error
-        ? html`<div class="callout danger" style="margin-top: 12px;">${props.error}</div>`
+        ? html`<div class="callout danger" role="alert" style="margin-top: 12px;">
+            ${props.error}
+          </div>`
         : nothing}
       ${props.storeError
-        ? html`<div class="callout danger" style="margin-top: 12px;">
+        ? html`<div class="callout danger" role="alert" style="margin-top: 12px;">
             ${t("enterprise.storeError", { message: props.storeError })}
           </div>`
         : nothing}
+      ${props.bundleStatus
+        ? html`<div
+            class="callout ${props.bundleStatus.kind === "error"
+              ? "danger"
+              : props.bundleStatus.kind === "warning"
+                ? "warn"
+                : "success"}"
+            role=${props.bundleStatus.kind === "error" ? "alert" : "status"}
+            style="margin-top: 12px;"
+          >
+            ${props.bundleStatus.message}
+          </div>`
+        : nothing}
       ${props.importErrors.length
-        ? html`<div class="callout" style="margin-top: 12px;">
+        ? html`<div class="callout" role="alert" style="margin-top: 12px;">
             <div>${t("enterprise.importErrors")}</div>
             ${props.importErrors.map(
               (issue) => html`<div class="row" style="justify-content: space-between; gap: 8px;">
@@ -2281,6 +2468,7 @@ export function renderEnterprise(props: EnterpriseProps) {
                 ${props.canEdit
                   ? html`<button
                       class="btn danger"
+                      ?disabled=${props.treeSaving}
                       @click=${() => props.onRequestRemove(issue.treeId)}
                     >
                       ${t("enterprise.remove")}
@@ -2297,8 +2485,15 @@ export function renderEnterprise(props: EnterpriseProps) {
           <section class="card" style="margin-top: 16px;">
             <div class="card-title">${t("enterprise.runsTitle")}</div>
             <div class="list" style="margin-top: 12px;">
+              ${props.listErrors.runs
+                ? html`<div class="callout danger" role="alert">${props.listErrors.runs}</div>`
+                : nothing}
               ${props.runs.length === 0
-                ? html`<div class="muted">${t("enterprise.noRuns")}</div>`
+                ? props.listErrors.runs === undefined
+                  ? html`<div class="muted">${t("common.loading")}</div>`
+                  : props.listErrors.runs
+                    ? nothing
+                    : html`<div class="muted">${t("enterprise.noRuns")}</div>`
                 : props.runs.map((run) =>
                     renderRun(run, props.selectedExecutionId, props.onSelectRun),
                   )}
@@ -2310,20 +2505,138 @@ export function renderEnterprise(props: EnterpriseProps) {
     ${section === "worktree"
       ? html`
           <section class="card" style="margin-top: 16px;">
-            <div class="row" style="justify-content: space-between;">
+            <div class="row" style="justify-content: space-between; flex-wrap: wrap;">
               <div class="card-title">${t("enterprise.treesTitle")}</div>
-              ${props.canEdit
-                ? html`<button class="btn" @click=${props.onBeginNew}>
-                    ${t("enterprise.newTree")}
-                  </button>`
+              ${props.canEdit && props.listErrors.trees === null
+                ? html`<div class="row" style="gap: 8px; flex-wrap: wrap;">
+                    <label
+                      class="btn"
+                      style="cursor: pointer;"
+                      role="button"
+                      tabindex=${props.treeSaving ? "-1" : "0"}
+                      aria-disabled=${props.treeSaving ? "true" : "false"}
+                      @click=${(event: MouseEvent) => {
+                        if (props.treeSaving || !canDiscardEnterpriseDraft(props)) {
+                          event.preventDefault();
+                        }
+                      }}
+                      @keydown=${(event: KeyboardEvent) => {
+                        if (event.key !== "Enter" && event.key !== " ") {
+                          return;
+                        }
+                        event.preventDefault();
+                        if (!props.treeSaving && canDiscardEnterpriseDraft(props)) {
+                          (event.currentTarget as HTMLElement)
+                            .querySelector<HTMLInputElement>('input[type="file"]')
+                            ?.click();
+                        }
+                      }}
+                    >
+                      ${t("enterprise.bundle.import")}
+                      <input
+                        type="file"
+                        accept=".yaml,.yml,.json,application/json,text/yaml"
+                        style="display: none;"
+                        ?disabled=${props.treeSaving}
+                        @click=${(event: MouseEvent) => event.stopPropagation()}
+                        @change=${(event: Event) => {
+                          const input = event.target as HTMLInputElement;
+                          const file = input.files?.[0];
+                          if (file) {
+                            props.onPreviewBundleFile(file);
+                          }
+                          input.value = "";
+                        }}
+                      />
+                    </label>
+                    <label
+                      class="btn"
+                      style="cursor: pointer;"
+                      role="button"
+                      tabindex=${props.treeSaving ? "-1" : "0"}
+                      aria-disabled=${props.treeSaving ? "true" : "false"}
+                      @click=${(event: MouseEvent) => {
+                        if (props.treeSaving || !canDiscardEnterpriseDraft(props)) {
+                          event.preventDefault();
+                        }
+                      }}
+                      @keydown=${(event: KeyboardEvent) => {
+                        if (event.key !== "Enter" && event.key !== " ") {
+                          return;
+                        }
+                        event.preventDefault();
+                        if (!props.treeSaving && canDiscardEnterpriseDraft(props)) {
+                          (event.currentTarget as HTMLElement)
+                            .querySelector<HTMLInputElement>('input[type="file"]')
+                            ?.click();
+                        }
+                      }}
+                    >
+                      ${t("enterprise.importTree")}
+                      <input
+                        type="file"
+                        accept=".yaml,.yml,.json,application/json,text/yaml"
+                        style="display: none;"
+                        ?disabled=${props.treeSaving}
+                        @click=${(event: MouseEvent) => event.stopPropagation()}
+                        @change=${(event: Event) => {
+                          const input = event.target as HTMLInputElement;
+                          const file = input.files?.[0];
+                          if (file) {
+                            props.onImportFile(file);
+                          }
+                          input.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      class="btn"
+                      ?disabled=${props.treeSaving}
+                      @click=${() => {
+                        if (canDiscardEnterpriseDraft(props)) {
+                          props.onBeginNew();
+                        }
+                      }}
+                    >
+                      ${t("enterprise.newTree")}
+                    </button>
+                  </div>`
                 : nothing}
             </div>
             <div class="list" style="margin-top: 12px;">
+              ${props.listErrors.trees
+                ? html`<div class="callout danger" role="alert">${props.listErrors.trees}</div>`
+                : nothing}
               ${props.trees.length === 0
-                ? html`<div class="muted">${t("enterprise.noTrees")}</div>`
-                : props.trees.map((tree) =>
-                    renderTree(tree, props.selectedTreeId, props.onSelectTree),
-                  )}
+                ? props.historyOnlyTreeIds.length > 0
+                  ? props.historyOnlyTreeIds.map((treeId) =>
+                      renderHistoryOnlyTree(treeId, props.selectedTreeId, (selectedId) => {
+                        if (canNavigateToEnterpriseTree(props)) {
+                          props.onSelectTree(selectedId);
+                        }
+                      }),
+                    )
+                  : props.listErrors.trees === undefined
+                    ? html`<div class="muted">${t("common.loading")}</div>`
+                    : props.listErrors.trees
+                      ? nothing
+                      : html`<div class="muted">${t("enterprise.noTrees")}</div>`
+                : [
+                    ...props.trees.map((tree) =>
+                      renderTree(tree, props.selectedTreeId, (treeId) => {
+                        if (canNavigateToEnterpriseTree(props)) {
+                          props.onSelectTree(treeId);
+                        }
+                      }),
+                    ),
+                    ...props.historyOnlyTreeIds.map((treeId) =>
+                      renderHistoryOnlyTree(treeId, props.selectedTreeId, (selectedId) => {
+                        if (canNavigateToEnterpriseTree(props)) {
+                          props.onSelectTree(selectedId);
+                        }
+                      }),
+                    ),
+                  ]}
             </div>
           </section>
           ${renderTreeVisualization(props)}
@@ -2334,7 +2647,7 @@ export function renderEnterprise(props: EnterpriseProps) {
     ${section === "mcp" ? renderEnterpriseMcp(props) : nothing}
     <!-- Outside the subsection switch: the global Remove action (shown with import
       errors on any tab) sets the confirm state, so its modal must render everywhere. -->
-    ${renderTreeConfirmModal(props)}
+    ${renderTreeConfirmModal(props)} ${renderBundlePreviewModal(props)}
   `;
 }
 
@@ -2349,6 +2662,7 @@ function renderRun(
       class="list-item list-item-clickable ${selected ? "list-item-selected" : ""}"
       role="button"
       tabindex="0"
+      aria-pressed=${selected ? "true" : "false"}
       @click=${() => onSelectRun(run.executionId)}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -2434,17 +2748,22 @@ function renderDetailCard(props: EnterpriseProps): TemplateResult {
  * on what "finished a step" means.
  */
 function renderResume(detail: EnterpriseRunDetail, props: EnterpriseProps) {
-  // `resumable` is the server's own answer, so a run whose route is finished (or
-  // that never finished a step) offers nothing rather than a button that can only
-  // fail. canEdit mirrors the operator.admin scope the method requires: without
-  // it, a read-only operator browsing History sees a control they cannot use.
-  if (!props.canEdit || !detail.resumable) {
-    return nothing;
+  if (detail.resumeRefusalReason) {
+    return detail.status === "completed" && detail.resumeRefusalReason === "route-complete"
+      ? nothing
+      : html`<div class="muted" style="margin-top: 12px;">
+          ${enterpriseResumeRefusalMessage(detail.resumeRefusalReason)}
+        </div>`;
   }
   if (detail.resumeRequested) {
     return html`<div class="muted" style="margin-top: 12px;">
       ${t("enterprise.resumeRequested")}
     </div>`;
+  }
+  // The method is admin-scoped. Read-only operators still see any server-owned
+  // refusal above, but never get a button that can only fail on permissions.
+  if (!props.canEdit || !detail.resumable) {
+    return nothing;
   }
   return html`
     <div style="margin-top: 12px;">
@@ -2489,7 +2808,7 @@ function renderRoute(
           </div>
           <div class="muted" style="margin-top: 6px; font-size: 12px;">${route.rationale}</div>
           ${route.invalidRoutes?.length
-            ? html`<div class="callout danger" style="margin-top: 8px;">
+            ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
                 ${t("enterprise.routeInvalid", { routes: route.invalidRoutes.join(", ") })}
               </div>`
             : nothing}`
@@ -2591,6 +2910,7 @@ function renderTree(
       class="list-item list-item-clickable ${selected ? "list-item-selected" : ""}"
       role="button"
       tabindex="0"
+      aria-pressed=${selected ? "true" : "false"}
       @click=${() => onSelectTree(tree.id)}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -2611,10 +2931,32 @@ function renderTree(
   `;
 }
 
+function renderHistoryOnlyTree(
+  treeId: string,
+  selectedTreeId: string | null,
+  onSelect: (treeId: string) => void,
+): TemplateResult {
+  return html`
+    <button
+      class="list-item list-item-clickable ${treeId === selectedTreeId ? "list-item-selected" : ""}"
+      @click=${() => onSelect(treeId)}
+    >
+      <div class="list-main">
+        <div class="list-title">${treeId}</div>
+        <div class="list-sub">${t("enterprise.historyOnly")}</div>
+      </div>
+      <span class="chip">${t("enterprise.historyOnlyBadge")}</span>
+    </button>
+  `;
+}
+
 function renderTreeVisualization(props: EnterpriseProps): TemplateResult {
+  if (props.treeDraft) {
+    return renderNewTreeForm(props);
+  }
   // The raw editor takes over the panel while editing (also for a new tree,
   // which has no selection yet).
-  if (props.treeEditing) {
+  if (props.treeEditing && !props.visualEditing) {
     return renderTreeEditor(props);
   }
   if (!props.selectedTreeId) {
@@ -2625,24 +2967,265 @@ function renderTreeVisualization(props: EnterpriseProps): TemplateResult {
     `;
   }
   const tree = props.treeDetail;
+  const historyOnly = props.historyOnlyTreeIds.includes(props.selectedTreeId);
   return html`
     <section class="card" style="margin-top: 16px;">
-      <div class="row" style="justify-content: space-between;">
+      <div class="row" style="justify-content: space-between; flex-wrap: wrap;">
         <div class="card-title">${t("enterprise.treeTitle")}</div>
         ${renderTreeActions(props)}
       </div>
       ${props.treeIssue
-        ? html`<div class="callout danger" style="margin-top: 8px;">${props.treeIssue}</div>`
+        ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+            ${props.treeIssue}
+          </div>`
         : nothing}
       ${props.treeSaveError
-        ? html`<div class="callout danger" style="margin-top: 8px;">${props.treeSaveError}</div>`
+        ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+            ${props.treeSaveError}
+          </div>`
+        : nothing}
+      ${props.treeSaveIssues?.length
+        ? html`<div class="callout danger" role="alert">
+            ${props.treeSaveIssues.map((issue) => html`<div>${issue.path}: ${issue.message}</div>`)}
+          </div>`
         : nothing}
       ${tree
         ? renderTreeDetail(tree, props)
         : html`<div class="muted" style="margin-top: 8px;">
-            ${props.treeLoading ? t("common.loading") : t("enterprise.treeUnavailable")}
+            ${props.treeLoading
+              ? t("common.loading")
+              : historyOnly
+                ? t("enterprise.historyOnlyRestore")
+                : t("enterprise.treeUnavailable")}
           </div>`}
       ${renderVersionHistory(props)}
+    </section>
+  `;
+}
+
+function hasPendingEnterpriseDraft(props: EnterpriseProps): boolean {
+  return Boolean(
+    props.treeSaving ||
+    props.treeEditing ||
+    props.treeDraft ||
+    props.nodeDraft ||
+    props.bindingPicker ||
+    props.guidanceDraft ||
+    props.ontologyDraft ||
+    props.bundleDraft,
+  );
+}
+
+function canDiscardEnterpriseDraft(props: EnterpriseProps): boolean {
+  return !hasPendingEnterpriseDraft(props) || window.confirm(t("enterprise.editorDiscardWarning"));
+}
+
+function canNavigateToEnterpriseTree(props: EnterpriseProps): boolean {
+  return props.treeSaving
+    ? window.confirm(t("enterprise.saveContinuesNavigation"))
+    : canDiscardEnterpriseDraft(props);
+}
+
+function nodeMutationLocked(props: EnterpriseProps): boolean {
+  return (
+    props.treeSaving ||
+    Boolean(props.nodeDraft || props.bindingPicker || props.guidanceDraft || props.ontologyDraft)
+  );
+}
+
+function treeDraftErrorMessage(error: EnterpriseTreeDraftError): string {
+  const messages: Record<EnterpriseTreeDraftError, string> = {
+    "id-empty": t("enterprise.newTreeErrorIdEmpty"),
+    "id-pattern": t("enterprise.newTreeErrorIdPattern"),
+    "id-duplicate": t("enterprise.newTreeErrorIdDuplicate"),
+    "version-empty": t("enterprise.treeSettingsErrorVersionEmpty"),
+    "name-empty": t("enterprise.newTreeErrorNameEmpty"),
+    "triggers-empty": t("enterprise.treeSettingsErrorTriggersEmpty"),
+    "priority-invalid": t("enterprise.treeSettingsErrorPriorityInvalid"),
+    "root-id-empty": t("enterprise.newTreeErrorRootIdEmpty"),
+    "root-id-pattern": t("enterprise.newTreeErrorRootIdPattern"),
+    "root-title-empty": t("enterprise.newTreeErrorRootTitleEmpty"),
+  };
+  return messages[error];
+}
+
+function renderNewTreeForm(props: EnterpriseProps): TemplateResult {
+  const draft = props.treeDraft;
+  if (!draft) {
+    return html``;
+  }
+  const invalidField = draft.error?.startsWith("id-")
+    ? "id"
+    : draft.error === "version-empty"
+      ? "version"
+      : draft.error === "name-empty"
+        ? "name"
+        : draft.error === "triggers-empty"
+          ? "triggers"
+          : draft.error === "priority-invalid"
+            ? "priority"
+            : draft.error?.startsWith("root-id-")
+              ? "rootId"
+              : draft.error === "root-title-empty"
+                ? "rootTitle"
+                : null;
+  const errorId = "enterprise-new-tree-error";
+  return html`
+    <section class="card" data-enterprise-new-tree style="margin-top: 16px;">
+      <div class="card-title">
+        ${draft.mode === "create"
+          ? t("enterprise.newTreeTitle")
+          : t("enterprise.treeSettingsTitle")}
+      </div>
+      <form
+        @submit=${(event: SubmitEvent) => {
+          event.preventDefault();
+          const form = event.currentTarget as HTMLFormElement;
+          props.onSubmitNew();
+          requestAnimationFrame(() =>
+            form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(),
+          );
+        }}
+      >
+        <fieldset
+          ?disabled=${props.treeSaving || !props.canEdit}
+          style="border: 0; padding: 0; margin: 0; min-width: 0;"
+        >
+          <div class="form-grid" style="margin-top: 12px;">
+            <label class="field">
+              <span>${t("enterprise.newTreeIdLabel")}</span>
+              <input
+                class="input"
+                .value=${draft.id}
+                placeholder=${t("enterprise.newTreeIdPlaceholder")}
+                ?readonly=${draft.mode === "settings"}
+                aria-invalid=${invalidField === "id" ? "true" : nothing}
+                aria-describedby=${invalidField === "id" ? errorId : nothing}
+                @input=${(event: Event) =>
+                  props.onEditNew({ id: (event.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="field">
+              <span>${t("enterprise.treeSettingsVersionLabel")}</span>
+              <input
+                class="input"
+                .value=${draft.version}
+                aria-invalid=${invalidField === "version" ? "true" : nothing}
+                aria-describedby=${invalidField === "version" ? errorId : nothing}
+                @input=${(event: Event) =>
+                  props.onEditNew({ version: (event.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="field">
+              <span>${t("enterprise.newTreeNameLabel")}</span>
+              <input
+                class="input"
+                .value=${draft.name}
+                aria-invalid=${invalidField === "name" ? "true" : nothing}
+                aria-describedby=${invalidField === "name" ? errorId : nothing}
+                @input=${(event: Event) =>
+                  props.onEditNew({ name: (event.target as HTMLInputElement).value })}
+              />
+            </label>
+            ${draft.mode === "create"
+              ? html`<label class="field">
+                    <span>${t("enterprise.newTreeRootIdLabel")}</span>
+                    <input
+                      class="input"
+                      .value=${draft.rootId}
+                      placeholder=${t("enterprise.newTreeRootIdPlaceholder")}
+                      aria-invalid=${invalidField === "rootId" ? "true" : nothing}
+                      aria-describedby=${invalidField === "rootId" ? errorId : nothing}
+                      @input=${(event: Event) =>
+                        props.onEditNew({ rootId: (event.target as HTMLInputElement).value })}
+                    />
+                  </label>
+                  <label class="field">
+                    <span>${t("enterprise.newTreeRootTitleLabel")}</span>
+                    <input
+                      class="input"
+                      .value=${draft.rootTitle}
+                      aria-invalid=${invalidField === "rootTitle" ? "true" : nothing}
+                      aria-describedby=${invalidField === "rootTitle" ? errorId : nothing}
+                      @input=${(event: Event) =>
+                        props.onEditNew({ rootTitle: (event.target as HTMLInputElement).value })}
+                    />
+                  </label>`
+              : nothing}
+            <label class="field" style="grid-column: 1 / -1;">
+              <span>${t("enterprise.newTreeDescriptionLabel")}</span>
+              <textarea
+                class="input"
+                .value=${draft.description}
+                @input=${(event: Event) =>
+                  props.onEditNew({ description: (event.target as HTMLTextAreaElement).value })}
+              ></textarea>
+            </label>
+            <fieldset
+              class="field"
+              style="grid-column: 1 / -1;"
+              aria-invalid=${invalidField === "triggers" ? "true" : nothing}
+              aria-describedby=${invalidField === "triggers" ? errorId : nothing}
+            >
+              <legend>${t("enterprise.treeSettingsTriggersLabel")}</legend>
+              <div class="row" style="gap: 12px; flex-wrap: wrap;">
+                ${(["user", "system", "subagent"] as const).map(
+                  (trigger) => html`<label class="row" style="gap: 6px;">
+                    <input
+                      type="checkbox"
+                      .checked=${draft.triggers.includes(trigger)}
+                      @change=${(event: Event) => {
+                        const checked = (event.target as HTMLInputElement).checked;
+                        props.onEditNew({
+                          triggers: checked
+                            ? [...draft.triggers, trigger]
+                            : draft.triggers.filter((candidate) => candidate !== trigger),
+                        });
+                      }}
+                    />
+                    <span>${t(`enterprise.treeSettingsTrigger.${trigger}`)}</span>
+                  </label>`,
+                )}
+              </div>
+            </fieldset>
+            <label class="field">
+              <span>${t("enterprise.treeSettingsPriorityLabel")}</span>
+              <input
+                class="input"
+                type="number"
+                step="1"
+                .value=${draft.priority}
+                aria-invalid=${invalidField === "priority" ? "true" : nothing}
+                aria-describedby=${invalidField === "priority" ? errorId : nothing}
+                @input=${(event: Event) =>
+                  props.onEditNew({ priority: (event.target as HTMLInputElement).value })}
+              />
+            </label>
+          </div>
+        </fieldset>
+        ${draft.error
+          ? html`<div id=${errorId} class="callout danger" role="alert" style="margin-top: 8px;">
+              ${treeDraftErrorMessage(draft.error)}
+            </div>`
+          : nothing}
+        ${props.treeSaveError
+          ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+              ${props.treeSaveError}
+            </div>`
+          : nothing}
+        <div class="row" style="gap: 8px; margin-top: 12px;">
+          <button type="submit" class="btn primary" ?disabled=${props.treeSaving || !props.canEdit}>
+            ${props.treeSaving
+              ? t("common.saving")
+              : draft.mode === "create"
+                ? t("enterprise.newTreeReview")
+                : t("common.save")}
+          </button>
+          <button type="button" class="btn" @click=${props.onCancelNew}>
+            ${props.treeSaving ? t("common.dismiss") : t("common.cancel")}
+          </button>
+        </div>
+      </form>
     </section>
   `;
 }
@@ -2660,31 +3243,116 @@ function renderTreeActions(props: EnterpriseProps): TemplateResult | typeof noth
   // authoritative importErrors list, NOT treeIssue, which also holds transient
   // trees.get request failures that must not expose a destructive Remove.
   const hasCorruptImport = props.importErrors.some((issue) => issue.treeId === treeId);
-  const removable = props.canEdit && (tree?.source === "imported" || hasCorruptImport);
+  const removable =
+    props.canEdit &&
+    Boolean(props.visualEditing) &&
+    (tree?.source === "imported" || hasCorruptImport);
   const buttons: TemplateResult[] = [];
-  if (tree && props.canEdit) {
+  if (props.visualEditing) {
+    buttons.push(html`
+      <button
+        class="btn primary"
+        ?disabled=${nodeMutationLocked(props) || !props.connected}
+        @click=${props.onRequestSave}
+      >
+        ${t("enterprise.save")}
+      </button>
+      <button class="btn" ?disabled=${props.treeSaving} @click=${props.onCancelEdit}>
+        ${t("common.cancel")}
+      </button>
+    `);
+  }
+  if (tree && props.canEdit && !props.visualEditing) {
     buttons.push(
-      html`<button class="btn" @click=${props.onBeginEdit}>${t("enterprise.edit")}</button>`,
+      html`<button
+        class="btn"
+        ?disabled=${props.treeSaving || !props.canEdit}
+        @click=${() => {
+          if (canDiscardEnterpriseDraft(props)) {
+            props.onBeginSettings();
+          }
+        }}
+      >
+        ${t("enterprise.treeSettingsButton")}
+      </button>`,
+      html`<button
+        class="btn"
+        ?disabled=${props.treeSaving}
+        @click=${() => {
+          if (canDiscardEnterpriseDraft(props)) {
+            props.onBeginEdit();
+          }
+        }}
+      >
+        ${t("enterprise.edit")}
+      </button>`,
+    );
+  }
+  if (tree && props.canEdit && !props.visualEditing && props.onBeginRawEdit) {
+    buttons.push(
+      html`<button
+        class="btn"
+        ?disabled=${props.treeSaving}
+        @click=${() => {
+          if (canDiscardEnterpriseDraft(props)) {
+            props.onBeginRawEdit?.();
+          }
+        }}
+      >
+        YAML / JSON
+      </button>`,
     );
   }
   if (tree) {
     buttons.push(
-      html`<button class="btn" @click=${() => props.onExport(treeId, "yaml")}>
+      html`<button
+        class="btn"
+        ?disabled=${!props.connected}
+        @click=${() => props.onExport(treeId, "yaml")}
+      >
         ${t("enterprise.exportYaml")}
       </button>`,
-      html`<button class="btn" @click=${() => props.onExport(treeId, "json")}>
+      html`<button
+        class="btn"
+        ?disabled=${!props.connected}
+        @click=${() => props.onExport(treeId, "json")}
+      >
         ${t("enterprise.exportJson")}
       </button>`,
     );
+    if (props.canEdit) {
+      buttons.push(
+        html`<button
+          class="btn"
+          ?disabled=${!props.connected || props.treeSaving}
+          @click=${() => props.onExportBundle(treeId, "yaml")}
+        >
+          ${t("enterprise.bundle.exportYaml")}
+        </button>`,
+        html`<button
+          class="btn"
+          ?disabled=${!props.connected || props.treeSaving}
+          @click=${() => props.onExportBundle(treeId, "json")}
+        >
+          ${t("enterprise.bundle.exportJson")}
+        </button>`,
+      );
+    }
   }
   if (removable) {
     buttons.push(
-      html`<button class="btn danger" @click=${() => props.onRequestRemove(treeId)}>
+      html`<button
+        class="btn danger"
+        ?disabled=${props.treeSaving}
+        @click=${() => props.onRequestRemove(treeId)}
+      >
         ${t("enterprise.remove")}
       </button>`,
     );
   }
-  return buttons.length === 0 ? nothing : html`<div class="row" style="gap: 8px;">${buttons}</div>`;
+  return buttons.length === 0
+    ? nothing
+    : html`<div class="row" style="gap: 8px; flex-wrap: wrap;">${buttons}</div>`;
 }
 
 /** Raw YAML/JSON editor for creating or overwriting a tree definition. */
@@ -2696,9 +3364,18 @@ function renderTreeEditor(props: EnterpriseProps): TemplateResult {
         <div class="chip-row">
           ${(["yaml", "json"] as const).map(
             (format) => html`<button
+              type="button"
               class="chip ${props.treeEditFormat === format ? "list-item-selected" : ""}"
-              ?disabled=${props.treeSaving}
-              @click=${() => props.onEditFormat(format)}
+              aria-pressed=${props.treeEditFormat === format ? "true" : "false"}
+              ?disabled=${nodeMutationLocked(props) || !props.canEdit}
+              @click=${() => {
+                if (
+                  format === props.treeEditFormat ||
+                  window.confirm(t("enterprise.editorFormatWarning"))
+                ) {
+                  props.onEditFormat(format);
+                }
+              }}
             >
               ${format.toUpperCase()}
             </button>`,
@@ -2708,16 +3385,19 @@ function renderTreeEditor(props: EnterpriseProps): TemplateResult {
       <div class="muted" style="margin-top: 4px;">${t("enterprise.editorHint")}</div>
       <textarea
         class="input"
+        aria-label=${t("enterprise.editorTitle")}
         style="margin-top: 8px; width: 100%; min-height: 320px; font-family: monospace; white-space: pre;"
         .value=${props.treeEditContent}
-        ?disabled=${props.treeSaving}
+        ?disabled=${props.treeSaving || !props.canEdit}
         @input=${(event: Event) => props.onEditContent((event.target as HTMLTextAreaElement).value)}
       ></textarea>
       ${props.treeSaveError
-        ? html`<div class="callout danger" style="margin-top: 8px;">${props.treeSaveError}</div>`
+        ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+            ${props.treeSaveError}
+          </div>`
         : nothing}
       ${props.treeSaveIssues?.length
-        ? html`<div class="callout danger" style="margin-top: 8px;">
+        ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
             <div>${t("enterprise.saveInvalid")}</div>
             ${props.treeSaveIssues.map(
               (issue) => html`<div class="muted">
@@ -2727,7 +3407,11 @@ function renderTreeEditor(props: EnterpriseProps): TemplateResult {
           </div>`
         : nothing}
       <div class="row" style="gap: 8px; margin-top: 12px;">
-        <button class="btn primary" ?disabled=${props.treeSaving} @click=${props.onRequestSave}>
+        <button
+          class="btn primary"
+          ?disabled=${props.treeSaving || !props.canEdit}
+          @click=${props.onRequestSave}
+        >
           ${props.treeSaving ? t("enterprise.saving") : t("enterprise.save")}
         </button>
         <button class="btn" ?disabled=${props.treeSaving} @click=${props.onCancelEdit}>
@@ -2741,17 +3425,29 @@ function renderTreeEditor(props: EnterpriseProps): TemplateResult {
 /** Saved-revision list; selecting one loads it into the editor to restore. */
 function renderVersionHistory(props: EnterpriseProps): TemplateResult {
   const treeId = props.selectedTreeId;
+  const canLoadVersion = Boolean(
+    props.canEdit &&
+    !hasPendingEnterpriseDraft(props) &&
+    !props.treeLoading &&
+    treeId &&
+    ((props.treeDetail?.id === treeId && props.treeDetail.hash) ||
+      props.historyOnlyTreeIds.includes(treeId ?? "")),
+  );
   return html`
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.historyTitle")}</div>
-    ${props.treeVersions.length === 0
-      ? html`<div class="muted" style="margin-top: 8px;">
-          ${props.treeVersionsLoading ? t("common.loading") : t("enterprise.noHistory")}
+    ${props.treeVersionsError
+      ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+          ${props.treeVersionsError}
         </div>`
-      : html`<div class="list" style="margin-top: 8px;">
-          ${props.treeVersions.map((version) =>
-            renderVersionRow(version, treeId, props.canEdit ? props.onLoadVersion : null),
-          )}
-        </div>`}
+      : props.treeVersions.length === 0
+        ? html`<div class="muted" style="margin-top: 8px;">
+            ${props.treeVersionsLoading ? t("common.loading") : t("enterprise.noHistory")}
+          </div>`
+        : html`<div class="list" style="margin-top: 8px;">
+            ${props.treeVersions.map((version) =>
+              renderVersionRow(version, treeId, canLoadVersion ? props.onLoadVersion : null),
+            )}
+          </div>`}
   `;
 }
 
@@ -2823,11 +3519,15 @@ function renderTreeConfirmModal(props: EnterpriseProps): TemplateResult | typeof
         </div>
         ${isRemove
           ? html`<div class="callout danger" style="margin-top: 12px;">
-              ${t("enterprise.confirmRemoveWarning")}
+              ${t("enterprise.confirmRemoveDataLossWarning")}
             </div>`
           : nothing}
         <div class="exec-approval-actions">
-          <button class="btn ${isRemove ? "danger" : "primary"}" @click=${props.onConfirm}>
+          <button
+            class="btn ${isRemove ? "danger" : "primary"}"
+            ?disabled=${!props.canEdit}
+            @click=${props.onConfirm}
+          >
             ${isRemove ? t("enterprise.remove") : t("enterprise.save")}
           </button>
           <button class="btn" @click=${props.onCancelConfirm}>${t("common.cancel")}</button>
@@ -2837,9 +3537,155 @@ function renderTreeConfirmModal(props: EnterpriseProps): TemplateResult | typeof
   `;
 }
 
-function renderTreeDetail(tree: EnterpriseTreeDetail, props: EnterpriseProps): TemplateResult {
+function renderBundleItems(label: string, items: readonly string[], warning = false) {
+  if (items.length === 0) {
+    return nothing;
+  }
+  return html`<div style="margin-top: 10px;">
+    <div class="muted">${label}</div>
+    <div class="chip-row" style="margin-top: 4px;">
+      ${items.map((item) => html`<span class="chip ${warning ? "chip-warn" : ""}">${item}</span>`)}
+    </div>
+  </div>`;
+}
+
+/** Preview-before-apply review for the exact local bundle bytes retained in state. */
+function renderBundlePreviewModal(props: EnterpriseProps): TemplateResult | typeof nothing {
+  const draft = props.bundleDraft;
+  const tree = draft?.preview.trees[0];
+  if (!draft || !tree || !props.canEdit) {
+    return nothing;
+  }
+  const preview = draft.preview;
+  const skillsKnown = props.catalogErrors.skills === null;
+  const availableSkills = new Set(
+    props.skills.filter(isModelUsableSkill).map((skill) => skill.name),
+  );
+  const missingSkills = skillsKnown
+    ? preview.requiredSkills.filter((skill) => !availableSkills.has(skill))
+    : [];
+  const { ownershipKnown } = retrievableFoundations(props);
+  const foundationsKnown = props.catalogErrors.foundations === null && ownershipKnown;
+  const globalFoundations = new Set(
+    props.foundations
+      .filter((foundation) => foundation.ownerTreeIds?.length === 0)
+      .map((foundation) => foundation.id),
+  );
+  const missingFoundations = foundationsKnown
+    ? preview.missingFoundations.filter((foundation) => !globalFoundations.has(foundation))
+    : [];
+  const unverifiedDependencies = [
+    !skillsKnown && preview.requiredSkills.length > 0
+      ? t("enterprise.bundle.requiredSkills")
+      : null,
+    !foundationsKnown && preview.missingFoundations.length > 0
+      ? t("enterprise.bundle.requiredKnowledge")
+      : null,
+  ].filter((label): label is string => label !== null);
+  const replacement = tree.replaced
+    ? t("enterprise.bundle.replace", {
+        source: tree.replaced,
+        version: tree.currentVersion ?? "?",
+      })
+    : t("enterprise.bundle.create");
+  return html`
+    <openclaw-modal-dialog
+      label=${t("enterprise.bundle.previewTitle")}
+      description=${t("enterprise.bundle.previewBody")}
+      wide
+      @modal-cancel=${props.onCancelBundlePreview}
+    >
+      <div class="exec-approval-card">
+        <div class="muted">${t("enterprise.bundle.previewBody")}</div>
+        <div class="exec-approval-header">
+          <div>
+            <div class="exec-approval-title">${tree.id} · ${tree.version}</div>
+            <div class="exec-approval-sub">${draft.fileName} · ${replacement}</div>
+          </div>
+        </div>
+        ${renderBundleItems(t("enterprise.bundle.inlinedKnowledge"), preview.foundations)}
+        ${renderBundleItems(t("enterprise.bundle.requiredTools"), preview.requiredTools)}
+        ${renderBundleItems(t("enterprise.bundle.requiredSkills"), preview.requiredSkills)}
+        ${renderBundleItems(t("enterprise.bundle.requiredMcp"), preview.requiredMcpServers)}
+        ${renderBundleItems(t("enterprise.bundle.missingSkills"), missingSkills, true)}
+        ${renderBundleItems(t("enterprise.bundle.missingMcp"), preview.missingMcpServers, true)}
+        ${!foundationsKnown
+          ? renderBundleItems(
+              t("enterprise.bundle.unverifiedKnowledge"),
+              preview.missingFoundations,
+              true,
+            )
+          : nothing}
+        ${renderBundleItems(t("enterprise.bundle.missingKnowledge"), missingFoundations, true)}
+        ${renderBundleItems(
+          t("enterprise.bundle.removedKnowledge"),
+          preview.removedFoundations,
+          true,
+        )}
+        ${renderBundleItems(
+          t("enterprise.bundle.replacedKnowledge"),
+          preview.replacedFoundations,
+          true,
+        )}
+        ${renderBundleItems(
+          t("enterprise.bundle.shadowedKnowledge"),
+          preview.shadowedFoundations,
+          true,
+        )}
+        ${renderBundleItems(
+          t("enterprise.bundle.verificationUnavailable"),
+          unverifiedDependencies,
+          true,
+        )}
+        ${renderBundleItems(
+          t("enterprise.bundle.missingPolicies"),
+          preview.missingGovernancePolicies,
+          true,
+        )}
+        ${renderBundleItems(
+          t("enterprise.bundle.conflictingPolicies"),
+          preview.conflictingGovernancePolicies,
+          true,
+        )}
+        ${preview.governanceModeDowngrade
+          ? html`<div class="callout warn" role="alert" style="margin-top: 10px;">
+              ${t("enterprise.bundle.modeDowngrade", preview.governanceModeDowngrade)}
+            </div>`
+          : nothing}
+        ${preview.warnings.length
+          ? html`<div class="callout warn" role="alert" style="margin-top: 10px;">
+              <div>${t("enterprise.bundle.authorWarnings")}</div>
+              ${preview.warnings.map(
+                (warning) => html`<div class="muted">
+                  ${warning.path
+                    ? html`<strong>${warning.path}</strong>: `
+                    : nothing}${warning.message}
+                </div>`,
+              )}
+            </div>`
+          : nothing}
+        <div class="exec-approval-actions">
+          <button
+            class="btn primary"
+            ?disabled=${props.treeSaving || !props.connected}
+            @click=${props.onApplyBundle}
+          >
+            ${props.treeSaving ? t("common.saving") : t("enterprise.bundle.apply")}
+          </button>
+          <button class="btn" ?disabled=${props.treeSaving} @click=${props.onCancelBundlePreview}>
+            ${t("common.cancel")}
+          </button>
+        </div>
+      </div>
+    </openclaw-modal-dialog>
+  `;
+}
+
+function renderTreeDetail(tree: EnterpriseTreeDetail, options: EnterpriseProps): TemplateResult {
+  const props = { ...options, canEdit: options.canEdit && Boolean(options.visualEditing) };
   return html`
     <div class="card-sub">${tree.name} — ${tree.id}@${tree.version}</div>
+    ${props.visualEditing ? nothing : renderTreeWarnings(props)}
     ${tree.description
       ? html`<div class="muted" style="margin-top: 4px;">${tree.description}</div>`
       : nothing}
@@ -2849,10 +3695,46 @@ function renderTreeDetail(tree: EnterpriseTreeDetail, props: EnterpriseProps): T
     <openclaw-workflow-tree-graph
       .nodes=${tree.nodes}
       .selected=${props.selectedNodeId}
-      @node-select=${(event: CustomEvent<{ nodeId: string | null }>) =>
-        props.onSelectNode(event.detail.nodeId)}
+      ?inert=${props.treeSaving}
+      aria-disabled=${props.treeSaving ? "true" : "false"}
+      @node-select=${(event: CustomEvent<{ nodeId: string | null }>) => {
+        if (props.treeSaving || !canDiscardEnterpriseDraft({ ...props, treeEditing: false })) {
+          event.preventDefault();
+          return;
+        }
+        if (!props.onSelectNode(event.detail.nodeId)) {
+          event.preventDefault();
+        }
+      }}
     ></openclaw-workflow-tree-graph>
     ${renderNodeInspector(tree, props)} ${renderWholeTreeOverview(tree, props)}
+  `;
+}
+
+/**
+ * Declarations on the saved work-map that no run could reach — an action no step
+ * can invoke, a knowledge source every path excludes.
+ *
+ * Shown beside the authoritative tree rather than in the editor: these are not
+ * why a save failed, they are what the current work-map says and cannot do.
+ * Until this landed only `openclaw enterprise import`
+ * printed them, so a work-map built entirely in the node inspector — the surface
+ * that makes it easiest to declare a grant an ancestor excludes — never showed
+ * one.
+ */
+function renderTreeWarnings(props: EnterpriseProps): TemplateResult | typeof nothing {
+  if (!props.treeWarnings?.length) {
+    return nothing;
+  }
+  return html`
+    <div class="callout warn" role="status" style="margin-top: 8px;">
+      <div>${t("enterprise.treeWarnings")}</div>
+      ${props.treeWarnings.map(
+        (warning) => html`<div class="muted">
+          ${warning.path ? html`<strong>${warning.path}</strong>: ` : nothing}${warning.message}
+        </div>`,
+      )}
+    </div>
   `;
 }
 
@@ -2878,8 +3760,17 @@ function renderCapabilityGrants(
   // and `off` governs nothing.
   const configuredExplicit = tree.capabilityGrants === "explicit";
   const enforcingExplicit = configuredExplicit && props.enterpriseMode === "enforce";
+  // This opt-out is tree-wide and only safe once every real attachment is gone;
+  // otherwise removing the marker would also discard an operator's grant.
+  const canDisableMcpGovernance =
+    !configuredExplicit &&
+    workMapHasMcpMarker(props) &&
+    !tree.nodes.some((node) => (node.ontology.mcpServers?.length ?? 0) > 0);
   return html`
-    <div class="row" style="justify-content: space-between; gap: 8px; margin-top: 8px;">
+    <div
+      class="row capability-grants"
+      style="justify-content: space-between; gap: 8px; margin-top: 8px;"
+    >
       <div class="muted">
         <span class="chip ${configuredExplicit ? "chip-ok" : ""}">
           ${configuredExplicit
@@ -2898,16 +3789,39 @@ function renderCapabilityGrants(
             : t("enterprise.capabilityGrants.inheritedHint")}
       </div>
       ${props.canEdit
-        ? html`<button
-            type="button"
-            class="btn"
-            ?disabled=${props.treeSaving}
-            @click=${props.onToggleCapabilityGrants}
-          >
-            ${configuredExplicit
-              ? t("enterprise.capabilityGrants.turnOff")
-              : t("enterprise.capabilityGrants.turnOn")}
-          </button>`
+        ? html`<div class="row" style="gap: 8px;">
+            ${canDisableMcpGovernance
+              ? html`<button
+                  type="button"
+                  class="btn danger"
+                  ?disabled=${nodeMutationLocked(props)}
+                  @click=${() => {
+                    if (window.confirm(t("enterprise.capabilityGrants.stopMcpWarning"))) {
+                      props.onDisableMcpGovernance();
+                    }
+                  }}
+                >
+                  ${t("enterprise.capabilityGrants.stopMcp")}
+                </button>`
+              : nothing}
+            <button
+              type="button"
+              class="btn"
+              ?disabled=${nodeMutationLocked(props)}
+              @click=${() => {
+                if (
+                  !configuredExplicit ||
+                  window.confirm(t("enterprise.capabilityGrants.turnOffWarning"))
+                ) {
+                  props.onToggleCapabilityGrants();
+                }
+              }}
+            >
+              ${configuredExplicit
+                ? t("enterprise.capabilityGrants.turnOff")
+                : t("enterprise.capabilityGrants.turnOn")}
+            </button>
+          </div>`
         : nothing}
     </div>
   `;
@@ -2999,7 +3913,30 @@ function renderNodeInspector(
             kind: "structure",
             title: t("enterprise.addNodeSectionTitle"),
             hint: t("enterprise.addNodeSectionSubtitle"),
-            body: renderAddNode(tree.id, nodeId, props),
+            body: html`
+              ${renderAddNode(tree.id, nodeId, props)}
+              ${node.parentId !== null
+                ? html`<button
+                    type="button"
+                    class="btn danger"
+                    style="margin-top: 8px;"
+                    ?disabled=${nodeMutationLocked(props)}
+                    @click=${() => {
+                      if (
+                        window.confirm(
+                          t("enterprise.removeNodeWarning", {
+                            node: node.title,
+                          }),
+                        )
+                      ) {
+                        props.onRemoveNode(node.id);
+                      }
+                    }}
+                  >
+                    ${t("enterprise.removeNode")}
+                  </button>`
+                : nothing}
+            `,
           })
         : nothing}
       ${renderNodeCapabilities(adders, props)}
@@ -3064,21 +4001,34 @@ function nodeBindingAdders(
   const ontology = node.ontology;
   const allowedTools = ontology.allowedTools ?? [];
   const foundations = ontology.knowledgeFoundations ?? [];
-  const installedSkills = new Set(props.skills.map((skill) => skill.name));
-  const { ids: retrievableIds, ownershipKnown } = retrievableFoundations(props);
+  const usableSkills = new Set(props.skills.filter(isModelUsableSkill).map((skill) => skill.name));
+  const {
+    usable: retrievableFoundationEntries,
+    ids: retrievableIds,
+    ownershipKnown,
+  } = retrievableFoundations(props);
   // Only claim something is missing once ITS catalog answered without error:
   // a failed request also leaves an empty list, which would otherwise mark every
   // declared value unresolved.
-  const skillsKnown = props.catalogPhase === "ready" && !props.catalogErrors.skills;
+  const skillsKnown = props.catalogErrors.skills === null;
   // Ownership is part of the claim: without it a value cannot be called
   // unavailable, only unverified.
-  const foundationsKnown =
-    props.catalogPhase === "ready" && !props.catalogErrors.foundations && ownershipKnown;
+  const foundationsKnown = props.catalogErrors.foundations === null && ownershipKnown;
   // Config is loaded with the screen rather than fetched per catalog, so an
   // attachment naming a server that is not in `mcp.servers` is known-missing
   // straight away — no phase gate like the two above need.
   const registeredServers = new Set(props.mcpServers.map((server) => server.name));
+  const enabledServers = new Set(
+    props.mcpServers.filter((server) => server.enabled).map((server) => server.name),
+  );
   const inheritedMcp = inheritedMcpServers(props, node.id);
+  // The knowledge allow-list INTERSECTS down the path, so an ancestor that names
+  // other sources silently excludes what is attached here. Both halves are
+  // needed: the ancestor ids say whether anything narrows at all, and the
+  // inherited set says what survives — an ancestor chain that intersects to
+  // nothing leaves the second empty while the first is not.
+  const knowledgeAncestors = constrainingAncestorIds(props, node.id, "knowledgeFoundations");
+  const inheritedFoundations = inheritedKnowledgeFoundations(props, node.id);
   const mcpGoverned = workMapGovernsMcp(props);
   const mcpDeclared = workMapDeclaresMcp(props);
   return [
@@ -3140,17 +4090,27 @@ function nodeBindingAdders(
       field: "skills",
       values: ontology.skills ?? [],
       title: t("enterprise.bindings.declaredLabel"),
-      options: props.skills.map((skill) => ({
-        value: skill.name,
-        ...(skill.description ? { description: skill.description } : {}),
-      })),
+      options: props.skills.map((skill) => {
+        const usable = isModelUsableSkill(skill);
+        const description = [
+          skill.description,
+          usable ? null : t("enterprise.bindings.skillNotModelVisible"),
+        ]
+          .filter((part): part is string => Boolean(part))
+          .join(" — ");
+        return {
+          value: skill.name,
+          ...(description ? { description } : {}),
+          ...(usable ? {} : { disabled: true }),
+        };
+      }),
       // A declared skill resolves to instructions only when the agent has it, so
       // the operator has to see which declarations resolve today. Named per agent:
       // the skill set is agent-scoped, and a tree can govern a different agent
       // than the one this catalog answered for.
       valueNote: (value) =>
-        skillsKnown && !installedSkills.has(value)
-          ? t("enterprise.bindings.skillNotInstalled")
+        skillsKnown && !usableSkills.has(value)
+          ? t("enterprise.bindings.skillNotModelVisible")
           : null,
     },
     {
@@ -3158,7 +4118,18 @@ function nodeBindingAdders(
       field: "knowledgeFoundations",
       values: foundations,
       title: t("enterprise.bindings.allowedLabel"),
-      options: [...retrievableIds].toSorted().map((value) => ({ value })),
+      // The summary, not a bare id: picking which store belongs on which step is
+      // the whole point of this row, and among several dotted ids the id alone
+      // does not say what a store covers. Falls back to the display name so a
+      // descriptionless adapter still reads as something.
+      options: retrievableFoundationEntries
+        .map((foundation) => {
+          const description = foundation.description ?? foundation.displayName;
+          return description && description !== foundation.id
+            ? { value: foundation.id, description }
+            : { value: foundation.id };
+        })
+        .toSorted((a, b) => a.value.localeCompare(b.value)),
       // Same path-gate shape as tools: an omitted list lets the step query every
       // registered foundation, so the first entry restricts it.
       // Same inversion as the tool list above: under explicit grants an empty
@@ -3173,11 +4144,16 @@ function nodeBindingAdders(
               : t("enterprise.entryDraft.knowledgeUngranted")
             : t("enterprise.entryDraft.knowledgeNarrowing")
           : null,
-      constrainingAncestors: constrainingAncestorIds(props, node.id, "knowledgeFoundations"),
+      constrainingAncestors: knowledgeAncestors,
+      // "Not registered" first: an id nobody serves is dead whatever the path
+      // allows, and telling the operator to widen an ancestor for it would send
+      // them to fix the wrong file.
       valueNote: (value) =>
         foundationsKnown && !retrievableIds.has(value)
           ? t("enterprise.bindings.foundationNotRegistered")
-          : null,
+          : knowledgeAncestors.length > 0 && !inheritedFoundations.includes(value)
+            ? t("enterprise.bindings.foundationExcludedByAncestor")
+            : null,
     },
     {
       nodeId: node.id,
@@ -3186,7 +4162,10 @@ function nodeBindingAdders(
       title: t("enterprise.bindings.attachedLabel"),
       options: props.mcpServers.map((server) => ({
         value: server.name,
-        description: server.launch,
+        description: [server.launch, server.enabled ? null : t("enterprise.bindings.mcpDisabled")]
+          .filter((part): part is string => Boolean(part))
+          .join(" — "),
+        ...(server.enabled ? {} : { disabled: true }),
       })),
       // The opposite warning to the lists above: those START permissive and the
       // first entry narrows, while no attachment anywhere on the path reaches
@@ -3206,19 +4185,13 @@ function nodeBindingAdders(
       valueNote: (value) =>
         props.mcpServersKnown && !registeredServers.has(value)
           ? t("enterprise.bindings.mcpNotRegistered")
-          : null,
+          : props.mcpServersKnown && !enabledServers.has(value)
+            ? t("enterprise.bindings.mcpDisabled")
+            : null,
     },
   ];
 }
 
-/**
- * What this step is bound to: its tool scope, the skills it declares, and the
- * knowledge foundations it may query.
- *
- * Three separate cards, not one run-on list: they are three different kinds of
- * binding with different rules, and an operator scanning for "what can this step
- * call" should not have to parse where one ends and the next begins.
- */
 /**
  * How this step should behave, in the operator's words.
  *
@@ -3232,48 +4205,285 @@ function nodeBindingAdders(
  * new revision, so saving on each character would bury the version history and
  * race itself.
  */
+function isNodeInSubtree(tree: EnterpriseTreeDetail, rootId: string, candidateId: string): boolean {
+  const parentById = new Map(tree.nodes.map((node) => [node.id, node.parentId]));
+  let current: string | null | undefined = candidateId;
+  while (current) {
+    if (current === rootId) {
+      return true;
+    }
+    current = parentById.get(current);
+  }
+  return false;
+}
+
 function renderNodeGuidance(
   node: EnterpriseTreeNode,
   props: EnterpriseProps,
 ): TemplateResult | typeof nothing {
-  const saved = node.ontology.guidance ?? "";
+  const tree = props.treeDetail;
+  const siblings = tree?.nodes.filter((candidate) => candidate.parentId === node.parentId) ?? [];
+  const saved = {
+    title: node.title,
+    parentId: node.parentId,
+    position: Math.max(
+      0,
+      siblings.findIndex((candidate) => candidate.id === node.id),
+    ),
+    description: node.description ?? "",
+    text: node.ontology.guidance ?? "",
+    contextHints: [...(node.ontology.contextHints ?? [])],
+    expectedOutput: node.ontology.expectedOutput ?? "",
+    audit: node.ontology.audit ?? false,
+  };
   // Both ids: node ids repeat across trees (roots especially), so a draft from
   // another work-map would otherwise appear under this step.
   const draft =
     props.guidanceDraft?.nodeId === node.id && props.guidanceDraft.treeId === props.treeDetail?.id
       ? props.guidanceDraft
       : null;
+  const locked =
+    props.treeSaving ||
+    Boolean(
+      props.nodeDraft ||
+      props.bindingPicker ||
+      props.ontologyDraft ||
+      (props.guidanceDraft && !draft),
+    );
   if (!props.canEdit) {
-    // A read-only operator still needs to see what the step was told to do.
-    return saved ? html`<div class="muted" style="white-space: pre-wrap;">${saved}</div>` : nothing;
+    const hasBehavior =
+      saved.text || saved.contextHints.length > 0 || saved.expectedOutput || saved.audit;
+    return hasBehavior
+      ? html`
+          ${saved.text
+            ? html`<div class="muted" style="white-space: pre-wrap;">${saved.text}</div>`
+            : nothing}
+          ${saved.contextHints.length > 0
+            ? html`<div class="muted" style="white-space: pre-wrap;">
+                ${saved.contextHints.join("\n")}
+              </div>`
+            : nothing}
+          ${saved.expectedOutput
+            ? html`<div class="muted" style="white-space: pre-wrap;">
+                ${t("enterprise.expectedOutput", { text: saved.expectedOutput })}
+              </div>`
+            : nothing}
+          ${saved.audit ? html`<span class="chip">${t("enterprise.audit")}</span>` : nothing}
+        `
+      : nothing;
   }
-  const value = draft ? draft.text : saved;
-  const dirty = value !== saved;
+  const value = draft ?? { treeId: "", nodeId: node.id, ...saved, error: null };
+  const dirty =
+    value.title !== saved.title ||
+    value.parentId !== saved.parentId ||
+    value.position !== saved.position ||
+    value.description !== saved.description ||
+    value.text !== saved.text ||
+    JSON.stringify(value.contextHints) !== JSON.stringify(saved.contextHints) ||
+    value.expectedOutput !== saved.expectedOutput ||
+    value.audit !== saved.audit;
   return html`
-    <textarea
-      class="input"
-      style="min-height: 96px; width: 100%;"
-      rows="4"
-      .value=${value}
-      aria-label=${t("enterprise.guidanceEditor.fieldLabel", { nodeId: node.id })}
-      placeholder=${t("enterprise.guidanceEditor.placeholder")}
-      ?disabled=${props.treeSaving}
-      @input=${(event: Event) =>
-        props.onGuidanceDraft(node.id, (event.target as HTMLTextAreaElement).value)}
-    ></textarea>
+    <div class="form-grid node-guidance-form">
+      <label class="field">
+        <span>${t("enterprise.guidanceEditor.titleLabel")}</span>
+        <input
+          class="input"
+          .value=${value.title}
+          ?disabled=${locked}
+          @input=${(event: Event) =>
+            props.onGuidanceDraft(node.id, {
+              title: (event.target as HTMLInputElement).value,
+            })}
+        />
+      </label>
+      ${node.parentId !== null && tree
+        ? html`<label class="field">
+              <span>${t("enterprise.guidanceEditor.parentLabel")}</span>
+              <select
+                class="input"
+                .value=${value.parentId ?? ""}
+                ?disabled=${locked}
+                @change=${(event: Event) => {
+                  const parentId = (event.target as HTMLSelectElement).value;
+                  const childCount = tree.nodes.filter(
+                    (candidate) => candidate.parentId === parentId,
+                  ).length;
+                  const position = Math.max(0, childCount - (parentId === saved.parentId ? 1 : 0));
+                  props.onGuidanceDraft(node.id, { parentId, position });
+                }}
+              >
+                ${tree.nodes
+                  .filter((candidate) => !isNodeInSubtree(tree, node.id, candidate.id))
+                  .map(
+                    (candidate) => html`<option
+                      value=${candidate.id}
+                      ?selected=${candidate.id === value.parentId}
+                    >
+                      ${candidate.title} — ${candidate.id}
+                    </option>`,
+                  )}
+              </select>
+            </label>
+            <label class="field">
+              <span>${t("enterprise.guidanceEditor.positionLabel")}</span>
+              <input
+                class="input"
+                type="number"
+                min="1"
+                step="1"
+                .value=${String(value.position + 1)}
+                ?disabled=${locked}
+                @input=${(event: Event) =>
+                  props.onGuidanceDraft(node.id, {
+                    position: Number((event.target as HTMLInputElement).value) - 1,
+                  })}
+              />
+            </label>`
+        : nothing}
+      <label class="field">
+        <span>${t("enterprise.guidanceEditor.descriptionLabel")}</span>
+        <input
+          class="input"
+          .value=${value.description}
+          ?disabled=${locked}
+          @input=${(event: Event) =>
+            props.onGuidanceDraft(node.id, {
+              description: (event.target as HTMLInputElement).value,
+            })}
+        />
+      </label>
+      <label class="field full">
+        <span>${t("enterprise.guidanceEditor.fieldLabel", { nodeId: node.id })}</span>
+        <textarea
+          class="input"
+          rows="4"
+          .value=${value.text}
+          placeholder=${t("enterprise.guidanceEditor.placeholder")}
+          ?disabled=${locked}
+          @input=${(event: Event) =>
+            props.onGuidanceDraft(node.id, {
+              text: (event.target as HTMLTextAreaElement).value,
+            })}
+        ></textarea>
+      </label>
+      <fieldset class="field full" style="border: 0; padding: 0; margin: 0; min-width: 0;">
+        <legend>${t("enterprise.guidanceEditor.contextHintsLabel")}</legend>
+        ${(value.contextHints.length > 0 ? value.contextHints : [""]).map(
+          (hint, index) => html`
+            <div class="row" style="gap: 6px;">
+              <input
+                class="input"
+                data-list-entry=${String(index)}
+                style="flex: 1;"
+                aria-label=${`${t("enterprise.guidanceEditor.contextHintsLabel")} ${index + 1}`}
+                .value=${hint}
+                placeholder=${t("enterprise.guidanceEditor.contextHintsPlaceholder")}
+                ?disabled=${locked}
+                @input=${(event: Event) => {
+                  const contextHints = [...value.contextHints];
+                  contextHints[index] = (event.target as HTMLInputElement).value;
+                  props.onGuidanceDraft(node.id, { contextHints });
+                }}
+              />
+              ${value.contextHints.length > 0
+                ? html`<button
+                    type="button"
+                    class="btn"
+                    title=${`${t("enterprise.guidanceEditor.removeContextHint")} ${index + 1}`}
+                    aria-label=${`${t("enterprise.guidanceEditor.removeContextHint")} ${index + 1}`}
+                    ?disabled=${locked}
+                    @click=${(event: Event) => {
+                      const fieldset = (event.currentTarget as HTMLElement).closest("fieldset");
+                      props.onGuidanceDraft(node.id, {
+                        contextHints: value.contextHints.filter(
+                          (_, candidate) => candidate !== index,
+                        ),
+                      });
+                      requestAnimationFrame(() => {
+                        const inputs = fieldset?.querySelectorAll<HTMLElement>("[data-list-entry]");
+                        (
+                          inputs?.[Math.min(index, inputs.length - 1)] ??
+                          fieldset?.querySelector<HTMLElement>("[data-list-add]")
+                        )?.focus();
+                      });
+                    }}
+                  >
+                    ×
+                  </button>`
+                : nothing}
+            </div>
+          `,
+        )}
+        <button
+          type="button"
+          class="btn"
+          data-list-add
+          ?disabled=${locked}
+          @click=${(event: Event) => {
+            const fieldset = (event.currentTarget as HTMLElement).closest("fieldset");
+            props.onGuidanceDraft(node.id, { contextHints: [...value.contextHints, ""] });
+            requestAnimationFrame(() =>
+              fieldset
+                ?.querySelector<HTMLElement>(`[data-list-entry="${value.contextHints.length}"]`)
+                ?.focus(),
+            );
+          }}
+        >
+          ${t("enterprise.guidanceEditor.addContextHint")}
+        </button>
+      </fieldset>
+      <label class="field full">
+        <span>${t("enterprise.guidanceEditor.expectedOutputLabel")}</span>
+        <textarea
+          class="input"
+          rows="3"
+          .value=${value.expectedOutput}
+          placeholder=${t("enterprise.guidanceEditor.expectedOutputPlaceholder")}
+          ?disabled=${locked}
+          @input=${(event: Event) =>
+            props.onGuidanceDraft(node.id, {
+              expectedOutput: (event.target as HTMLTextAreaElement).value,
+            })}
+        ></textarea>
+      </label>
+      <label class="field checkbox full">
+        <input
+          type="checkbox"
+          .checked=${value.audit}
+          ?disabled=${locked}
+          @change=${(event: Event) =>
+            props.onGuidanceDraft(node.id, {
+              audit: (event.target as HTMLInputElement).checked,
+            })}
+        />
+        <span>${t("enterprise.guidanceEditor.auditLabel")}</span>
+      </label>
+    </div>
+    ${value.error
+      ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+          ${t(`enterprise.guidanceEditor.error.${value.error}`)}
+        </div>`
+      : nothing}
     <div class="row" style="margin-top: 6px; gap: 8px;">
       <button
         type="button"
         class="btn"
-        ?disabled=${!dirty || props.treeSaving}
-        @click=${() => props.onSaveGuidance(node.id)}
+        ?disabled=${!dirty || locked}
+        @click=${() => {
+          if (
+            value.parentId === saved.parentId ||
+            window.confirm(t("enterprise.guidanceEditor.reparentWarning"))
+          ) {
+            props.onSaveGuidance(node.id);
+          }
+        }}
       >
         ${t("enterprise.guidanceEditor.save")}
       </button>
       <button
         type="button"
         class="btn"
-        ?disabled=${!dirty || props.treeSaving}
+        ?disabled=${!draft || locked}
         @click=${() => props.onCancelGuidance()}
       >
         ${t("enterprise.guidanceEditor.revert")}
@@ -3302,27 +4512,118 @@ function mergedEntityHasIdentity(props: EnterpriseProps, entityId: string): bool
   );
 }
 
+function declarationIsShadowed(entries: readonly { id: string }[], index: number): boolean {
+  return entries.findLastIndex((entry) => entry.id === entries[index]?.id) > index;
+}
+
 /** One "id — remove" chip, the shape every ontology list row uses. */
 function renderOntologyChip(
   label: string,
   removeTitle: string,
   props: EnterpriseProps,
   onRemove: () => void,
+  onEdit?: () => void,
 ): TemplateResult {
   return html`<span class="chip"
-    ><code>${label}</code>${props.canEdit
+    ><code>${label}</code>${props.canEdit && onEdit
+      ? html`<button
+          type="button"
+          class="chip-open"
+          title=${t("enterprise.ontologyEditor.editTitle", { item: label })}
+          aria-label=${t("enterprise.ontologyEditor.editTitle", { item: label })}
+          ?disabled=${nodeMutationLocked(props)}
+          @click=${onEdit}
+        >
+          ${t("enterprise.edit")}
+        </button>`
+      : nothing}${props.canEdit
       ? html`<button
           type="button"
           class="chip-remove"
           title=${removeTitle}
           aria-label=${removeTitle}
-          ?disabled=${props.treeSaving}
+          ?disabled=${nodeMutationLocked(props)}
           @click=${onRemove}
         >
           ×
         </button>`
       : nothing}</span
   >`;
+}
+
+function renderOntologyMetadata(
+  rows: ReadonlyArray<{ label: string; value: string | undefined }>,
+): TemplateResult | typeof nothing {
+  const visible = rows.filter((row) => row.value);
+  return visible.length === 0
+    ? nothing
+    : html`<div class="muted">
+        ${visible.map((row) => html`<div>${row.label}: ${row.value}</div>`)}
+      </div>`;
+}
+
+function renderOntologyTextList(
+  label: string,
+  values: readonly string[],
+  props: EnterpriseProps,
+  onChange: (values: string[]) => void,
+): TemplateResult {
+  return html`<fieldset class="field">
+    <legend>${label}</legend>
+    ${values.map(
+      (value, index) => html`<div class="row" style="gap: 6px; margin-top: 6px;">
+        <input
+          class="input"
+          data-list-entry=${String(index)}
+          aria-label="${label} ${index + 1}"
+          .value=${value}
+          ?disabled=${props.treeSaving}
+          @input=${(event: Event) => {
+            const next = [...values];
+            next[index] = (event.target as HTMLInputElement).value;
+            onChange(next);
+          }}
+        />
+        <button
+          type="button"
+          class="btn"
+          aria-label=${t("enterprise.ontologyEditor.removeListItem", {
+            item: `${label} ${index + 1}`,
+          })}
+          ?disabled=${props.treeSaving}
+          @click=${(event: Event) => {
+            const fieldset = (event.currentTarget as HTMLElement).closest("fieldset");
+            onChange(values.filter((_entry, at) => at !== index));
+            requestAnimationFrame(() => {
+              const inputs = fieldset?.querySelectorAll<HTMLElement>("[data-list-entry]");
+              (
+                inputs?.[Math.min(index, inputs.length - 1)] ??
+                fieldset?.querySelector<HTMLElement>("[data-list-add]")
+              )?.focus();
+            });
+          }}
+        >
+          ${t("enterprise.remove")}
+        </button>
+      </div>`,
+    )}
+    <button
+      type="button"
+      class="btn"
+      data-list-add
+      style="margin-top: 6px;"
+      ?disabled=${props.treeSaving}
+      @click=${(event: Event) => {
+        const fieldset = (event.currentTarget as HTMLElement).closest("fieldset");
+        onChange([...values, ""]);
+        requestAnimationFrame(() =>
+          fieldset?.querySelector<HTMLElement>(`[data-list-entry="${values.length}"]`)?.focus(),
+        );
+      }}
+    >
+      ${t("enterprise.ontologyEditor.addListItem", { item: label })}
+    </button>
+  </fieldset>`;
 }
 
 /**
@@ -3347,6 +4648,7 @@ function renderNodeOntologyEditor(
   const relationships = node.ontology.relationships ?? [];
   const actions = node.ontology.actions ?? [];
   const functions = node.ontology.functions ?? [];
+  const constraints = node.ontology.constraints ?? [];
   // A node may declare only LINKS, or only an action over types an ancestor gave
   // it — valid and common, so an empty local entity list is not an empty section.
   if (
@@ -3354,7 +4656,8 @@ function renderNodeOntologyEditor(
     entities.length === 0 &&
     relationships.length === 0 &&
     actions.length === 0 &&
-    functions.length === 0
+    functions.length === 0 &&
+    constraints.length === 0
   ) {
     return nothing;
   }
@@ -3378,20 +4681,25 @@ function renderNodeOntologyEditor(
   const verbEntityIds = props.treeDetail
     ? declaredExecutableEntityIds(props.treeDetail, node.id)
     : scopeEntityIds;
-  // Same reach for the link types a graph effect may relate over: it resolves at
-  // whichever node is active below here, so one every executable leaf declares is
-  // addressable and one only a sibling branch declares never is.
-  const verbRelationshipIds = props.treeDetail
-    ? declaredExecutableRelationshipIds(props.treeDetail, node.id)
-    : relationships.map((relationship) => relationship.id);
   return html`
     <!-- No scope note here: the enclosing ontology section already carries it,
       and repeating it put the same paragraph twice on one screen. -->
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.ontologyEditor.title")}</div>
-    ${entities.map((entity) => {
+    ${entities.map((entity, entityIndex) => {
       const properties = entity.properties ?? [];
       const propertyDraft =
-        draft?.kind === "property" && draft.entityId === entity.id ? draft : null;
+        draft?.kind === "property" &&
+        draft.entityId === entity.id &&
+        draft.entityIndex === entityIndex
+          ? draft
+          : null;
+      const entityDraft =
+        draft?.kind === "entity" &&
+        draft.metadataUpdate?.kind === "entity" &&
+        draft.metadataUpdate.target.index === entityIndex &&
+        draft.metadataUpdate.target.id === entity.id
+          ? draft
+          : null;
       return html`
         <section class="ontology-group" style="margin-top: 8px;">
           <header class="ontology-group__head">
@@ -3402,18 +4710,42 @@ function renderNodeOntologyEditor(
               ? html`<button
                     type="button"
                     class="btn"
-                    ?disabled=${props.treeSaving}
+                    title=${t("enterprise.ontologyEditor.editTitle", { item: entity.id })}
+                    aria-label=${t("enterprise.ontologyEditor.editTitle", { item: entity.id })}
+                    ?disabled=${nodeMutationLocked(props)}
+                    @click=${() =>
+                      props.onOntologyDraft({
+                        kind: "entity",
+                        nodeId: node.id,
+                        id: entity.id,
+                        title: entity.title ?? "",
+                        description: entity.description ?? "",
+                        metadataUpdate: {
+                          kind: "entity",
+                          target: { index: entityIndex, id: entity.id },
+                        },
+                      })}
+                  >
+                    ${t("enterprise.edit")}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn"
+                    ?disabled=${nodeMutationLocked(props)}
                     @click=${() =>
                       props.onOntologyDraft({
                         kind: "property",
                         nodeId: node.id,
                         entityId: entity.id,
+                        entityIndex,
                         id: "",
                         type: "string",
                         // From the MERGED shape, not this node's array: an
                         // ancestor may already carry the identity field, and
                         // opening the box checked would guarantee a refusal.
                         primaryKey: !mergedEntityHasIdentity(props, entity.id),
+                        required: false,
+                        description: "",
                       })}
                   >
                     ${t("enterprise.ontologyEditor.addProperty")}
@@ -3422,27 +4754,74 @@ function renderNodeOntologyEditor(
                     t("enterprise.ontologyEditor.removeEntity"),
                     t("enterprise.ontologyEditor.removeEntityTitle", { entity: entity.id }),
                     props,
-                    () => props.onRemoveOntologyEntity(node.id, entity.id),
+                    () => props.onRemoveOntologyEntity(node.id, entity.id, entityIndex),
                   )}`
               : nothing}
           </header>
           <div class="ontology-group__body">
+            ${renderOntologyMetadata([
+              {
+                label: t("enterprise.ontologyEditor.descriptionLabel"),
+                value: entity.description,
+              },
+            ])}
             ${properties.length === 0
               ? html`<div class="muted">${t("enterprise.ontologyEditor.noProperties")}</div>`
               : html`<div class="chip-row">
-                  ${properties.map((property) =>
+                  ${properties.map((property, propertyIndex) =>
                     renderOntologyChip(
                       `${property.id}: ${property.type}${
                         property.primaryKey
                           ? ` ${t("enterprise.ontologyEditor.primaryKeyMark")}`
                           : ""
+                      }${
+                        property.required ? ` ${t("enterprise.ontologyEditor.requiredMark")}` : ""
                       }`,
                       t("enterprise.ontologyEditor.removePropertyTitle", { property: property.id }),
                       props,
-                      () => props.onRemoveOntologyProperty(node.id, entity.id, property.id),
+                      () =>
+                        props.onRemoveOntologyProperty(
+                          node.id,
+                          entity.id,
+                          property.id,
+                          entityIndex,
+                          propertyIndex,
+                        ),
+                      () =>
+                        props.onOntologyDraft({
+                          kind: "property",
+                          nodeId: node.id,
+                          entityId: entity.id,
+                          entityIndex,
+                          id: property.id,
+                          type: property.type,
+                          primaryKey: property.primaryKey ?? false,
+                          required: property.required ?? false,
+                          description: property.description ?? "",
+                          metadataUpdate: {
+                            kind: "property",
+                            entity: { index: entityIndex, id: entity.id },
+                            target: {
+                              index: propertyIndex,
+                              id: property.id,
+                              type: property.type,
+                              primaryKey: property.primaryKey ?? false,
+                            },
+                            required: property.required ?? false,
+                          },
+                        }),
                     ),
                   )}
                 </div>`}
+            ${properties.map((property) =>
+              renderOntologyMetadata([
+                {
+                  label: property.id,
+                  value: property.description,
+                },
+              ]),
+            )}
+            ${entityDraft ? renderOntologyDraftForm(entityDraft, scopeEntityIds, props) : nothing}
             ${propertyDraft
               ? renderOntologyDraftForm(propertyDraft, scopeEntityIds, props)
               : nothing}
@@ -3457,7 +4836,7 @@ function renderNodeOntologyEditor(
           ? html`<button
               type="button"
               class="btn"
-              ?disabled=${props.treeSaving}
+              ?disabled=${nodeMutationLocked(props)}
               @click=${() =>
                 props.onOntologyDraft({
                   kind: "relationship",
@@ -3466,6 +4845,8 @@ function renderNodeOntologyEditor(
                   from: scopeEntityIds[0] ?? "",
                   to: scopeEntityIds[Math.min(1, scopeEntityIds.length - 1)] ?? "",
                   cardinality: "many-to-many",
+                  inverse: "",
+                  description: "",
                 })}
             >
               ${t("enterprise.entryDraft.add")}
@@ -3475,19 +4856,63 @@ function renderNodeOntologyEditor(
       <div class="ontology-group__body">
         ${relationships.length === 0
           ? html`<div class="muted">${t("enterprise.ontologyEditor.noLinks")}</div>`
-          : html`<div class="chip-row">
-              ${relationships.map((relationship) =>
-                renderOntologyChip(
-                  `${relationship.from} → ${relationship.to} (${relationship.id})`,
-                  t("enterprise.ontologyEditor.removeLinkTitle", { link: relationship.id }),
-                  props,
-                  () =>
-                    props.onRemoveOntologyRelationship(node.id, {
-                      id: relationship.id,
-                      from: relationship.from,
-                      to: relationship.to,
-                    }),
-                ),
+          : html`<div class="list">
+              ${relationships.map(
+                (relationship, relationshipIndex) => html`
+                  <div>
+                    <div class="chip-row">
+                      ${renderOntologyChip(
+                        `${relationship.from} → ${relationship.to} (${relationship.id})${
+                          declarationIsShadowed(relationships, relationshipIndex)
+                            ? ` — ${t("enterprise.ontologyEditor.shadowedDeclaration")}`
+                            : ""
+                        }`,
+                        t("enterprise.ontologyEditor.removeLinkTitle", { link: relationship.id }),
+                        props,
+                        () =>
+                          props.onRemoveOntologyRelationship(node.id, {
+                            index: relationshipIndex,
+                            id: relationship.id,
+                            from: relationship.from,
+                            to: relationship.to,
+                          }),
+                        () =>
+                          props.onOntologyDraft({
+                            kind: "relationship",
+                            nodeId: node.id,
+                            id: relationship.id,
+                            from: relationship.from,
+                            to: relationship.to,
+                            cardinality: relationship.cardinality ?? "many-to-many",
+                            inverse: relationship.inverse ?? "",
+                            description: relationship.description ?? "",
+                            metadataUpdate: {
+                              kind: "relationship",
+                              target: {
+                                index: relationshipIndex,
+                                id: relationship.id,
+                                from: relationship.from,
+                                to: relationship.to,
+                                ...(relationship.cardinality
+                                  ? { cardinality: relationship.cardinality }
+                                  : {}),
+                              },
+                            },
+                          }),
+                      )}
+                    </div>
+                    ${renderOntologyMetadata([
+                      {
+                        label: t("enterprise.ontologyEditor.inverseLabel"),
+                        value: relationship.inverse,
+                      },
+                      {
+                        label: t("enterprise.ontologyEditor.descriptionLabel"),
+                        value: relationship.description,
+                      },
+                    ])}
+                  </div>
+                `,
               )}
             </div>`}
         ${draft?.kind === "relationship"
@@ -3495,22 +4920,31 @@ function renderNodeOntologyEditor(
           : nothing}
       </div>
     </section>
-    ${renderNodeOntologyActions(node, actions, verbEntityIds, draft, props, verbRelationshipIds)}
+    ${renderNodeOntologyActions(node, actions, verbEntityIds, draft, props)}
     ${renderNodeOntologyFunctions(node, functions, verbEntityIds, draft, props)}
+    ${renderNodeOntologyConstraints(node, constraints, draft, props)}
     ${props.canEdit
       ? html`<div class="row" style="margin-top: 8px;">
           <button
             type="button"
             class="btn"
-            ?disabled=${props.treeSaving}
+            ?disabled=${nodeMutationLocked(props)}
             @click=${() =>
-              props.onOntologyDraft({ kind: "entity", nodeId: node.id, id: "", title: "" })}
+              props.onOntologyDraft({
+                kind: "entity",
+                nodeId: node.id,
+                id: "",
+                title: "",
+                description: "",
+              })}
           >
             ${t("enterprise.ontologyEditor.addEntity")}
           </button>
         </div>`
       : nothing}
-    ${draft?.kind === "entity" ? renderOntologyDraftForm(draft, scopeEntityIds, props) : nothing}
+    ${draft?.kind === "entity" && !draft.metadataUpdate
+      ? renderOntologyDraftForm(draft, scopeEntityIds, props)
+      : nothing}
   `;
 }
 
@@ -3530,17 +4964,10 @@ function renderNodeOntologyActions(
   scopeEntityIds: readonly string[],
   draft: EnterpriseOntologyDraft | null,
   props: EnterpriseProps,
-  relationshipIds: readonly string[] = [],
 ): TemplateResult | typeof nothing {
   if (!props.canEdit && actions.length === 0) {
     return nothing;
   }
-  // Identity field per object type this step's actions can REACH: its own path,
-  // plus every descendant, since an action is in scope at each of them and
-  // resolves at whichever node is active. A type declared only on a sibling
-  // branch is absent here on purpose — no scope under this step ever contains
-  // it, so an effect naming one can never execute. Built once per node.
-  const entityKeys = executableEntityKeys(props.treeDetail, node.id);
   return html`
     <div class="card-title" style="margin-top: 16px;">
       ${t("enterprise.ontologyEditor.actions")}
@@ -3548,42 +4975,103 @@ function renderNodeOntologyActions(
     <div class="muted" style="margin-top: 4px;">
       ${t("enterprise.ontologyEditor.actionsSummary")}
     </div>
-    ${actions.map((action) => {
+    ${actions.map((action, actionIndex) => {
       const effects = action.effects ?? [];
       const parameters = action.parameters ?? [];
-      const callable = actionIsCallable(effects, parameters, entityKeys);
+      const executableScopes = executableOntologyScopes(
+        props.treeDetail,
+        node.id,
+        action.id,
+        actionIndex,
+      );
+      const [firstScope, ...remainingScopes] = executableScopes;
+      const actionEntityIds = firstScope
+        ? [...firstScope.entities.keys()].filter((id) =>
+            remainingScopes.every((scope) => scope.entities.has(id)),
+          )
+        : [];
+      const actionRelationshipIds = firstScope
+        ? [...firstScope.relationships.keys()].filter((id) =>
+            remainingScopes.every((scope) => scope.relationships.has(id)),
+          )
+        : [];
+      const fullyShadowed = executableScopes.length === 0;
+      const callable = fullyShadowed || actionIsCallable(effects, parameters, executableScopes);
+      const shadowed = fullyShadowed || declarationIsShadowed(actions, actionIndex);
       // An action is either outward or local, never both: the call cannot join
       // the local write transaction, so the import refuses a mixed one. The Add
       // buttons offer only the side this action is already on.
       const outward = effects.some((effect) => effect.kind === "call");
       const local = effects.some((effect) => effect.kind !== "call");
       const actionDraft =
-        (draft?.kind === "action-effect" ||
-          draft?.kind === "action-parameter" ||
-          draft?.kind === "action-call" ||
-          draft?.kind === "action-link") &&
-        draft.actionId === action.id
+        draft?.kind === "action" &&
+        draft.metadataUpdate?.kind === "action" &&
+        draft.metadataUpdate.target.index === actionIndex &&
+        draft.metadataUpdate.target.id === action.id
           ? draft
-          : null;
+          : (draft?.kind === "action-effect" ||
+                draft?.kind === "action-parameter" ||
+                draft?.kind === "action-call" ||
+                draft?.kind === "action-link") &&
+              draft.actionId === action.id &&
+              draft.actionIndex === actionIndex
+            ? draft
+            : null;
       return html`
         <section class="ontology-group" style="margin-top: 8px;">
           <header class="ontology-group__head">
             <span class="ontology-group__title"
-              >${action.title ? `${action.title} — ${action.id}` : action.id}</span
+              >${action.title ? `${action.title} — ${action.id}` : action.id}
+              ${shadowed
+                ? html`<span class="chip chip-warn">
+                    ${t("enterprise.ontologyEditor.shadowedDeclaration")}
+                  </span>`
+                : nothing}</span
             >
             ${props.canEdit
-              ? html`${scopeEntityIds.length >= 1 && !outward
+              ? html`<button
+                    type="button"
+                    class="btn"
+                    title=${t("enterprise.ontologyEditor.editTitle", { item: action.id })}
+                    aria-label=${t("enterprise.ontologyEditor.editTitle", { item: action.id })}
+                    ?disabled=${nodeMutationLocked(props)}
+                    @click=${() =>
+                      props.onOntologyDraft({
+                        kind: "action",
+                        nodeId: node.id,
+                        id: action.id,
+                        title: action.title ?? "",
+                        description: action.description ?? "",
+                        toolsMode:
+                          action.tools === undefined
+                            ? "all"
+                            : action.tools.length === 0
+                              ? "none"
+                              : "selected",
+                        tools: [...(action.tools ?? [])],
+                        preconditions: [...(action.preconditions ?? [])],
+                        metadataUpdate: {
+                          kind: "action",
+                          target: { index: actionIndex, id: action.id },
+                        },
+                      })}
+                  >
+                    ${t("enterprise.edit")}
+                  </button>
+                  ${actionEntityIds.length >= 1 && !outward
                     ? html`<button
                         type="button"
                         class="btn"
-                        ?disabled=${props.treeSaving}
+                        ?disabled=${nodeMutationLocked(props)}
                         @click=${() =>
                           props.onOntologyDraft({
                             kind: "action-effect",
                             nodeId: node.id,
                             actionId: action.id,
-                            entity: scopeEntityIds[0] ?? "",
+                            actionIndex,
+                            entity: actionEntityIds[0] ?? "",
                             effectKind: "update",
+                            description: "",
                           })}
                       >
                         ${t("enterprise.ontologyEditor.addEffect")}
@@ -3595,18 +5083,22 @@ function renderNodeOntologyActions(
                       // reason: it may hold no local effect at all, so the splicer
                       // would refuse whatever the form collected.
                       nothing}
-                  ${relationshipIds.length >= 1 && !outward
+                  ${actionRelationshipIds.length >= 1 && !outward
                     ? html`<button
                         type="button"
                         class="btn"
-                        ?disabled=${props.treeSaving}
+                        ?disabled=${nodeMutationLocked(props)}
                         @click=${() =>
                           props.onOntologyDraft({
                             kind: "action-link",
                             nodeId: node.id,
                             actionId: action.id,
-                            relationship: relationshipIds[0] ?? "",
+                            actionIndex,
+                            relationship: actionRelationshipIds[0] ?? "",
                             linkKind: "link",
+                            from: "",
+                            to: "",
+                            description: "",
                           })}
                       >
                         ${t("enterprise.ontologyEditor.addLinkEffect")}
@@ -3620,13 +5112,15 @@ function renderNodeOntologyActions(
                     : html`<button
                         type="button"
                         class="btn"
-                        ?disabled=${props.treeSaving}
+                        ?disabled=${nodeMutationLocked(props)}
                         @click=${() =>
                           props.onOntologyDraft({
                             kind: "action-call",
                             nodeId: node.id,
                             actionId: action.id,
+                            actionIndex,
                             tool: "",
+                            description: "",
                           })}
                       >
                         ${t("enterprise.ontologyEditor.addCallEffect")}
@@ -3634,15 +5128,17 @@ function renderNodeOntologyActions(
                   <button
                     type="button"
                     class="btn"
-                    ?disabled=${props.treeSaving}
+                    ?disabled=${nodeMutationLocked(props)}
                     @click=${() =>
                       props.onOntologyDraft({
                         kind: "action-parameter",
                         nodeId: node.id,
                         actionId: action.id,
+                        actionIndex,
                         id: "",
                         type: "string",
                         required: false,
+                        description: "",
                       })}
                   >
                     ${t("enterprise.ontologyEditor.addParameter")}
@@ -3651,25 +5147,58 @@ function renderNodeOntologyActions(
                     t("enterprise.ontologyEditor.removeEntity"),
                     t("enterprise.ontologyEditor.removeActionTitle", { action: action.id }),
                     props,
-                    () => props.onRemoveOntologyAction(node.id, action.id),
+                    () => props.onRemoveOntologyAction(node.id, action.id, actionIndex),
                   )}`
               : nothing}
           </header>
           <div class="ontology-group__body">
+            ${renderOntologyMetadata([
+              {
+                label: t("enterprise.ontologyEditor.descriptionLabel"),
+                value: action.description,
+              },
+              {
+                label: t("enterprise.ontologyEditor.toolsLabel"),
+                value:
+                  action.tools === undefined
+                    ? t("enterprise.ontologyEditor.toolsMode.all")
+                    : action.tools.length === 0
+                      ? t("enterprise.ontologyEditor.toolsMode.none")
+                      : action.tools.join(", "),
+              },
+              {
+                label: t("enterprise.ontologyEditor.preconditionsLabel"),
+                value: action.preconditions?.join(", "),
+              },
+            ])}
             ${effects.length === 0
               ? html`<div class="muted">${t("enterprise.ontologyEditor.noEffects")}</div>`
-              : html`<div class="chip-row">
-                  ${effects.map((effect) => {
+              : html`<div>
+                  ${effects.map((effect, effectIndex) => {
                     // Each variant names a different target: an object type, the
                     // tool an outward call goes to, or the relationship a graph
                     // effect relates over. The chip has to say which.
                     const removal =
                       "entity" in effect
-                        ? { actionId: action.id, entity: effect.entity, kind: effect.kind }
+                        ? {
+                            actionId: action.id,
+                            actionIndex,
+                            effectIndex,
+                            entity: effect.entity,
+                            kind: effect.kind,
+                          }
                         : effect.kind === "call"
-                          ? { actionId: action.id, kind: "call" as const, tool: effect.tool }
+                          ? {
+                              actionId: action.id,
+                              actionIndex,
+                              effectIndex,
+                              kind: "call" as const,
+                              tool: effect.tool,
+                            }
                           : {
                               actionId: action.id,
+                              actionIndex,
+                              effectIndex,
                               kind: effect.kind,
                               relationship: effect.relationship,
                             };
@@ -3679,15 +5208,90 @@ function renderNodeOntologyActions(
                         : effect.kind === "call"
                           ? effect.tool
                           : effect.relationship;
-                    return renderOntologyChip(
-                      `${effect.kind} ${target}`,
-                      t("enterprise.ontologyEditor.removeEffectTitle", {
-                        kind: effect.kind,
-                        entity: target,
-                      }),
-                      props,
-                      () => props.onRemoveOntologyActionEffect(node.id, removal),
-                    );
+                    const onEdit = () => {
+                      if ("entity" in effect) {
+                        props.onOntologyDraft({
+                          kind: "action-effect",
+                          nodeId: node.id,
+                          actionId: action.id,
+                          actionIndex,
+                          entity: effect.entity,
+                          effectKind: effect.kind,
+                          description: effect.description ?? "",
+                          metadataUpdate: {
+                            kind: "object-effect",
+                            action: { index: actionIndex, id: action.id },
+                            target: {
+                              index: effectIndex,
+                              kind: effect.kind,
+                              entity: effect.entity,
+                            },
+                          },
+                        });
+                        return;
+                      }
+                      if (effect.kind === "call") {
+                        props.onOntologyDraft({
+                          kind: "action-call",
+                          nodeId: node.id,
+                          actionId: action.id,
+                          actionIndex,
+                          tool: effect.tool,
+                          description: effect.description ?? "",
+                          metadataUpdate: {
+                            kind: "call-effect",
+                            action: { index: actionIndex, id: action.id },
+                            target: { index: effectIndex, kind: "call", tool: effect.tool },
+                          },
+                        });
+                        return;
+                      }
+                      props.onOntologyDraft({
+                        kind: "action-link",
+                        nodeId: node.id,
+                        actionId: action.id,
+                        actionIndex,
+                        relationship: effect.relationship,
+                        linkKind: effect.kind,
+                        from: effect.from ?? "",
+                        to: effect.to ?? "",
+                        description: effect.description ?? "",
+                        metadataUpdate: {
+                          kind: "link-effect",
+                          action: { index: actionIndex, id: action.id },
+                          target: {
+                            index: effectIndex,
+                            kind: effect.kind,
+                            relationship: effect.relationship,
+                          },
+                        },
+                      });
+                    };
+                    return html`<div style="margin-top: 4px;">
+                      ${renderOntologyChip(
+                        `${effect.kind} ${target}`,
+                        t("enterprise.ontologyEditor.removeEffectTitle", {
+                          kind: effect.kind,
+                          entity: target,
+                        }),
+                        props,
+                        () => props.onRemoveOntologyActionEffect(node.id, removal),
+                        onEdit,
+                      )}
+                      ${renderOntologyMetadata([
+                        {
+                          label: t("enterprise.ontologyEditor.linkEndpointsLabel"),
+                          value:
+                            effect.kind === "link" || effect.kind === "unlink"
+                              ? `${effect.from || t("enterprise.ontologyEditor.defaultIdentity")} → ${effect.to || t("enterprise.ontologyEditor.defaultIdentity")}`
+                              : undefined,
+                        },
+                        {
+                          label: t("enterprise.ontologyEditor.descriptionLabel"),
+                          value: effect.description,
+                        },
+                      ])}
+                    </div>`;
                   })}
                 </div>`}
             ${callable
@@ -3697,26 +5301,65 @@ function renderNodeOntologyActions(
                 </div>`}
             ${parameters.length === 0
               ? html`<div class="muted">${t("enterprise.ontologyEditor.noParameters")}</div>`
-              : html`<div class="chip-row">
-                  ${parameters.map((parameter) =>
-                    renderOntologyChip(
-                      `${parameter.id}: ${parameter.type}${
-                        parameter.required ? ` ${t("enterprise.ontologyEditor.requiredMark")}` : ""
-                      }`,
-                      t("enterprise.ontologyEditor.removeParameterTitle", {
-                        parameter: parameter.id,
-                      }),
-                      props,
-                      () =>
-                        props.onRemoveOntologyActionParameter(node.id, {
-                          actionId: action.id,
-                          parameterId: parameter.id,
+              : html`<div>
+                  ${parameters.map(
+                    (parameter, parameterIndex) => html`<div style="margin-top: 4px;">
+                      ${renderOntologyChip(
+                        `${parameter.id}: ${parameter.type}${
+                          parameter.required
+                            ? ` ${t("enterprise.ontologyEditor.requiredMark")}`
+                            : ""
+                        }`,
+                        t("enterprise.ontologyEditor.removeParameterTitle", {
+                          parameter: parameter.id,
                         }),
-                    ),
+                        props,
+                        () =>
+                          props.onRemoveOntologyActionParameter(node.id, {
+                            actionId: action.id,
+                            actionIndex,
+                            parameterId: parameter.id,
+                            parameterIndex,
+                          }),
+                        () =>
+                          props.onOntologyDraft({
+                            kind: "action-parameter",
+                            nodeId: node.id,
+                            actionId: action.id,
+                            actionIndex,
+                            id: parameter.id,
+                            type: parameter.type,
+                            required: parameter.required ?? false,
+                            description: parameter.description ?? "",
+                            metadataUpdate: {
+                              kind: "parameter",
+                              action: { index: actionIndex, id: action.id },
+                              target: {
+                                index: parameterIndex,
+                                id: parameter.id,
+                                type: parameter.type,
+                              },
+                              required: parameter.required ?? false,
+                            },
+                          }),
+                      )}
+                      ${renderOntologyMetadata([
+                        {
+                          label: t("enterprise.ontologyEditor.descriptionLabel"),
+                          value: parameter.description,
+                        },
+                      ])}
+                    </div>`,
                   )}
                 </div>`}
             ${actionDraft
-              ? renderOntologyDraftForm(actionDraft, scopeEntityIds, props, relationshipIds)
+              ? renderOntologyDraftForm(
+                  actionDraft,
+                  actionEntityIds,
+                  props,
+                  actionRelationshipIds,
+                  parameters.map((parameter) => parameter.id),
+                )
               : nothing}
           </div>
         </section>
@@ -3727,34 +5370,55 @@ function renderNodeOntologyActions(
           <button
             type="button"
             class="btn"
-            ?disabled=${props.treeSaving}
+            ?disabled=${nodeMutationLocked(props)}
             @click=${() =>
-              props.onOntologyDraft({ kind: "action", nodeId: node.id, id: "", title: "" })}
+              props.onOntologyDraft({
+                kind: "action",
+                nodeId: node.id,
+                id: "",
+                title: "",
+                description: "",
+                toolsMode: "all",
+                tools: [],
+                preconditions: [],
+              })}
           >
             ${t("enterprise.ontologyEditor.addAction")}
           </button>
         </div>`
       : nothing}
-    ${draft?.kind === "action" ? renderOntologyDraftForm(draft, scopeEntityIds, props) : nothing}
+    ${draft?.kind === "action" && !draft.metadataUpdate
+      ? renderOntologyDraftForm(draft, scopeEntityIds, props)
+      : nothing}
   `;
 }
 
 /**
- * Identity field per object type an action declared at `nodeId` can reach.
+ * Runtime ontology shapes for every leaf where an action declared at `nodeId`
+ * may execute.
  *
- * The union over this node's own scope and every descendant's, because the
- * runtime resolves at whichever node is active — so a type a descendant declares
- * is reachable, while a sibling branch's is not, however tree-wide the import
- * validated it. `undefined` marks a reachable type that declares no primaryKey,
- * which is a different failure from being unreachable.
+ * Kept per leaf because link ids are last-wins and may resolve to different
+ * endpoint types on different branches. Flattening them would bless an action
+ * that works on one executable path and fails on another.
  */
-function executableEntityKeys(
+function executableOntologyScopes(
   tree: EnterpriseTreeDetail | null,
   nodeId: string,
-): Map<string, { primaryKey?: string; required: string[] }> {
-  const keys = new Map<string, { primaryKey?: string; required: string[] }>();
+  actionId: string,
+  actionIndex: number,
+): Array<{
+  entities: Map<
+    string,
+    {
+      primaryKey?: { id: string; type: OntologyValueTypeName };
+      properties: Map<string, OntologyValueTypeName>;
+      required: string[];
+    }
+  >;
+  relationships: Map<string, { from: string; to: string }>;
+}> {
   if (!tree) {
-    return keys;
+    return [];
   }
   const subtree = new Set([nodeId]);
   // Parents precede children in the flat node list, so one forward pass closes
@@ -3782,95 +5446,198 @@ function executableEntityKeys(
       treeRequired.set(entity.id, required);
     }
   }
-  const perLeaf = (leaves.length > 0 ? leaves : [nodeId]).map((id) => {
-    const shapes = new Map<string, { primaryKey?: string; required: string[] }>();
+  const effectiveLeaves = (leaves.length > 0 ? leaves : [nodeId]).filter((id) => {
+    let ownerId: string | undefined;
+    let ownerIndex: number | undefined;
+    for (const step of nodePathTo(tree, id)) {
+      for (const [index, action] of (step.ontology.actions ?? []).entries()) {
+        if (action.id === actionId) {
+          ownerId = step.id;
+          ownerIndex = index;
+        }
+      }
+    }
+    return ownerId === nodeId && ownerIndex === actionIndex;
+  });
+  return effectiveLeaves.map((id) => {
+    const path = nodePathTo(tree, id);
+    const declaredEntityIds = new Set(
+      path.flatMap((step) => (step.ontology.entities ?? []).map((entity) => entity.id)),
+    );
+    const entities = new Map<
+      string,
+      {
+        primaryKey?: { id: string; type: OntologyValueTypeName };
+        properties: Map<string, OntologyValueTypeName>;
+        required: string[];
+      }
+    >();
     for (const entity of collectNodeOntologyGraph(tree, id).entities) {
-      shapes.set(entity.id, {
-        primaryKey: entity.properties?.find((property) => property.primaryKey)?.id,
+      if (!declaredEntityIds.has(entity.id)) {
+        continue;
+      }
+      const primaryKey = entity.properties?.find((property) => property.primaryKey);
+      entities.set(entity.id, {
+        ...(primaryKey
+          ? {
+              primaryKey: {
+                id: primaryKey.id,
+                type: primaryKey.type as OntologyValueTypeName,
+              },
+            }
+          : {}),
+        properties: new Map<string, OntologyValueTypeName>(
+          (entity.properties ?? []).map((property) => [
+            property.id,
+            property.type as OntologyValueTypeName,
+          ]),
+        ),
         // `planEffect` refuses a create that leaves any required property unset,
         // and only a parameter can supply one — so an action missing that
         // parameter fails every call exactly as a missing key does.
         required: [...(treeRequired.get(entity.id) ?? [])],
       });
     }
-    return shapes;
-  });
-  const [first, ...rest] = perLeaf;
-  if (!first) {
-    return keys;
-  }
-  // INTERSECTED, not unioned: the action is inherited into every leaf and
-  // planEffect refuses it at whichever one cannot address the type, so a shape
-  // only one branch declares must not clear the warning. `required` is unioned
-  // within the kept types — a property required on any leaf still has to be
-  // supplied there.
-  for (const [entityId, shape] of first) {
-    if (!rest.every((scope) => scope.has(entityId))) {
-      continue;
+    const relationships = new Map<string, { from: string; to: string }>();
+    for (const step of path) {
+      for (const relationship of step.ontology.relationships ?? []) {
+        relationships.set(relationship.id, {
+          from: relationship.from,
+          to: relationship.to,
+        });
+      }
     }
-    const others = rest.map((scope) => scope.get(entityId));
-    keys.set(entityId, {
-      // Every leaf must be able to address it; one without a key breaks there.
-      primaryKey:
-        shape.primaryKey && others.every((other) => other?.primaryKey === shape.primaryKey)
-          ? shape.primaryKey
-          : undefined,
-      required: [
-        ...new Set([...shape.required, ...others.flatMap((other) => other?.required ?? [])]),
-      ],
-    });
-  }
-  return keys;
+    return { entities, relationships };
+  });
 }
 
 /**
  * Can `invoke_action` actually run this action?
  *
- * The same three conditions `collectWorkflowTreeWarnings` reports
- * (src/enterprise/tree-warnings.ts): it needs a write effect, every written type
- * needs an identity field, and the action needs a parameter naming that field —
- * `validateParameters` refuses an undeclared key while `planEffect` requires it,
- * so an action missing any of them saves and then fails on every call. Flagging
- * only the missing write effect would clear the warning halfway through building
- * one, which is exactly when it is still uncallable.
+ * Mirrors `planEffect` and `planLinkEffect`: every executable leaf must resolve
+ * each local effect, its endpoint identity fields, and the parameters that carry
+ * them. Flagging only the presence of an effect would clear the warning halfway
+ * through building an action that still fails on every call.
  */
 function actionIsCallable(
   effects: readonly (
     | { entity: string; kind: string }
     | { kind: "call"; tool: string }
-    | { kind: "link" | "unlink"; relationship: string }
+    | { kind: "link" | "unlink"; relationship: string; from?: string; to?: string }
   )[],
-  parameters: readonly { id: string }[],
-  entityKeys: ReadonlyMap<string, { primaryKey?: string; required: string[] }>,
+  parameters: readonly { id: string; type: OntologyValueTypeName; required?: boolean }[],
+  scopes: ReadonlyArray<{
+    entities: ReadonlyMap<
+      string,
+      {
+        primaryKey?: { id: string; type: OntologyValueTypeName };
+        properties: ReadonlyMap<string, OntologyValueTypeName>;
+        required: string[];
+      }
+    >;
+    relationships: ReadonlyMap<string, { from: string; to: string }>;
+  }>,
 ): boolean {
-  // Neither of these names an object type, so neither has a primaryKey a
-  // parameter must supply. An outward action executes as the tool call itself and
-  // governance checks its parameters when the call goes out; a graph effect
-  // resolves its two ends from the action's own parameters at write time. Only
-  // the object-write lane below can be incomplete.
-  if (effects.some((effect) => effect.kind !== "read" && !("entity" in effect))) {
+  const parameterIds = parameters.map((parameter) => parameter.id);
+  const declared = new Map(parameters.map((parameter) => [parameter.id, parameter]));
+  if (declared.size !== parameterIds.length) {
+    return false;
+  }
+  // An outward action executes as the tool call itself and governance checks its
+  // parameters when the call goes out.
+  if (effects.some((effect) => effect.kind === "call")) {
     return true;
   }
+  const stringLike = (value: OntologyValueTypeName) =>
+    value === "string" || value === "date" || value === "id";
+  const compatible = (left: OntologyValueTypeName, right: OntologyValueTypeName) =>
+    left === right || (stringLike(left) && stringLike(right));
+  const links = effects.filter(
+    (
+      effect,
+    ): effect is {
+      kind: "link" | "unlink";
+      relationship: string;
+      from?: string;
+      to?: string;
+    } => effect.kind === "link" || effect.kind === "unlink",
+  );
   const writes = effects.filter(
     (effect): effect is { entity: string; kind: string } =>
       "entity" in effect && effect.kind !== "read",
   );
-  if (writes.length === 0) {
+  if (writes.length === 0 && links.length === 0) {
     return false;
   }
-  const declared = new Set(parameters.map((parameter) => parameter.id));
-  return writes.every((effect) => {
-    // Absent means UNREACHABLE — declared only on a sibling branch — so no scope
-    // this action executes in can address it and planEffect refuses every call.
-    // That is a broken action, not one to excuse.
-    const shape = entityKeys.get(effect.entity);
-    if (!shape?.primaryKey || !declared.has(shape.primaryKey)) {
-      return false;
-    }
-    // Only a CREATE has to supply the rest: an update writes the properties it
-    // names onto an object that already satisfies its own type.
-    return effect.kind !== "create" || shape.required.every((id) => declared.has(id));
-  });
+  return (
+    scopes.length > 0 &&
+    scopes.every((scope) => {
+      const linksResolve = links.every((effect) => {
+        const relationship = scope.relationships.get(effect.relationship);
+        if (!relationship) {
+          return false;
+        }
+        const fromPrimaryKey = scope.entities.get(relationship.from)?.primaryKey;
+        const toPrimaryKey = scope.entities.get(relationship.to)?.primaryKey;
+        const fromParameterId = effect.from ?? fromPrimaryKey?.id;
+        const toParameterId = effect.to ?? toPrimaryKey?.id;
+        if (relationship.from === relationship.to && fromParameterId === toParameterId) {
+          return false;
+        }
+        return (["from", "to"] as const).every((side) => {
+          const primaryKey = scope.entities.get(relationship[side])?.primaryKey;
+          const parameter = primaryKey ? declared.get(effect[side] ?? primaryKey.id) : undefined;
+          return Boolean(
+            primaryKey &&
+            primaryKey.type !== "boolean" &&
+            parameter &&
+            parameter.type !== "boolean",
+          );
+        });
+      });
+      const writtenEntities = writes.map((effect) => effect.entity);
+      if (new Set(writtenEntities).size !== writtenEntities.length) {
+        return false;
+      }
+      return (
+        linksResolve &&
+        writes.every((effect) => {
+          const shape = scope.entities.get(effect.entity);
+          const identityParameter = shape?.primaryKey
+            ? declared.get(shape.primaryKey.id)
+            : undefined;
+          if (
+            !shape?.primaryKey ||
+            !identityParameter ||
+            shape.primaryKey.type === "boolean" ||
+            !compatible(identityParameter.type, shape.primaryKey.type)
+          ) {
+            return false;
+          }
+          if (
+            parameters.some((parameter) => {
+              const propertyType = shape.properties.get(parameter.id);
+              return (
+                parameter.required === true &&
+                propertyType !== undefined &&
+                !compatible(parameter.type, propertyType)
+              );
+            })
+          ) {
+            return false;
+          }
+          return (
+            effect.kind !== "create" ||
+            shape.required.every((id) => {
+              const propertyType = shape.properties.get(id);
+              const parameter = declared.get(id);
+              return Boolean(propertyType && parameter && compatible(parameter.type, propertyType));
+            })
+          );
+        })
+      );
+    })
+  );
 }
 
 /**
@@ -3902,7 +5669,7 @@ function renderNodeOntologyFunctions(
           ? html`<button
               type="button"
               class="btn"
-              ?disabled=${props.treeSaving}
+              ?disabled=${nodeMutationLocked(props)}
               @click=${() =>
                 props.onOntologyDraft({
                   kind: "function",
@@ -3912,6 +5679,7 @@ function renderNodeOntologyFunctions(
                   entity: scopeEntityIds[0] ?? "",
                   expression: "",
                   returns: "number",
+                  description: "",
                 })}
             >
               ${t("enterprise.entryDraft.add")}
@@ -3922,16 +5690,51 @@ function renderNodeOntologyFunctions(
         ${functions.length === 0
           ? html`<div class="muted">${t("enterprise.ontologyEditor.noFunctions")}</div>`
           : functions.map(
-              (fn) => html`
+              (fn, functionIndex) => html`
                 <div>
                   <div class="chip-row">
                     ${renderOntologyChip(
-                      `${fn.id}(${fn.entity}) → ${fn.returns}`,
+                      `${fn.id}(${fn.entity}) → ${fn.returns}${
+                        declarationIsShadowed(functions, functionIndex)
+                          ? ` — ${t("enterprise.ontologyEditor.shadowedDeclaration")}`
+                          : ""
+                      }`,
                       t("enterprise.ontologyEditor.removeFunctionTitle", { function: fn.id }),
                       props,
-                      () => props.onRemoveOntologyFunction(node.id, fn.id),
+                      () => props.onRemoveOntologyFunction(node.id, fn.id, functionIndex),
+                      () =>
+                        props.onOntologyDraft({
+                          kind: "function",
+                          nodeId: node.id,
+                          id: fn.id,
+                          title: fn.title ?? "",
+                          entity: fn.entity,
+                          expression: fn.expression,
+                          returns: fn.returns,
+                          description: fn.description ?? "",
+                          metadataUpdate: {
+                            kind: "function",
+                            target: {
+                              index: functionIndex,
+                              id: fn.id,
+                              entity: fn.entity,
+                              expression: fn.expression,
+                              returns: fn.returns,
+                            },
+                          },
+                        }),
                     )}
                   </div>
+                  ${renderOntologyMetadata([
+                    {
+                      label: t("enterprise.ontologyEditor.titleLabel"),
+                      value: fn.title,
+                    },
+                    {
+                      label: t("enterprise.ontologyEditor.descriptionLabel"),
+                      value: fn.description,
+                    },
+                  ])}
                   <code class="muted">${fn.expression}</code>
                 </div>
               `,
@@ -3944,15 +5747,119 @@ function renderNodeOntologyFunctions(
   `;
 }
 
+function renderNodeOntologyConstraints(
+  node: EnterpriseTreeNode,
+  constraints: NonNullable<EnterpriseTreeNode["ontology"]["constraints"]>,
+  draft: EnterpriseOntologyDraft | null,
+  props: EnterpriseProps,
+): TemplateResult | typeof nothing {
+  if (!props.canEdit && constraints.length === 0) {
+    return nothing;
+  }
+  return html`<section class="ontology-group" style="margin-top: 8px;">
+    <header class="ontology-group__head">
+      <span class="ontology-group__title">${t("enterprise.ontologyEditor.constraints")}</span>
+      ${props.canEdit
+        ? html`<button
+            type="button"
+            class="btn"
+            ?disabled=${nodeMutationLocked(props)}
+            @click=${() =>
+              props.onOntologyDraft({
+                kind: "constraint",
+                nodeId: node.id,
+                id: "",
+                description: "",
+              })}
+          >
+            ${t("enterprise.ontologyEditor.addConstraint")}
+          </button>`
+        : nothing}
+    </header>
+    <div class="ontology-group__body">
+      ${constraints.length === 0
+        ? html`<div class="muted">${t("enterprise.ontologyEditor.noConstraints")}</div>`
+        : constraints.map(
+            (constraint, constraintIndex) => html`<div>
+              ${renderOntologyChip(
+                constraint.id,
+                t("enterprise.ontologyEditor.removeConstraintTitle", {
+                  constraint: constraint.id,
+                }),
+                props,
+                () =>
+                  props.onRemoveOntologyConstraint(node.id, {
+                    index: constraintIndex,
+                    id: constraint.id,
+                  }),
+                () =>
+                  props.onOntologyDraft({
+                    kind: "constraint",
+                    nodeId: node.id,
+                    id: constraint.id,
+                    description: constraint.description,
+                    metadataUpdate: {
+                      kind: "constraint",
+                      target: { index: constraintIndex, id: constraint.id },
+                      description: constraint.description,
+                    },
+                  }),
+              )}
+              ${renderOntologyMetadata([
+                {
+                  label: t("enterprise.ontologyEditor.descriptionLabel"),
+                  value: constraint.description,
+                },
+              ])}
+            </div>`,
+          )}
+      ${draft?.kind === "constraint" ? renderOntologyDraftForm(draft, [], props) : nothing}
+    </div>
+  </section>`;
+}
+
 /** The open ontology form. One shape per kind, one submit path. */
 function renderOntologyDraftForm(
   draft: EnterpriseOntologyDraft,
   entityIds: readonly string[],
   props: EnterpriseProps,
   relationshipIds: readonly string[] = [],
+  parameterIds: readonly string[] = [],
 ): TemplateResult {
+  const immutable = props.treeSaving || Boolean(draft.metadataUpdate);
+  const ownerIndex =
+    draft.kind === "property"
+      ? draft.entityIndex
+      : draft.kind === "action-effect" ||
+          draft.kind === "action-call" ||
+          draft.kind === "action-link" ||
+          draft.kind === "action-parameter"
+        ? draft.actionIndex
+        : "";
+  const focusKey = `${draft.kind}:${draft.nodeId}:${ownerIndex}:${draft.metadataUpdate?.target.index ?? "new"}`;
   return html`
-    <div class="ontology-draft-form">
+    <form
+      class="ontology-draft-form"
+      aria-label=${t("enterprise.ontologyEditor.formLabel")}
+      ${ref((element) => {
+        const form = element instanceof HTMLFormElement ? element : null;
+        if (!form || form.dataset.focusKey === focusKey) {
+          return;
+        }
+        form.dataset.focusKey = focusKey;
+        requestAnimationFrame(() =>
+          form
+            .querySelector<HTMLElement>(
+              "input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+            )
+            ?.focus(),
+        );
+      })}
+      @submit=${(event: SubmitEvent) => {
+        event.preventDefault();
+        props.onSubmitOntologyDraft();
+      }}
+    >
       ${draft.kind === "action-effect" ||
       draft.kind === "action-call" ||
       draft.kind === "action-link"
@@ -3963,7 +5870,7 @@ function renderOntologyDraftForm(
             <input
               class="input"
               .value=${draft.id}
-              ?disabled=${props.treeSaving}
+              ?disabled=${immutable}
               @input=${(event: Event) =>
                 props.onEditOntologyDraft({ id: (event.target as HTMLInputElement).value })}
             />
@@ -3985,7 +5892,12 @@ function renderOntologyDraftForm(
             t("enterprise.ontologyEditor.typeLabel"),
             draft.type,
             props,
-            (type) => props.onEditOntologyDraft({ type }),
+            (type) =>
+              props.onEditOntologyDraft({
+                type,
+                ...(draft.kind === "property" && type === "boolean" ? { primaryKey: false } : {}),
+              }),
+            immutable,
           )
         : nothing}
       ${draft.kind === "property"
@@ -3993,7 +5905,7 @@ function renderOntologyDraftForm(
             <input
               type="checkbox"
               .checked=${draft.primaryKey}
-              ?disabled=${props.treeSaving}
+              ?disabled=${immutable || draft.type === "boolean"}
               @change=${(event: Event) =>
                 props.onEditOntologyDraft({
                   primaryKey: (event.target as HTMLInputElement).checked,
@@ -4002,7 +5914,7 @@ function renderOntologyDraftForm(
             <span class="muted">${t("enterprise.ontologyEditor.primaryKeyLabel")}</span>
           </label>`
         : nothing}
-      ${draft.kind === "action-parameter"
+      ${draft.kind === "property" || draft.kind === "action-parameter"
         ? html`<label class="field">
             <input
               type="checkbox"
@@ -4023,13 +5935,14 @@ function renderOntologyDraftForm(
               entityIds,
               props,
               (value) => props.onEditOntologyDraft({ entity: value }),
+              immutable,
             )}
             <label class="field">
               <span class="muted">${t("enterprise.ontologyEditor.effectKindLabel")}</span>
               <select
                 class="input"
                 .value=${draft.effectKind}
-                ?disabled=${props.treeSaving}
+                ?disabled=${immutable}
                 @change=${(event: Event) =>
                   props.onEditOntologyDraft({
                     effectKind: (event.target as HTMLSelectElement).value as OntologyEffectKindName,
@@ -4050,7 +5963,7 @@ function renderOntologyDraftForm(
               class="input"
               .value=${draft.tool}
               placeholder=${t("enterprise.ontologyEditor.callToolPlaceholder")}
-              ?disabled=${props.treeSaving}
+              ?disabled=${immutable}
               @input=${(event: Event) =>
                 props.onEditOntologyDraft({ tool: (event.target as HTMLInputElement).value })}
             />
@@ -4063,7 +5976,7 @@ function renderOntologyDraftForm(
               <select
                 class="input"
                 .value=${draft.relationship}
-                ?disabled=${props.treeSaving}
+                ?disabled=${immutable}
                 @change=${(event: Event) =>
                   props.onEditOntologyDraft({
                     relationship: (event.target as HTMLSelectElement).value,
@@ -4081,7 +5994,7 @@ function renderOntologyDraftForm(
               <select
                 class="input"
                 .value=${draft.linkKind}
-                ?disabled=${props.treeSaving}
+                ?disabled=${immutable}
                 @change=${(event: Event) =>
                   props.onEditOntologyDraft({
                     linkKind: (event.target as HTMLSelectElement).value as "link" | "unlink",
@@ -4093,7 +6006,21 @@ function renderOntologyDraftForm(
                   </option>`,
                 )}
               </select>
-            </label>`
+            </label>
+            ${renderActionParameterSelect(
+              t("enterprise.ontologyEditor.linkFromParameterLabel"),
+              draft.from,
+              parameterIds,
+              props,
+              (from) => props.onEditOntologyDraft({ from }),
+            )}
+            ${renderActionParameterSelect(
+              t("enterprise.ontologyEditor.linkToParameterLabel"),
+              draft.to,
+              parameterIds,
+              props,
+              (to) => props.onEditOntologyDraft({ to }),
+            )}`
         : nothing}
       ${draft.kind === "function"
         ? html`${renderEntitySelect(
@@ -4102,13 +6029,14 @@ function renderOntologyDraftForm(
               entityIds,
               props,
               (value) => props.onEditOntologyDraft({ entity: value }),
+              immutable,
             )}
             <label class="field">
               <span class="muted">${t("enterprise.ontologyEditor.expressionLabel")}</span>
               <input
                 class="input"
                 .value=${draft.expression}
-                ?disabled=${props.treeSaving}
+                ?disabled=${immutable}
                 @input=${(event: Event) =>
                   props.onEditOntologyDraft({
                     expression: (event.target as HTMLInputElement).value,
@@ -4120,6 +6048,7 @@ function renderOntologyDraftForm(
               draft.returns,
               props,
               (returns) => props.onEditOntologyDraft({ returns }),
+              immutable,
             )}`
         : nothing}
       ${draft.kind === "relationship"
@@ -4129,6 +6058,7 @@ function renderOntologyDraftForm(
               entityIds,
               props,
               (value) => props.onEditOntologyDraft({ from: value }),
+              immutable,
             )}
             ${renderEntitySelect(
               t("enterprise.ontologyEditor.toLabel"),
@@ -4136,13 +6066,14 @@ function renderOntologyDraftForm(
               entityIds,
               props,
               (value) => props.onEditOntologyDraft({ to: value }),
+              immutable,
             )}
             <label class="field">
               <span class="muted">${t("enterprise.ontologyEditor.cardinalityLabel")}</span>
               <select
                 class="input"
                 .value=${draft.cardinality}
-                ?disabled=${props.treeSaving}
+                ?disabled=${immutable}
                 @change=${(event: Event) =>
                   props.onEditOntologyDraft({
                     cardinality: (event.target as HTMLSelectElement)
@@ -4157,16 +6088,80 @@ function renderOntologyDraftForm(
               </select>
             </label>`
         : nothing}
+      ${draft.kind === "relationship"
+        ? html`<label class="field">
+            <span class="muted">${t("enterprise.ontologyEditor.inverseLabel")}</span>
+            <input
+              class="input"
+              .value=${draft.inverse}
+              ?disabled=${props.treeSaving}
+              @input=${(event: Event) =>
+                props.onEditOntologyDraft({ inverse: (event.target as HTMLInputElement).value })}
+            />
+          </label>`
+        : nothing}
+      ${draft.kind === "action"
+        ? html`<label class="field">
+              <span class="muted">${t("enterprise.ontologyEditor.toolsModeLabel")}</span>
+              <select
+                class="input"
+                .value=${draft.toolsMode}
+                ?disabled=${props.treeSaving}
+                @change=${(event: Event) => {
+                  const toolsMode = (event.target as HTMLSelectElement).value as
+                    | "all"
+                    | "selected"
+                    | "none";
+                  props.onEditOntologyDraft({
+                    toolsMode,
+                    ...(toolsMode === "selected" && draft.tools.length === 0
+                      ? { tools: [""] }
+                      : {}),
+                  });
+                }}
+              >
+                ${(["all", "selected", "none"] as const).map(
+                  (mode) => html`<option value=${mode} ?selected=${mode === draft.toolsMode}>
+                    ${t(`enterprise.ontologyEditor.toolsMode.${mode}`)}
+                  </option>`,
+                )}
+              </select>
+              <span class="muted">${t("enterprise.ontologyEditor.toolsModeHint")}</span>
+            </label>
+            ${draft.toolsMode === "selected"
+              ? renderOntologyTextList(
+                  t("enterprise.ontologyEditor.toolsLabel"),
+                  draft.tools,
+                  props,
+                  (tools) => props.onEditOntologyDraft({ tools }),
+                )
+              : nothing}
+            ${renderOntologyTextList(
+              t("enterprise.ontologyEditor.preconditionsLabel"),
+              draft.preconditions,
+              props,
+              (preconditions) => props.onEditOntologyDraft({ preconditions }),
+            )}`
+        : nothing}
+      <label class="field">
+        <span class="muted">${t("enterprise.ontologyEditor.descriptionLabel")}</span>
+        <textarea
+          class="input"
+          .value=${draft.description}
+          ?disabled=${props.treeSaving}
+          @input=${(event: Event) =>
+            props.onEditOntologyDraft({
+              description: (event.target as HTMLTextAreaElement).value,
+            })}
+        ></textarea>
+      </label>
       ${draft.error
-        ? html`<div class="callout">${t(`enterprise.ontologyEditor.error.${draft.error}`)}</div>`
+        ? html`<div class="callout" role="alert">
+            ${t(`enterprise.ontologyEditor.error.${draft.error}`)}
+          </div>`
         : nothing}
       <div class="row" style="margin-top: 6px; gap: 8px;">
-        <button
-          type="button"
-          class="btn"
-          ?disabled=${props.treeSaving}
-          @click=${() => props.onSubmitOntologyDraft()}
-        >
+        <button type="submit" class="btn" ?disabled=${props.treeSaving}>
           ${t("enterprise.ontologyEditor.save")}
         </button>
         <button
@@ -4178,7 +6173,7 @@ function renderOntologyDraftForm(
           ${t("enterprise.entryDraft.cancel")}
         </button>
       </div>
-    </div>
+    </form>
   `;
 }
 
@@ -4188,13 +6183,14 @@ function renderValueTypeSelect(
   value: OntologyValueTypeName,
   props: EnterpriseProps,
   onChange: (value: OntologyValueTypeName) => void,
+  disabled = false,
 ): TemplateResult {
   return html`<label class="field">
     <span class="muted">${label}</span>
     <select
       class="input"
       .value=${value}
-      ?disabled=${props.treeSaving}
+      ?disabled=${props.treeSaving || disabled}
       @change=${(event: Event) =>
         onChange((event.target as HTMLSelectElement).value as OntologyValueTypeName)}
     >
@@ -4211,7 +6207,29 @@ function renderEntitySelect(
   entityIds: readonly string[],
   props: EnterpriseProps,
   onChange: (value: string) => void,
+  disabled = false,
 ): TemplateResult {
+  return html`<label class="field">
+    <span class="muted">${label}</span>
+    <select
+      class="input"
+      .value=${value}
+      ?disabled=${props.treeSaving || disabled}
+      @change=${(event: Event) => onChange((event.target as HTMLSelectElement).value)}
+    >
+      ${entityIds.map((id) => html`<option value=${id} ?selected=${id === value}>${id}</option>`)}
+    </select>
+  </label>`;
+}
+
+function renderActionParameterSelect(
+  label: string,
+  value: string,
+  parameterIds: readonly string[],
+  props: EnterpriseProps,
+  onChange: (value: string) => void,
+): TemplateResult {
+  const unavailable = value !== "" && !parameterIds.includes(value);
   return html`<label class="field">
     <span class="muted">${label}</span>
     <select
@@ -4220,7 +6238,17 @@ function renderEntitySelect(
       ?disabled=${props.treeSaving}
       @change=${(event: Event) => onChange((event.target as HTMLSelectElement).value)}
     >
-      ${entityIds.map((id) => html`<option value=${id} ?selected=${id === value}>${id}</option>`)}
+      ${unavailable
+        ? html`<option value=${value} selected>
+            ${t("enterprise.ontologyEditor.unavailableParameter", { parameter: value })}
+          </option>`
+        : nothing}
+      <option value="" ?selected=${value === ""}>
+        ${t("enterprise.ontologyEditor.defaultIdentity")}
+      </option>
+      ${parameterIds.map(
+        (id) => html`<option value=${id} ?selected=${id === value}>${id}</option>`,
+      )}
     </select>
   </label>`;
 }
@@ -4308,6 +6336,7 @@ function renderNodeCapabilities(
  * labelled unavailable on a guess.
  */
 function retrievableFoundations(props: EnterpriseProps): {
+  usable: EnterpriseKnowledgeFoundationSummary[];
   ids: Set<string>;
   ownershipKnown: boolean;
 } {
@@ -4321,7 +6350,10 @@ function retrievableFoundations(props: EnterpriseProps): {
         return owners.length === 0 || (treeId ? owners.includes(treeId) : false);
       })
     : props.foundations;
-  return { ids: new Set(usable.map((foundation) => foundation.id)), ownershipKnown };
+  // Both shapes, because the two questions differ: the picker needs each entry's
+  // summary to be choosable among several stores, the detail card only needs
+  // membership.
+  return { usable, ids: new Set(usable.map((foundation) => foundation.id)), ownershipKnown };
 }
 
 /**
@@ -4338,7 +6370,7 @@ function renderBindingCatalogIssues(props: EnterpriseProps): TemplateResult | ty
   if (messages.length === 0) {
     return nothing;
   }
-  return html`<div class="callout danger" style="margin-top: 8px;">
+  return html`<div class="callout danger" role="alert" style="margin-top: 8px;">
     ${messages.map((message) => html`<div>${message}</div>`)}
   </div>`;
 }
@@ -4381,16 +6413,14 @@ function nodeDraftErrorMessage(error: EnterpriseNodeDraftError): string {
     "id-duplicate": t("enterprise.addNodeErrorIdDuplicate"),
     "title-empty": t("enterprise.addNodeErrorTitleEmpty"),
     "parent-missing": t("enterprise.addNodeErrorParentMissing"),
-    "export-failed": t("enterprise.addNodeErrorExportFailed"),
   };
   return messages[error];
 }
 
 /**
  * The "add child node" affordance under the selected node: a button that opens an
- * inline form (new-node id + title). Submitting splices a bare child into the
- * tree definition and loads the editor to review + Save, so creation reuses the
- * existing import path. Admin-only (the caller gates on canEdit).
+ * inline form. Submitting splices the child and saves through the same whole-tree
+ * import path as every other visual edit. Admin-only (the caller gates on canEdit).
  */
 function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): TemplateResult {
   // Match the tree too: a draft under a node id shared by another tree (e.g. a
@@ -4401,15 +6431,36 @@ function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): 
       : null;
   if (!draft) {
     return html`
-      <button type="button" class="btn" @click=${() => props.onBeginAddNode(nodeId)}>
+      <button
+        type="button"
+        class="btn"
+        ?disabled=${nodeMutationLocked(props)}
+        @click=${() => props.onBeginAddNode(nodeId)}
+      >
         ${t("enterprise.addNodeButton")}
       </button>
     `;
   }
   const fieldStyle =
     "width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);";
+  const invalidField = draft.error?.startsWith("id-")
+    ? "id"
+    : draft.error === "title-empty"
+      ? "title"
+      : null;
+  const errorId = "enterprise-add-node-error";
   return html`
-    <div class="card-nested">
+    <form
+      class="card-nested"
+      @submit=${(event: SubmitEvent) => {
+        event.preventDefault();
+        const form = event.currentTarget as HTMLFormElement;
+        props.onSubmitAddNode();
+        requestAnimationFrame(() =>
+          form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(),
+        );
+      }}
+    >
       <div class="card-sub">${t("enterprise.addNodeTitle")}</div>
       <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
         <label style="display: flex; flex-direction: column; gap: 4px;">
@@ -4418,6 +6469,10 @@ function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): 
             style=${fieldStyle}
             .value=${draft.id}
             placeholder=${`${nodeId}.step`}
+            autofocus
+            ?disabled=${props.treeSaving}
+            aria-invalid=${invalidField === "id" ? "true" : nothing}
+            aria-describedby=${invalidField === "id" ? errorId : nothing}
             @input=${(event: Event) =>
               props.onEditNodeDraft({ id: (event.target as HTMLInputElement).value })}
           />
@@ -4427,23 +6482,45 @@ function renderAddNode(treeId: string, nodeId: string, props: EnterpriseProps): 
           <input
             style=${fieldStyle}
             .value=${draft.title}
+            ?disabled=${props.treeSaving}
+            aria-invalid=${invalidField === "title" ? "true" : nothing}
+            aria-describedby=${invalidField === "title" ? errorId : nothing}
             @input=${(event: Event) =>
               props.onEditNodeDraft({ title: (event.target as HTMLInputElement).value })}
           />
         </label>
+        <label style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="muted">${t("enterprise.addNodeDescriptionLabel")}</span>
+          <textarea
+            style=${fieldStyle}
+            .value=${draft.description}
+            ?disabled=${props.treeSaving}
+            @input=${(event: Event) =>
+              props.onEditNodeDraft({
+                description: (event.target as HTMLTextAreaElement).value,
+              })}
+          ></textarea>
+        </label>
         ${draft.error
-          ? html`<div class="callout danger">${nodeDraftErrorMessage(draft.error)}</div>`
+          ? html`<div id=${errorId} class="callout danger" role="alert">
+              ${nodeDraftErrorMessage(draft.error)}
+            </div>`
           : nothing}
         <div class="row" style="gap: 8px;">
-          <button type="button" class="btn primary" @click=${props.onSubmitAddNode}>
-            ${t("enterprise.addNodeSubmit")}
+          <button type="submit" class="btn primary" ?disabled=${props.treeSaving}>
+            ${props.treeSaving ? t("common.saving") : t("enterprise.addNodeSubmit")}
           </button>
-          <button type="button" class="btn" @click=${props.onCancelAddNode}>
+          <button
+            type="button"
+            class="btn"
+            ?disabled=${props.treeSaving}
+            @click=${props.onCancelAddNode}
+          >
             ${t("common.cancel")}
           </button>
         </div>
       </div>
-    </div>
+    </form>
   `;
 }
 
@@ -4472,7 +6549,11 @@ function renderNodeObjects(
     </div>
     ${props.nodeObjectsLoading
       ? html`<div class="muted" style="margin-top: 8px;">${t("common.loading")}</div>`
-      : renderObjectTable(props.nodeObjects)}
+      : props.nodeObjectsError
+        ? html`<div class="callout danger" role="alert" style="margin-top: 8px;">
+            ${props.nodeObjectsError}
+          </div>`
+        : renderObjectTable(props.nodeObjects)}
   `;
 }
 

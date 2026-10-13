@@ -10,6 +10,7 @@ import type {
   EnterpriseRunDetail,
   EnterpriseRunsGetResult,
   EnterpriseRunsListResult,
+  EnterpriseRunsResumeResult,
   EnterpriseTreeDetail,
   EnterpriseTreesGetResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
@@ -22,10 +23,14 @@ export const ENTERPRISE_MODES: EnterpriseMode[] = ["enforce", "observe", "off"];
 export type EnterpriseChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
+  /** Transcript UUID currently rendered by the chat surface. */
+  currentSessionId: string | null;
   /** Null until the gateway answers; the selector renders disabled until then. */
   enterpriseChatMode: EnterpriseMode | null;
   enterpriseChatModeBusy: boolean;
   enterpriseChatModeError: string | null;
+  enterpriseChatResumeBusy: boolean;
+  enterpriseChatResumeError: string | null;
   /** Route detail of the newest governed run in THIS session, if any. */
   enterpriseChatRun: EnterpriseRunDetail | null;
   /**
@@ -44,6 +49,14 @@ export type EnterpriseChatState = {
    */
   enterpriseChatStep: EnterpriseChatStep | null;
 };
+
+/** A session key survives reset; only the transcript UUID proves run ownership. */
+export function enterpriseRunMatchesTranscript(
+  run: EnterpriseRunDetail | null | undefined,
+  currentSessionId: string | null | undefined,
+): run is EnterpriseRunDetail & { sessionId: string } {
+  return Boolean(run?.sessionId && currentSessionId && run.sessionId === currentSessionId);
+}
 
 /** One live step transition, as the chat surface needs it. */
 export type EnterpriseChatStep = {
@@ -146,9 +159,101 @@ export async function setEnterpriseChatMode(state: EnterpriseChatState, mode: En
   }
 }
 
-// Monotonic token: a newer session/turn supersedes an in-flight route load, so a
-// late response cannot paint the previous session's route into this thread.
+let resumeSeq = 0;
+// A resume write invalidates route reads. If the app asks for its normal
+// terminal refresh while that write is pending, replay the latest request once
+// the write settles instead of dropping the only refresh for the new run.
 let routeSeq = 0;
+const pendingRouteLoads = new WeakMap<
+  EnterpriseChatState,
+  { sessionKey: string; agentId?: string }
+>();
+const activeRouteLoads = new WeakMap<
+  EnterpriseChatState,
+  { sessionKey: string; agentId?: string; seq: number }
+>();
+
+/** Arm the stopped run shown in this chat to continue on the next matching request. */
+export async function requestEnterpriseChatRunResume(
+  state: EnterpriseChatState,
+  executionId: string,
+) {
+  const currentSessionId = state.currentSessionId;
+  const currentRun = state.enterpriseChatRun;
+  if (
+    !state.client ||
+    !state.connected ||
+    state.enterpriseChatResumeBusy ||
+    currentRun?.executionId !== executionId ||
+    !currentSessionId ||
+    !enterpriseRunMatchesTranscript(currentRun, currentSessionId)
+  ) {
+    return;
+  }
+  const seq = ++resumeSeq;
+  const activeRoute = activeRouteLoads.get(state);
+  if (activeRoute) {
+    pendingRouteLoads.set(state, {
+      sessionKey: activeRoute.sessionKey,
+      ...(activeRoute.agentId ? { agentId: activeRoute.agentId } : {}),
+    });
+  }
+  // A route read that started before this write may carry pre-write resume state.
+  routeSeq++;
+  state.enterpriseChatResumeBusy = true;
+  state.enterpriseChatResumeError = null;
+  try {
+    const result = await state.client.request<EnterpriseRunsResumeResult>(
+      "enterprise.runs.resume",
+      { executionId, sessionId: currentRun.sessionId },
+    );
+    const current = state.enterpriseChatRun;
+    if (
+      seq !== resumeSeq ||
+      current?.executionId !== executionId ||
+      !enterpriseRunMatchesTranscript(current, state.currentSessionId)
+    ) {
+      return;
+    }
+    // Any route read already in flight may have observed the pre-write marker.
+    // Invalidate it before publishing the accepted/refused result locally.
+    routeSeq++;
+    const {
+      resumable: _resumable,
+      resumeRequested: _resumeRequested,
+      resumeRefusalReason: _resumeRefusalReason,
+      ...rest
+    } = current;
+    state.enterpriseChatRun = result.ok
+      ? { ...rest, resumeRequested: true }
+      : result.reason
+        ? { ...rest, resumeRefusalReason: result.reason }
+        : rest;
+  } catch (error) {
+    if (
+      seq === resumeSeq &&
+      state.enterpriseChatRun?.executionId === executionId &&
+      enterpriseRunMatchesTranscript(state.enterpriseChatRun, state.currentSessionId)
+    ) {
+      state.enterpriseChatResumeError = String(error);
+    }
+  } finally {
+    if (seq === resumeSeq) {
+      state.enterpriseChatResumeBusy = false;
+      const pending = pendingRouteLoads.get(state);
+      if (pending) {
+        pendingRouteLoads.delete(state);
+        void loadEnterpriseChatRoute(state, pending.sessionKey, pending.agentId);
+      }
+    }
+  }
+}
+
+function clearEnterpriseChatResume(state: EnterpriseChatState) {
+  resumeSeq++;
+  state.enterpriseChatResumeBusy = false;
+  state.enterpriseChatResumeError = null;
+}
 
 /**
  * Load the route of the newest governed run for this session. Called after a
@@ -162,7 +267,13 @@ export async function loadEnterpriseChatRoute(
   if (!state.client || !state.connected || !sessionKey) {
     return;
   }
+  if (state.enterpriseChatResumeBusy) {
+    pendingRouteLoads.set(state, { sessionKey, ...(agentId ? { agentId } : {}) });
+    return;
+  }
+  pendingRouteLoads.delete(state);
   const seq = ++routeSeq;
+  activeRouteLoads.set(state, { sessionKey, ...(agentId ? { agentId } : {}), seq });
   try {
     // Filter server-side. Fetching the newest N runs and filtering here would
     // lose this thread's run whenever enough other sessions ran more recently.
@@ -181,10 +292,14 @@ export async function loadEnterpriseChatRoute(
     }
     const mine = list?.runs?.[0];
     if (!mine) {
+      clearEnterpriseChatResume(state);
       state.enterpriseChatRun = null;
       state.enterpriseChatRunTree = null;
       state.enterpriseChatStep = null;
       return;
+    }
+    if (state.enterpriseChatRun?.executionId !== mine.executionId) {
+      clearEnterpriseChatResume(state);
     }
     // Retire the live position once the run it belongs to is over. Only a step
     // TRANSITION is published, so a run that aborts, errors, or times out mid-route
@@ -206,45 +321,25 @@ export async function loadEnterpriseChatRoute(
     ) {
       state.enterpriseChatStep = null;
     }
-    // Already loaded AND unchanged: this turn produced no NEW governed run
-    // (enterprise switched off, or an unmediated turn), so the newest run is still
-    // the one on screen.
-    //
-    // KEEP it. The card is bound to the assistant bubble that run actually wrote,
-    // so a later ungoverned answer cannot wear it; clearing here would instead make
-    // the correct card vanish from its own bubble until the next reload.
-    //
-    // Status is part of the identity check: joining a session mid-run caches the run
-    // as `running`, and only a COMPLETED run gets a card. An id-only check would
-    // skip the terminal refetch and strand it as `running` forever.
-    const cached = state.enterpriseChatRun;
-    if (
-      cached?.executionId === mine.executionId &&
-      cached.status === mine.status &&
-      // ...but a RUNNING run is never "unchanged": it may have walked several
-      // steps since, and a disconnect swallowed those transitions. Refetching is
-      // the only way the chip catches up before the run happens to advance again.
-      mine.status !== "running"
-    ) {
-      return;
-    }
+    // Detail owns mutable resume state even after status becomes terminal, so a
+    // same-id/status summary is not a safe cache key. Refresh it on every route load.
     const detail = await state.client.request<EnterpriseRunsGetResult>("enterprise.runs.get", {
       executionId: mine.executionId,
     });
     if (seq !== routeSeq) {
       return;
     }
-    state.enterpriseChatRun = detail?.run ?? null;
+    const runDetail = detail?.run ?? null;
+    state.enterpriseChatRun = runDetail;
     state.enterpriseChatRunTree = null;
-    reconcileEnterpriseChatStep(state, detail?.run ?? null);
+    reconcileEnterpriseChatStep(state, runDetail);
 
     // Load the tree too, so the card can offer "show the whole tree" with the
     // untaken branches dimmed. Identity is proven by CONTENT hash: a version
     // match cannot, since a tree is re-importable unchanged and removing an
     // imported override reveals a different built-in.
-    const runDetail = detail?.run;
     const runHash = runDetail?.treeHash;
-    if (!runDetail || !runHash) {
+    if (!runHash) {
       return;
     }
     const treeRes = await state.client
@@ -265,6 +360,7 @@ export async function loadEnterpriseChatRoute(
     state.enterpriseChatRunTree = live && live.hash === runHash ? live : null;
   } catch {
     if (seq === routeSeq) {
+      clearEnterpriseChatResume(state);
       state.enterpriseChatRun = null;
       state.enterpriseChatRunTree = null;
       // The chip is a separate surface from the card, so it has to be cleared
@@ -272,10 +368,13 @@ export async function loadEnterpriseChatRoute(
       // gateway) leaves the previous run's position on screen indefinitely.
       state.enterpriseChatStep = null;
     }
+  } finally {
+    if (activeRouteLoads.get(state)?.seq === seq) {
+      activeRouteLoads.delete(state);
+    }
   }
 }
 
-/** Clear the route card (session switch): a stale route must not stick around. */
 /**
  * Reconcile the live position against a freshly fetched run.
  *
@@ -471,8 +570,12 @@ export function applyEnterpriseChatStep(
   return true;
 }
 
+/** Clear the route card on a session switch so stale run state cannot carry over. */
 export function clearEnterpriseChatRoute(state: EnterpriseChatState) {
+  pendingRouteLoads.delete(state);
+  activeRouteLoads.delete(state);
   routeSeq++;
+  clearEnterpriseChatResume(state);
   state.enterpriseChatRun = null;
   state.enterpriseChatRunTree = null;
   // The live position goes with the card. Keeping it would leave a finished

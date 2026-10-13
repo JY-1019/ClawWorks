@@ -433,6 +433,12 @@ function createChatPickerScenario(): ControlUiMockGatewayScenario {
     defaultAgentId: "openclaw-mock",
     historyMessages: buildScrollableChatHistory(baseTime),
     methodResponses: {
+      "enterprise.mode.get": { mode: "enforce" },
+      "enterprise.runs.list": { runs: [] },
+      "enterprise.trees.list": { trees: [], importErrors: [] },
+      "enterprise.knowledge.foundations.list": { foundations: [] },
+      "skills.status": { agentId: "openclaw-mock", skills: [] },
+      "tools.catalog": { agentId: "openclaw-mock", groups: [] },
       "agents.files.get": {
         cases: workspaceFileCases,
       },

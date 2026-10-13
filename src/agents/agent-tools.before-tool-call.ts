@@ -11,9 +11,10 @@ import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
 import {
   enterpriseRunEnforces,
   evaluateEnterpriseToolCall,
+  getEnterpriseActiveRun,
   readInvokedActionId,
+  recordEnterpriseActionInvoked,
   recordEnterpriseApprovalResolution,
-  toolCarriesOntologyAction,
 } from "../enterprise/runtime.js";
 import {
   diagnosticErrorCategory,
@@ -59,6 +60,7 @@ import {
   PluginApprovalResolutions,
   type PluginApprovalResolution,
   type PluginHookBeforeToolCallResult,
+  type PluginHookToolApprovalContext,
   type PluginHookToolInputKind,
   type PluginHookToolKind,
 } from "../plugins/types.js";
@@ -107,7 +109,7 @@ import { normalizeToolName } from "./tool-policy.js";
 import { copyToolTerminalPresentation } from "./tool-terminal-presentation.js";
 import { getToolTerminalPresentation } from "./tool-terminal-presentation.js";
 import type { AnyAgentTool } from "./tools/common.js";
-import { callGatewayTool } from "./tools/gateway.js";
+import { callGatewayTool, cancelPluginApprovalForRunAbort } from "./tools/gateway.js";
 
 export type ToolOutcomeObservation = {
   toolName: string;
@@ -168,14 +170,23 @@ type HookOutcome =
       deniedReason?: HookBlockedReason;
       reason: string;
       params?: unknown;
+      finalizeRelease?: (released: boolean) => string | undefined;
     }
   | {
       blocked: false;
       params: unknown;
       approvalResolution?: PluginApprovalResolution;
       deferredApproval?: DeferredPluginToolApproval;
+      finalizeRelease?: (released: boolean) => string | undefined;
     };
 type PluginApprovalRequest = NonNullable<PluginHookBeforeToolCallResult["requireApproval"]>;
+
+const ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON =
+  "Enterprise governance state is no longer available; refusing the tool call.";
+const DEFERRED_PLUGIN_APPROVAL_CANCELLED_REASON =
+  "Plugin approval was cancelled before the tool call could be released.";
+const DEFERRED_PLUGIN_APPROVAL_UNSUPPORTED_RESOLUTION_REASON =
+  "Plugin approval does not permit the enclosing approval decision.";
 
 function resolvePluginToolApprovalTimeoutMs(approval: PluginApprovalRequest): number {
   if (
@@ -199,7 +210,20 @@ export type DeferredPluginToolApproval = {
   ctx?: HookContext;
   baseParams: unknown;
   overrideParams?: unknown;
+  /** Final gate/audit applied by requestDeferredPluginToolApproval before release. */
+  finalizeApprovedParams?: (params: unknown) => string | undefined;
+  /** Final audit applied when the deferred call will not be released. */
+  finalizeRejectedParams?: (params: unknown) => void;
+  /** Shared across relay copies so cancellation wins over a late approval. */
+  lifecycle?: {
+    status: "pending" | "resolving" | "settled" | "cancelled";
+    resolution?: Promise<HookOutcome>;
+  };
 };
+
+function deferredPluginToolApprovalLifecycle(deferred: DeferredPluginToolApproval) {
+  return (deferred.lifecycle ??= { status: "pending" });
+}
 
 type BeforeToolCallWrapperOptions = {
   approvalMode?: "request" | "report" | "defer";
@@ -448,6 +472,15 @@ function mergeParamsWithApprovalOverrides(
   return originalParams;
 }
 
+export function resolveDeferredPluginToolApprovalParams(
+  deferredApproval: DeferredPluginToolApproval,
+): unknown {
+  return mergeParamsWithApprovalOverrides(
+    deferredApproval.baseParams,
+    deferredApproval.overrideParams,
+  );
+}
+
 function unwrapErrorCause(err: unknown): unknown {
   try {
     if (!(err instanceof Error)) {
@@ -686,7 +719,9 @@ async function requestPluginToolApproval(params: {
   const approval = params.approval;
   const timeoutMs = resolvePluginToolApprovalTimeoutMs(approval);
   const gatewayTimeoutMs = resolvePluginToolApprovalGatewayTimeoutMs(timeoutMs);
+  let approvalId: string | undefined;
   try {
+    params.signal?.throwIfAborted();
     const requestResult: {
       id?: string;
       status?: string;
@@ -695,7 +730,7 @@ async function requestPluginToolApproval(params: {
       "plugin.approval.request",
       // Buffer beyond the approval timeout so the gateway can clean up
       // and respond before the client-side RPC timeout fires.
-      { timeoutMs: gatewayTimeoutMs },
+      { timeoutMs: gatewayTimeoutMs, ...(params.signal ? { signal: params.signal } : {}) },
       {
         pluginId: approval.pluginId,
         title: approval.title,
@@ -715,8 +750,8 @@ async function requestPluginToolApproval(params: {
       },
       { expectFinal: false },
     );
-    const id = requestResult?.id;
-    if (!id) {
+    approvalId = requestResult?.id;
+    if (!approvalId) {
       notifyPluginApprovalResolution(approval, PluginApprovalResolutions.CANCELLED);
       return {
         blocked: true,
@@ -750,30 +785,10 @@ async function requestPluginToolApproval(params: {
         "plugin.approval.waitDecision",
         // Buffer beyond the approval timeout so the gateway can clean up
         // and respond before the client-side RPC timeout fires.
-        { timeoutMs: gatewayTimeoutMs },
-        { id },
+        { timeoutMs: gatewayTimeoutMs, ...(params.signal ? { signal: params.signal } : {}) },
+        { id: approvalId },
       );
-      let waitResult: { id?: string; decision?: string | null } | undefined;
-      if (params.signal) {
-        let onAbort: (() => void) | undefined;
-        const abortPromise = new Promise<never>((_, reject) => {
-          if (params.signal!.aborted) {
-            reject(toLintErrorObject(params.signal!.reason, "Non-Error rejection"));
-            return;
-          }
-          onAbort = () => reject(toLintErrorObject(params.signal!.reason, "Non-Error rejection"));
-          params.signal!.addEventListener("abort", onAbort, { once: true });
-        });
-        try {
-          waitResult = await Promise.race([waitPromise, abortPromise]);
-        } finally {
-          if (onAbort) {
-            params.signal.removeEventListener("abort", onAbort);
-          }
-        }
-      } else {
-        waitResult = await waitPromise;
-      }
+      const waitResult = await waitPromise;
       decision = waitResult?.decision;
     }
     const resolution: PluginApprovalResolution =
@@ -826,6 +841,9 @@ async function requestPluginToolApproval(params: {
         (err instanceof Error &&
           (err.name === "AbortError" || ("cause" in err && err.cause === signal.reason))));
     if (abortCancelled) {
+      if (approvalId) {
+        await cancelPluginApprovalForRunAbort(approvalId);
+      }
       log.warn(`plugin approval wait cancelled by run abort: ${String(err)}`);
       return {
         blocked: true,
@@ -846,28 +864,187 @@ async function requestPluginToolApproval(params: {
   }
 }
 
-/** Resolve a deferred plugin approval request at the later execution boundary. */
+/** Resolve a deferred plugin approval and run its final release gate. */
 export async function requestDeferredPluginToolApproval(params: {
   deferredApproval: DeferredPluginToolApproval;
   signal?: AbortSignal;
 }): Promise<HookOutcome> {
   const deferred = params.deferredApproval;
-  return requestPluginToolApproval({
-    approval: deferred.approval,
+  const lifecycle = deferredPluginToolApprovalLifecycle(deferred);
+  if (lifecycle.resolution) {
+    return lifecycle.resolution;
+  }
+  if (lifecycle.status !== "pending") {
+    return deferredPluginToolApprovalCancellation(deferred);
+  }
+  lifecycle.status = "resolving";
+  const resolution = resolveDeferredPluginToolApproval(deferred, lifecycle, params.signal);
+  lifecycle.resolution = resolution;
+  return resolution;
+}
+
+async function resolveDeferredPluginToolApproval(
+  deferred: DeferredPluginToolApproval,
+  lifecycle: NonNullable<DeferredPluginToolApproval["lifecycle"]>,
+  signal?: AbortSignal,
+): Promise<HookOutcome> {
+  let approvalResolution: PluginApprovalResolution | undefined;
+  const outcome = await requestPluginToolApproval({
+    approval: {
+      ...deferred.approval,
+      onResolution: (resolution) => {
+        approvalResolution ??= resolution;
+      },
+    },
     toolName: deferred.toolName,
     ...(deferred.toolCallId ? { toolCallId: deferred.toolCallId } : {}),
     ...(deferred.ctx ? { ctx: deferred.ctx } : {}),
-    signal: params.signal,
+    signal,
     baseParams: deferred.baseParams,
     overrideParams: deferred.overrideParams,
   });
+  if (lifecycle.status !== "resolving") {
+    return deferredPluginToolApprovalCancellation(deferred);
+  }
+  if (outcome.blocked) {
+    finalizeDeferredPluginToolApprovalRejection(deferred, outcome.params ?? deferred.baseParams);
+    lifecycle.status = "settled";
+    notifyPluginApprovalResolution(
+      deferred.approval,
+      approvalResolution ?? PluginApprovalResolutions.CANCELLED,
+    );
+    return outcome;
+  }
+  const finalBlockReason = finalizeDeferredPluginToolApprovalRelease(deferred, outcome.params);
+  if (!finalBlockReason) {
+    lifecycle.status = "settled";
+    notifyPluginApprovalResolution(
+      deferred.approval,
+      approvalResolution ?? outcome.approvalResolution ?? PluginApprovalResolutions.ALLOW_ONCE,
+    );
+    return outcome;
+  }
+  finalizeDeferredPluginToolApprovalRejection(deferred, outcome.params);
+  lifecycle.status = "settled";
+  notifyPluginApprovalResolution(deferred.approval, PluginApprovalResolutions.CANCELLED);
+  return {
+    blocked: true,
+    kind: "veto",
+    deniedReason: "enterprise-governance",
+    reason: finalBlockReason,
+    params: outcome.params,
+  };
 }
 
 /** Notify plugin approval callbacks that a deferred approval was cancelled. */
 export function cancelDeferredPluginToolApproval(
   deferredApproval: DeferredPluginToolApproval,
 ): void {
+  const lifecycle = deferredPluginToolApprovalLifecycle(deferredApproval);
+  if (lifecycle.status === "cancelled" || lifecycle.status === "settled") {
+    return;
+  }
+  lifecycle.status = "cancelled";
+  finalizeDeferredPluginToolApprovalRejection(deferredApproval, deferredApproval.baseParams);
   notifyPluginApprovalResolution(deferredApproval.approval, PluginApprovalResolutions.CANCELLED);
+}
+
+/** Settle a deferred gate from an enclosing provider approval UI. */
+export function finalizeDeferredPluginToolApprovalResolution(params: {
+  deferredApproval: DeferredPluginToolApproval;
+  resolution: PluginApprovalResolution;
+}): string | undefined {
+  const deferred = params.deferredApproval;
+  const lifecycle = deferredPluginToolApprovalLifecycle(deferred);
+  if (lifecycle.status === "resolving") {
+    cancelDeferredPluginToolApproval(deferred);
+    return DEFERRED_PLUGIN_APPROVAL_CANCELLED_REASON;
+  }
+  if (lifecycle.status !== "pending") {
+    return lifecycle.status === "settled" ? undefined : DEFERRED_PLUGIN_APPROVAL_CANCELLED_REASON;
+  }
+  const requestedRelease =
+    params.resolution === PluginApprovalResolutions.ALLOW_ONCE ||
+    params.resolution === PluginApprovalResolutions.ALLOW_ALWAYS ||
+    (params.resolution === PluginApprovalResolutions.TIMEOUT &&
+      deferred.approval.timeoutBehavior === "allow");
+  const resolution = normalizeDeferredPluginApprovalResolution(deferred, params.resolution);
+  if (requestedRelease && !resolution) {
+    lifecycle.status = "settled";
+    finalizeDeferredPluginToolApprovalRejection(deferred, deferred.baseParams);
+    notifyPluginApprovalResolution(deferred.approval, PluginApprovalResolutions.CANCELLED);
+    return DEFERRED_PLUGIN_APPROVAL_UNSUPPORTED_RESOLUTION_REASON;
+  }
+  const released = requestedRelease && resolution !== undefined;
+  if (!released) {
+    lifecycle.status = "settled";
+    finalizeDeferredPluginToolApprovalRejection(deferred, deferred.baseParams);
+    notifyPluginApprovalResolution(deferred.approval, resolution ?? params.resolution);
+    return undefined;
+  }
+  const approvedParams = resolveDeferredPluginToolApprovalParams(deferred);
+  const reason = finalizeDeferredPluginToolApprovalRelease(deferred, approvedParams);
+  lifecycle.status = "settled";
+  if (reason) {
+    finalizeDeferredPluginToolApprovalRejection(deferred, approvedParams);
+    notifyPluginApprovalResolution(deferred.approval, PluginApprovalResolutions.CANCELLED);
+    return reason;
+  }
+  notifyPluginApprovalResolution(deferred.approval, resolution);
+  return undefined;
+}
+
+function normalizeDeferredPluginApprovalResolution(
+  deferred: DeferredPluginToolApproval,
+  resolution: PluginApprovalResolution,
+): PluginApprovalResolution | undefined {
+  const allowed = deferred.approval.allowedDecisions;
+  if (!allowed || resolution === PluginApprovalResolutions.TIMEOUT) {
+    return resolution;
+  }
+  if (allowed.includes(resolution as "allow-once" | "allow-always" | "deny")) {
+    return resolution;
+  }
+  return resolution === PluginApprovalResolutions.ALLOW_ALWAYS &&
+    allowed.includes(PluginApprovalResolutions.ALLOW_ONCE)
+    ? PluginApprovalResolutions.ALLOW_ONCE
+    : undefined;
+}
+
+function deferredPluginToolApprovalCancellation(
+  deferredApproval: DeferredPluginToolApproval,
+): Extract<HookOutcome, { blocked: true }> {
+  return {
+    blocked: true,
+    kind: "failure",
+    deniedReason: "plugin-approval",
+    reason: DEFERRED_PLUGIN_APPROVAL_CANCELLED_REASON,
+    params: deferredApproval.baseParams,
+  };
+}
+
+/** Apply the final gate before releasing approved deferred params. */
+function finalizeDeferredPluginToolApprovalRelease(
+  deferredApproval: DeferredPluginToolApproval,
+  approvedParams: unknown,
+): string | undefined {
+  try {
+    return deferredApproval.finalizeApprovedParams?.(approvedParams);
+  } catch (err) {
+    log.error(`deferred plugin approval final gate failed: ${String(err)}`);
+    return "Enterprise governance finalization failed; refusing the approved tool call.";
+  }
+}
+
+function finalizeDeferredPluginToolApprovalRejection(
+  deferredApproval: DeferredPluginToolApproval,
+  rejectedParams: unknown,
+): void {
+  try {
+    deferredApproval.finalizeRejectedParams?.(rejectedParams);
+  } catch (err) {
+    log.error(`deferred plugin approval rejection audit failed: ${String(err)}`);
+  }
 }
 
 async function resolveBeforeToolCallApprovalOutcome(params: {
@@ -894,6 +1071,7 @@ async function resolveBeforeToolCallApprovalOutcome(params: {
         ...(params.ctx ? { ctx: params.ctx } : {}),
         baseParams: params.baseParams,
         overrideParams: params.result?.params,
+        lifecycle: { status: "pending" },
       },
     };
   }
@@ -1074,12 +1252,15 @@ async function recordLoopOutcome(args: {
 type RunBeforeToolCallHookArgs = {
   toolName: string;
   params: unknown;
+  approval?: PluginHookToolApprovalContext;
   toolKind?: PluginHookToolKind;
   toolInputKind?: PluginHookToolInputKind;
   toolCallId?: string;
   ctx?: HookContext;
   signal?: AbortSignal;
   approvalMode?: "request" | "report" | "defer";
+  /** A later provider gate decides whether this already-governed call is released. */
+  deferRelease?: boolean;
   /**
    * This tool's MCP registration, read from the tool object by the dispatcher.
    * Governance needs the server AND both spellings of it: a tool name cannot
@@ -1087,22 +1268,22 @@ type RunBeforeToolCallHookArgs = {
    * tool-name grammar rejects.
    */
   mcpTool?: { serverName: string; safeServerName: string; toolName: string };
-  /**
-   * The caller is answering a synchronous deadline it cannot extend — a native
-   * PreToolUse hook, which the harness kills after a few seconds
-   * (DEFAULT_RELAY_TIMEOUT_MS is 5s; plugin approvals default to 120s, and Codex
-   * enforces its own hook timeout in codex-rs/hooks/src/engine/command_runner.rs).
-   * No human answers in that window, so an approval raised here is a hang followed
-   * by a refusal — and a late answer would be recorded as an approval for a call
-   * the harness already rejected. Enterprise scope approvals fall back to a
-   * refusal instead; see applyEnterpriseApproval.
-   */
-  approvalUnavailable?: boolean;
 };
 
 export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Promise<HookOutcome> {
   const toolName = normalizeToolName(args.toolName || "tool");
   const params = args.params;
+  const enterpriseRunId = args.ctx?.runId;
+  const enterpriseRun = enterpriseRunId ? getEnterpriseActiveRun(enterpriseRunId) : undefined;
+  const enterpriseExecutionId = enterpriseRun?.executionId;
+  const enterpriseRunIsCurrent = () => {
+    const current = enterpriseRunId ? getEnterpriseActiveRun(enterpriseRunId) : undefined;
+    // Production runs carry executionId. Object identity keeps narrow fixtures
+    // honest too, without letting a recycled runId adopt delayed work.
+    return enterpriseExecutionId !== undefined
+      ? current?.executionId === enterpriseExecutionId
+      : current === enterpriseRun;
+  };
 
   if (args.ctx?.sessionKey) {
     const { getDiagnosticSessionState, logToolLoopAction, detectToolCallLoop, recordToolCall } =
@@ -1182,30 +1363,36 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
   // only "invoke_action" and a policy scoped to one action would fire for every
   // other action too.
   //
-  // For invoke_action this pre-chain pass does NOT record: the chain can still
-  // rewrite the action, and an appended trace event cannot be retracted, so
-  // recording here could leave the trail claiming action A was allowed when
-  // action B is what ran. The authoritative, recorded decision is taken below on
-  // the final params. It still BLOCKS here, so a denial is never softened by
-  // running the plugin chain first.
+  // This pre-chain pass does NOT record: the chain can still rewrite any tool's
+  // arguments, and an appended trace event cannot be retracted. The authoritative,
+  // recorded decision is taken below on the final params. It still BLOCKS here,
+  // so a denial is never softened by running the plugin chain first.
   const invokedActionId = readInvokedActionId(toolName, params);
   // The action that will ACTUALLY run. A hook can rewrite or fill it in, and every
   // decision AND every audit entry below must be about that one — recording the
   // pre-hook id would tie an approval to an action the run never performed.
-  let effectiveActionId = invokedActionId;
-  // Keyed on the TOOL, not on whether an action arrived: a hook can FILL IN an
-  // action that was absent, and gating the re-check on "we saw one" would let
-  // exactly that case skip its action policy entirely.
-  const decideLater = toolCarriesOntologyAction(toolName);
-  let enterpriseVerdict = evaluateEnterpriseToolCall({
-    ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
-    toolName,
-    ...(args.mcpTool ? { mcpTool: args.mcpTool } : {}),
-    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-    ...(invokedActionId !== undefined ? { actionId: invokedActionId } : {}),
-    ...(decideLater ? { record: false } : {}),
-    toolParams: params,
-  });
+  const enterpriseStateCurrent = enterpriseRunIsCurrent();
+  if (!enterpriseStateCurrent && enterpriseRun?.plan.mode === "enforce") {
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON,
+      params,
+    };
+  }
+  let enterpriseVerdict = enterpriseStateCurrent
+    ? evaluateEnterpriseToolCall({
+        ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
+        toolName,
+        ...(args.mcpTool ? { mcpTool: args.mcpTool } : {}),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+        ...(invokedActionId !== undefined ? { actionId: invokedActionId } : {}),
+        record: false,
+        released: false,
+        toolParams: params,
+      })
+    : undefined;
   if (enterpriseVerdict?.blocked) {
     return {
       blocked: true,
@@ -1216,25 +1403,6 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
     };
   }
 
-  // BEFORE the chain, not after: a trusted policy or plugin hook can open its own
-  // approval, and on a caller that cannot wait that request blocks past the
-  // harness's deadline exactly like ours would. Refusing here means no approval of
-  // any kind is opened for a call the step's scope never covered.
-  const unapprovable = refuseUnapprovableEnterpriseScope({
-    args,
-    toolName,
-    verdict: enterpriseVerdict,
-    finalParams: params,
-    // The action is the SUBJECT of an invoke_action refusal. Without it the trail
-    // says only that invoke_action was refused, which tells an operator nothing
-    // about which of a step's actions was attempted — and every other approval
-    // path already records it.
-    ...(invokedActionId !== undefined ? { actionId: invokedActionId } : {}),
-  });
-  if (unapprovable) {
-    return unapprovable;
-  }
-
   // Run the trusted-policy / plugin-hook / final-approval chain first, then
   // apply the enterprise approval (if any) as the LAST gate. Placing it last
   // means a deferred enterprise approval never skips the chain, and it honors
@@ -1242,52 +1410,157 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
   // within its own deadline instead of blocking on a synchronous request).
   const chainOutcome = await runBeforeToolCallChain(args);
 
-  // The chain can ADJUST params (trusted policy, plugin before_tool_call hook,
-  // approval override), and the adjusted params are what the tool executes. So the
-  // authoritative decision for an ontology action is taken HERE, on the final
-  // params, and this is the one that reaches the audit trail. Without it, a hook
-  // could slip past an action-scoped deny simply by renaming the action after the
-  // gate ran — precisely the widening this gate exists to prevent.
-  if (decideLater && !chainOutcome.blocked) {
-    const finalActionId = readInvokedActionId(toolName, chainOutcome.params ?? params);
-    const revised = evaluateEnterpriseToolCall({
-      ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
-      toolName,
-      ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-      ...(finalActionId !== undefined ? { actionId: finalActionId } : {}),
-    });
-    if (revised?.blocked) {
-      // The chain may have produced a DEFERRED approval. A blocked outcome is
-      // never stored or resolved by the caller, so the deferral would dangle and
-      // its onResolution callback never fire — plugin cleanup and audit silently
-      // skipped. Cancel it, exactly as the conflicting-approval path below does.
-      if (chainOutcome.deferredApproval) {
-        cancelDeferredPluginToolApproval(chainOutcome.deferredApproval);
-      }
-      return {
-        blocked: true,
-        kind: "veto",
-        deniedReason: "enterprise-governance",
-        reason: revised.decision.reason,
-        params: chainOutcome.params ?? params,
-      };
+  // runIds recur. A hook can outlive one execution and finish after its successor
+  // registered the same id; never evaluate or release the old call against the
+  // new execution's plan. Observe/unmediated calls stay fail-open without writing
+  // a decision into the successor's trace.
+  if (!enterpriseRunIsCurrent()) {
+    if (enterpriseVerdict?.mode !== "enforce") {
+      return chainOutcome;
     }
-    // A rewritten action that needs approval is NOT vetoed: this runs after the
-    // chain produced its final params and before applyEnterpriseApproval, so the
-    // normal approval path can still prompt — on the final action. Failing closed
-    // here would silently turn every configured require_approval into a deny for
-    // any hook-filled or normalized action.
-    //
-    // Everything below decides approval, and must decide it for the action that
-    // will ACTUALLY run — including what it writes to the audit trail.
-    enterpriseVerdict = revised;
-    effectiveActionId = finalActionId;
+    if (!chainOutcome.blocked && chainOutcome.deferredApproval) {
+      cancelDeferredPluginToolApproval(chainOutcome.deferredApproval);
+    }
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON,
+      params: chainOutcome.params,
+    };
   }
 
-  if (chainOutcome.blocked || !enterpriseVerdict?.requiresApproval) {
-    // Chain already blocked, or no enterprise approval is required — return the
-    // chain outcome verbatim (including any deferred approval it produced).
+  // The chain can ADJUST params (trusted policy, plugin before_tool_call hook,
+  // approval override), and the adjusted params are what the tool executes. So the
+  // authoritative decision is taken HERE, on the final params, and this is the
+  // one that reaches the audit trail. Without it, a hook could slip past an action
+  // policy or outward-call contract by changing the action or its arguments.
+  const finalParams = chainOutcome.params ?? params;
+  const finalActionId = readInvokedActionId(toolName, finalParams);
+  const deferredApproval = !chainOutcome.blocked ? chainOutcome.deferredApproval : undefined;
+  const revised = evaluateEnterpriseToolCall({
+    ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
+    toolName,
+    ...(args.mcpTool ? { mcpTool: args.mcpTool } : {}),
+    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+    ...(finalActionId !== undefined ? { actionId: finalActionId } : {}),
+    ...(deferredApproval ? { record: false } : {}),
+    released: !chainOutcome.blocked && !deferredApproval && args.deferRelease !== true,
+    toolParams: finalParams,
+  });
+  if (chainOutcome.blocked) {
     return chainOutcome;
+  }
+  if (!revised && enterpriseVerdict?.mode === "enforce") {
+    if (deferredApproval) {
+      cancelDeferredPluginToolApproval(deferredApproval);
+    }
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON,
+      params: finalParams,
+    };
+  }
+  if (revised?.blocked) {
+    // The chain may have produced a DEFERRED approval. A blocked outcome is
+    // never stored or resolved by the caller, so the deferral would dangle and
+    // its onResolution callback never fire — plugin cleanup and audit silently
+    // skipped. Cancel it, exactly as the conflicting-approval path below does.
+    if (deferredApproval) {
+      cancelDeferredPluginToolApproval(deferredApproval);
+    }
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: revised.decision.reason,
+      params: finalParams,
+    };
+  }
+  // A rewritten action that needs approval is NOT vetoed: this runs after the
+  // chain produced its final params and before applyEnterpriseApproval, so the
+  // normal approval path can still prompt — on the final action. Failing closed
+  // here would silently turn every configured require_approval into a deny for
+  // any hook-filled or normalized action.
+  //
+  // Everything below decides approval, and must decide it for the action that
+  // will ACTUALLY run — including what it writes to the audit trail.
+  enterpriseVerdict = revised;
+  const effectiveActionId = finalActionId;
+  const finalizeRelease =
+    args.deferRelease && enterpriseVerdict
+      ? createEnterpriseToolReleaseFinalizer({
+          args,
+          toolName,
+          params: finalParams,
+          enterpriseRunIsCurrent,
+        })
+      : undefined;
+  if (!enterpriseVerdict?.requiresApproval) {
+    if (!deferredApproval || !enterpriseVerdict) {
+      return finalizeRelease ? { ...chainOutcome, finalizeRelease } : chainOutcome;
+    }
+    // A deferred plugin approval has not released the tool yet. Delay the final
+    // enterprise audit (especially outward `dispatched`) until the native caller
+    // confirms the approved params are unchanged and will actually execute.
+    let finalized = false;
+    let finalizationResult: string | undefined;
+    const finalize = (candidateParams: unknown, released: boolean) => {
+      if (finalized) {
+        return finalizationResult;
+      }
+      finalized = true;
+      try {
+        if (!enterpriseRunIsCurrent()) {
+          finalizationResult = ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON;
+          return finalizationResult;
+        }
+        const candidateActionId = readInvokedActionId(toolName, candidateParams);
+        const candidateVerdict = evaluateEnterpriseToolCall({
+          ...(args.ctx?.runId ? { runId: args.ctx.runId } : {}),
+          toolName,
+          ...(args.mcpTool ? { mcpTool: args.mcpTool } : {}),
+          ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+          ...(candidateActionId !== undefined ? { actionId: candidateActionId } : {}),
+          released: released && !finalizeRelease,
+          toolParams: candidateParams,
+        });
+        if (!candidateVerdict) {
+          finalizationResult = ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON;
+        } else if (candidateVerdict.blocked) {
+          finalizationResult = candidateVerdict.decision.reason;
+        } else if (candidateVerdict.requiresApproval) {
+          recordEnterpriseApprovalResolution({
+            runId: args.ctx?.runId ?? "",
+            verdict: candidateVerdict,
+            toolName,
+            ...(candidateActionId !== undefined ? { actionId: candidateActionId } : {}),
+            ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+            outcome: "denied",
+            resolution: released ? "blocked-conflicting-approval" : "blocked-before-release",
+          });
+          if (released) {
+            finalizationResult = `${candidateVerdict.decision.reason} (another approval gate became required for the approved params)`;
+          }
+        }
+      } catch (err) {
+        log.error(`deferred enterprise finalization failed: ${String(err)}`);
+        finalizationResult =
+          "Enterprise governance finalization failed; refusing the approved tool call.";
+      }
+      return finalizationResult;
+    };
+    return {
+      ...chainOutcome,
+      ...(finalizeRelease ? { finalizeRelease } : {}),
+      deferredApproval: {
+        ...deferredApproval,
+        finalizeApprovedParams: (approvedParams) => finalize(approvedParams, true),
+        finalizeRejectedParams: (rejectedParams) => void finalize(rejectedParams, false),
+      },
+    };
   }
   if (chainOutcome.deferredApproval) {
     // The chain deferred its own approval and the enterprise gate also needs
@@ -1319,55 +1592,50 @@ export async function runBeforeToolCallHook(args: RunBeforeToolCallHookArgs): Pr
     toolName,
     verdict: enterpriseVerdict,
     chainOutcome,
+    enterpriseRunIsCurrent,
   });
 }
 
-/**
- * Refuse an out-of-scope call outright when nobody can answer an approval.
- *
- * A synchronous native PreToolUse hook is killed by the harness after a few
- * seconds, while a plugin approval waits far longer — so a prompt raised there
- * stalls the call, is refused on timeout anyway, and can record a late "approved"
- * for a call the harness already rejected. Refusing immediately keeps the same
- * boundary without the stall or the false audit entry.
- *
- * Scoped to ONTOLOGY-sourced approvals: an operator-configured require_approval
- * policy predates this path and was chosen deliberately, so it keeps its own
- * behavior. Returns undefined when the call is approvable normally.
- */
-function refuseUnapprovableEnterpriseScope(params: {
+function createEnterpriseToolReleaseFinalizer(params: {
   args: RunBeforeToolCallHookArgs;
   toolName: string;
-  actionId?: string;
-  verdict: ReturnType<typeof evaluateEnterpriseToolCall>;
-  finalParams: unknown;
-}): Extract<HookOutcome, { blocked: true }> | undefined {
-  const { args, verdict } = params;
-  if (!args.approvalUnavailable || !verdict?.requiresApproval) {
+  params: unknown;
+  enterpriseRunIsCurrent: () => boolean;
+}): (released: boolean) => string | undefined {
+  let finalized = false;
+  let result: string | undefined;
+  return (released) => {
+    if (finalized) {
+      return result;
+    }
+    finalized = true;
+    if (!released) {
+      return undefined;
+    }
+    if (!params.enterpriseRunIsCurrent()) {
+      return (result = ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON);
+    }
+    const actionId = readInvokedActionId(params.toolName, params.params);
+    const verdict = evaluateEnterpriseToolCall({
+      ...(params.args.ctx?.runId ? { runId: params.args.ctx.runId } : {}),
+      toolName: params.toolName,
+      ...(params.args.mcpTool ? { mcpTool: params.args.mcpTool } : {}),
+      ...(params.args.toolCallId ? { toolCallId: params.args.toolCallId } : {}),
+      ...(actionId !== undefined ? { actionId } : {}),
+      record: false,
+      released: true,
+      toolParams: params.params,
+    });
+    if (!verdict) {
+      return (result = ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON);
+    }
+    if (verdict.blocked) {
+      return (result = verdict.decision.reason);
+    }
+    if (verdict.requiresApproval) {
+      return (result = `${verdict.decision.reason} (another approval gate became required before release)`);
+    }
     return undefined;
-  }
-  // Keyed on the OMISSION, not on `source`: when a policy also matches the same
-  // call its decision is the one returned, so a source check would let exactly
-  // that combination open a 120s prompt on a 5s hook. An operator's standalone
-  // require_approval policy still keeps its own behavior — it carries no omission.
-  if (!verdict.decision.ontologyOmission) {
-    return undefined;
-  }
-  recordEnterpriseApprovalResolution({
-    runId: args.ctx?.runId ?? "",
-    verdict,
-    toolName: params.toolName,
-    ...(params.actionId !== undefined ? { actionId: params.actionId } : {}),
-    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-    outcome: "denied",
-    resolution: "no-approval-channel",
-  });
-  return {
-    blocked: true,
-    kind: "veto",
-    deniedReason: "enterprise-governance",
-    reason: `${verdict.decision.reason} This runtime cannot wait for a human decision, so the call was refused rather than approved.`,
-    params: params.finalParams,
   };
 }
 
@@ -1382,21 +1650,9 @@ async function applyEnterpriseApproval(params: {
   actionId?: string;
   verdict: NonNullable<ReturnType<typeof evaluateEnterpriseToolCall>>;
   chainOutcome: Extract<HookOutcome, { blocked: false }>;
+  enterpriseRunIsCurrent: () => boolean;
 }): Promise<HookOutcome> {
-  const { args, toolName, actionId, verdict, chainOutcome } = params;
-  // Re-checked on the FINAL verdict: the chain can revise a call into an approval
-  // (a hook filling in an ontology action), and that revision must not slip past
-  // the no-channel refusal the pre-chain check already applied.
-  const unapprovable = refuseUnapprovableEnterpriseScope({
-    args,
-    toolName,
-    verdict,
-    finalParams: chainOutcome.params,
-    ...(actionId !== undefined ? { actionId } : {}),
-  });
-  if (unapprovable) {
-    return unapprovable;
-  }
+  const { args, toolName, actionId, verdict, chainOutcome, enterpriseRunIsCurrent } = params;
   const approvalSettings = verdict.decision.approval;
   const timeoutBehavior = approvalSettings?.timeoutBehavior ?? "deny";
   const enterpriseRunId = args.ctx?.runId ?? "";
@@ -1405,6 +1661,9 @@ async function applyEnterpriseApproval(params: {
   // requestDeferredPluginToolApproval, and report/cancel fire on CANCELLED.
   // timeoutBehavior is ours, so timeout maps deterministically.
   const onResolution = (resolution: PluginApprovalResolution) => {
+    if (!enterpriseRunIsCurrent()) {
+      return;
+    }
     const approved =
       resolution === PluginApprovalResolutions.ALLOW_ONCE ||
       resolution === PluginApprovalResolutions.ALLOW_ALWAYS ||
@@ -1420,8 +1679,24 @@ async function applyEnterpriseApproval(params: {
       outcome: approved ? "approved" : "denied",
       resolution,
     });
+    if (approved && !args.deferRelease && verdict.decision.outwardActionId) {
+      recordEnterpriseActionInvoked(enterpriseRunId, {
+        actionId: verdict.decision.outwardActionId,
+        writes: [{ kind: "dispatched", tool: toolName }],
+        context: isPlainObject(chainOutcome.params) ? chainOutcome.params : {},
+      });
+    }
   };
   const baseParams = chainOutcome.params;
+  const finalizeRelease = args.deferRelease
+    ? createApprovedEnterpriseToolReleaseFinalizer({
+        args,
+        toolName,
+        params: baseParams,
+        verdict,
+        enterpriseRunIsCurrent,
+      })
+    : undefined;
   const approvalOutcome = await resolveBeforeToolCallApprovalOutcome({
     result: {
       requireApproval: {
@@ -1455,6 +1730,18 @@ async function applyEnterpriseApproval(params: {
     signal: args.signal,
     baseParams,
   });
+  if (!enterpriseRunIsCurrent()) {
+    if (approvalOutcome && !approvalOutcome.blocked && approvalOutcome.deferredApproval) {
+      cancelDeferredPluginToolApproval(approvalOutcome.deferredApproval);
+    }
+    return {
+      blocked: true,
+      kind: "veto",
+      deniedReason: "enterprise-governance",
+      reason: ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON,
+      params: baseParams,
+    };
+  }
   if (!approvalOutcome) {
     return chainOutcome;
   }
@@ -1478,14 +1765,53 @@ async function applyEnterpriseApproval(params: {
     return {
       blocked: false,
       params: baseParams,
-      deferredApproval: approvalOutcome.deferredApproval,
+      ...(finalizeRelease ? { finalizeRelease } : {}),
+      deferredApproval: {
+        ...approvalOutcome.deferredApproval,
+        finalizeApprovedParams: () =>
+          enterpriseRunIsCurrent() ? undefined : ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON,
+      },
     };
   }
   // Approved: thread the resolution so downstream approval bridges do not
   // prompt a second time for the same call, keeping the chain's params.
   return {
     ...chainOutcome,
+    ...(finalizeRelease ? { finalizeRelease } : {}),
     approvalResolution: approvalOutcome.approvalResolution ?? PluginApprovalResolutions.ALLOW_ONCE,
+  };
+}
+
+function createApprovedEnterpriseToolReleaseFinalizer(params: {
+  args: RunBeforeToolCallHookArgs;
+  toolName: string;
+  params: unknown;
+  verdict: NonNullable<ReturnType<typeof evaluateEnterpriseToolCall>>;
+  enterpriseRunIsCurrent: () => boolean;
+}): (released: boolean) => string | undefined {
+  let finalized = false;
+  let result: string | undefined;
+  return (released) => {
+    if (finalized) {
+      return result;
+    }
+    finalized = true;
+    const runId = params.args.ctx?.runId ?? "";
+    if (!released) {
+      return undefined;
+    }
+    const run = getEnterpriseActiveRun(runId);
+    if (!params.enterpriseRunIsCurrent() || run?.plan.activeNodeId !== params.verdict.nodeId) {
+      return (result = ENTERPRISE_GOVERNANCE_UNAVAILABLE_REASON);
+    }
+    if (params.verdict.decision.outwardActionId) {
+      recordEnterpriseActionInvoked(runId, {
+        actionId: params.verdict.decision.outwardActionId,
+        writes: [{ kind: "dispatched", tool: params.toolName }],
+        context: isPlainObject(params.params) ? params.params : {},
+      });
+    }
+    return undefined;
   };
 }
 
@@ -1539,6 +1865,7 @@ async function runBeforeToolCallChain(args: RunBeforeToolCallHookArgs): Promise<
           {
             toolName,
             params: normalizedParams,
+            ...(args.approval ? { approval: args.approval } : {}),
             ...toolIdentity,
             ...(args.ctx?.runId && { runId: args.ctx.runId }),
             ...(args.toolCallId && { toolCallId: args.toolCallId }),
@@ -1646,6 +1973,7 @@ async function runBeforeToolCallChain(args: RunBeforeToolCallHookArgs): Promise<
       {
         toolName,
         params: hookEventParams,
+        ...(args.approval ? { approval: args.approval } : {}),
         ...policyAdjustedToolIdentity,
         ...(args.ctx?.runId && { runId: args.ctx.runId }),
         ...(args.toolCallId && { toolCallId: args.toolCallId }),
@@ -2022,17 +2350,3 @@ export const testing = {
   isPlainObject,
 };
 export { testing as __testing };
-
-function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-  if (typeof value === "string") {
-    return new Error(value, { cause: value });
-  }
-  const error = new Error(fallbackMessage, { cause: value });
-  if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    Object.assign(error, value);
-  }
-  return error;
-}

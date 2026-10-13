@@ -9,17 +9,23 @@ import {
 import {
   type AgentApprovalEventData,
   buildAgentHookContextChannelFields,
+  embeddedAgentLog,
+  finalizeDeferredPluginToolApprovalResolution,
+  finalizeNativeHookRelayToolRelease,
   formatApprovalDisplayPath,
+  getNativeHookRelayDeferredToolApproval,
   hasNativeHookRelayInvocation,
   invokeNativeHookRelay,
-  resolveNativeHookRelayDeferredToolApproval,
+  resolveDeferredPluginToolApprovalParams,
   type EmbeddedRunAttemptParams,
   type NativeHookRelayProcessResponse,
   type NativeHookRelayRegistrationHandle,
+  type NativeHookRelayDeferredToolApproval,
   runBeforeToolCallHook,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { normalizeTrimmedStringList } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import { formatCodexDisplayText } from "../command-formatters.js";
 import {
   isTrustedCodexModelBackedOpenAIProvider,
@@ -27,9 +33,11 @@ import {
 } from "./config.js";
 import {
   approvalRequestExplicitlyUnavailable,
+  CODEX_PLUGIN_APPROVAL_DESCRIPTION_MAX_CHARS,
   mapExecDecisionToOutcome,
   requestPluginApproval,
   type AppServerApprovalOutcome,
+  type ExecApprovalDecision,
   waitForPluginApprovalDecision,
 } from "./plugin-approval-roundtrip.js";
 import { isJsonObject, type JsonObject, type JsonValue } from "./protocol.js";
@@ -40,6 +48,7 @@ const PERMISSION_VALUE_MAX_LENGTH = 48;
 const COMMAND_PREVIEW_WITH_DETAILS_MAX_LENGTH = 80;
 const APPROVAL_PREVIEW_SCAN_MAX_LENGTH = 4096;
 const APPROVAL_PREVIEW_OMITTED = "[preview truncated or unsafe content omitted]";
+const MERGED_APPROVAL_DESCRIPTION_SEPARATOR = "\n\n";
 const ANSI_OSC_SEQUENCE_RE = new RegExp(
   String.raw`(?:\u001b]|\u009d)[^\u001b\u009c\u0007]*(?:\u0007|\u001b\\|\u009c)`,
   "g",
@@ -48,6 +57,25 @@ const ANSI_CONTROL_SEQUENCE_RE = new RegExp(
   String.raw`(?:\u001b\[[0-?]*[ -/]*[@-~]|\u009b[0-?]*[ -/]*[@-~]|\u001b[@-Z\\-_])`,
   "g",
 );
+
+function combineApprovalDescriptions(providerDescription: string, policyDescription: string) {
+  const contentBudget =
+    CODEX_PLUGIN_APPROVAL_DESCRIPTION_MAX_CHARS - MERGED_APPROVAL_DESCRIPTION_SEPARATOR.length;
+  const partBudget = Math.floor(contentBudget / 2);
+  return `${truncateApprovalDescriptionPart(
+    providerDescription,
+    contentBudget - partBudget,
+  )}${MERGED_APPROVAL_DESCRIPTION_SEPARATOR}${truncateApprovalDescriptionPart(
+    policyDescription,
+    partBudget,
+  )}`;
+}
+
+function truncateApprovalDescriptionPart(value: string, maxChars: number): string {
+  return value.length <= maxChars
+    ? value
+    : `${truncateUtf16Safe(value, Math.max(0, maxChars - 1))}…`;
+}
 const CONTROL_CHARACTER_RE = new RegExp(String.raw`[\u0000-\u001f\u007f-\u009f]+`, "g");
 const INVISIBLE_FORMATTING_CONTROL_RE = new RegExp(
   String.raw`[\u00ad\u034f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufe00-\ufe0f\u{e0100}-\u{e01ef}]`,
@@ -94,12 +122,28 @@ export async function handleCodexAppServerApprovalRequest(params: {
   if (!isSupportedAppServerApprovalMethod(params.method)) {
     return unsupportedApprovalResponse();
   }
+  const requiresFullApproval =
+    params.method === "item/commandExecution/requestApproval" &&
+    hasCommandApprovalCapabilityAmendments(requestParams);
 
   const context = buildApprovalContext({
     method: params.method,
     requestParams,
     paramsForRun: params.paramsForRun,
   });
+  let finalizePolicyRelease:
+    | ((outcome: AppServerApprovalOutcome) => string | undefined)
+    | undefined;
+  let policyReleaseFailureReason: string | undefined;
+  const settlePolicyRelease = (outcome: AppServerApprovalOutcome) => {
+    const finalize = finalizePolicyRelease;
+    finalizePolicyRelease = undefined;
+    const reason = finalize?.(outcome);
+    if (approvalOutcomeIsApproved(outcome) && reason) {
+      policyReleaseFailureReason = reason;
+      throw new Error(reason);
+    }
+  };
 
   try {
     const policyOutcome = await runOpenClawToolPolicyForApprovalRequest({
@@ -109,8 +153,11 @@ export async function handleCodexAppServerApprovalRequest(params: {
       context,
       nativeHookRelay: params.nativeHookRelay,
       signal: params.signal,
+      requiresFullApproval,
     });
+    finalizePolicyRelease = policyOutcome?.finalizeRelease;
     if (policyOutcome?.outcome === "denied") {
+      settlePolicyRelease("denied");
       emitApprovalEvent(params.paramsForRun, {
         phase: "resolved",
         kind: context.kind,
@@ -123,9 +170,10 @@ export async function handleCodexAppServerApprovalRequest(params: {
       return buildApprovalResponse(params.method, context.requestParams, "denied");
     }
     if (
-      policyOutcome?.outcome === "approved-once" ||
-      policyOutcome?.outcome === "approved-session"
+      !requiresFullApproval &&
+      (policyOutcome?.outcome === "approved-once" || policyOutcome?.outcome === "approved-session")
     ) {
+      settlePolicyRelease(policyOutcome.outcome);
       emitApprovalEvent(params.paramsForRun, {
         phase: "resolved",
         kind: context.kind,
@@ -137,7 +185,8 @@ export async function handleCodexAppServerApprovalRequest(params: {
       });
       return buildApprovalResponse(params.method, context.requestParams, policyOutcome.outcome);
     }
-    if (params.autoApprove === true) {
+    if (params.autoApprove === true && !requiresFullApproval) {
+      settlePolicyRelease("approved-session");
       emitApprovalEvent(params.paramsForRun, {
         phase: "resolved",
         kind: context.kind,
@@ -159,6 +208,7 @@ export async function handleCodexAppServerApprovalRequest(params: {
       signal: params.signal,
     });
     if (autoReviewOutcome?.outcome === "approved-once") {
+      settlePolicyRelease("approved-once");
       emitApprovalEvent(params.paramsForRun, {
         phase: "resolved",
         kind: context.kind,
@@ -174,15 +224,25 @@ export async function handleCodexAppServerApprovalRequest(params: {
     // approval route so user-facing runs still get an approval prompt.
     const requestResult = await requestPluginApproval({
       paramsForRun: params.paramsForRun,
-      title: context.title,
-      description: context.description,
-      severity: context.severity,
+      title: policyOutcome?.approval
+        ? `${policyOutcome.approval.title}: ${context.title}`
+        : context.title,
+      description: policyOutcome?.approval
+        ? combineApprovalDescriptions(context.description, policyOutcome.approval.description)
+        : context.description,
+      severity: policyOutcome?.approval?.severity ?? context.severity,
       toolName: context.toolName,
       toolCallId: context.itemId,
+      allowedDecisions: compatibleApprovalDecisions(
+        approvalDecisionsForResponse(params.method, context.requestParams),
+        policyOutcome?.approval?.allowedDecisions,
+      ),
+      signal: params.signal,
     });
 
     const approvalId = requestResult?.id;
     if (!approvalId) {
+      settlePolicyRelease("unavailable");
       emitApprovalEvent(params.paramsForRun, {
         phase: "resolved",
         kind: context.kind,
@@ -209,7 +269,12 @@ export async function handleCodexAppServerApprovalRequest(params: {
     const decision = approvalRequestExplicitlyUnavailable(requestResult)
       ? null
       : await waitForPluginApprovalDecision({ approvalId, signal: params.signal });
-    const outcome = mapExecDecisionToOutcome(decision);
+    const outcome = normalizeApprovalOutcomeForResponse(
+      params.method,
+      context.requestParams,
+      mapExecDecisionToOutcome(decision),
+    );
+    settlePolicyRelease(outcome);
 
     emitApprovalEvent(params.paramsForRun, {
       phase: "resolved",
@@ -232,23 +297,30 @@ export async function handleCodexAppServerApprovalRequest(params: {
     return buildApprovalResponse(params.method, context.requestParams, outcome);
   } catch (error) {
     const cancelled = params.signal?.aborted === true;
+    settlePolicyRelease(cancelled ? "cancelled" : "unavailable");
+    const releaseDenied = policyReleaseFailureReason !== undefined;
     emitApprovalEvent(params.paramsForRun, {
       phase: "resolved",
       kind: context.kind,
-      status: cancelled ? "failed" : "unavailable",
+      status: releaseDenied ? "denied" : cancelled ? "failed" : "unavailable",
       title: context.title,
       ...context.eventDetails,
-      ...approvalEventScope(params.method, cancelled ? "cancelled" : "denied"),
-      message: cancelled
-        ? "Codex app-server approval cancelled because the run stopped."
-        : `Codex app-server approval route failed: ${formatCodexDisplayText(
-            formatErrorMessage(error),
-          )}`,
+      ...approvalEventScope(
+        params.method,
+        releaseDenied ? "denied" : cancelled ? "cancelled" : "denied",
+      ),
+      message: releaseDenied
+        ? policyReleaseFailureReason
+        : cancelled
+          ? "Codex app-server approval cancelled because the run stopped."
+          : `Codex app-server approval route failed: ${formatCodexDisplayText(
+              formatErrorMessage(error),
+            )}`,
     });
     return buildApprovalResponse(
       params.method,
       context.requestParams,
-      cancelled ? "cancelled" : "denied",
+      releaseDenied ? "denied" : cancelled ? "cancelled" : "denied",
     );
   }
 }
@@ -275,6 +347,58 @@ export function buildApprovalResponse(
     return { permissions: {}, scope: "turn" };
   }
   return unsupportedApprovalResponse();
+}
+
+function normalizeApprovalOutcomeForResponse(
+  method: string,
+  requestParams: JsonObject | undefined,
+  outcome: AppServerApprovalOutcome,
+): AppServerApprovalOutcome {
+  if (method !== "item/commandExecution/requestApproval" || !approvalOutcomeIsApproved(outcome)) {
+    return outcome;
+  }
+  const decision = commandApprovalDecision(requestParams, outcome);
+  return commandDecisionAllowsExecution(decision) ? outcome : "unavailable";
+}
+
+function approvalDecisionsForResponse(
+  method: string,
+  requestParams: JsonObject | undefined,
+): ExecApprovalDecision[] | undefined {
+  if (
+    method !== "item/commandExecution/requestApproval" ||
+    !Array.isArray(requestParams?.availableDecisions)
+  ) {
+    return undefined;
+  }
+  const decisions: ExecApprovalDecision[] = [];
+  if (commandDecisionAllowsExecution(commandApprovalDecision(requestParams, "approved-once"))) {
+    decisions.push("allow-once");
+  }
+  if (commandDecisionAllowsExecution(commandApprovalDecision(requestParams, "approved-session"))) {
+    decisions.push("allow-always");
+  }
+  decisions.push("deny");
+  return decisions;
+}
+
+function compatibleApprovalDecisions(
+  providerDecisions: ExecApprovalDecision[] | undefined,
+  policyDecisions: NativeHookRelayDeferredToolApproval["allowedDecisions"],
+): ExecApprovalDecision[] | undefined {
+  if (!policyDecisions) {
+    return providerDecisions;
+  }
+  return (providerDecisions ?? ["allow-once", "allow-always", "deny"]).filter(
+    (decision) =>
+      decision === "deny" ||
+      policyDecisions.includes(decision) ||
+      (decision === "allow-always" && policyDecisions.includes("allow-once")),
+  );
+}
+
+function commandDecisionAllowsExecution(decision: JsonValue): boolean {
+  return decision !== "decline" && decision !== "cancel";
 }
 
 function matchesCurrentTurn(
@@ -372,10 +496,30 @@ function buildApprovalContext(params: {
 }
 
 type ApprovalContext = ReturnType<typeof buildApprovalContext>;
-type ApprovalPolicyOutcome =
+type ApprovalPolicyOutcome = (
   | { outcome: "denied"; reason: string }
   | { outcome: "approved-once" | "approved-session" }
-  | { outcome: "no-decision" };
+  | { outcome: "no-decision" }
+) & {
+  approval?: NativeHookRelayDeferredToolApproval;
+  finalizeRelease?: (outcome: AppServerApprovalOutcome) => string | undefined;
+};
+
+function approvalOutcomeIsApproved(outcome: AppServerApprovalOutcome): boolean {
+  return outcome === "approved-once" || outcome === "approved-session";
+}
+
+function pluginResolutionForApprovalOutcome(
+  outcome: AppServerApprovalOutcome,
+): "allow-once" | "allow-always" | "deny" | "cancelled" {
+  if (outcome === "approved-once") {
+    return "allow-once";
+  }
+  if (outcome === "approved-session") {
+    return "allow-always";
+  }
+  return outcome === "denied" ? "deny" : "cancelled";
+}
 
 async function runInternalExecAutoReviewForApprovalRequest(params: {
   enabled: boolean;
@@ -625,11 +769,13 @@ async function runOpenClawToolPolicyForApprovalRequest(params: {
     "allowedEvents" | "generation" | "relayId"
   >;
   signal?: AbortSignal;
+  requiresFullApproval: boolean;
 }): Promise<ApprovalPolicyOutcome | undefined> {
   const policyRequest = buildOpenClawToolPolicyRequest(params.method, params.requestParams);
   if (!policyRequest) {
     return undefined;
   }
+  const requiresFullApproval = params.requiresFullApproval;
   const cwd = readString(params.requestParams, "cwd") ?? params.paramsForRun.workspaceDir;
   const nativeRelayOutcome = await runNativeRelayToolPolicyForApprovalRequest({
     method: params.method,
@@ -639,18 +785,38 @@ async function runOpenClawToolPolicyForApprovalRequest(params: {
     nativeHookRelay: params.nativeHookRelay,
     cwd,
     signal: params.signal,
+    requiresFullApproval,
   });
   if (nativeRelayOutcome?.blocked) {
-    return { outcome: "denied", reason: nativeRelayOutcome.reason };
+    return {
+      outcome: "denied",
+      reason: nativeRelayOutcome.reason,
+      ...(nativeRelayOutcome.approval ? { approval: nativeRelayOutcome.approval } : {}),
+      ...(nativeRelayOutcome.finalizeRelease
+        ? { finalizeRelease: nativeRelayOutcome.finalizeRelease }
+        : {}),
+    };
   }
   if (
     nativeRelayOutcome?.outcome === "approved-once" ||
     nativeRelayOutcome?.outcome === "approved-session"
   ) {
-    return { outcome: nativeRelayOutcome.outcome };
+    return {
+      outcome: nativeRelayOutcome.outcome,
+      ...(nativeRelayOutcome.approval ? { approval: nativeRelayOutcome.approval } : {}),
+      ...(nativeRelayOutcome.finalizeRelease
+        ? { finalizeRelease: nativeRelayOutcome.finalizeRelease }
+        : {}),
+    };
   }
   if (nativeRelayOutcome?.handled) {
-    return { outcome: "no-decision" };
+    return {
+      outcome: "no-decision",
+      ...(nativeRelayOutcome.approval ? { approval: nativeRelayOutcome.approval } : {}),
+      ...(nativeRelayOutcome.finalizeRelease
+        ? { finalizeRelease: nativeRelayOutcome.finalizeRelease }
+        : {}),
+    };
   }
   const hookChannelId = buildAgentHookContextChannelFields({
     sessionKey: params.paramsForRun.sessionKey,
@@ -662,8 +828,14 @@ async function runOpenClawToolPolicyForApprovalRequest(params: {
   const outcome = await runBeforeToolCallHook({
     toolName: policyRequest.toolName,
     params: policyRequest.params,
+    approval: {
+      provider: "codex",
+      method: params.method,
+      request: params.requestParams ?? {},
+    },
     ...(params.context.itemId ? { toolCallId: params.context.itemId } : {}),
-    approvalMode: "request",
+    approvalMode: requiresFullApproval ? "defer" : "request",
+    deferRelease: true,
     signal: params.signal,
     ctx: {
       ...(params.paramsForRun.agentId ? { agentId: params.paramsForRun.agentId } : {}),
@@ -676,9 +848,70 @@ async function runOpenClawToolPolicyForApprovalRequest(params: {
     },
   });
   if (outcome.blocked) {
-    return { outcome: "denied", reason: outcome.reason };
+    return {
+      outcome: "denied",
+      reason: outcome.reason,
+      ...(outcome.finalizeRelease
+        ? {
+            finalizeRelease: (approvalOutcome: AppServerApprovalOutcome) =>
+              outcome.finalizeRelease?.(approvalOutcomeIsApproved(approvalOutcome)),
+          }
+        : {}),
+    };
   }
-  if ("params" in outcome && toolPolicyParamsWereRewritten(policyRequest.params, outcome.params)) {
+  let finalizeRelease: ApprovalPolicyOutcome["finalizeRelease"];
+  if (outcome.deferredApproval) {
+    const deferredApproval = outcome.deferredApproval;
+    const providerFinalizer = outcome.finalizeRelease;
+    let providerSettled = false;
+    let providerResult: string | undefined;
+    const settleProvider = (released: boolean) => {
+      if (!providerFinalizer || providerSettled) {
+        return providerResult;
+      }
+      providerSettled = true;
+      return (providerResult = providerFinalizer(released));
+    };
+    finalizeRelease = (approvalOutcome) =>
+      finalizeDeferredPluginToolApprovalResolution({
+        deferredApproval: providerFinalizer
+          ? {
+              ...deferredApproval,
+              finalizeApprovedParams: (approvedParams) => {
+                const reason = deferredApproval.finalizeApprovedParams?.(approvedParams);
+                return reason || settleProvider(true);
+              },
+              finalizeRejectedParams: (rejectedParams) => {
+                try {
+                  deferredApproval.finalizeRejectedParams?.(rejectedParams);
+                } finally {
+                  settleProvider(false);
+                }
+              },
+            }
+          : deferredApproval,
+        resolution: pluginResolutionForApprovalOutcome(approvalOutcome),
+      });
+  } else if (outcome.finalizeRelease) {
+    finalizeRelease = (approvalOutcome) =>
+      outcome.finalizeRelease?.(approvalOutcomeIsApproved(approvalOutcome));
+  }
+  if (outcome.deferredApproval) {
+    const approvedParams = resolveDeferredPluginToolApprovalParams(outcome.deferredApproval);
+    if (toolPolicyAuthorityParamsWereRewritten(policyRequest, approvedParams)) {
+      finalizeRelease?.("cancelled");
+      return {
+        outcome: "denied",
+        reason:
+          "ClawWorks tool policy rewrote Codex app-server approval params; refusing original request.",
+      };
+    }
+  }
+  if (
+    "params" in outcome &&
+    toolPolicyAuthorityParamsWereRewritten(policyRequest, outcome.params)
+  ) {
+    finalizeRelease?.("cancelled");
     return {
       outcome: "denied",
       reason:
@@ -690,44 +923,86 @@ async function runOpenClawToolPolicyForApprovalRequest(params: {
       // Generic plugin approval `allow-always` is plugin-owned durability, not
       // Codex session trust. Keep the app-server request scoped to this item.
       outcome: "approved-once",
+      ...(outcome.deferredApproval ? { approval: outcome.deferredApproval.approval } : {}),
+      ...(finalizeRelease ? { finalizeRelease } : {}),
     };
   }
-  return undefined;
+  return finalizeRelease
+    ? {
+        outcome: "no-decision",
+        finalizeRelease,
+        ...(outcome.deferredApproval ? { approval: outcome.deferredApproval.approval } : {}),
+      }
+    : undefined;
 }
 
 async function runNativeRelayToolPolicyForApprovalRequest(params: {
   method: string;
   requestParams: JsonObject | undefined;
   context: ApprovalContext;
-  policyRequest: { toolName: string; params: JsonObject };
+  policyRequest: OpenClawToolPolicyRequest;
   nativeHookRelay?: Pick<
     NativeHookRelayRegistrationHandle,
     "allowedEvents" | "generation" | "relayId"
   >;
   cwd?: string;
   signal?: AbortSignal;
+  requiresFullApproval: boolean;
 }): Promise<
   | {
       handled: true;
       blocked: true;
       reason: string;
+      approval?: NativeHookRelayDeferredToolApproval;
+      finalizeRelease?: (outcome: AppServerApprovalOutcome) => string | undefined;
     }
   | {
       handled: true;
       blocked?: false;
       outcome?: "approved-once" | "approved-session";
+      approval?: NativeHookRelayDeferredToolApproval;
+      finalizeRelease?: (outcome: AppServerApprovalOutcome) => string | undefined;
     }
   | undefined
 > {
-  // Only command approvals correspond to Codex PreToolUse execution. File-change
-  // and permission approvals stay on the app-server approval route below.
+  // Commands and file changes carry the same item id through native PreToolUse
+  // and app-server approval. Permission requests have no such correlation id.
   if (
-    params.method !== "item/commandExecution/requestApproval" ||
+    (params.method !== "item/commandExecution/requestApproval" &&
+      params.method !== "item/fileChange/requestApproval") ||
     !params.nativeHookRelay?.allowedEvents.includes("pre_tool_use")
   ) {
     return undefined;
   }
+  const finalizeRelease = (outcome: AppServerApprovalOutcome) =>
+    finalizeNativeHookRelayToolRelease({
+      relayId: params.nativeHookRelay!.relayId,
+      toolUseId: params.context.itemId,
+      generation: params.nativeHookRelay!.generation,
+      resolution: pluginResolutionForApprovalOutcome(outcome),
+    });
+  const hasInvocation = hasNativeHookRelayInvocation({
+    relayId: params.nativeHookRelay.relayId,
+    event: "pre_tool_use",
+    toolUseId: params.context.itemId,
+  });
+  if (hasInvocation) {
+    const approval = getNativeHookRelayDeferredToolApproval({
+      relayId: params.nativeHookRelay.relayId,
+      toolUseId: params.context.itemId,
+      generation: params.nativeHookRelay.generation,
+    });
+    return {
+      handled: true,
+      finalizeRelease,
+      ...(approval ? { approval } : {}),
+    };
+  }
+  if (params.requiresFullApproval) {
+    return undefined;
+  }
   const payload = buildNativeRelayPreToolUsePayload({
+    method: params.method,
     requestParams: params.requestParams,
     policyRequest: params.policyRequest,
     context: params.context,
@@ -735,26 +1010,6 @@ async function runNativeRelayToolPolicyForApprovalRequest(params: {
   });
   if (!payload) {
     return undefined;
-  }
-  if (
-    hasNativeHookRelayInvocation({
-      relayId: params.nativeHookRelay.relayId,
-      event: "pre_tool_use",
-      toolUseId: params.context.itemId,
-    })
-  ) {
-    const approvalOutcome = await resolveNativeHookRelayDeferredToolApproval({
-      relayId: params.nativeHookRelay.relayId,
-      toolUseId: params.context.itemId,
-      signal: params.signal,
-    });
-    if (approvalOutcome?.outcome === "denied") {
-      return { handled: true, blocked: true, reason: approvalOutcome.reason };
-    }
-    if (approvalOutcome?.outcome === "approved-once") {
-      return { handled: true, outcome: approvalOutcome.outcome };
-    }
-    return { handled: true };
   }
   try {
     const response = await invokeNativeHookRelay({
@@ -764,23 +1019,18 @@ async function runNativeRelayToolPolicyForApprovalRequest(params: {
       event: "pre_tool_use",
       rawPayload: payload,
       requireGeneration: true,
+      projectToolInputForRewriteCheck: params.policyRequest.projectAuthorityParams,
     });
     const decision = readNativeRelayPreToolUseDecision(response);
     if (decision.blocked) {
-      return { handled: true, blocked: true, reason: decision.reason };
+      return { handled: true, blocked: true, reason: decision.reason, finalizeRelease };
     }
-    const approvalOutcome = await resolveNativeHookRelayDeferredToolApproval({
+    const approval = getNativeHookRelayDeferredToolApproval({
       relayId: params.nativeHookRelay.relayId,
       toolUseId: params.context.itemId,
-      signal: params.signal,
+      generation: params.nativeHookRelay.generation,
     });
-    if (approvalOutcome?.outcome === "denied") {
-      return { handled: true, blocked: true, reason: approvalOutcome.reason };
-    }
-    if (approvalOutcome?.outcome === "approved-once") {
-      return { handled: true, outcome: approvalOutcome.outcome };
-    }
-    return { handled: true };
+    return { handled: true, finalizeRelease, ...(approval ? { approval } : {}) };
   } catch (error) {
     return {
       handled: true,
@@ -788,17 +1038,19 @@ async function runNativeRelayToolPolicyForApprovalRequest(params: {
       reason: `ClawWorks native hook relay unavailable for Codex app-server approval: ${formatCodexDisplayText(
         formatErrorMessage(error),
       )}`,
+      finalizeRelease,
     };
   }
 }
 
 function buildNativeRelayPreToolUsePayload(params: {
+  method: string;
   requestParams: JsonObject | undefined;
-  policyRequest: { toolName: string; params: JsonObject };
+  policyRequest: OpenClawToolPolicyRequest;
   context: ApprovalContext;
   cwd?: string;
 }): JsonObject | undefined {
-  const command = readString(params.policyRequest.params, "command");
+  const command = readString(params.policyRequest.executionParams, "command");
   if (!command) {
     return undefined;
   }
@@ -810,6 +1062,11 @@ function buildNativeRelayPreToolUsePayload(params: {
     ...(params.context.itemId ? { tool_use_id: params.context.itemId } : {}),
     ...(params.cwd ? { cwd: params.cwd } : {}),
     ...(turnId ? { turn_id: turnId } : {}),
+    openclaw_approval_context: {
+      provider: "codex",
+      method: params.method,
+      request: params.requestParams ?? {},
+    },
     tool_input: {
       ...params.policyRequest.params,
       command,
@@ -868,37 +1125,134 @@ function sanitizeRelayDecisionReason(value: string | undefined): string | undefi
   return preview.text;
 }
 
+type OpenClawToolPolicyRequest = {
+  toolName: string;
+  params: JsonObject;
+  executionParams: JsonObject;
+  authorityFingerprint: string;
+  projectAuthorityParams: (params: unknown) => unknown;
+};
+
+type OpenClawToolPolicyRequestKind = "command" | "file" | "permission";
+
+const TOOL_POLICY_NON_AUTHORITY_KEYS = new Set([
+  "threadId",
+  "conversationId",
+  "turnId",
+  "itemId",
+  "callId",
+  "approvalId",
+  "startedAtMs",
+  "reason",
+  "commandActions",
+]);
+
 function buildOpenClawToolPolicyRequest(
   method: string,
   requestParams: JsonObject | undefined,
-): { toolName: string; params: JsonObject } | undefined {
+): OpenClawToolPolicyRequest | undefined {
+  // `before_tool_call.params` is a shipped plugin contract; keep approval context here
+  // until consumers migrate to `event.approval`; the authority projection keeps its
+  // compatibility/display fields out of rewrite checks without dropping grant-bearing data.
   if (method === "item/commandExecution/requestApproval") {
     const command = readPolicyCommand(requestParams);
-    return {
+    const cwd = readString(requestParams, "cwd");
+    return createOpenClawToolPolicyRequest({
+      kind: "command",
       toolName: "exec",
       params: {
         ...(command ? { command } : {}),
-        ...(readString(requestParams, "cwd") ? { cwd: readString(requestParams, "cwd") } : {}),
+        ...(cwd ? { cwd } : {}),
         approval: requestParams ?? {},
       },
-    };
+      executionParams: command ? { command } : {},
+    });
   }
   if (method === "item/fileChange/requestApproval") {
-    return { toolName: "apply_patch", params: requestParams ?? {} };
+    return createOpenClawToolPolicyRequest({
+      kind: "file",
+      toolName: "apply_patch",
+      params: requestParams ?? {},
+      executionParams: {},
+    });
   }
   if (method === "item/permissions/requestApproval") {
-    return { toolName: "codex_permission_approval", params: requestParams ?? {} };
+    return createOpenClawToolPolicyRequest({
+      kind: "permission",
+      toolName: "codex_permission_approval",
+      params: requestParams ?? {},
+      executionParams: {},
+    });
   }
   return undefined;
 }
 
-function toolPolicyParamsWereRewritten(original: JsonObject, candidate: unknown): boolean {
-  if (candidate === original) {
-    return false;
+function createOpenClawToolPolicyRequest(params: {
+  kind: OpenClawToolPolicyRequestKind;
+  toolName: string;
+  params: JsonObject;
+  executionParams: JsonObject;
+}): OpenClawToolPolicyRequest {
+  const projectAuthorityParams = (candidate: unknown) =>
+    projectOpenClawToolPolicyAuthority(params.kind, candidate);
+  const authorityFingerprint = stableJsonText(projectAuthorityParams(params.params));
+  if (authorityFingerprint === undefined) {
+    throw new Error("Codex app-server approval params are not JSON-compatible");
   }
-  const originalText = stableJsonText(original);
-  const candidateText = stableJsonText(candidate);
-  return !candidateText || candidateText !== originalText;
+  return { ...params, authorityFingerprint, projectAuthorityParams };
+}
+
+function projectOpenClawToolPolicyAuthority(
+  kind: OpenClawToolPolicyRequestKind,
+  candidate: unknown,
+): unknown {
+  if (!isPlainRecord(candidate)) {
+    return candidate;
+  }
+  const projected = omitToolPolicyNonAuthorityFields(candidate);
+  if (kind !== "command") {
+    return projected;
+  }
+  const approval = projected.approval;
+  if (isPlainRecord(approval)) {
+    const approvalAuthority = omitToolPolicyNonAuthorityFields(approval);
+    delete approvalAuthority.command;
+    delete approvalAuthority.cwd;
+    if (Object.keys(approvalAuthority).length === 0) {
+      delete projected.approval;
+    } else {
+      projected.approval = approvalAuthority;
+    }
+  }
+  const command = projected.command;
+  const commandAlias = projected.cmd;
+  if (typeof commandAlias === "string" && (command === undefined || command === commandAlias)) {
+    projected.command = commandAlias;
+    delete projected.cmd;
+  }
+  return projected;
+}
+
+function omitToolPolicyNonAuthorityFields(
+  candidate: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(candidate).filter(([key]) => !TOOL_POLICY_NON_AUTHORITY_KEYS.has(key)),
+  );
+}
+
+function toolPolicyAuthorityParamsWereRewritten(
+  request: OpenClawToolPolicyRequest,
+  candidate: unknown,
+): boolean {
+  try {
+    const candidateFingerprint = stableJsonText(request.projectAuthorityParams(candidate));
+    return (
+      candidateFingerprint === undefined || candidateFingerprint !== request.authorityFingerprint
+    );
+  } catch {
+    return true;
+  }
 }
 
 function stableJsonText(value: unknown): string | undefined {
@@ -994,6 +1348,20 @@ function describeRequestedPermissions(requestParams: JsonObject | undefined): st
 
 function describeCommandApprovalDetails(requestParams: JsonObject | undefined): string[] {
   const lines: string[] = [];
+  const networkContext = isJsonObject(requestParams?.networkApprovalContext)
+    ? requestParams.networkApprovalContext
+    : undefined;
+  const networkHost =
+    typeof networkContext?.host === "string"
+      ? sanitizePermissionHostValue(networkContext.host)
+      : "";
+  const networkProtocol =
+    typeof networkContext?.protocol === "string"
+      ? sanitizePermissionScalar(networkContext.protocol)
+      : "";
+  if (networkHost) {
+    lines.push(`Network request: ${networkProtocol ? `${networkProtocol} ` : ""}${networkHost}`);
+  }
   const additionalPermissions = isJsonObject(requestParams?.additionalPermissions)
     ? requestParams.additionalPermissions
     : undefined;
@@ -1332,12 +1700,19 @@ function findAvailableCommandAmendmentDecision(
   if (!Array.isArray(available)) {
     return undefined;
   }
-  return available.find(
-    (entry): entry is JsonObject =>
-      isJsonObject(entry) &&
-      (isJsonObject(entry.acceptWithExecpolicyAmendment) ||
-        isJsonObject(entry.applyNetworkPolicyAmendment)),
-  );
+  return available.find((entry): entry is JsonObject => {
+    if (!isJsonObject(entry)) {
+      return false;
+    }
+    if (isJsonObject(entry.acceptWithExecpolicyAmendment)) {
+      return true;
+    }
+    const networkDecision = entry.applyNetworkPolicyAmendment;
+    const amendment = isJsonObject(networkDecision)
+      ? networkDecision.network_policy_amendment
+      : undefined;
+    return isJsonObject(amendment) && readString(amendment, "action") === "allow";
+  });
 }
 
 function commandRejectionDecision(
@@ -1406,10 +1781,17 @@ function isSupportedAppServerApprovalMethod(method: string): boolean {
 }
 
 function emitApprovalEvent(params: EmbeddedRunAttemptParams, data: AgentApprovalEventData): void {
-  void params.onAgentEvent?.({
-    stream: "approval",
-    data: data as unknown as Record<string, unknown>,
-  });
+  try {
+    const result = params.onAgentEvent?.({
+      stream: "approval",
+      data: data as unknown as Record<string, unknown>,
+    });
+    void Promise.resolve(result).catch((error: unknown) => {
+      embeddedAgentLog.debug("codex app-server approval event handler rejected", { error });
+    });
+  } catch (error) {
+    embeddedAgentLog.debug("codex app-server approval event handler threw", { error });
+  }
 }
 
 function readDisplayCommandPreview(

@@ -193,12 +193,19 @@ function attachGatewayHarness(options: {
     cb?.();
   });
   let onMessage: ((data: string) => void) | undefined;
+  let onClose: (() => void) | undefined;
   const socket = {
     _receiver: {},
     send: socketSend,
     on: vi.fn((event: string, handler: (data: string) => void) => {
       if (event === "message") {
         onMessage = handler;
+      }
+      return socket;
+    }),
+    once: vi.fn((event: string, handler: () => void) => {
+      if (event === "close") {
+        onClose = handler;
       }
       return socket;
     }),
@@ -257,6 +264,7 @@ function attachGatewayHarness(options: {
   const sendMessage = onMessage;
   return {
     socketSend,
+    disconnect: () => onClose?.(),
     sendRequest: (id: string, method: string, params: Record<string, unknown> = {}) => {
       sendMessage(
         JSON.stringify({
@@ -313,6 +321,29 @@ describe("attachGatewayWsMessageHandler post-connect health refresh", () => {
     });
     expect(close).toHaveBeenCalledWith(4001, "client invalidated: device-token-revoked");
     expect(handleGatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it("aborts in-flight request handlers when the connection closes", async () => {
+    let requestSignal: AbortSignal | undefined;
+    vi.mocked(handleGatewayRequest).mockImplementation(async (opts) => {
+      requestSignal = opts.signal;
+      await new Promise<void>((resolve) => {
+        opts.signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+    });
+    const harness = attachGatewayHarness({
+      connId: "conn-abort",
+      connectNonce: "nonce-abort",
+      client: createConnectedTestClient({ connId: "conn-abort" }),
+    });
+
+    harness.sendRequest("request-1", "status.summary");
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    expect(requestSignal?.aborted).toBe(false);
+
+    harness.disconnect();
+
+    expect(requestSignal?.aborted).toBe(true);
   });
 
   it("waits for credential mutation requests before dispatching later queued requests", async () => {

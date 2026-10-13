@@ -17,6 +17,7 @@ import {
 } from "./object-store.sqlite.js";
 import { importWorkflowTreeContent, removeImportedWorkflowTree } from "./tree-io.js";
 import { invalidateWorkflowTreeRegistry } from "./tree-registry.js";
+import type { OntologyValue } from "./types.js";
 
 const tempDir = mkdtempSync(path.join(tmpdir(), "clawworks-objects-"));
 const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
@@ -69,7 +70,11 @@ beforeAll(() => {
   // Every row is created by a run: a tree declares object TYPES and the actions
   // that write them, never instances.
   runOpenClawStateWriteTransaction((database) => {
-    for (const object of [
+    const objects: Array<{
+      entity: string;
+      objectId: string;
+      properties: Record<string, OntologyValue>;
+    }> = [
       {
         entity: "claim",
         objectId: "C-1",
@@ -87,7 +92,8 @@ beforeAll(() => {
         properties: { "document-id": "D-1", verified: false },
       },
       { entity: "document", objectId: "D-2", properties: { "document-id": "D-2", verified: true } },
-    ]) {
+    ];
+    for (const object of objects) {
       upsertOntologyObject(database, { treeId: TREE_ID, ...object });
     }
     for (const from of ["C-1", "C-2"]) {

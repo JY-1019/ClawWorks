@@ -281,6 +281,49 @@ export const ru: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Управляемые запуски рабочих процессов и зарегистрированные деревья процессов.",
+    historyOnly: "Removed work-map with restorable revisions",
+    historyOnlyBadge: "history only",
+    historyOnlyRestore: "This work-map was removed. Choose a saved revision below to restore it.",
+    removeFingerprintUnavailable:
+      "Cannot safely remove {treeId}: this gateway did not return the imported row identity. Refresh or update the gateway, then try again.",
+    bundle: {
+      import: "Import bundle",
+      exportYaml: "Bundle YAML",
+      exportJson: "Bundle JSON",
+      previewTitle: "Review workflow bundle",
+      previewBody:
+        "Nothing has been changed yet. Review the replacement, inlined knowledge, dependencies, and governance gaps before applying these exact file contents.",
+      create: "Creates a new work-map",
+      replace: "Replaces the current {source} work-map at version {version}",
+      inlinedKnowledge: "Knowledge included in the bundle",
+      requiredTools: "Required tools (verify this gateway provides them)",
+      requiredSkills: "Required skills",
+      requiredMcp: "Required MCP servers",
+      requiredKnowledge: "Knowledge sources",
+      missingSkills: "Missing or unavailable skills",
+      missingMcp: "Missing MCP servers",
+      missingKnowledge: "Knowledge not included in the bundle or globally available",
+      removedKnowledge: "Owned knowledge this import deletes (no revision history)",
+      replacedKnowledge: "Owned knowledge rows this import replaces (no revision history)",
+      shadowedKnowledge:
+        "Bundled knowledge ignored at runtime (a global/plugin foundation with the same id takes precedence)",
+      unverifiedKnowledge: "Knowledge not included in the bundle (verify local availability)",
+      verificationUnavailable: "Local availability could not be verified",
+      missingPolicies: "Missing governance policies",
+      conflictingPolicies: "Governance policies with different definitions",
+      modeDowngrade: "Governance is weaker here: {from} → {to}.",
+      authorWarnings: "Work-map authoring warnings",
+      apply: "Apply bundle",
+      previewRejected: "This bundle cannot be previewed: {issues}",
+      applyRejected: "Nothing was imported. Preview the current state again: {issues}",
+      applyUnknown:
+        "The result is unknown ({message}). Refresh before retrying so you do not overwrite a successful import.",
+      applied: "Imported bundle for {treeId}.",
+      exported: "Exported bundle for {treeId}.",
+      exportImplicitKnowledge:
+        "the work-map allows implicit knowledge that a bundle cannot enumerate",
+      exportWarning: "Bundle downloaded with portability warnings: {warnings}",
+    },
     toolsTab: {
       title: "Инструменты",
       subtitle:
@@ -327,7 +370,7 @@ export const ru: TranslationMap = {
       configInvalid:
         "Конфигурация Gateway не может быть разобрана, поэтому на этом экране нечего дополнять. Сначала исправьте её в редакторе конфигурации — сохранение отсюда заменит файл только этой записью.",
       rawDraftPending:
-        "У вас есть несохранённые изменения в редакторе конфигурации. Сначала сохраните или отмените их — регистрация здесь перезапишет этот черновик.",
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
       save: "Сохранить",
       publish: "Сохранить и опубликовать",
       publishing: "Публикация...",
@@ -440,6 +483,11 @@ export const ru: TranslationMap = {
       add: "Добавить",
       cancel: "Отмена",
       removeTitle: "Отвязать {entry} от этого шага",
+      removeLastAllowedTool:
+        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+      removeLastKnowledgeFoundation:
+        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+      requireMcpAttachments: "Require attachments",
       none: "Пока ничего не объявлено.",
       scopeNarrowingApproval:
         "У этого шага пока нет списка разрешённых инструментов, поэтому он допускает все инструменты, кроме запрещённых. Добавление первой записи превращает его в список разрешённых. Перечисленные инструменты работают свободно, а для всех остальных требуется разовое подтверждение.",
@@ -455,6 +503,8 @@ export const ru: TranslationMap = {
         "Используйте идентификатор основы: сегменты в нижнем регистре, разделённые точками, например acme.runbooks.",
       ancestorGateApproval:
         "Родительские шаги ({nodeIds}) имеют собственные списки разрешений для этого. Governance проверяет каждый шаг от корня, поэтому запись, добавленная здесь, выполняется без запроса только в том случае, если эти шаги тоже её разрешают; в противном случае потребуется разовое одобрение. Добавьте её также в эти шаги или используйте Denied tools, чтобы полностью отклонить её.",
+      ancestorGateKnowledge:
+        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "Сначала введите значение.",
       duplicate: "Эта запись уже объявлена для данного шага.",
       nodeMissing: "Этот шаг больше не существует в дереве; перезагрузите и попробуйте снова.",
@@ -462,7 +512,7 @@ export const ru: TranslationMap = {
       importFailed:
         "Сохранение не подтверждено. Изменения могли быть применены или нет — обновите рабочую карту, чтобы проверить, прежде чем повторить попытку.",
       mcpFirstAttachment:
-        "Эта рабочая карта пока не управляет MCP. Добавление первого сервера здесь включает режим запрета по умолчанию для ВСЕЙ рабочей карты: каждый шаг без вложения тогда не будет иметь доступа ни к одному серверу MCP.",
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
       mcpNoneAttached:
         "К этому шагу не подключён MCP-сервер, поэтому он не может вызывать ни один. В отличие от инструментов и знаний, MCP по умолчанию не предоставляет ничего.",
       importNotSent:
@@ -498,13 +548,17 @@ export const ru: TranslationMap = {
       noProperties: "No fields yet.",
       links: "Links",
       noLinks: "No links declared yet.",
+      editTitle: "Edit {item}",
+      formLabel: "Ontology editor",
       titleLabel: "Display name (optional)",
+      descriptionLabel: "Описание",
       typeLabel: "Type",
       primaryKeyLabel: "Identifies an instance",
       primaryKeyMark: "(identity)",
       fromLabel: "From",
       toLabel: "Кому",
       cardinalityLabel: "Cardinality",
+      inverseLabel: "Inverse name (optional)",
       save: "Сохранить",
       actions: "Действия",
       actionsSummary:
@@ -518,14 +572,31 @@ export const ru: TranslationMap = {
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
       incompleteActionDetail:
-        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+        "This action cannot be called yet. Object writes need identity parameters (and creates need every required field); links need parameters for both endpoint identities.",
       removeEffectTitle: "Remove the {kind} effect on {entity}",
       removeParameterTitle: "Remove the {parameter} parameter",
       requiredLabel: "Обязательно",
       requiredMark: "(required)",
+      toolsModeLabel: "Policy tool matching",
+      toolsModeHint:
+        "Chooses which tool calls this action's policy matches. Outward calls are added separately as effects.",
+      toolsMode: {
+        all: "Match all tool calls",
+        selected: "Match selected tool calls",
+        none: "Match no tool calls",
+      },
+      toolsLabel: "Matched tool selectors",
+      preconditionsLabel: "Advisory preconditions",
+      addListItem: "Add {item}",
+      removeListItem: "Remove {item}",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
       linkRelationshipLabel: "Link type",
+      linkEndpointsLabel: "Endpoint parameters",
+      linkFromParameterLabel: "From-object parameter",
+      linkToParameterLabel: "To-object parameter",
+      defaultIdentity: "Use the object type's identity field",
+      unavailableParameter: "{parameter} (not declared)",
       callToolLabel: "Инструмент",
       callToolPlaceholder: "server__operation",
       callToolHint:
@@ -536,6 +607,11 @@ export const ru: TranslationMap = {
       functionEntityLabel: "Computed over",
       expressionLabel: "Выражение",
       returnsLabel: "Returns",
+      constraints: "Constraints",
+      addConstraint: "Add constraint",
+      noConstraints: "No advisory constraints declared yet.",
+      shadowedDeclaration: "Shadowed by a later declaration with the same id",
+      removeConstraintTitle: "Remove the {constraint} constraint",
       idLabel: {
         entity: "Object type id",
         property: "Field id",
@@ -543,20 +619,26 @@ export const ru: TranslationMap = {
         action: "Action id",
         "action-parameter": "Parameter id",
         function: "Derived value id",
+        constraint: "Constraint id",
       },
       error: {
         "invalid-id":
           "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
-        "endpoint-missing": "A link needs an object type at both ends.",
-        "duplicate-entry": "That id is already declared on this step.",
+        "endpoint-missing": "Choose the required object type, link type, or tool.",
+        "description-empty": "Enter a description.",
+        "selection-empty":
+          "Add at least one tool selector, or choose Match all tool calls or Match no tool calls.",
+        "duplicate-entry": "That id is already declared in this work-map scope.",
         "entity-not-found": "That object type is not in this step's scope.",
         "entity-in-use": "A link still points at this object type. Remove the link first.",
         "entity-referenced":
-          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+          "An action or derived value still uses an object or link type this edit would remove from its scope. Change that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
+        "identity-type-invalid":
+          "An identity field must be text, a number, a date, or an id. Boolean values cannot identify ontology objects.",
         "action-not-found": "That action is no longer declared on this step.",
         "effect-needs-identity":
           "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
@@ -566,6 +648,8 @@ export const ru: TranslationMap = {
         "expression-type-invalid":
           "The expression does not type-check against this object type's fields.",
         "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "property-type-conflict":
+          "This work-map already declares that field on the same object type with a different type.",
         "create-required-unreachable":
           "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
         "effect-target-taken":
@@ -578,13 +662,31 @@ export const ru: TranslationMap = {
       },
     },
     guidanceEditor: {
-      title: "Ролевой промпт",
+      title: "Step behavior",
       guidanceNote:
-        "Для чего предназначен этот шаг, своими словами. Текст добавляется в дайджест шага как инструкция и не предоставляет никаких дополнительных прав — шаг по-прежнему не сможет вызвать инструмент, не входящий в его область видимости, как бы ни был сформулирован промпт.",
-      fieldLabel: "Ролевой промпт для шага {nodeId}",
+        "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
+      titleLabel: "Step title",
+      parentLabel: "Parent step",
+      positionLabel: "Position among siblings",
+      descriptionLabel: "Описание",
+      fieldLabel: "Instructions for step {nodeId}",
       placeholder: "напр. Подтвердите личность заявителя, прежде чем называть какие-либо цифры.",
-      save: "Сохранить ролевой промпт",
+      contextHintsLabel: "Context hints",
+      contextHintsPlaceholder: "e.g. Prefer the policy handbook over assumptions.",
+      addContextHint: "Add context hint",
+      removeContextHint: "Remove context hint",
+      expectedOutputLabel: "Expected output",
+      expectedOutputPlaceholder: "e.g. A decision, rationale, and record id.",
+      auditLabel: "Record detailed tool-decision audit events",
+      save: "Save behavior",
       revert: "Отменить изменения",
+      reparentWarning:
+        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+      error: {
+        "title-empty": "Enter a step title.",
+        "move-refused":
+          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+      },
     },
     capabilities: {
       toolsTitle: "Инструменты",
@@ -598,7 +700,7 @@ export const ru: TranslationMap = {
         "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
       knowledgeTitle: "Знания",
       knowledgeHint:
-        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -659,9 +761,11 @@ export const ru: TranslationMap = {
         "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to this step and everything under it, and no grant further down the branch can take it back.",
       deniedToolsOff:
         "Enterprise mediation is off, so denials are neither applied nor recorded. Turn mediation on for this to take effect or appear in the run trace.",
-      skillNotInstalled: "не установлен",
-      foundationNotRegistered: "не зарегистрирована",
+      skillNotModelVisible: "not available to the model for this agent",
+      foundationNotRegistered: "not retrievable by this work-map",
+      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "не зарегистрирован в mcp.servers",
+      mcpDisabled: "disabled in mcp.servers",
       inherited: "Унаследовано от родительского шага:",
     },
     skillsTab: {
@@ -690,6 +794,9 @@ export const ru: TranslationMap = {
     executionCount: "Выполнений этого запуска: {count}",
     stepsTitle: "Шаги",
     resume: "Continue this run",
+    resumeChat: "Continue from unfinished step",
+    resumeChatHint:
+      "The unfinished step restarts on your next matching message. An in-flight external action is not resumed.",
     resumeHint:
       "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
     resumeRequested:
@@ -725,15 +832,20 @@ export const ru: TranslationMap = {
       explicit: "Явные разрешения",
       inherited: "Унаследованные области",
       explicitHintGated:
-        "Каждый шаг должен использовать инструменты, Skills, серверы MCP и базы знаний, перечисленные на нём или на уровне выше. Skills, серверы MCP и базы знаний, не указанные на шаге, полностью недоступны. Неуказанный инструмент вместо этого требует разового одобрения, а ответ и чтение (message, read, memory_search) остаются доступными, если шаг или политика управления не запрещает их.",
+        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "Эта карта работ явно предоставляет возможности, но корпоративный режим не применяется принудительно. Разрешения на инструменты, Skills и MCP записываются, но не применяются. Разрешения на знания по-прежнему ограничивают область поиска в любом режиме.",
       explicitHintOff:
         "Эта карта работ предоставляет возможности явно, но корпоративное посредничество не активно, поэтому ни одно предоставление не применяется. Указанные ниже предоставления сохранены и вступят в силу после включения посредничества.",
       inheritedHint:
-        "Списки шага сужают то, что разрешено его предками; шаг, в ветке которого ничего не указано, может использовать любой инструмент или навык.",
+        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "Предоставить явно",
       turnOff: "Использовать унаследованные области",
+      turnOffWarning:
+        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+      stopMcp: "Stop requiring MCP attachments",
+      stopMcpWarning:
+        "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
     structureTitle: "Структура",
     ontologyTitle: "Онтология",
@@ -749,7 +861,8 @@ export const ru: TranslationMap = {
     addNodeTitle: "Новый дочерний узел",
     addNodeIdLabel: "Идентификатор узла (строчные буквы через точку, например support.triage)",
     addNodeTitleLabel: "Заголовок",
-    addNodeSubmit: "Добавить в редактор",
+    addNodeDescriptionLabel: "Description (optional)",
+    addNodeSubmit: "Add step",
     addNodeErrorIdEmpty: "Введите идентификатор узла.",
     addNodeErrorIdPattern:
       "Идентификатор должен быть в нижнем регистре через точку, например support.triage.",
@@ -757,6 +870,12 @@ export const ru: TranslationMap = {
     addNodeErrorTitleEmpty: "Введите название.",
     addNodeErrorParentMissing: "Родительский узел больше не существует в этом дереве.",
     addNodeErrorExportFailed: "Не удалось загрузить определение дерева для редактирования.",
+    removeNode: "Delete step and descendants",
+    removeNodeWarning:
+      'Delete "{node}" and every step beneath it? This records a new work-map revision.',
+    structureEditRefused:
+      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+    editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "Перетащите узел · прокрутка для масштабирования",
     routeTitle: "Пройденный маршрут",
     routeViewLabel: "Вид маршрута",
@@ -799,6 +918,36 @@ export const ru: TranslationMap = {
     contextHints: "Подсказки контекста: {hints}",
     expectedOutput: "Ожидаемый результат: {text}",
     newTree: "Новое дерево",
+    importTree: "Import file",
+    newTreeTitle: "New workflow tree",
+    treeSettingsTitle: "Work-map settings",
+    treeSettingsButton: "Настройки",
+    newTreeIdLabel: "Tree id",
+    newTreeIdPlaceholder: "support.intake",
+    treeSettingsVersionLabel: "Версия",
+    newTreeNameLabel: "Имя",
+    newTreeRootIdLabel: "First step id",
+    newTreeRootIdPlaceholder: "support",
+    newTreeRootTitleLabel: "First step title",
+    newTreeDescriptionLabel: "Description (optional)",
+    treeSettingsTriggersLabel: "Runs this work-map applies to",
+    treeSettingsTrigger: {
+      user: "User messages",
+      system: "System runs",
+      subagent: "Subagent runs",
+    },
+    treeSettingsPriorityLabel: "Routing priority (optional)",
+    newTreeReview: "Review definition",
+    newTreeErrorIdEmpty: "Enter a tree id.",
+    newTreeErrorIdPattern: "Tree id must be dotted lowercase.",
+    newTreeErrorIdDuplicate: "That tree already exists. Select it and use Edit instead.",
+    treeSettingsErrorVersionEmpty: "Enter a version.",
+    newTreeErrorNameEmpty: "Enter a tree name.",
+    treeSettingsErrorTriggersEmpty: "Choose at least one run type.",
+    treeSettingsErrorPriorityInvalid: "Priority must be a whole number.",
+    newTreeErrorRootIdEmpty: "Enter the first step id.",
+    newTreeErrorRootIdPattern: "Step id must be dotted lowercase.",
+    newTreeErrorRootTitleEmpty: "Enter the first step title.",
     edit: "Изменить",
     exportYaml: "Экспорт YAML",
     exportJson: "Экспорт JSON",
@@ -806,6 +955,11 @@ export const ru: TranslationMap = {
     editorTitle: "Редактирование определения дерева",
     editorHint:
       "Отредактируйте исходное определение, затем сохраните, чтобы записать новую версию.",
+    editorDiscardWarning: "Discard the unsaved tree draft?",
+    saveContinuesNavigation:
+      "This save has already been sent and will continue if you open another work-map. Open it anyway?",
+    editorFormatWarning: "Switch format and discard the current editor contents?",
+    treeWarnings: "Some declarations on this work-map cannot be reached by any run:",
     saveInvalid: "Определение не прошло валидацию:",
     saving: "Сохранение…",
     save: "Сохранить",
@@ -816,8 +970,13 @@ export const ru: TranslationMap = {
     confirmSaveBody: "Это импортирует отредактированное определение и создаст новую ревизию.",
     confirmRemoveTitle: "Удалить дерево workflow?",
     confirmRemoveBody: "Удалить импортированное дерево {treeId} из реестра.",
-    confirmRemoveWarning:
-      "Текущее определение будет удалено; скрытое встроенное определение станет активным. История версий сохраняется.",
+    confirmRemoveDataLossWarning:
+      "This permanently deletes the tree's live ontology objects, links, and bundled knowledge. Version history keeps only definitions. Workflow bundles preserve definitions and bundled knowledge, but cannot restore live objects or links. Back up ClawWorks state before deleting data you need. A shadowed built-in then reappears.",
+    removeNotSent:
+      "Nothing was removed: the gateway connection dropped before this was sent. Reconnect and try again.",
+    removeRefused: "The server refused the removal, so nothing was removed: {message}",
+    removeUnconfirmed:
+      "The removal did not confirm. It may or may not have been applied — refresh the work-map before trying again.",
   },
   sessionsView: {
     title: "Сеансы",

@@ -11,6 +11,7 @@ import {
   clearActiveEmbeddedRun,
   embeddedAgentLog,
   emitAgentEvent as emitGlobalAgentEvent,
+  finalizeNativeHookRelayExecutedTool,
   finalizeHarnessContextEngineTurn,
   FAST_MODE_AUTO_PROGRESS_KIND,
   formatFastModeAutoProgressText,
@@ -206,6 +207,7 @@ import {
   clearPendingCodexNativeHookRelayUnregistersForTests,
   CODEX_NATIVE_HOOK_RELAY_TTL_GRACE_MS,
   createCodexNativeHookRelay,
+  assertCodexNativePreToolUseIsolation,
   flushPendingCodexNativeHookRelayUnregistersForTests,
   resolveCodexNativeHookRelayEvents,
   resolveCodexNativeHookRelayTtlMs,
@@ -2230,7 +2232,7 @@ async function runCodexAppServerAttemptInternal(
           armCompletionWatchOnResponse = true;
           markCurrentTurnRequestProgress();
         }
-        return await handleCodexAppServerElicitationRequest({
+        return handleCodexAppServerElicitationRequest({
           requestParams: request.params,
           paramsForRun: params,
           threadId: thread.threadId,
@@ -2243,14 +2245,27 @@ async function runCodexAppServerAttemptInternal(
         });
       }
       if (request.method === "item/tool/requestUserInput") {
-        if (isCurrentThreadTurnRequestParams(request.params, thread.threadId, turnId)) {
+        const isCurrentTurnRequest = isCurrentThreadTurnRequestParams(
+          request.params,
+          thread.threadId,
+          turnId,
+        );
+        if (isCurrentTurnRequest) {
           armCompletionWatchOnResponse = true;
           markCurrentTurnRequestProgress();
         }
-        return userInputBridge?.handleRequest({
-          id: request.id,
-          params: request.params,
-        });
+        let response: JsonValue | undefined = undefined;
+        try {
+          response = await userInputBridge?.handleRequest({
+            id: request.id,
+            params: request.params,
+          });
+        } finally {
+          if (isCurrentTurnRequest) {
+            projector?.recordLegacyMcpApprovalResult(request.params, response);
+          }
+        }
+        return response;
       }
       if (request.method !== "item/tool/call") {
         if (isCodexAppServerApprovalRequest(request.method)) {
@@ -2569,6 +2584,17 @@ async function runCodexAppServerAttemptInternal(
         workspaceBootstrapContext.heartbeatCollaborationInstructions,
     });
     codexModelCallDiagnostics.setRequestPayloadBytes(utf8JsonByteLength(turnStartParams));
+    if (
+      nativeHookRelay?.allowedEvents.includes("pre_tool_use") &&
+      nativeHookRelay.shouldRelayEvent("pre_tool_use")
+    ) {
+      await assertCodexNativePreToolUseIsolation({
+        client,
+        cwd: codexExecutionCwd,
+        timeoutMs: turnAppServer.requestTimeoutMs,
+        signal: runAbortController.signal,
+      });
+    }
     const startedTurn = assertCodexTurnStartResponse(
       await client.request("turn/start", turnStartParams, {
         timeoutMs: params.timeoutMs,
@@ -2874,7 +2900,21 @@ async function runCodexAppServerAttemptInternal(
         nativeHookRelay?.allowedEvents.includes("post_tool_use") === true &&
         nativeHookRelay.shouldRelayEvent("post_tool_use"),
       trajectoryRecorder,
-      onNativeToolResultRecorded: maybeAnnounceFastModeAutoOff,
+      onNativeToolResultRecorded: async ({ toolCallId, released, toolInput }) => {
+        if (nativeHookRelay) {
+          const releaseError = finalizeNativeHookRelayExecutedTool({
+            relayId: nativeHookRelay.relayId,
+            toolUseId: toolCallId,
+            generation: nativeHookRelay.generation,
+            released,
+            toolInput,
+          });
+          if (releaseError) {
+            embeddedAgentLog.warn(`native tool release audit failed: ${releaseError}`);
+          }
+        }
+        await maybeAnnounceFastModeAutoOff();
+      },
     },
   );
   if (

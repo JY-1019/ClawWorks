@@ -23,6 +23,7 @@ import { callGatewayTool } from "./tools/gateway.js";
 
 vi.mock("./tools/gateway.js", () => ({
   callGatewayTool: vi.fn(),
+  cancelPluginApprovalForRunAbort: vi.fn(),
 }));
 vi.mock("../plugins/hook-runner-global.js", async () => {
   const actual = await vi.importActual<typeof import("../plugins/hook-runner-global.js")>(
@@ -36,12 +37,15 @@ const mockGetGlobalHookRunner = vi.mocked(getGlobalHookRunner);
 
 function registerRun(params: {
   runId: string;
+  executionId?: string;
   mode?: "enforce" | "observe";
   allowedTools?: string[];
   /** Servers the STEP attaches (ontology.mcpServers). */
   attachMcpServers?: string[];
   /** Servers an operator REGISTERED in config; only these are gated. */
   registeredMcpServers?: string[];
+  audit?: boolean;
+  actions?: NonNullable<EnterpriseRunPlan["nodes"][number]["ontology"]["actions"]>;
   policies?: GovernancePolicy[];
   sink?: EnterpriseActiveRun["sink"];
 }): void {
@@ -61,6 +65,8 @@ function registerRun(params: {
         ontology: {
           ...(params.allowedTools ? { allowedTools: params.allowedTools } : {}),
           ...(params.attachMcpServers ? { mcpServers: params.attachMcpServers } : {}),
+          ...(params.audit !== undefined ? { audit: params.audit } : {}),
+          ...(params.actions ? { actions: params.actions } : {}),
         },
       },
     ],
@@ -72,6 +78,7 @@ function registerRun(params: {
   };
   const run: EnterpriseActiveRun = {
     plan,
+    executionId: params.executionId ?? `execution:${params.runId}`,
     policies: params.policies ?? [],
     ...(params.registeredMcpServers ? { mcpServers: params.registeredMcpServers } : {}),
     ...(params.sink ? { sink: params.sink } : {}),
@@ -106,28 +113,6 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
       expect(outcome.deniedReason).toBe("enterprise-governance");
       expect(outcome.reason).toContain("ontology tool scope");
     }
-  });
-
-  it("refuses an out-of-scope tool outright when nobody can answer an approval", async () => {
-    // A native PreToolUse hook is synchronous and the harness kills it after a few
-    // seconds, while a plugin approval waits far longer. Raising a prompt there
-    // stalls the call, refuses it anyway, and can record a late "approved" for a
-    // call the harness already rejected. Refuse immediately instead — and do NOT
-    // reach the approval RPC at all.
-    registerRun({ runId: "ent-run-no-channel", allowedTools: ["memory_search"] });
-    const outcome = await runBeforeToolCallHook({
-      toolName: "exec",
-      params: { command: "ls" },
-      toolCallId: "call-no-channel",
-      ctx: { runId: "ent-run-no-channel" },
-      approvalUnavailable: true,
-    });
-    expect(outcome.blocked).toBe(true);
-    if (outcome.blocked) {
-      expect(outcome.deniedReason).toBe("enterprise-governance");
-      expect(outcome.reason).toContain("cannot wait for a human decision");
-    }
-    expect(mockCallGatewayTool).not.toHaveBeenCalled();
   });
 
   it("blocks an MCP tool from a server no step attached", async () => {
@@ -166,6 +151,560 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
       mcpTool: { serverName: "github", safeServerName: "github", toolName: "create_issue" },
     });
     expect(outcome.blocked).toBe(false);
+  });
+
+  it("rechecks outward MCP action arguments after plugin hooks", async () => {
+    const eventKinds: string[] = [];
+    registerRun({
+      runId: "ent-run-mcp-rewrite",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      sink: (event) => eventKinds.push(event.kind),
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({ params: { delete_account: true } }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-rewrite" },
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.reason).toContain('does not declare a parameter "delete_account"');
+    }
+    expect(eventKinds).not.toContain("action.invoked");
+  });
+
+  it("records an outward dispatch only after a deferred plugin approval releases it", async () => {
+    const events: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+    registerRun({
+      runId: "ent-run-mcp-deferred",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      sink: (event) => events.push({ kind: event.kind, payload: event.payload }),
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({
+        requireApproval: { title: "Approve freeze", description: "Freeze this account" },
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-deferred" },
+      approvalMode: "defer",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+
+    expect(outcome.blocked).toBe(false);
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    expect(events.map((event) => event.kind)).not.toContain("action.invoked");
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-outward", decision: "allow-once" });
+    const approved = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+    expect(approved.blocked).toBe(false);
+    if (approved.blocked) {
+      return;
+    }
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(1);
+    expect(events.find((event) => event.kind === "action.invoked")?.payload).toMatchObject({
+      actionId: "freeze-account",
+      context: { "account-id": "AC-1" },
+    });
+    expect(outcome.deferredApproval.finalizeApprovedParams?.(approved.params)).toBeUndefined();
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(1);
+  });
+
+  it("records an outward dispatch only after the provider confirms release", async () => {
+    const events: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+    registerRun({
+      runId: "ent-run-mcp-provider-release",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      sink: (event) => events.push({ kind: event.kind, payload: event.payload }),
+    });
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-provider-release" },
+      deferRelease: true,
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+
+    expect(outcome.blocked).toBe(false);
+    if (outcome.blocked || !outcome.finalizeRelease) {
+      throw new Error("expected provider release finalizer");
+    }
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(0);
+    expect(outcome.finalizeRelease(true)).toBeUndefined();
+    expect(outcome.finalizeRelease(true)).toBeUndefined();
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(1);
+  });
+
+  it("records an approved outward action when its provider releases it", async () => {
+    const events: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+    registerRun({
+      runId: "ent-run-mcp-enterprise-approval",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      policies: [
+        {
+          id: "approve.freeze",
+          effect: "require_approval",
+          tools: ["core-banking__freeze_account"],
+        },
+      ],
+      sink: (event) => events.push({ kind: event.kind, payload: event.payload }),
+    });
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-enterprise-approval" },
+      approvalMode: "defer",
+      deferRelease: true,
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred enterprise approval");
+    }
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(0);
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-outward", decision: "allow-once" });
+    const approved = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+
+    expect(approved.blocked).toBe(false);
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(0);
+    if (!outcome.finalizeRelease) {
+      throw new Error("expected provider release finalizer");
+    }
+    expect(outcome.finalizeRelease(true)).toBeUndefined();
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(1);
+    expect(events.find((event) => event.kind === "action.invoked")?.payload).toMatchObject({
+      actionId: "freeze-account",
+      context: { "account-id": "AC-1" },
+    });
+  });
+
+  it("audits an outward call blocked by a plugin without recording a dispatch", async () => {
+    const events: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+    registerRun({
+      runId: "ent-run-mcp-plugin-block",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      audit: true,
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      sink: (event) => events.push({ kind: event.kind, payload: event.payload }),
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({
+        block: true,
+        blockReason: "blocked by plugin",
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-plugin-block" },
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+
+    expect(outcome).toMatchObject({ blocked: true, reason: "blocked by plugin" });
+    expect(events.filter((event) => event.kind === "governance.decision")).toHaveLength(1);
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(0);
+  });
+
+  it("audits a denied deferred outward call without recording a dispatch", async () => {
+    const events: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+    registerRun({
+      runId: "ent-run-mcp-deferred-deny",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      policies: [
+        {
+          id: "audit.freeze",
+          effect: "audit",
+          tools: ["core-banking__freeze_account"],
+        },
+      ],
+      sink: (event) => events.push({ kind: event.kind, payload: event.payload }),
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({
+        params: { "account-id": "AC-2" },
+        requireApproval: { title: "Approve freeze", description: "Freeze this account" },
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-deferred-deny" },
+      approvalMode: "defer",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    expect(events).toEqual([]);
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-denied", decision: "deny" });
+    const denied = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+
+    expect(denied.blocked).toBe(true);
+    expect(events.filter((event) => event.kind === "governance.decision")).toHaveLength(1);
+    expect(events.filter((event) => event.kind === "action.invoked")).toHaveLength(0);
+  });
+
+  it("blocks hook-rewritten outward arguments after deferred approval", async () => {
+    const eventKinds: string[] = [];
+    registerRun({
+      runId: "ent-run-mcp-deferred-rewrite",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+      sink: (event) => eventKinds.push(event.kind),
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({
+        params: { delete_account: true },
+        requireApproval: { title: "Approve freeze", description: "Freeze this account" },
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-deferred-rewrite" },
+      approvalMode: "defer",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-rewrite", decision: "allow-once" });
+    const approved = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+    expect(approved.blocked).toBe(true);
+    if (approved.blocked) {
+      expect(approved.deniedReason).toBe("enterprise-governance");
+      expect(approved.reason).toContain('does not declare a parameter "delete_account"');
+    }
+    expect(eventKinds).not.toContain("action.invoked");
+  });
+
+  it("fails closed consistently when a deferred enterprise run disappears", async () => {
+    registerRun({
+      runId: "ent-run-mcp-disappeared",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions: [
+        {
+          id: "freeze-account",
+          parameters: [{ id: "account-id", type: "id", required: true }],
+          effects: [{ kind: "call", tool: "core-banking__freeze_account" }],
+        },
+      ],
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({
+        requireApproval: { title: "Approve freeze", description: "Freeze this account" },
+      }),
+    } as unknown as HookRunner);
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId: "ent-run-mcp-disappeared" },
+      approvalMode: "defer",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    clearEnterpriseActiveRunsForTest();
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-disappeared", decision: "allow-once" });
+    const approved = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+    expect(approved.blocked).toBe(true);
+    if (approved.blocked) {
+      expect(approved.deniedReason).toBe("enterprise-governance");
+      expect(approved.reason).toContain("no longer available");
+    }
+  });
+
+  it("does not release a deferred plugin approval into a replacement execution", async () => {
+    const runId = "ent-run-mcp-replaced";
+    const replacementEvents: string[] = [];
+    const actions = [
+      {
+        id: "freeze-account",
+        parameters: [{ id: "account-id", type: "id" as const, required: true }],
+        effects: [{ kind: "call" as const, tool: "core-banking__freeze_account" }],
+      },
+    ];
+    registerRun({
+      runId,
+      executionId: "execution-a",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions,
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockResolvedValue({
+        requireApproval: { title: "Approve freeze", description: "Freeze this account" },
+      }),
+    } as unknown as HookRunner);
+    const outcome = await runBeforeToolCallHook({
+      toolName: "core-banking__freeze_account",
+      params: { "account-id": "AC-1" },
+      ctx: { runId },
+      approvalMode: "defer",
+      mcpTool: {
+        serverName: "core-banking",
+        safeServerName: "core-banking",
+        toolName: "freeze_account",
+      },
+    });
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    registerRun({
+      runId,
+      executionId: "execution-b",
+      attachMcpServers: ["core-banking"],
+      registeredMcpServers: ["core-banking"],
+      actions,
+      sink: (event) => replacementEvents.push(event.kind),
+    });
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-replaced", decision: "allow-once" });
+    const approved = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+
+    expect(approved.blocked).toBe(true);
+    if (approved.blocked) {
+      expect(approved.reason).toContain("no longer available");
+    }
+    expect(replacementEvents).toEqual([]);
+  });
+
+  it("fails closed when an enforced run disappears while plugin hooks are running", async () => {
+    registerRun({
+      runId: "ent-run-hook-disappeared",
+      allowedTools: ["memory_search"],
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockImplementation(async () => {
+        clearEnterpriseActiveRunsForTest();
+        return {};
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "memory_search",
+      params: { query: "safe" },
+      ctx: { runId: "ent-run-hook-disappeared" },
+    });
+
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.deniedReason).toBe("enterprise-governance");
+      expect(outcome.reason).toContain("no longer available");
+    }
+  });
+
+  it("does not adopt a replacement execution after an async plugin hook", async () => {
+    const runId = "ent-run-hook-replaced";
+    const replacementEvents: string[] = [];
+    registerRun({ runId, executionId: "execution-a", allowedTools: ["memory_search"] });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockImplementation(async () => {
+        registerRun({
+          runId,
+          executionId: "execution-b",
+          allowedTools: ["memory_search"],
+          sink: (event) => replacementEvents.push(event.kind),
+        });
+        return {};
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "memory_search",
+      params: { query: "safe" },
+      ctx: { runId },
+    });
+
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.reason).toContain("no longer available");
+    }
+    expect(replacementEvents).toEqual([]);
+  });
+
+  it("captures the execution before lazy diagnostics load", async () => {
+    const runId = "ent-run-diagnostics-replaced";
+    const replacementEvents: string[] = [];
+    registerRun({ runId, executionId: "execution-a", allowedTools: ["exec"] });
+
+    const pending = runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      ctx: { runId, sessionKey: "agent:main:diagnostics-replaced" },
+    });
+    registerRun({
+      runId,
+      executionId: "execution-b",
+      allowedTools: ["exec"],
+      sink: (event) => replacementEvents.push(event.kind),
+    });
+    const outcome = await pending;
+
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.reason).toContain("no longer available");
+    }
+    expect(replacementEvents).toEqual([]);
+  });
+
+  it("keeps observe mode fail-open when its execution is replaced", async () => {
+    const runId = "ent-run-hook-replaced-observe";
+    const replacementEvents: string[] = [];
+    registerRun({
+      runId,
+      executionId: "execution-a",
+      mode: "observe",
+      allowedTools: ["memory_search"],
+    });
+    mockGetGlobalHookRunner.mockReturnValue({
+      hasHooks: vi.fn().mockReturnValue(true),
+      runBeforeToolCall: vi.fn().mockImplementation(async () => {
+        registerRun({
+          runId,
+          executionId: "execution-b",
+          allowedTools: ["memory_search"],
+          sink: (event) => replacementEvents.push(event.kind),
+        });
+        return {};
+      }),
+    } as unknown as HookRunner);
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      ctx: { runId },
+    });
+
+    expect(outcome.blocked).toBe(false);
+    expect(replacementEvents).toEqual([]);
   });
 
   it("leaves a same-looking core tool alone when no provenance says MCP", async () => {
@@ -313,6 +852,36 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
     });
   });
 
+  it("does not release an inline enterprise approval into a replacement execution", async () => {
+    const runId = "ent-run-approval-replaced";
+    const policies: GovernancePolicy[] = [
+      { id: "approve.exec", effect: "require_approval", tools: ["exec"] },
+    ];
+    const replacementEvents: string[] = [];
+    registerRun({ runId, executionId: "execution-a", policies });
+    mockCallGatewayTool.mockImplementationOnce(async () => {
+      registerRun({
+        runId,
+        executionId: "execution-b",
+        policies,
+        sink: (event) => replacementEvents.push(event.kind),
+      });
+      return { id: "appr-replaced", decision: "allow-once" };
+    });
+
+    const outcome = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      ctx: { runId },
+    });
+
+    expect(outcome.blocked).toBe(true);
+    if (outcome.blocked) {
+      expect(outcome.reason).toContain("no longer available");
+    }
+    expect(replacementEvents).toEqual([]);
+  });
+
   it("blocks when the enterprise approval is denied", async () => {
     const events: Array<Record<string, unknown>> = [];
     registerRun({
@@ -386,6 +955,41 @@ describe("runBeforeToolCallHook — enterprise governance gate", () => {
       enforced: true,
       resolution: "deny",
     });
+  });
+
+  it("does not release a deferred enterprise approval into a replacement execution", async () => {
+    const runId = "ent-run-defer-replaced";
+    const policies: GovernancePolicy[] = [
+      { id: "approve.exec", effect: "require_approval", tools: ["exec"] },
+    ];
+    const replacementEvents: string[] = [];
+    registerRun({ runId, executionId: "execution-a", policies });
+    const outcome = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      ctx: { runId },
+      approvalMode: "defer",
+    });
+    if (outcome.blocked || !outcome.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    registerRun({
+      runId,
+      executionId: "execution-b",
+      policies,
+      sink: (event) => replacementEvents.push(event.kind),
+    });
+
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "appr-replaced", decision: "allow-once" });
+    const approved = await requestDeferredPluginToolApproval({
+      deferredApproval: outcome.deferredApproval,
+    });
+
+    expect(approved.blocked).toBe(true);
+    if (approved.blocked) {
+      expect(approved.reason).toContain("no longer available");
+    }
+    expect(replacementEvents).toEqual([]);
   });
 
   it("fails closed when another gate defers and the enterprise gate also needs approval", async () => {

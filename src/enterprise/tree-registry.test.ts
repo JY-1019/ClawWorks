@@ -136,6 +136,7 @@ describe("workflow tree registry", () => {
       const snapshot = getWorkflowTreeRegistrySnapshot(storeOptions);
       expect(snapshot.importErrors).toHaveLength(1);
       expect(snapshot.importErrors[0].treeId).toBe("acme.corrupt");
+      expect(snapshot.importErrors[0].fingerprint).toMatch(/^[a-f0-9]{64}$/);
       expect(snapshot.storeError).toBeUndefined();
       expect(snapshot.entries.every((entry) => entry.source === "builtin")).toBe(true);
     } finally {

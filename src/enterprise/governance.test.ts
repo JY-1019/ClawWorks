@@ -1184,6 +1184,20 @@ describe("evaluateToolCallGovernance path scope", () => {
     expect(decision.policyId).toBe("audit.lookup");
   });
 
+  it("does not let a shadowed ancestor action keep matching policies", () => {
+    const { plan, path } = nestedPlan();
+    path[1].ontology.actions = [{ id: "lookup", tools: ["message"] }];
+    const decision = evaluateToolCallGovernance({
+      plan,
+      node: path[1],
+      toolName: "memory_search",
+      policies: [{ id: "deny.lookup", effect: "deny", actions: ["lookup"] }],
+      path,
+    });
+
+    expect(decision.effect).toBe("allow");
+  });
+
   it("keeps root-scoped node policies applying after advancing into a leaf", () => {
     const { plan, path } = nestedPlan();
     // Policy pinned to the workflow root ("ops"), evaluated while the active
@@ -1712,6 +1726,40 @@ describe("outward ontology actions", () => {
     expect(decision.reason).toContain("boolean");
   });
 
+  it("denies arguments the outward action did not authorize", () => {
+    const decision = evaluateToolCallGovernance({
+      ...bankCall("freeze_account"),
+      toolParams: {
+        "account-id": "AC-2002",
+        reason: "structuring",
+        delete_account: true,
+      },
+    });
+
+    expect(decision.effect).toBe("deny");
+    expect(decision.reason).toContain('does not declare a parameter "delete_account"');
+  });
+
+  it("denies an outward action with duplicate parameter ids", () => {
+    const call = bankCall("freeze_account");
+    call.plan.nodes[0].ontology.actions = [
+      {
+        ...FREEZE,
+        parameters: [
+          { id: "account-id", type: "id", required: true },
+          { id: "account-id", type: "id", required: true },
+        ],
+      },
+    ];
+    const decision = evaluateToolCallGovernance({
+      ...call,
+      toolParams: { "account-id": "AC-2002" },
+    });
+
+    expect(decision.effect).toBe("deny");
+    expect(decision.reason).toContain("same parameter more than once");
+  });
+
   it("closes the rest of an attached server once a step declares an outward action", () => {
     // The point of the lane: attaching a server otherwise grants every tool on
     // it, so a step that declared "freeze" would still leave "close" one call away.
@@ -1781,6 +1829,38 @@ describe("outward ontology actions", () => {
       toolParams: {},
     });
     expect(decision.effect).toBe("allow");
+  });
+
+  it("uses only the leaf declaration when an action shadows an ancestor", () => {
+    const call = bankCall("freeze_account");
+    const root = call.node;
+    const leaf: EnterprisePlanNode = {
+      ...root,
+      nodeId: "support.review",
+      parentId: root.nodeId,
+      seq: 1,
+      ontology: {
+        actions: [
+          {
+            id: FREEZE.id,
+            parameters: FREEZE.parameters,
+            effects: [{ kind: "call", tool: "core-banking__review_account" }],
+          },
+        ],
+      },
+    };
+    call.plan.nodes = [root, leaf];
+    call.plan.activeNodeId = leaf.nodeId;
+
+    const decision = evaluateToolCallGovernance({
+      ...call,
+      node: leaf,
+      path: [root, leaf],
+      toolParams: { "account-id": "AC-2002", reason: "structuring pattern" },
+    });
+
+    expect(decision.effect).toBe("deny");
+    expect(decision.outwardActionId).toBeUndefined();
   });
 });
 

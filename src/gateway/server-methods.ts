@@ -344,6 +344,9 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
       "enterprise.trees.import",
       "enterprise.trees.export",
       "enterprise.trees.remove",
+      "enterprise.bundles.preview",
+      "enterprise.bundles.import",
+      "enterprise.bundles.export",
       "enterprise.trees.history.list",
       "enterprise.trees.history.get",
       "enterprise.runs.list",
@@ -738,6 +741,7 @@ export async function handleGatewayRequest(
       isWebchatConnect,
       respond,
       context,
+      signal: opts.signal,
     });
   // All handlers run inside a request scope so that plugin runtime
   // subagent methods (e.g. context engine tools spawning sub-agents

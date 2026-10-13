@@ -273,6 +273,49 @@ export const zh_CN: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "受管控的工作流运行和已注册的工作流树。",
+    historyOnly: "Removed work-map with restorable revisions",
+    historyOnlyBadge: "history only",
+    historyOnlyRestore: "This work-map was removed. Choose a saved revision below to restore it.",
+    removeFingerprintUnavailable:
+      "Cannot safely remove {treeId}: this gateway did not return the imported row identity. Refresh or update the gateway, then try again.",
+    bundle: {
+      import: "Import bundle",
+      exportYaml: "Bundle YAML",
+      exportJson: "Bundle JSON",
+      previewTitle: "Review workflow bundle",
+      previewBody:
+        "Nothing has been changed yet. Review the replacement, inlined knowledge, dependencies, and governance gaps before applying these exact file contents.",
+      create: "Creates a new work-map",
+      replace: "Replaces the current {source} work-map at version {version}",
+      inlinedKnowledge: "Knowledge included in the bundle",
+      requiredTools: "Required tools (verify this gateway provides them)",
+      requiredSkills: "Required skills",
+      requiredMcp: "Required MCP servers",
+      requiredKnowledge: "Knowledge sources",
+      missingSkills: "Missing or unavailable skills",
+      missingMcp: "Missing MCP servers",
+      missingKnowledge: "Knowledge not included in the bundle or globally available",
+      removedKnowledge: "Owned knowledge this import deletes (no revision history)",
+      replacedKnowledge: "Owned knowledge rows this import replaces (no revision history)",
+      shadowedKnowledge:
+        "Bundled knowledge ignored at runtime (a global/plugin foundation with the same id takes precedence)",
+      unverifiedKnowledge: "Knowledge not included in the bundle (verify local availability)",
+      verificationUnavailable: "Local availability could not be verified",
+      missingPolicies: "Missing governance policies",
+      conflictingPolicies: "Governance policies with different definitions",
+      modeDowngrade: "Governance is weaker here: {from} → {to}.",
+      authorWarnings: "Work-map authoring warnings",
+      apply: "Apply bundle",
+      previewRejected: "This bundle cannot be previewed: {issues}",
+      applyRejected: "Nothing was imported. Preview the current state again: {issues}",
+      applyUnknown:
+        "The result is unknown ({message}). Refresh before retrying so you do not overwrite a successful import.",
+      applied: "Imported bundle for {treeId}.",
+      exported: "Exported bundle for {treeId}.",
+      exportImplicitKnowledge:
+        "the work-map allows implicit knowledge that a bundle cannot enumerate",
+      exportWarning: "Bundle downloaded with portability warnings: {warnings}",
+    },
     toolsTab: {
       title: "工具",
       subtitle:
@@ -318,7 +361,7 @@ export const zh_CN: TranslationMap = {
       configInvalid:
         "Gateway 配置无法解析，因此此界面无法在其基础上添加内容。请先在配置编辑器中修复它——从此处保存将会用仅包含此条目的内容替换整个文件。",
       rawDraftPending:
-        "原始配置编辑器中有未保存的更改。请先保存或丢弃这些更改——在此处注册将覆盖该草稿。",
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
       save: "保存",
       publish: "保存并发布",
       publishing: "发布中...",
@@ -429,6 +472,11 @@ export const zh_CN: TranslationMap = {
       add: "添加",
       cancel: "Cancel",
       removeTitle: "从此步骤中分离 {entry}",
+      removeLastAllowedTool:
+        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+      removeLastKnowledgeFoundation:
+        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+      requireMcpAttachments: "Require attachments",
       none: "尚未声明。",
       scopeNarrowingApproval:
         "此步骤尚未设置工具白名单，因此除被拒绝的工具外，允许使用所有工具。添加第一个条目后，它将变为白名单模式。列出的工具可自由运行，其他工具则需要逐次审批。",
@@ -442,6 +490,8 @@ export const zh_CN: TranslationMap = {
       foundationIdInvalid: "请使用知识基础 ID：小写点分段格式，例如 acme.runbooks。",
       ancestorGateApproval:
         "父级步骤（{nodeIds}）对此有各自的允许列表。治理会从根节点逐步检查每个步骤，因此此处添加的条目只有在那些步骤也允许的情况下才会无需确认直接运行；否则需要一次性审批。请同时将其添加到那些步骤中，或使用拒绝工具直接拒绝。",
+      ancestorGateKnowledge:
+        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "请先输入一个值。",
       duplicate: "该条目已在此步骤中声明。",
       nodeMissing: "该步骤已不在树中，请重新加载后重试。",
@@ -449,7 +499,7 @@ export const zh_CN: TranslationMap = {
       importFailed:
         "保存未确认。更改可能已应用也可能未应用——请刷新工作地图查看实际状态，然后再重试。",
       mcpFirstAttachment:
-        "此工作地图尚未管理 MCP。在此添加第一个服务器将为整个工作地图启用默认拒绝策略：之后每个没有附件的步骤都将无法访问任何 MCP 服务器。",
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
       mcpNoneAttached:
         "此步骤未附加 MCP 服务器，因此无法调用任何服务器。与工具和知识不同，MCP 默认不授予任何权限。",
       importNotSent: "未保存任何内容：此内容发送前 Gateway 连接已断开。请重新连接后重试。",
@@ -482,13 +532,17 @@ export const zh_CN: TranslationMap = {
       noProperties: "No fields yet.",
       links: "Links",
       noLinks: "No links declared yet.",
+      editTitle: "Edit {item}",
+      formLabel: "Ontology editor",
       titleLabel: "Display name (optional)",
+      descriptionLabel: "Description",
       typeLabel: "Type",
       primaryKeyLabel: "Identifies an instance",
       primaryKeyMark: "(identity)",
       fromLabel: "From",
       toLabel: "To",
       cardinalityLabel: "Cardinality",
+      inverseLabel: "Inverse name (optional)",
       save: "保存",
       actions: "Actions",
       actionsSummary:
@@ -502,14 +556,31 @@ export const zh_CN: TranslationMap = {
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
       incompleteActionDetail:
-        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+        "This action cannot be called yet. Object writes need identity parameters (and creates need every required field); links need parameters for both endpoint identities.",
       removeEffectTitle: "Remove the {kind} effect on {entity}",
       removeParameterTitle: "Remove the {parameter} parameter",
       requiredLabel: "Required",
       requiredMark: "(required)",
+      toolsModeLabel: "Policy tool matching",
+      toolsModeHint:
+        "Chooses which tool calls this action's policy matches. Outward calls are added separately as effects.",
+      toolsMode: {
+        all: "Match all tool calls",
+        selected: "Match selected tool calls",
+        none: "Match no tool calls",
+      },
+      toolsLabel: "Matched tool selectors",
+      preconditionsLabel: "Advisory preconditions",
+      addListItem: "Add {item}",
+      removeListItem: "Remove {item}",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
       linkRelationshipLabel: "Link type",
+      linkEndpointsLabel: "Endpoint parameters",
+      linkFromParameterLabel: "From-object parameter",
+      linkToParameterLabel: "To-object parameter",
+      defaultIdentity: "Use the object type's identity field",
+      unavailableParameter: "{parameter} (not declared)",
       callToolLabel: "Tool",
       callToolPlaceholder: "server__operation",
       callToolHint:
@@ -520,6 +591,11 @@ export const zh_CN: TranslationMap = {
       functionEntityLabel: "Computed over",
       expressionLabel: "Expression",
       returnsLabel: "Returns",
+      constraints: "Constraints",
+      addConstraint: "Add constraint",
+      noConstraints: "No advisory constraints declared yet.",
+      shadowedDeclaration: "Shadowed by a later declaration with the same id",
+      removeConstraintTitle: "Remove the {constraint} constraint",
       idLabel: {
         entity: "Object type id",
         property: "Field id",
@@ -527,20 +603,26 @@ export const zh_CN: TranslationMap = {
         action: "Action id",
         "action-parameter": "Parameter id",
         function: "Derived value id",
+        constraint: "Constraint id",
       },
       error: {
         "invalid-id":
           "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
-        "endpoint-missing": "A link needs an object type at both ends.",
-        "duplicate-entry": "That id is already declared on this step.",
+        "endpoint-missing": "Choose the required object type, link type, or tool.",
+        "description-empty": "Enter a description.",
+        "selection-empty":
+          "Add at least one tool selector, or choose Match all tool calls or Match no tool calls.",
+        "duplicate-entry": "That id is already declared in this work-map scope.",
         "entity-not-found": "That object type is not in this step's scope.",
         "entity-in-use": "A link still points at this object type. Remove the link first.",
         "entity-referenced":
-          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+          "An action or derived value still uses an object or link type this edit would remove from its scope. Change that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
+        "identity-type-invalid":
+          "An identity field must be text, a number, a date, or an id. Boolean values cannot identify ontology objects.",
         "action-not-found": "That action is no longer declared on this step.",
         "effect-needs-identity":
           "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
@@ -550,6 +632,8 @@ export const zh_CN: TranslationMap = {
         "expression-type-invalid":
           "The expression does not type-check against this object type's fields.",
         "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "property-type-conflict":
+          "This work-map already declares that field on the same object type with a different type.",
         "create-required-unreachable":
           "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
         "effect-target-taken":
@@ -562,13 +646,31 @@ export const zh_CN: TranslationMap = {
       },
     },
     guidanceEditor: {
-      title: "角色提示",
+      title: "Step behavior",
       guidanceNote:
-        "用您自己的话描述此步骤的用途。它会作为指令渲染到步骤摘要中，但不会授予任何权限——无论提示如何措辞，步骤仍然无法调用其作用域未授权的工具。",
-      fieldLabel: "步骤 {nodeId} 的角色提示",
+        "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
+      titleLabel: "Step title",
+      parentLabel: "Parent step",
+      positionLabel: "Position among siblings",
+      descriptionLabel: "Description",
+      fieldLabel: "Instructions for step {nodeId}",
       placeholder: "例如：在报出任何数字之前，先确认索赔人的身份。",
-      save: "保存角色提示",
+      contextHintsLabel: "Context hints",
+      contextHintsPlaceholder: "e.g. Prefer the policy handbook over assumptions.",
+      addContextHint: "Add context hint",
+      removeContextHint: "Remove context hint",
+      expectedOutputLabel: "Expected output",
+      expectedOutputPlaceholder: "e.g. A decision, rationale, and record id.",
+      auditLabel: "Record detailed tool-decision audit events",
+      save: "Save behavior",
       revert: "还原",
+      reparentWarning:
+        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+      error: {
+        "title-empty": "Enter a step title.",
+        "move-refused":
+          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+      },
     },
     capabilities: {
       toolsTitle: "工具",
@@ -582,7 +684,7 @@ export const zh_CN: TranslationMap = {
         "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
       knowledgeTitle: "知识库",
       knowledgeHint:
-        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -643,9 +745,11 @@ export const zh_CN: TranslationMap = {
         "企业管控处于观察模式，因此拒绝会被记录但不会生效。一旦切换为强制执行，拒绝将应用于此步骤及其下的所有内容，且分支下游的任何授权都无法撤销该拒绝。",
       deniedToolsOff:
         "企业管控已关闭，因此拒绝既不会生效也不会被记录。请开启管控以使其生效或显示在运行追踪中。",
-      skillNotInstalled: "未安装",
-      foundationNotRegistered: "未注册",
+      skillNotModelVisible: "not available to the model for this agent",
+      foundationNotRegistered: "not retrievable by this work-map",
+      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "未在 mcp.servers 中注册",
+      mcpDisabled: "disabled in mcp.servers",
       inherited: "继承自父步骤：",
     },
     skillsTab: {
@@ -674,6 +778,9 @@ export const zh_CN: TranslationMap = {
     executionCount: "此运行共 {count} 次执行",
     stepsTitle: "步骤",
     resume: "Continue this run",
+    resumeChat: "Continue from unfinished step",
+    resumeChatHint:
+      "The unfinished step restarts on your next matching message. An in-flight external action is not resumed.",
     resumeHint:
       "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
     resumeRequested:
@@ -708,15 +815,20 @@ export const zh_CN: TranslationMap = {
       explicit: "显式授权",
       inherited: "继承的范围",
       explicitHintGated:
-        "每个步骤应使用其自身或上级步骤中列出的工具、Skills、MCP 服务器和知识基础。未列出的 Skills、MCP 服务器和知识基础将被完全禁止。未列出的工具将触发一次性审批，回复和读取工具（message、read、memory_search）始终可用，除非某个步骤或治理策略明确拒绝。",
+        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
-        "此工作地图显式授予了能力，但企业模式未处于强制执行状态，因此工具、Skill 和 MCP 授权仅被记录而未被应用。知识授权在所有模式下仍会限定检索范围。以下授权已保存，并将在模式设置为强制执行后完全生效。",
+        "This work-map grants capabilities explicitly, but enterprise mode is not enforcing. Tool, skill and MCP grants are recorded rather than applied. Knowledge grants still scope retrieval in every mode.",
       explicitHintOff:
-        "此工作地图显式授予功能权限，但企业模式已关闭，因此其中的授权均不生效。以下授权已保存，将在模式设置为观察或强制执行时生效。",
+        "This work-map grants capabilities explicitly, but enterprise mediation is not active, so no grant applies. The grants below are saved and take effect once mediation is enabled.",
       inheritedHint:
-        "步骤的列表会缩小其上级所允许的范围；分支中未列出任何内容的步骤可以使用任何工具或 Skills。",
+        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "显式授权",
       turnOff: "使用继承的权限范围",
+      turnOffWarning:
+        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+      stopMcp: "Stop requiring MCP attachments",
+      stopMcpWarning:
+        "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
     structureTitle: "结构",
     ontologyTitle: "本体",
@@ -732,13 +844,20 @@ export const zh_CN: TranslationMap = {
     addNodeTitle: "新建子节点",
     addNodeIdLabel: "节点 ID（小写点分格式，例如 support.triage）",
     addNodeTitleLabel: "标题",
-    addNodeSubmit: "添加到编辑器",
+    addNodeDescriptionLabel: "Description (optional)",
+    addNodeSubmit: "Add step",
     addNodeErrorIdEmpty: "请输入节点 ID。",
     addNodeErrorIdPattern: "ID 必须为小写点分格式，例如 support.triage。",
     addNodeErrorIdDuplicate: "此树中已存在具有该 ID 的节点。",
     addNodeErrorTitleEmpty: "请输入标题。",
     addNodeErrorParentMissing: "父节点已不在此树中。",
     addNodeErrorExportFailed: "无法加载要编辑的树定义。",
+    removeNode: "Delete step and descendants",
+    removeNodeWarning:
+      'Delete "{node}" and every step beneath it? This records a new work-map revision.',
+    structureEditRefused:
+      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+    editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "拖动节点 · 滚动缩放",
     routeTitle: "已采用的路径",
     routeViewLabel: "路由视图",
@@ -780,12 +899,47 @@ export const zh_CN: TranslationMap = {
     contextHints: "上下文提示：{hints}",
     expectedOutput: "预期输出：{text}",
     newTree: "新建树",
+    importTree: "Import file",
+    newTreeTitle: "New workflow tree",
+    treeSettingsTitle: "Work-map settings",
+    treeSettingsButton: "Settings",
+    newTreeIdLabel: "Tree id",
+    newTreeIdPlaceholder: "support.intake",
+    treeSettingsVersionLabel: "Version",
+    newTreeNameLabel: "名称",
+    newTreeRootIdLabel: "First step id",
+    newTreeRootIdPlaceholder: "support",
+    newTreeRootTitleLabel: "First step title",
+    newTreeDescriptionLabel: "Description (optional)",
+    treeSettingsTriggersLabel: "Runs this work-map applies to",
+    treeSettingsTrigger: {
+      user: "User messages",
+      system: "System runs",
+      subagent: "Subagent runs",
+    },
+    treeSettingsPriorityLabel: "Routing priority (optional)",
+    newTreeReview: "Review definition",
+    newTreeErrorIdEmpty: "Enter a tree id.",
+    newTreeErrorIdPattern: "Tree id must be dotted lowercase.",
+    newTreeErrorIdDuplicate: "That tree already exists. Select it and use Edit instead.",
+    treeSettingsErrorVersionEmpty: "Enter a version.",
+    newTreeErrorNameEmpty: "Enter a tree name.",
+    treeSettingsErrorTriggersEmpty: "Choose at least one run type.",
+    treeSettingsErrorPriorityInvalid: "Priority must be a whole number.",
+    newTreeErrorRootIdEmpty: "Enter the first step id.",
+    newTreeErrorRootIdPattern: "Step id must be dotted lowercase.",
+    newTreeErrorRootTitleEmpty: "Enter the first step title.",
     edit: "编辑",
     exportYaml: "导出 YAML",
     exportJson: "导出 JSON",
     remove: "移除",
     editorTitle: "编辑树定义",
     editorHint: "编辑原始定义，然后点击保存以记录新版本。",
+    editorDiscardWarning: "Discard the unsaved tree draft?",
+    saveContinuesNavigation:
+      "This save has already been sent and will continue if you open another work-map. Open it anyway?",
+    editorFormatWarning: "Switch format and discard the current editor contents?",
+    treeWarnings: "Some declarations on this work-map cannot be reached by any run:",
     saveInvalid: "定义验证未通过：",
     saving: "保存中…",
     save: "保存",
@@ -796,7 +950,13 @@ export const zh_CN: TranslationMap = {
     confirmSaveBody: "这将导入编辑后的定义并记录一个新的修订版本。",
     confirmRemoveTitle: "移除工作流树？",
     confirmRemoveBody: "从注册表中移除已导入的工作流树 {treeId}。",
-    confirmRemoveWarning: "当前定义将被删除；被覆盖的内置定义将重新生效。版本历史将保留。",
+    confirmRemoveDataLossWarning:
+      "This permanently deletes the tree's live ontology objects, links, and bundled knowledge. Version history keeps only definitions. Workflow bundles preserve definitions and bundled knowledge, but cannot restore live objects or links. Back up ClawWorks state before deleting data you need. A shadowed built-in then reappears.",
+    removeNotSent:
+      "Nothing was removed: the gateway connection dropped before this was sent. Reconnect and try again.",
+    removeRefused: "The server refused the removal, so nothing was removed: {message}",
+    removeUnconfirmed:
+      "The removal did not confirm. It may or may not have been applied — refresh the work-map before trying again.",
   },
   sessionsView: {
     title: "会话",
@@ -1257,7 +1417,7 @@ export const zh_CN: TranslationMap = {
     layout: "Card layout",
     layoutCompact: "紧凑卡片密度",
     layoutComfortable: "宽松卡片密度",
-    dispatch: "提醒调度器",
+    dispatch: "Dispatch ready work",
     dispatchSummary:
       "Dispatch complete: started {started}, promoted {promoted}, blocked {blocked}, reclaimed {reclaimed}, orchestrated {orchestrated}, failures {failures}.",
     dispatchSummaryEmpty: "Dispatch complete: no ready work changed.",

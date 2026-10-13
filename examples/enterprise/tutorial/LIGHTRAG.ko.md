@@ -4,16 +4,30 @@
 
 ## 1. LightRAG만 시작하기
 
-Docker daemon과 LightRAG용 LLM·임베딩 연결이 필요합니다. Chat 모델 로그인이 LightRAG 자격 증명까지 제공하지는 않습니다. [`.env.example`](.env.example)의 로컬 Ollama 또는 이미 사용을 승인한 API 연결 중 하나를 구성하세요. API 사용에는 별도 비용이 발생할 수 있습니다. 실제 키를 문서·채팅·Git에 넣지 마세요.
+Docker daemon과 LightRAG용 LLM·임베딩 API 연결이 필요합니다. 로컬 모델은 다운로드하지 않습니다. ChatGPT·Claude 구독이나 Chat 모델 로그인이 API 자격 증명을 제공하지는 않습니다. [`.env.example`](.env.example)을 복사하고 사용자가 자신의 API 키를 입력하세요. API 사용에는 별도 비용이 발생하며 업로드한 정책 문서 내용이 해당 제공업체로 전송될 수 있습니다. 실제 키를 문서·채팅·Git에 넣지 마세요.
 
 `examples/enterprise/tutorial` 디렉터리에서 실행합니다. `.env`가 이미 있으면 덮어쓰지 말고 필요한 값만 확인하세요.
 
 ```bash
 cp -n .env.example .env
-# .env에서 LLM 및 embedding 연결을 구성한 뒤:
+chmod 600 .env
+# 편집기로 .env를 열고 아래 두 API 키를 모두 입력한 뒤:
 docker compose up -d lightrag
 curl --fail --silent --show-error --max-time 10 http://127.0.0.1:9621/health
 ```
+
+이 파일은 저장소 루트가 아닌 `examples/enterprise/tutorial/.env`이며 Git에서 제외됩니다. 이 예제의 LightRAG 컨테이너만 모델 키를 읽고 Gateway·MCP 설정은 바꾸지 않습니다.
+
+| 설정                                                         | 입력 내용                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------- |
+| `LLM_BINDING_API_KEY`                                        | 문서 색인·답변용 모델 API 키                                  |
+| `EMBEDDING_BINDING_API_KEY`                                  | 임베딩 API 키. 같은 계정이면 위와 같은 키를 두 칸에 입력 가능 |
+| `LLM_BINDING_HOST`, `LLM_MODEL`                              | 기본 OpenAI API 또는 호환 API의 주소·모델                     |
+| `EMBEDDING_BINDING_HOST`, `EMBEDDING_MODEL`, `EMBEDDING_DIM` | 임베딩 API 주소·모델·해당 모델의 차원                         |
+
+키를 변경한 뒤에는 `docker compose up -d --force-recreate lightrag`로 반영하세요. `restart`만으로는 환경변수가 갱신되지 않습니다. 임베딩 모델 변경은 재색인이 필요합니다. 키가 비어 있으면 실행 준비가 끝난 것이 아니며 health 성공만으로 키 유효성을 판단하지 않습니다.
+
+GUI의 **Knowledge → Connect a source → API key**는 아래의 `LIGHTRAG_API_KEY`(서버 접속용)입니다. 여기에 모델 제공업체 API 키를 넣지 마세요. 모델 키 입력은 현재 이 예제의 `.env` 편집으로 합니다. 서버 API 인증을 쓰려면 별도의 무작위 `LIGHTRAG_API_KEY`와 `WHITELIST_PATHS=/health`를 설정하고 같은 서버 키를 GUI에 입력하세요. 이는 LightRAG WebUI 로그인 계정을 생성하는 설정이 아닙니다.
 
 이 경로는 MCP tracker를 시작하거나 기존 tracker 등록을 바꾸지 않습니다. `LIGHTRAG_PORT`를 바꿨다면 아래 URL과 등록 URL도 맞추세요. 재현 기록에는 실제 이미지 digest, LLM/embedding 모델, embedding 차원을 남기세요. Compose의 `latest` 태그만으로 버전이 고정되지는 않습니다.
 

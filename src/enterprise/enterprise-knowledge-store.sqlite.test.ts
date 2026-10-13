@@ -10,8 +10,8 @@ import {
 } from "../state/openclaw-state-db.js";
 import {
   deleteBundledKnowledgeFoundationsForTree,
+  getBundledKnowledgeTargetStateForTree,
   listBundledKnowledgeFoundations,
-  pruneBundledKnowledgeFoundationsForTree,
   replaceBundledKnowledgeFoundationsForTree,
 } from "./enterprise-knowledge-store.sqlite.js";
 import type { BundledKnowledgeFoundation } from "./types.js";
@@ -111,30 +111,6 @@ describe("enterprise bundled knowledge store", () => {
     ).toBe(false);
   });
 
-  it("prunes a tree's foundations to a keep-set", () => {
-    replaceForTree("tree.p", [makeFoundation("keep.me"), makeFoundation("drop.me")]);
-    runOpenClawStateWriteTransaction(
-      (database) =>
-        pruneBundledKnowledgeFoundationsForTree(database, {
-          treeId: "tree.p",
-          keepIds: ["keep.me"],
-        }),
-      txnOptions,
-    );
-    expect(ids(listBundledKnowledgeFoundations(storeOptions).records)).toEqual(["keep.me"]);
-    // An empty keep-set removes them all.
-    runOpenClawStateWriteTransaction(
-      (database) =>
-        pruneBundledKnowledgeFoundationsForTree(database, { treeId: "tree.p", keepIds: [] }),
-      txnOptions,
-    );
-    expect(
-      listBundledKnowledgeFoundations(storeOptions).records.some(
-        (r) => r.foundation.id === "keep.me",
-      ),
-    ).toBe(false);
-  });
-
   it("captures per-row errors without dropping healthy rows", () => {
     replaceForTree("tree.h", [makeFoundation("acme.healthy")]);
     // Corrupt one row's descriptor JSON directly: one bad row must not blank the list.
@@ -159,8 +135,53 @@ describe("enterprise bundled knowledge store", () => {
     expect(read.records.some((r) => r.foundation.id === "acme.healthy")).toBe(true);
     expect(read.rowErrors).toHaveLength(1);
     expect(read.rowErrors[0].foundationId).toBe("acme.rotten");
+    expect(getBundledKnowledgeTargetStateForTree("tree.rotten", storeOptions)).toMatchObject({
+      foundationIds: ["acme.rotten"],
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
 
     deleteForTree("tree.h");
     deleteForTree("tree.rotten");
+  });
+
+  it("rejects valid JSON whose descriptor or snippets have the wrong shape", () => {
+    replaceForTree("tree.shape-healthy", [makeFoundation("acme.shape-healthy")]);
+    runOpenClawStateWriteTransaction((database) => {
+      const stateDb = getNodeSqliteKysely<
+        Pick<OpenClawStateKyselyDatabase, "enterprise_tree_bundled_foundations">
+      >(database.db);
+      executeSqliteQuerySync(
+        database.db,
+        stateDb.insertInto("enterprise_tree_bundled_foundations").values([
+          {
+            tree_id: "tree.bad-descriptor",
+            foundation_id: "acme.bad-descriptor",
+            descriptor_json: "5",
+            snippets_json: "[]",
+            imported_at: 100,
+            updated_at: 100,
+          },
+          {
+            tree_id: "tree.bad-snippets",
+            foundation_id: "acme.bad-snippets",
+            descriptor_json: JSON.stringify({ kind: "remote", displayName: "Bad snippets" }),
+            snippets_json: "{}",
+            imported_at: 100,
+            updated_at: 100,
+          },
+        ]),
+      );
+    }, txnOptions);
+
+    const read = listBundledKnowledgeFoundations(storeOptions);
+    expect(read.records.map((record) => record.foundation.id)).toEqual(["acme.shape-healthy"]);
+    expect(read.rowErrors.map((error) => error.foundationId)).toEqual([
+      "acme.bad-descriptor",
+      "acme.bad-snippets",
+    ]);
+
+    deleteForTree("tree.shape-healthy");
+    deleteForTree("tree.bad-descriptor");
+    deleteForTree("tree.bad-snippets");
   });
 });

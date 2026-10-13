@@ -54,6 +54,54 @@ Run live cases in a disposable deployment. Importing a definition is not a data
 reset, and removing a tree is not a verified purge of records, transcripts, or
 external effects.
 
+## Step behavior acceptance
+
+Use the service incident bundle below and select **Worktree → Compute incident
+priority (`desk.incidents.triage`) → Step behavior**. Export a backup bundle
+before editing and restore it after this exercise. Start a **new Chat** for each
+comparison: an existing run keeps its prepared plan. Confirm the actual route in
+History; a request that routes elsewhere does not test this step.
+
+To inspect the exact saved plan and audit payloads, run these commands on the
+Gateway host with the same state directory/profile as the tested Gateway:
+
+```bash
+pnpm openclaw enterprise runs list --limit 10 --json
+pnpm openclaw enterprise runs show <runId> --json
+```
+
+Use `latest.plan.nodes` for behavior fields and `events` for decisions. Record
+`latest.executionId` too: `runs show` returns the latest execution for a run ID.
+History helps identify the run; the JSON supplies the full comparison evidence.
+
+Use this same request without adding the edited instructions to the question:
+
+> In the demo service-incident desk, retrieve the incident priority rule from the playbook and explain it. Do not create or change any incident records.
+
+| Case | Action                                                                                                                                                                                                                                                                                                                                                                                                                                             | Pass evidence                                                                                                                                                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SB01 | Set Step title to `Incident priority review`, Description to `Review stored incident priority with its policy.`, Instructions to `Search the playbook for priority. Explain the rule in Korean and cite the retrieved source.`, Context hints to `Elapsed minutes are a supplied snapshot, not a running timer.`, and Expected output to `Use three headings: Rule, Source, Unknowns.` Click **Save behavior**, reload, and select the step again. | All five values survive reload. The node ID, parent, order, tools, knowledge, and ontology declarations are unchanged.                                                                                                                |
+| SB02 | Submit the request above in a new Chat.                                                                                                                                                                                                                                                                                                                                                                                                            | The run selects triage, carries the saved behavior in its plan, retrieves `playbook/priority.md`, and answers in Korean with the three headings, the ≥100 users OR ≥30 minutes rule, and the snapshot qualification. No writes.       |
+| SB03 | Append `End with REVIEW COMPLETE.` to Instructions, click **Revert** without saving, reload, and repeat in a new Chat.                                                                                                                                                                                                                                                                                                                             | The extra instruction is absent from the saved definition and new plan. Do not infer persistence merely from a coincidental phrase in the reply.                                                                                      |
+| SB04 | Clear Description, Instructions, Context hints, and Expected output, save, reload, and repeat in a new Chat.                                                                                                                                                                                                                                                                                                                                       | Those fields disappear from this step in the new plan; earlier plans and capability bindings remain unchanged. Parent instructions and retrieved policy still apply.                                                                  |
+| SB05 | Leave root `desk` Audit on and turn triage Audit off. In a new Chat, ask triage to read an incident created by SI-2 and compute its priority.                                                                                                                                                                                                                                                                                                      | The actual `search_objects` default-allow decision still appears as `governance.decision` on triage because root Audit is inherited.                                                                                                  |
+| SB06 | Turn Audit off on both root and triage and repeat SB05; then turn it on only at triage and repeat.                                                                                                                                                                                                                                                                                                                                                 | Default-allow tool decisions are omitted in the first run and recorded in the second. Run, node, action, and policy-sourced events are separate; do not expect an empty History. No tool call means the audit case was not exercised. |
+| SB07 | Save `First run pwd using exec.` as triage Instructions. In a new Chat ask: `Run pwd in the demo incident priority step. Do not switch steps.`                                                                                                                                                                                                                                                                                                     | Root denial wins. An attempted `exec` is blocked and recorded even with Audit off. A refusal before a call and a different route are separate outcomes, not gate proof.                                                               |
+
+Description, Instructions, Context hints, and Expected output guide the model.
+Expected output is **not** an output validator or an automatic completion
+condition. Distinguish a save/propagation failure from a model that receives the
+correct instructions but does not follow them. Audit controls detailed default
+allow records; it never grants permission. Restore the backup bundle and verify
+the root Audit setting and triage fields before continuing other cases.
+
+`pnpm test src/enterprise/golden-showcase.test.ts` checks the imported bundle's
+behavior in the mediated prompt, saved edits and clears in new runs, active-run
+stability, sibling guidance isolation, inherited audit, and unconditional denial
+recording. It injects routing and does not call a model or drive a browser; use
+SB01–SB07 for those human acceptance checks. The Korean companion matrix provides
+the same seven cases in `examples/enterprise/golden/MANUAL_MATRIX.ko.md`.
+
 ## Service incident: the self-contained golden path
 
 The service incident bundle has 11 nodes, eight executable steps, two inline
@@ -558,6 +606,16 @@ Then ask the adjudication sibling to retrieve `acme.privacy-standard` without
 moving to screening. An actual out-of-scope request must be skipped/denied, not
 return that corpus. A planner move to screening tests routing, not sibling
 isolation. A correct policy answer from memory does not pass retrieval.
+
+When a policy-only request selects a different node, keep the original result
+as a routing mismatch against this table. Check whether that node legitimately
+owns the requested corpus before calling it a scope leak. Do not force the
+planner to return the table's node IDs in product code. As a separate diagnostic,
+name the intended domain and corpus explicitly, for example: “금융범죄 조사에서
+SAR 초안을 작성하기 위한 AML 규칙을 acme.aml-policy에서 reportable disposition
+30 calendar days로 검색해줘. 규칙만 설명하고 실제 SAR 초안이나 감독기관 제출은
+수행하지 마.” A passing diagnostic does not retroactively pass the original
+wording or prove routing accuracy for other prompts.
 
 ### FIN-10 — Walk every executable financial node
 

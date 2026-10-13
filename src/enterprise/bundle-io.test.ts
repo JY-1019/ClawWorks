@@ -7,6 +7,7 @@ import {
   exportWorkflowBundle,
   importWorkflowBundle,
   parseWorkflowBundleContent,
+  previewWorkflowBundleImport,
   serializeWorkflowBundle,
 } from "./bundle-io.js";
 import { listBundledKnowledgeFoundations } from "./enterprise-knowledge-store.sqlite.js";
@@ -124,6 +125,32 @@ describe("workflow bundle serialize/parse", () => {
 });
 
 describe("workflow bundle export", () => {
+  it("includes an outward action's call-effect tool without a duplicate allow-list entry", async () => {
+    const tree: WorkflowTreeDefinition = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.call-export",
+      version: "1.0.0",
+      name: "Call export",
+      root: {
+        id: "root",
+        title: "Root",
+        ontology: {
+          actions: [{ id: "notify", effects: [{ kind: "call", tool: "mail__send" }] }],
+        },
+      },
+    };
+    upsertEnterpriseWorkflowTree({ tree, sourceFormat: "json" }, storeOptions);
+
+    const result = await exportWorkflowBundle({ treeId: tree.id, format: "json" }, storeOptions);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const parsed = parseWorkflowBundleContent(result.content, "json");
+      expect(parsed.ok && parsed.bundle.requiredTools).toEqual(["mail__send"]);
+    }
+    deleteEnterpriseWorkflowTree(tree.id, storeOptions);
+  });
+
   it("inlines snapshottable foundations and collects the required-tools manifest", async () => {
     upsertEnterpriseWorkflowTree(
       { tree: treeWithOntology("acme.support"), sourceFormat: "yaml" },
@@ -160,6 +187,43 @@ describe("workflow bundle export", () => {
     expect(parsed.bundle.requiredSkills).toEqual(["refund-playbook"]);
 
     deleteEnterpriseWorkflowTree("acme.support", storeOptions);
+  });
+
+  it("exports MCP requirements without deployment credentials or transport config", async () => {
+    upsertEnterpriseWorkflowTree(
+      { tree: treeWithOntology("acme.safe-export"), sourceFormat: "json" },
+      storeOptions,
+    );
+    const secret = "bundle-must-not-contain-this-secret";
+    const result = await exportWorkflowBundle(
+      {
+        treeId: "acme.safe-export",
+        format: "json",
+        config: {
+          mcp: {
+            servers: {
+              "acme-tracker": {
+                url: `https://operator:${secret}@internal.example/mcp`,
+                headers: { Authorization: `Bearer ${secret}` },
+              },
+            },
+          },
+        },
+      },
+      storeOptions,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.content).toContain('"requiredMcpServers": [');
+    expect(result.content).toContain('"acme-tracker"');
+    expect(result.content).not.toContain(secret);
+    expect(result.content).not.toContain("internal.example");
+    expect(result.content).not.toContain("Authorization");
+
+    deleteEnterpriseWorkflowTree("acme.safe-export", storeOptions);
   });
 
   it("records server-backed foundations as skipped rather than shipping partial content", async () => {
@@ -293,9 +357,408 @@ describe("workflow bundle export", () => {
     );
     expect(result.ok).toBe(false);
   });
+
+  it("exports and re-imports a tree-owned row even when a global foundation shadows it", async () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.shadowed-export");
+    expect(
+      importWorkflowBundle(
+        { content: serializeWorkflowBundle(bundle, "json"), format: "json" },
+        storeOptions,
+      ).ok,
+    ).toBe(true);
+    // This adapter wins retrieval but cannot be snapshotted. Export must still
+    // preserve the selected tree's owned row instead of marking it skipped.
+    registerEnterpriseKnowledgeFoundation("acme.kb", { retrieve: async () => [] });
+
+    const exported = await exportWorkflowBundle(
+      { treeId: "acme.shadowed-export", format: "json" },
+      storeOptions,
+    );
+    expect(exported.ok).toBe(true);
+    if (!exported.ok) {
+      return;
+    }
+    expect(exported.skippedFoundations).toEqual([]);
+    const parsed = parseWorkflowBundleContent(exported.content, "json");
+    expect(parsed.ok && parsed.bundle.knowledgeFoundations[0]?.snippets[0]?.text).toBe(
+      "Refunds within 30 days",
+    );
+
+    expect(
+      importWorkflowBundle({ content: exported.content, format: "json" }, storeOptions).ok,
+    ).toBe(true);
+    const stored = listBundledKnowledgeFoundations(storeOptions).records.find(
+      ({ treeId, foundation }) => treeId === "acme.shadowed-export" && foundation.id === "acme.kb",
+    );
+    expect(stored?.foundation.snippets[0]?.text).toBe("Refunds within 30 days");
+    deleteEnterpriseWorkflowTree("acme.shadowed-export", storeOptions);
+  });
 });
 
 describe("workflow bundle import", () => {
+  it("derives call-effect tool requirements instead of trusting a stale manifest", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = {
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.call-preview",
+      version: "1.0.0",
+      name: "Call preview",
+      root: {
+        id: "root",
+        title: "Root",
+        ontology: {
+          actions: [{ id: "notify", effects: [{ kind: "call", tool: "mail__send" }] }],
+        },
+      },
+    };
+    bundle.knowledgeFoundations = [];
+    bundle.requiredTools = [];
+    bundle.requiredSkills = [];
+
+    const preview = previewWorkflowBundleImport(
+      { content: serializeWorkflowBundle(bundle, "json"), format: "json" },
+      storeOptions,
+    );
+
+    expect(preview.ok && preview.requiredTools).toEqual(["mail__send"]);
+  });
+
+  it("previews dependencies and replacement state without writing", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-new");
+    const content = serializeWorkflowBundle(bundle, "json");
+
+    const result = previewWorkflowBundleImport({ content, format: "json" }, storeOptions);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.reviewToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.trees).toEqual([
+      {
+        id: "acme.preview-new",
+        version: "1.0.0",
+        replaced: null,
+        currentVersion: null,
+        currentHash: null,
+      },
+    ]);
+    expect(result.foundations).toEqual(["acme.kb"]);
+    expect(result.removedFoundations).toEqual([]);
+    expect(result.replacedFoundations).toEqual([]);
+    expect(result.shadowedFoundations).toEqual([]);
+    expect(result.requiredTools).toEqual(["read_*"]);
+    expect(result.requiredSkills).toEqual(["refund-playbook"]);
+    expect(result.requiredMcpServers).toEqual(["acme-tracker"]);
+    expect(result.missingMcpServers).toEqual(["acme-tracker"]);
+    expect(getWorkflowTreeRegistryEntry("acme.preview-new", storeOptions)).toBeUndefined();
+    expect(
+      listBundledKnowledgeFoundations(storeOptions).records.some(
+        (record) => record.treeId === "acme.preview-new",
+      ),
+    ).toBe(false);
+  });
+
+  it("derives missing MCP servers from enabled runtime configuration", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-mcp");
+    const content = serializeWorkflowBundle(bundle, "json");
+
+    const disabled = previewWorkflowBundleImport(
+      {
+        content,
+        format: "json",
+        config: { mcp: { servers: { "acme-tracker": { command: "tracker", enabled: false } } } },
+      },
+      storeOptions,
+    );
+    const enabled = previewWorkflowBundleImport(
+      {
+        content,
+        format: "json",
+        config: { mcp: { servers: { "acme-tracker": { command: "tracker" } } } },
+      },
+      storeOptions,
+    );
+
+    expect(disabled.ok && disabled.missingMcpServers).toEqual(["acme-tracker"]);
+    expect(enabled.ok && enabled.missingMcpServers).toEqual([]);
+  });
+
+  it("reports inlined foundations shadowed by a global/plugin registration", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-shadowed");
+    const content = serializeWorkflowBundle(bundle, "json");
+    registerEnterpriseKnowledgeFoundation(
+      "acme.kb",
+      new InMemoryKnowledgeFoundation([{ foundationId: "acme.kb", text: "plugin content" }]),
+    );
+
+    const preview = previewWorkflowBundleImport({ content, format: "json" }, storeOptions);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) {
+      return;
+    }
+    expect(preview.shadowedFoundations).toEqual(["acme.kb"]);
+
+    const imported = importWorkflowBundle(
+      { content, format: "json", createOnly: true, reviewToken: preview.reviewToken },
+      storeOptions,
+    );
+    expect(imported.ok && imported.shadowedFoundations).toEqual(["acme.kb"]);
+    deleteEnterpriseWorkflowTree("acme.preview-shadowed", storeOptions);
+  });
+
+  it("requires a new preview when a global/plugin foundation starts shadowing bundle content", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-shadow-drift");
+    const content = serializeWorkflowBundle(bundle, "json");
+    const preview = previewWorkflowBundleImport({ content, format: "json" }, storeOptions);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) {
+      return;
+    }
+    expect(preview.shadowedFoundations).toEqual([]);
+
+    registerEnterpriseKnowledgeFoundation(
+      "acme.kb",
+      new InMemoryKnowledgeFoundation([{ foundationId: "acme.kb", text: "plugin content" }]),
+    );
+    const result = importWorkflowBundle(
+      { content, format: "json", createOnly: true, reviewToken: preview.reviewToken },
+      storeOptions,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      issues: [{ message: expect.stringContaining("diagnostics changed since preview") }],
+    });
+    expect(getWorkflowTreeRegistryEntry("acme.preview-shadow-drift", storeOptions)).toBeUndefined();
+  });
+
+  it("previews owned knowledge rows that the import replaces or deletes", () => {
+    const current = makeBundle();
+    current.trees[0] = treeWithOntology("acme.preview-destructive");
+    current.trees[0].root.ontology = {
+      ...current.trees[0].root.ontology,
+      knowledgeFoundations: ["acme.kb", "acme.old"],
+    };
+    current.knowledgeFoundations.push({
+      id: "acme.old",
+      descriptor: { kind: "local", displayName: "Old KB" },
+      snippets: [{ foundationId: "acme.old", text: "old content" }],
+    });
+    expect(
+      importWorkflowBundle(
+        { content: serializeWorkflowBundle(current, "json"), format: "json" },
+        storeOptions,
+      ).ok,
+    ).toBe(true);
+
+    const incoming = makeBundle();
+    incoming.trees[0] = treeWithOntology("acme.preview-destructive");
+    const preview = previewWorkflowBundleImport(
+      { content: serializeWorkflowBundle(incoming, "json"), format: "json" },
+      storeOptions,
+    );
+
+    expect(preview.ok).toBe(true);
+    if (preview.ok) {
+      expect(preview.replacedFoundations).toEqual(["acme.kb"]);
+      expect(preview.removedFoundations).toEqual(["acme.old"]);
+    }
+    deleteEnterpriseWorkflowTree("acme.preview-destructive", storeOptions);
+  });
+
+  it("rejects create and update conflicts after preview without replacing the winner", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-race");
+    const content = serializeWorkflowBundle(bundle, "json");
+    const createPreview = previewWorkflowBundleImport({ content, format: "json" }, storeOptions);
+    expect(createPreview.ok && createPreview.trees[0]?.currentHash).toBeNull();
+
+    upsertEnterpriseWorkflowTree(
+      { tree: treeWithOntology("acme.preview-race", "winner.kb"), sourceFormat: "json" },
+      storeOptions,
+    );
+    const createResult = importWorkflowBundle(
+      { content, format: "json", createOnly: true },
+      storeOptions,
+    );
+    expect(createResult.ok).toBe(false);
+
+    const updatePreview = previewWorkflowBundleImport({ content, format: "json" }, storeOptions);
+    expect(updatePreview.ok).toBe(true);
+    if (!updatePreview.ok) {
+      return;
+    }
+    const expectedHash = updatePreview.trees[0]?.currentHash;
+    expect(expectedHash).toBeTruthy();
+    upsertEnterpriseWorkflowTree(
+      {
+        tree: { ...treeWithOntology("acme.preview-race", "winner.kb"), version: "3.0.0" },
+        sourceFormat: "json",
+      },
+      storeOptions,
+    );
+    const updateResult = importWorkflowBundle(
+      { content, format: "json", expectedHash: expectedHash ?? "missing" },
+      storeOptions,
+    );
+    expect(updateResult.ok).toBe(false);
+    expect(getWorkflowTreeRegistryEntry("acme.preview-race", storeOptions)?.tree.version).toBe(
+      "3.0.0",
+    );
+    expect(
+      listBundledKnowledgeFoundations(storeOptions).records.some(
+        (record) => record.treeId === "acme.preview-race",
+      ),
+    ).toBe(false);
+    deleteEnterpriseWorkflowTree("acme.preview-race", storeOptions);
+  });
+
+  it("requires a new preview when governance diagnostics change", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-config");
+    bundle.governanceMode = "enforce";
+    bundle.governancePolicies = [{ id: "acme.deny", effect: "deny", tools: ["danger"] }];
+    const content = serializeWorkflowBundle(bundle, "json");
+    const sourceConfig = {
+      enterprise: {
+        mode: "enforce" as const,
+        governance: { policies: bundle.governancePolicies },
+      },
+    };
+    const preview = previewWorkflowBundleImport(
+      { content, format: "json", config: sourceConfig },
+      storeOptions,
+    );
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) {
+      return;
+    }
+
+    const result = importWorkflowBundle(
+      {
+        content,
+        format: "json",
+        config: { enterprise: { mode: "off", governance: sourceConfig.enterprise.governance } },
+        createOnly: true,
+        reviewToken: preview.reviewToken,
+      },
+      storeOptions,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      issues: [{ message: expect.stringContaining("diagnostics changed since preview") }],
+    });
+    expect(getWorkflowTreeRegistryEntry("acme.preview-config", storeOptions)).toBeUndefined();
+  });
+
+  it("requires a new preview when an attached MCP server is disabled", () => {
+    const bundle = makeBundle();
+    bundle.trees[0] = treeWithOntology("acme.preview-mcp-drift");
+    const content = serializeWorkflowBundle(bundle, "json");
+    const preview = previewWorkflowBundleImport(
+      {
+        content,
+        format: "json",
+        config: { mcp: { servers: { "acme-tracker": { command: "tracker" } } } },
+      },
+      storeOptions,
+    );
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) {
+      return;
+    }
+
+    const result = importWorkflowBundle(
+      {
+        content,
+        format: "json",
+        config: {
+          mcp: { servers: { "acme-tracker": { command: "tracker", enabled: false } } },
+        },
+        createOnly: true,
+        reviewToken: preview.reviewToken,
+      },
+      storeOptions,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      issues: [{ message: expect.stringContaining("diagnostics changed since preview") }],
+    });
+    expect(getWorkflowTreeRegistryEntry("acme.preview-mcp-drift", storeOptions)).toBeUndefined();
+  });
+
+  it("rejects a stale preview when the same tree gained different bundled knowledge", () => {
+    const withText = (text: string): WorkflowBundle => {
+      const bundle = makeBundle();
+      bundle.trees[0] = treeWithOntology("acme.preview-knowledge");
+      bundle.knowledgeFoundations[0] = {
+        ...bundle.knowledgeFoundations[0],
+        snippets: [{ foundationId: "acme.kb", text }],
+      };
+      return bundle;
+    };
+    importWorkflowBundle(
+      { content: serializeWorkflowBundle(withText("initial"), "json"), format: "json" },
+      storeOptions,
+    );
+    const contentA = serializeWorkflowBundle(withText("writer A"), "json");
+    const contentB = serializeWorkflowBundle(withText("writer B"), "json");
+    const previewA = previewWorkflowBundleImport(
+      { content: contentA, format: "json" },
+      storeOptions,
+    );
+    const previewB = previewWorkflowBundleImport(
+      { content: contentB, format: "json" },
+      storeOptions,
+    );
+    expect(previewA.ok && previewB.ok).toBe(true);
+    if (!previewA.ok || !previewB.ok) {
+      return;
+    }
+    const expectedHash = previewA.trees[0]?.currentHash;
+    expect(expectedHash).toBeTruthy();
+
+    expect(
+      importWorkflowBundle(
+        {
+          content: contentB,
+          format: "json",
+          expectedHash: expectedHash ?? "missing",
+          reviewToken: previewB.reviewToken,
+        },
+        storeOptions,
+      ).ok,
+    ).toBe(true);
+    const stale = importWorkflowBundle(
+      {
+        content: contentA,
+        format: "json",
+        expectedHash: expectedHash ?? "missing",
+        reviewToken: previewA.reviewToken,
+      },
+      storeOptions,
+    );
+
+    expect(stale).toMatchObject({
+      ok: false,
+      issues: [{ message: expect.stringContaining("changed since preview") }],
+    });
+    const stored = listBundledKnowledgeFoundations(storeOptions).records.find(
+      (record) => record.treeId === "acme.preview-knowledge",
+    );
+    expect(stored?.foundation.snippets[0]?.text).toBe("writer B");
+    deleteEnterpriseWorkflowTree("acme.preview-knowledge", storeOptions);
+  });
+
   it("persists foundations, registers them in-memory, and upserts trees", () => {
     const content = serializeWorkflowBundle(makeBundle(), "json");
     clearEnterpriseKnowledgeFoundations();
@@ -453,7 +916,7 @@ describe("workflow bundle import", () => {
     deleteEnterpriseWorkflowTree("acme.evolving", storeOptions);
   });
 
-  it("prunes a detached foundation when a plain tree import drops its reference", () => {
+  it("retains bundle content across plain tree edits but activates only current references", () => {
     clearBundleKnowledgeFoundations();
     importWorkflowBundle(
       { content: serializeWorkflowBundle(makeBundle(), "json"), format: "json" },
@@ -475,12 +938,24 @@ describe("workflow bundle import", () => {
       storeOptions,
     );
     expect(result.ok).toBe(true);
-    // The detached foundation is gone from the store and the live registry, so it
-    // cannot leak into unrelated runs whose allow-list is empty (query all).
-    expect(listBundledKnowledgeFoundations(storeOptions).records).toEqual([]);
+    // A definition-only save must not destroy the only persisted copy, but the
+    // loader keeps detached content out of the live query registry.
+    expect(
+      listBundledKnowledgeFoundations(storeOptions).records.map(({ foundation }) => foundation.id),
+    ).toEqual(["acme.kb"]);
     expect(listEnterpriseKnowledgeFoundationIds()).not.toContain("acme.kb");
 
-    deleteEnterpriseWorkflowTree("acme.imported", storeOptions);
+    // Re-adding the reference with another plain edit makes the retained content
+    // usable again without requiring a second bundle import.
+    const restored = importWorkflowTreeContent(
+      { content: JSON.stringify(makeBundle().trees[0]), format: "json" },
+      storeOptions,
+    );
+    expect(restored.ok).toBe(true);
+    expect(listEnterpriseKnowledgeFoundationIds()).toContain("acme.kb");
+
+    expect(removeImportedWorkflowTree("acme.imported", storeOptions)).toBe(true);
+    expect(listBundledKnowledgeFoundations(storeOptions).records).toEqual([]);
   });
 
   it("derives requiredTools from the tree, ignoring a stale stored manifest", () => {

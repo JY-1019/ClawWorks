@@ -1,7 +1,9 @@
 // Plugin approval tests cover requested/resolved plugin approval events,
 // requester visibility, broadcast behavior, and approval manager integration.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExecApprovalForwarder } from "../../infra/exec-approval-forwarder.js";
 import type { PluginApprovalRequestPayload } from "../../infra/plugin-approvals.js";
+import { createDeferred } from "../../test-utils/deferred.js";
 import { ExecApprovalManager } from "../exec-approval-manager.js";
 import { createPluginApprovalHandlers } from "./plugin-approval.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
@@ -34,6 +36,7 @@ function createClient(
     displayName?: string;
     deviceId?: string;
     scopes?: string[];
+    approvalRuntime?: boolean;
   } = {},
 ): GatewayRequestHandlerOptions["client"] {
   const connect: Record<string, unknown> = {
@@ -51,7 +54,17 @@ function createClient(
   return {
     connId: params.connId ?? "conn-test-client",
     connect,
+    ...(params.approvalRuntime ? { internal: { approvalRuntime: true } } : {}),
   } as unknown as GatewayRequestHandlerOptions["client"];
+}
+
+function createForwarder(overrides: Partial<ExecApprovalForwarder> = {}): ExecApprovalForwarder {
+  return {
+    handleRequested: vi.fn(async () => false),
+    handleResolved: vi.fn(async () => {}),
+    stop: vi.fn(),
+    ...overrides,
+  };
 }
 
 function createMockOptions(
@@ -460,6 +473,126 @@ describe("createPluginApprovalHandlers", () => {
       manager.resolve(approvalId, "deny");
       await handlerPromise;
     });
+
+    it("denies an approval-runtime request aborted before acceptance", async () => {
+      const delivery = createDeferred<boolean>();
+      const handlePluginApprovalRequested = vi.fn(() => delivery.promise);
+      const handlePluginApprovalResolved = vi.fn(async () => {});
+      const handlers = createPluginApprovalHandlers(manager, {
+        forwarder: createForwarder({
+          handlePluginApprovalRequested,
+          handlePluginApprovalResolved,
+        }),
+      });
+      const controller = new AbortController();
+      const opts = createMockOptions(
+        "plugin.approval.request",
+        {
+          title: "T",
+          description: "D",
+          allowedDecisions: ["allow-once"],
+          twoPhase: true,
+        },
+        {
+          client: createClient({ approvalRuntime: true }),
+          signal: controller.signal,
+        },
+      );
+
+      const requestPromise = handlers["plugin.approval.request"](opts);
+      await vi.waitFor(() => expect(handlePluginApprovalRequested).toHaveBeenCalledOnce());
+      const record = manager.listPendingRecords()[0];
+      expect(record).toBeDefined();
+
+      controller.abort();
+      await vi.waitFor(() => expect(manager.getSnapshot(record.id)?.decision).toBe("deny"));
+      expect(manager.getSnapshot(record.id)?.resolvedBy).toBe("request-aborted");
+      expect(opts.respond).not.toHaveBeenCalled();
+      expect(handlePluginApprovalResolved).not.toHaveBeenCalled();
+
+      delivery.resolve(true);
+      await requestPromise;
+      expect(handlePluginApprovalResolved).toHaveBeenCalledOnce();
+      expect(handlePluginApprovalResolved).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: record.id,
+          decision: "deny",
+          resolvedBy: "request-aborted",
+        }),
+      );
+      expect(
+        Array.from((opts.context.broadcast as unknown as MockCallSource).mock.calls).map(
+          (call) => call[0],
+        ),
+      ).toEqual(["plugin.approval.requested", "plugin.approval.resolved"]);
+    });
+
+    it("keeps a request pending when its runtime connection closes after acceptance", async () => {
+      const handlers = createPluginApprovalHandlers(manager);
+      const controller = new AbortController();
+      const requestOpts = createMockOptions(
+        "plugin.approval.request",
+        { title: "T", description: "D", twoPhase: true },
+        {
+          respond: vi.fn(),
+          client: createClient({ approvalRuntime: true }),
+          signal: controller.signal,
+        },
+      );
+
+      const requestPromise = handlers["plugin.approval.request"](requestOpts);
+      const approvalId = await waitForAcceptedApproval(requestOpts.respond);
+      controller.abort();
+      await Promise.resolve();
+      expect(manager.getSnapshot(approvalId)?.decision).toBeUndefined();
+
+      const resolveOpts = createMockOptions(
+        "plugin.approval.resolve",
+        { id: approvalId, decision: "allow-once" },
+        { client: createClient(), context: requestOpts.context },
+      );
+      await handlers["plugin.approval.resolve"](resolveOpts);
+      await requestPromise;
+      expect(manager.getSnapshot(approvalId)?.decision).toBe("allow-once");
+      expect(
+        Array.from((requestOpts.context.broadcast as unknown as MockCallSource).mock.calls).filter(
+          (call) => call[0] === "plugin.approval.resolved",
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("waits for request forwarding before forwarding a fast UI resolution", async () => {
+      const delivery = createDeferred<boolean>();
+      const handlePluginApprovalResolved = vi.fn(async () => {});
+      const handlers = createPluginApprovalHandlers(manager, {
+        forwarder: createForwarder({
+          handlePluginApprovalRequested: vi.fn(() => delivery.promise),
+          handlePluginApprovalResolved,
+        }),
+      });
+      const requestOpts = createMockOptions("plugin.approval.request", {
+        title: "T",
+        description: "D",
+        twoPhase: true,
+      });
+
+      const requestPromise = handlers["plugin.approval.request"](requestOpts);
+      await vi.waitFor(() => expect(manager.listPendingRecords()).toHaveLength(1));
+      const approvalId = manager.listPendingRecords()[0].id;
+      const resolvePromise = handlers["plugin.approval.resolve"](
+        createMockOptions(
+          "plugin.approval.resolve",
+          { id: approvalId, decision: "deny" },
+          { client: requestOpts.client, context: requestOpts.context },
+        ),
+      );
+
+      await vi.waitFor(() => expect(manager.getSnapshot(approvalId)?.decision).toBe("deny"));
+      expect(handlePluginApprovalResolved).not.toHaveBeenCalled();
+      delivery.resolve(true);
+      await Promise.all([requestPromise, resolvePromise]);
+      expect(handlePluginApprovalResolved).toHaveBeenCalledOnce();
+    });
   });
 
   describe("plugin.approval.list", () => {
@@ -578,6 +711,35 @@ describe("createPluginApprovalHandlers", () => {
       expect(result.id).toBe(record.id);
       expect(result.decision).toBe("allow-once");
     });
+
+    it("denies a pending approval when its trusted runtime wait is aborted", async () => {
+      const handlePluginApprovalResolved = vi.fn(async () => {});
+      const handlers = createPluginApprovalHandlers(manager, {
+        forwarder: createForwarder({ handlePluginApprovalResolved }),
+      });
+      const record = registerApproval(manager, {
+        allowedDecisions: ["allow-once"],
+      });
+      const controller = new AbortController();
+      const opts = createMockOptions(
+        "plugin.approval.waitDecision",
+        { id: record.id },
+        {
+          client: createClient({ approvalRuntime: true }),
+          signal: controller.signal,
+        },
+      );
+
+      const waitPromise = handlers["plugin.approval.waitDecision"](opts);
+      controller.abort();
+      await waitPromise;
+
+      expect(opts.respond).not.toHaveBeenCalled();
+      expect(manager.getSnapshot(record.id)?.decision).toBe("deny");
+      expect(manager.getSnapshot(record.id)?.resolvedBy).toBe("request-aborted");
+      expect(handlePluginApprovalResolved).toHaveBeenCalledOnce();
+      expect(broadcastCall(opts).event).toBe("plugin.approval.resolved");
+    });
   });
 
   describe("plugin.approval.resolve", () => {
@@ -658,6 +820,77 @@ describe("createPluginApprovalHandlers", () => {
       expect(error.code).toBe("INVALID_REQUEST");
       expect(error.message).toBe("unknown or expired approval id");
       expect(manager.getSnapshot(hidden.id)?.decision).toBeUndefined();
+    });
+
+    it("lets the trusted runtime deny only its exact device-bound approval", async () => {
+      const handlers = createPluginApprovalHandlers(manager);
+      const record = registerApproval(manager, {
+        allowedDecisions: ["allow-once"],
+      });
+      record.requestedByDeviceId = "device-owner";
+
+      const opts = createMockOptions(
+        "plugin.approval.resolve",
+        { id: record.id, decision: "deny" },
+        {
+          client: createClient({
+            approvalRuntime: true,
+            deviceId: "device-owner",
+            scopes: ["operator.approvals"],
+          }),
+        },
+      );
+      await handlers["plugin.approval.resolve"](opts);
+
+      expect(opts.respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+      expect(manager.getSnapshot(record.id)?.decision).toBe("deny");
+      expect(manager.getSnapshot(record.id)?.resolvedBy).toBe("request-aborted");
+    });
+
+    it("hides runtime cancellation from a different requester device", async () => {
+      const handlers = createPluginApprovalHandlers(manager);
+      const record = registerApproval(manager);
+      record.requestedByDeviceId = "device-other";
+
+      const opts = createMockOptions(
+        "plugin.approval.resolve",
+        { id: record.id, decision: "deny" },
+        {
+          client: createClient({
+            approvalRuntime: true,
+            deviceId: "device-owner",
+            scopes: ["operator.approvals"],
+          }),
+        },
+      );
+      await handlers["plugin.approval.resolve"](opts);
+
+      const error = expectResponseRejected(opts.respond);
+      expect(error.message).toBe("unknown or expired approval id");
+      expect(manager.getSnapshot(record.id)?.decision).toBeUndefined();
+    });
+
+    it("rejects non-deny decisions from the approval runtime", async () => {
+      const handlers = createPluginApprovalHandlers(manager);
+      const record = registerApproval(manager);
+      record.requestedByDeviceId = "device-owner";
+
+      const opts = createMockOptions(
+        "plugin.approval.resolve",
+        { id: record.id, decision: "allow-once" },
+        {
+          client: createClient({
+            approvalRuntime: true,
+            deviceId: "device-owner",
+            scopes: ["operator.approvals"],
+          }),
+        },
+      );
+      await handlers["plugin.approval.resolve"](opts);
+
+      const error = expectResponseRejected(opts.respond);
+      expect(error.message).toBe("approval runtime may only cancel plugin approvals with deny");
+      expect(manager.getSnapshot(record.id)?.decision).toBeUndefined();
     });
 
     it("rejects decisions outside plugin approval allowed decisions", async () => {

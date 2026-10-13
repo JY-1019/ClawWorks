@@ -60,6 +60,7 @@ import {
 import {
   applySettings as applySettingsInternal,
   applyLocalUserIdentity as applyLocalUserIdentityInternal,
+  hasOperatorAdminAccess,
   loadCron as loadCronInternal,
   loadOverview as loadOverviewInternal,
   setTab as setTabInternal,
@@ -114,6 +115,7 @@ import {
   type EnterpriseChatStep,
   type EnterpriseMode,
 } from "./controllers/enterprise-chat.ts";
+import { reconcileEnterpriseEditAccess } from "./controllers/enterprise.ts";
 import {
   dismissExecApprovalPrompt,
   isStaleApprovalResolutionError,
@@ -490,6 +492,11 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseLoading = false;
   @state() enterpriseRuns: EnterpriseRunSummary[] = [];
   @state() enterpriseTrees: EnterpriseTreeSummary[] = [];
+  @state() enterpriseHistoryOnlyTreeIds: string[] = [];
+  @state() enterpriseListErrors: import("./controllers/enterprise.js").EnterpriseListErrors = {
+    runs: undefined,
+    trees: undefined,
+  };
   @state() enterpriseImportErrors: EnterpriseTreesListResult["importErrors"] = [];
   @state() enterpriseStoreError: string | null = null;
   @state() enterpriseSelectedExecutionId: string | null = null;
@@ -498,6 +505,8 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseChatMode: EnterpriseMode | null = null;
   @state() enterpriseChatModeBusy = false;
   @state() enterpriseChatModeError: string | null = null;
+  @state() enterpriseChatResumeBusy = false;
+  @state() enterpriseChatResumeError: string | null = null;
   @state() enterpriseChatRun: EnterpriseRunDetail | null = null;
   @state() enterpriseChatRunTree: EnterpriseTreeDetail | null = null;
   @state() enterpriseChatStep: EnterpriseChatStep | null = null;
@@ -514,20 +523,34 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseNodeObjectsEntity: string | null = null;
   @state() enterpriseNodeObjects: EnterpriseOntologyObject[] = [];
   @state() enterpriseNodeObjectsLoading = false;
+  @state() enterpriseNodeObjectsError: string | null = null;
   @state() enterpriseTreeEditing = false;
+  @state() enterpriseVisualEditOriginal: EnterpriseTreeDetail | null = null;
+  @state() enterpriseTreeDraft: import("./controllers/enterprise.js").EnterpriseTreeDraft | null =
+    null;
   @state() enterpriseTreeEditTreeId: string | null = null;
   @state() enterpriseTreeEditRevision: number | null = null;
+  @state()
+  enterpriseTreeEditGuard: import("./controllers/enterprise.js").EnterpriseTreeImportGuard = null;
   @state() enterpriseTreeEditContent = "";
   @state()
   enterpriseTreeEditFormat: import("./controllers/enterprise.js").EnterpriseTreeEditFormat = "yaml";
   @state() enterpriseTreeSaving = false;
   @state() enterpriseTreeSaveIssues: EnterpriseTreeImportIssue[] | null = null;
+  @state() enterpriseTreeWarnings: EnterpriseTreeImportIssue[] | null = null;
   @state() enterpriseTreeSaveError: string | null = null;
   @state() enterpriseTreeConfirm:
     | import("./controllers/enterprise.js").EnterpriseTreeConfirm
     | null = null;
+  @state() enterpriseBundleDraft:
+    | import("./controllers/enterprise.js").EnterpriseBundleDraft
+    | null = null;
+  @state() enterpriseBundleStatus:
+    | import("./controllers/enterprise.js").EnterpriseBundleStatus
+    | null = null;
   @state() enterpriseTreeVersions: EnterpriseTreeVersionSummary[] = [];
   @state() enterpriseTreeVersionsLoading = false;
+  @state() enterpriseTreeVersionsError: string | null = null;
   @state() enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null =
     null;
   @state() enterpriseBindingPicker:
@@ -536,7 +559,9 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseBindingDetail:
     | import("./controllers/enterprise.js").EnterpriseBindingDetail
     | null = null;
-  @state() enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null = null;
+  @state() enterpriseGuidanceDraft:
+    | import("./controllers/enterprise.js").EnterpriseGuidanceDraft
+    | null = null;
   @state() enterpriseOntologyDraft:
     | import("./controllers/enterprise.js").EnterpriseOntologyDraft
     | null = null;
@@ -546,9 +571,9 @@ export class OpenClawApp extends LitElement {
     "unloaded";
   @state() enterpriseCatalogErrors: import("./controllers/enterprise.js").EnterpriseCatalogErrors =
     {
-      tools: null,
-      skills: null,
-      foundations: null,
+      tools: undefined,
+      skills: undefined,
+      foundations: undefined,
     };
   @state() enterpriseCatalogAgentId: string | null = null;
   @state() enterpriseToolGroups: ToolsCatalogResult["groups"] = [];
@@ -1049,6 +1074,12 @@ export class OpenClawApp extends LitElement {
   protected override updated(changed: Map<PropertyKey, unknown>) {
     handleUpdated(this as unknown as Parameters<typeof handleUpdated>[0], changed);
     refreshActiveFloatingTooltip(this);
+    if (changed.has("hello") || (changed.has("connected") && !this.connected)) {
+      reconcileEnterpriseEditAccess(
+        this,
+        this.connected && this.hello ? hasOperatorAdminAccess(this.hello.auth ?? null) : false,
+      );
+    }
     // The mode the gateway enforces is only knowable once connected. Load the
     // session's route at the same time: it baselines which run is already known,
     // so the first ungoverned turn after a reconnect cannot show a stale route.

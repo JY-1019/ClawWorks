@@ -23,7 +23,15 @@
  * or to drop the declaration.
  */
 import { isToolAllowedByPolicyName } from "../agents/tool-policy-match.js";
+import { expressionTypeOf } from "./ontology-expression.js";
+import {
+  collectTreeRequiredProperties,
+  mergeOntologyPath,
+  type OntologyPathScope,
+} from "./ontology-runtime.js";
 import type {
+  OntologyActionParameter,
+  OntologyLinkEffect,
   OntologyObjectEffect,
   WorkflowNodeDefinition,
   WorkflowTreeDefinition,
@@ -79,6 +87,20 @@ function pathNames(path: Path, toolName: string): boolean {
   });
 }
 
+/**
+ * The knowledge gate, mirroring foundationAllowedByPath in knowledge.ts: each
+ * level that declares a non-empty list is an independent narrowing, so a path
+ * admits an id only when every declaring node on it names that id. The
+ * existential half of the explicit-grant rule needs no separate pass here — the
+ * node under inspection names the id itself, so some level always does.
+ */
+function pathAdmitsFoundation(path: Path, foundationId: string): boolean {
+  return path.every((node) => {
+    const declared = node.ontology?.knowledgeFoundations;
+    return !declared?.length || declared.includes(foundationId);
+  });
+}
+
 /** The ontology write opt-in: literal, and existential over the path. */
 function pathOptsIntoWrites(path: Path): boolean {
   return path.some((node) =>
@@ -114,39 +136,76 @@ function executablePaths(path: Path): Path[] {
   return children.flatMap((child) => executablePaths([...path, child]));
 }
 
-/** Primary key per object type declared on these nodes; null when it has none. */
-function primaryKeys(nodes: readonly WorkflowNodeDefinition[]): Map<string, string | null> {
-  const keys = new Map<string, string | null>();
-  for (const node of nodes) {
-    for (const entity of node.ontology?.entities ?? []) {
-      const key = entity.properties?.find((property) => property.primaryKey);
-      keys.set(entity.id, key?.id ?? null);
-    }
+function linkEffectResolves(
+  scope: OntologyPathScope,
+  effect: OntologyLinkEffect,
+  parameters: ReadonlyMap<string, OntologyActionParameter>,
+): boolean {
+  const relationship = scope.relationships.get(effect.relationship);
+  if (!relationship) {
+    return false;
   }
-  return keys;
+  const fromKey = scope.entities
+    .get(relationship.from)
+    ?.properties?.find((property) => property.primaryKey);
+  const toKey = scope.entities
+    .get(relationship.to)
+    ?.properties?.find((property) => property.primaryKey);
+  const fromParameterId = effect.from ?? fromKey?.id;
+  const toParameterId = effect.to ?? toKey?.id;
+  if (relationship.from === relationship.to && fromParameterId === toParameterId) {
+    return false;
+  }
+  return (["from", "to"] as const).every((side) => {
+    const key = scope.entities
+      .get(relationship[side])
+      ?.properties?.find((property) => property.primaryKey);
+    const parameter = key ? parameters.get(effect[side] ?? key.id) : undefined;
+    return Boolean(
+      key &&
+      key.type !== "boolean" &&
+      parameter &&
+      expressionTypeOf(parameter.type) === expressionTypeOf(key.type),
+    );
+  });
 }
 
 /** Collect every unreachable-capability warning in one tree. */
 export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): WorkflowTreeWarning[] {
   const warnings: WorkflowTreeWarning[] = [];
   const explicit = tree.capabilityGrants === "explicit";
+  const treeNodes = executablePaths([tree.root]).flat();
+  const treeEntities = mergeOntologyPath(treeNodes).entities;
+  const treeRequired = collectTreeRequiredProperties(tree);
 
   const visit = (node: WorkflowNodeDefinition, ancestors: Path) => {
     const path: Path = [...ancestors, node];
     const ontology = node.ontology;
     const paths = executablePaths(path);
-    // Object types reachable from here: the scope chain above plus whatever the
-    // subtree adds, since the active path runs through one of those leaves.
-    const keys = primaryKeys(paths.flat());
+    const scopedPaths = paths.map((candidate) => ({
+      path: candidate,
+      scope: mergeOntologyPath(candidate),
+    }));
 
     const actions = ontology?.actions ?? [];
+    const pathsByAction = new Map(
+      actions.map((action) => [
+        action,
+        scopedPaths.filter(({ scope }) => scope.actions.get(action.id) === action),
+      ]),
+    );
     // Only the actions that go through invoke_action need the write opt-in. An
     // outward action IS the tool call the model makes, so requiring invoke_action
     // for it would demand a grant it never uses.
-    const localActions = actions.filter((action) =>
-      (action.effects ?? []).some((effect) => effect.kind !== "call"),
-    );
-    if (localActions.length > 0 && !paths.some((candidate) => canWrite(candidate, explicit))) {
+    const localActions = actions.filter((action) => {
+      const actionPaths = pathsByAction.get(action) ?? [];
+      return (
+        actionPaths.length > 0 &&
+        (action.effects ?? []).some((effect) => effect.kind !== "call") &&
+        !actionPaths.some((candidate) => canWrite(candidate.path, explicit))
+      );
+    });
+    if (localActions.length > 0) {
       warnings.push({
         path: `node.${node.id}.ontology.actions`,
         message:
@@ -160,21 +219,24 @@ export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): Workf
     }
 
     for (const action of actions) {
-      // The effects ARE the write scope (ontology-actions.ts): invoke_action
-      // refuses an action that declares none. An outward `call` is not one of them
-      // — it happens in another system, and the checks below (primaryKey, an
-      // identifying parameter) address a row this action never touches.
-      // Narrowed by the field, not the kind: excluding "read" and "call" would
-      // leave the graph effects, and every check below reads `effect.entity`.
-      const writes = (action.effects ?? [])
+      const actionPaths = pathsByAction.get(action) ?? [];
+      if (actionPaths.length === 0) {
+        continue;
+      }
+      const writablePaths = actionPaths.filter((candidate) => canWrite(candidate.path, explicit));
+      const candidatePaths = writablePaths.length > 0 ? writablePaths : actionPaths;
+      const effects = action.effects ?? [];
+      const writes = effects
         .filter((effect): effect is OntologyObjectEffect => "entity" in effect)
         .filter((effect) => effect.kind !== "read");
-      // A graph effect is a real effect too, so an action carrying one is not the
-      // "declares nothing it can do" case this warning is about.
-      const nonObjectEffect = (action.effects ?? []).some(
+      const linkEffects = effects.filter(
+        (effect): effect is OntologyLinkEffect =>
+          effect.kind === "link" || effect.kind === "unlink",
+      );
+      const hasOtherEffect = effects.some(
         (effect) => effect.kind !== "read" && !("entity" in effect),
       );
-      if (writes.length === 0 && !nonObjectEffect) {
+      if (writes.length === 0 && !hasOtherEffect) {
         warnings.push({
           path: `node.${node.id}.ontology.actions.${action.id}.effects`,
           message:
@@ -183,47 +245,156 @@ export function collectWorkflowTreeWarnings(tree: WorkflowTreeDefinition): Workf
             `effect, or describe the work in the step's description instead of as an action.`,
         });
       }
-      const parameterIds = new Set((action.parameters ?? []).map((parameter) => parameter.id));
-      // EVERY write kind, not just create: planEffect resolves and validates the
-      // target's primary key before it branches on the kind, so an update or a
-      // delete without it fails exactly as a create does.
-      for (const effect of writes) {
-        if (!keys.has(effect.entity)) {
-          continue; // Declared on a sibling branch; the schema checks effects tree-wide.
+      const parameters = new Map(
+        (action.parameters ?? []).map((parameter) => [parameter.id, parameter]),
+      );
+      if (parameters.size !== (action.parameters ?? []).length) {
+        warnings.push({
+          path: `node.${node.id}.ontology.actions.${action.id}.parameters`,
+          message: `action "${action.id}" on step "${node.id}" declares a parameter id more than once, so every invocation fails validation. Keep one declaration per parameter id.`,
+        });
+      }
+      for (const effect of linkEffects) {
+        if (
+          !candidatePaths.some((candidate) =>
+            linkEffectResolves(candidate.scope, effect, parameters),
+          )
+        ) {
+          warnings.push({
+            path: `node.${node.id}.ontology.actions.${action.id}.effects`,
+            message:
+              `action "${action.id}" on step "${node.id}" cannot resolve both ends of relationship ` +
+              `"${effect.relationship}" on any executable write path. Keep the relationship and both keyed ` +
+              `object types on the same path, and declare distinct string/number endpoint parameters when needed.`,
+          });
         }
-        const primaryKey = keys.get(effect.entity) ?? null;
-        if (primaryKey === null) {
+      }
+      // EVERY write kind, not just create: planEffect resolves and validates the
+      // target's primary key before it branches on the kind.
+      for (const effect of writes) {
+        const entityPaths = candidatePaths.filter((candidate) =>
+          candidate.scope.entities.has(effect.entity),
+        );
+        if (entityPaths.length === 0) {
+          if (writablePaths.length === 0 || !treeEntities.has(effect.entity)) {
+            continue; // The schema reports an object type undeclared tree-wide.
+          }
           warnings.push({
             path: `node.${node.id}.ontology.actions.${action.id}.effects`,
             message:
               `action "${action.id}" on step "${node.id}" ${effect.kind}s a "${effect.entity}", but ` +
-              `that object type declares no primaryKey, so no action can address an instance of it ` +
-              `and every invocation fails. Give "${effect.entity}" a primaryKey property.`,
+              `no executable step under it both allows ontology writes and has that object type in scope, ` +
+              `so every invocation fails. Declare "${effect.entity}" on the same root-to-leaf path as ` +
+              `the write grant, or move the action to a step where the type is in scope.`,
           });
           continue;
         }
-        if (!parameterIds.has(primaryKey)) {
+        const primaryKey = entityPaths
+          .map((candidate) =>
+            candidate.scope.entities
+              .get(effect.entity)
+              ?.properties?.find((property) => property.primaryKey),
+          )
+          .find((key) => key !== undefined);
+        if (!primaryKey) {
+          warnings.push({
+            path: `node.${node.id}.ontology.actions.${action.id}.effects`,
+            message:
+              `action "${action.id}" on step "${node.id}" ${effect.kind}s a "${effect.entity}", but ` +
+              `no executable step that can perform the write sees that object type with a primaryKey, ` +
+              `so every invocation fails. Give "${effect.entity}" a primaryKey property on the same ` +
+              `root-to-leaf path as the write grant.`,
+          });
+          continue;
+        }
+        const parameter = parameters.get(primaryKey.id);
+        if (!parameter) {
           warnings.push({
             path: `node.${node.id}.ontology.actions.${action.id}.parameters`,
             message:
               `action "${action.id}" on step "${node.id}" ${effect.kind}s a "${effect.entity}" but ` +
-              `takes no "${primaryKey}" parameter, so no call can name the object it writes and ` +
-              `every invocation fails validation. Add { id: ${primaryKey}, type: id, required: true }.`,
+              `takes no "${primaryKey.id}" parameter, so no call can name the object it writes and ` +
+              `every invocation fails validation. Add { id: ${primaryKey.id}, type: ${primaryKey.type}, required: true }.`,
           });
+        } else if (
+          primaryKey.type === "boolean" ||
+          expressionTypeOf(parameter.type) !== expressionTypeOf(primaryKey.type)
+        ) {
+          warnings.push({
+            path: `node.${node.id}.ontology.actions.${action.id}.parameters`,
+            message:
+              `action "${action.id}" on step "${node.id}" cannot use parameter "${primaryKey.id}" ` +
+              `(${parameter.type}) as the ${primaryKey.type} primaryKey of "${effect.entity}". ` +
+              `Object identities must be strings or numbers and the parameter must match the property type.`,
+          });
+        }
+        if (effect.kind === "create") {
+          const required = treeRequired.get(effect.entity) ?? new Set<string>();
+          const canSupplyRequired = entityPaths.some((candidate) => {
+            const properties = new Map(
+              (candidate.scope.entities.get(effect.entity)?.properties ?? []).map((property) => [
+                property.id,
+                property.type,
+              ]),
+            );
+            return [...required].every((id) => {
+              const propertyType = properties.get(id);
+              const requiredParameter = parameters.get(id);
+              return Boolean(
+                propertyType &&
+                requiredParameter &&
+                expressionTypeOf(requiredParameter.type) === expressionTypeOf(propertyType),
+              );
+            });
+          });
+          if (!canSupplyRequired) {
+            warnings.push({
+              path: `node.${node.id}.ontology.actions.${action.id}.parameters`,
+              message:
+                `action "${action.id}" on step "${node.id}" cannot supply every required property of ` +
+                `"${effect.entity}" on any executable write path. Declare compatible parameters for its required properties.`,
+            });
+          }
         }
       }
     }
 
-    if (
-      (ontology?.knowledgeFoundations?.length ?? 0) > 0 &&
-      !paths.some((candidate) => canUseTool(candidate, "knowledge_search", explicit))
-    ) {
-      warnings.push({
-        path: `node.${node.id}.ontology.knowledgeFoundations`,
-        message:
-          `step "${node.id}" attaches a knowledge foundation but no step that runs under it can ` +
-          `reach knowledge_search, so nothing there can retrieve from it.`,
-      });
+    const attached = ontology?.knowledgeFoundations ?? [];
+    if (attached.length > 0) {
+      const searchablePaths = paths.filter((candidate) =>
+        canUseTool(candidate, "knowledge_search", explicit),
+      );
+      // Ordered, not both: reaching the tool is the prerequisite for the
+      // allow-list to mean anything, so naming two fixes for one declaration
+      // would read as two problems. Granting the tool re-runs these checks and
+      // surfaces the scope half if it is still wrong.
+      if (searchablePaths.length === 0) {
+        warnings.push({
+          path: `node.${node.id}.ontology.knowledgeFoundations`,
+          message:
+            `step "${node.id}" attaches a knowledge foundation but no step that runs under it can ` +
+            `reach knowledge_search, so nothing there can retrieve from it.`,
+        });
+      } else {
+        const unreachable = [...new Set(attached)].filter(
+          (foundationId) =>
+            !searchablePaths.some((candidate) => pathAdmitsFoundation(candidate, foundationId)),
+        );
+        if (unreachable.length > 0) {
+          // The allow-list INTERSECTS down the path, so an ancestor that names other
+          // sources silently excludes each unreachable attachment. A reachable
+          // sibling used to hide that dead source because the check asked whether
+          // any attachment worked instead of checking every declared foundation.
+          warnings.push({
+            path: `node.${node.id}.ontology.knowledgeFoundations`,
+            message:
+              `step "${node.id}" attaches ${unreachable.map((id) => `"${id}"`).join(", ")}, but no ` +
+              `step that runs under it can retrieve ${unreachable.length === 1 ? "that source" : "those sources"} — ` +
+              `knowledge allow-lists intersect down the path. Add ${unreachable.length === 1 ? "it" : "them"} ` +
+              `to every restricting ancestor's ontology.knowledgeFoundations, or remove the unreachable attachment.`,
+          });
+        }
+      }
     }
 
     for (const child of node.children ?? []) {

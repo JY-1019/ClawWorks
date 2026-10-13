@@ -158,6 +158,15 @@ describe("enterprise.trees.get", () => {
     });
   });
 
+  it("returns authoring warnings computed from the same tree snapshot", () => {
+    const { payload } = invoke({ treeId: "test.ontology" });
+    const { warnings } = payload as { warnings?: Array<{ path: string; message: string }> };
+
+    expect(warnings?.map((warning) => warning.path)).toEqual([
+      "node.root.child.ontology.actions.act.effects",
+    ]);
+  });
+
   it("returns cloned arrays so payload mutation cannot corrupt the registry", () => {
     type FetchedTree = { match: { keywords: string[] }; nodes: Array<Record<string, unknown>> };
     const fetchTree = (): FetchedTree =>
@@ -190,18 +199,30 @@ describe("enterprise.trees.get", () => {
   it("surfaces an import load failure for a failed imported-only tree", () => {
     const { ok, payload } = invoke({ treeId: "corrupt.imported" });
     expect(ok).toBe(true);
-    const result = payload as { tree: unknown; importError?: string };
+    const result = payload as {
+      tree: unknown;
+      importError?: string;
+      importErrorFingerprint?: string;
+    };
     expect(result.tree).toBeNull();
     expect(result.importError).toBeTruthy();
+    expect(result.importErrorFingerprint).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("surfaces the import failure of a corrupt override even though a built-in is returned", () => {
     const { ok, payload } = invoke({ treeId: "clawworks.system" });
     expect(ok).toBe(true);
-    const result = payload as { tree: { source: string } | null; importError?: string };
+    const result = payload as {
+      tree: { source: string } | null;
+      importError?: string;
+      importErrorFingerprint?: string;
+      warnings?: unknown;
+    };
     // The stale built-in is returned, but the failed override must not be hidden.
     expect(result.tree?.source).toBe("builtin");
     expect(result.importError).toBeTruthy();
+    expect(result.importErrorFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.warnings).toBeUndefined();
   });
 
   it("rejects invalid params", () => {

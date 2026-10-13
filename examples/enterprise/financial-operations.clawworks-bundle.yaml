@@ -10,24 +10,24 @@
 # WHY THIS IS THE ONLY EXAMPLE
 # ----------------------------
 # There used to be six, and each demonstrated one axis with the others switched
-# off — a tree with seeded objects and no knowledge, a bundle with knowledge and
+# off — a tree with preloaded objects and no knowledge, a bundle with knowledge and
 # no objects, a big tree nobody could run, a toy that granted one MCP server to
 # one step. Nothing showed the case an operator actually has: a regulated
-# operation where thirty steps, four MCP servers, six corpora and nine ontology
+# operation where thirty steps, five MCP servers, six corpora and ten ontology
 # writes all constrain each other at once, and where getting one binding wrong is
 # a governance hole rather than a typo. That is what this file is.
 #
 # WHAT IT GOVERNS, AND WHERE TO LOOK
 # ----------------------------------
 #   route finding    46 nodes (30 of them executable steps), depth 5, four
-#                    domains seeded with confusable siblings
+#                    domains with confusable siblings
 #                    (finops.risk.monitoring.alert-triage vs
 #                    finops.claims.intake.triage, finops.risk.underwriting.decision
 #                    vs finops.claims.adjudication.decision, and four more). A
 #                    correct route is a handful of nodes; a confused planner drags
 #                    in a whole domain.
 #   tools            deny-by-default: `capabilityGrants: explicit`. Every step
-#                    lists what it may call, and the nine steps that write name
+#                    lists what it may call, and the ten steps that write name
 #                    `invoke_action` LITERALLY — that is the ontology write opt-in,
 #                    and it is existential over the root→step path, which is why
 #                    the root grants no tools at all (see the root comment).
@@ -49,7 +49,7 @@
 #   skills           two bundled skills, declared on four steps, each skill in two
 #                    different domains. Under explicit grants the run's skill
 #                    catalog is narrowed to whatever the ROUTE reaches.
-#   role prompts     `guidance` on fourteen steps — every one of the nine that
+#   role prompts     `guidance` on fifteen steps — every one of the ten that
 #                    writes, plus the five where two sources or two sibling steps
 #                    could disagree. It is the field an operator types into the
 #                    node inspector, and the one thing here that GRANTS nothing:
@@ -67,7 +67,7 @@
 # `acme-filing` and `acme-core-banking`; until then the MCP tab reports them
 # unregistered and the steps that attach them fall closed.
 #
-# There are no seeded customers or accounts here, and that is the point. Core
+# There are no preloaded customers or accounts here, and that is the point. Core
 # banking owns them, so this work-map declares what a customer IS and which
 # operations a step may perform on one, and reads the values from the system that
 # holds them. The corpora and the two skills still resolve on a stock install.
@@ -135,7 +135,7 @@ trees:
         # or the step's own grant is refused by its own root. (2) The ontology
         # write opt-in is EXISTENTIAL over the root→step path (runtime.ts
         # explicitlyAllowsOntologyWrites): naming `invoke_action` here to satisfy
-        # rule 1 would hand write consent to all 30 steps, including the 21 that
+        # rule 1 would hand write consent to all 30 steps, including those that
         # must never write. Under explicit grants there is a third option — grant
         # nothing here and let each step name what it needs — so the root carries
         # only what must apply everywhere.
@@ -320,7 +320,8 @@ trees:
                     # get_neighbors, because the manual raises a band on UNVERIFIED
                     # evidence and the only way to that fact is the customer's own
                     # document links. A step cannot rate on evidence it cannot walk to.
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.kyc-manual]
                     expectedOutput: A rating band and the factors that produced it.
 
@@ -569,7 +570,8 @@ trees:
                   title: Triage the alert queue
                   description: Band open alerts and say which ones need an investigation opened.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.aml-policy]
                     # A declared skill names know-how the step depends on. Advisory:
                     # it reaches the model through the step digest but never widens
@@ -618,7 +620,14 @@ trees:
                       title: Review the transactions
                       description: Read the account's transactions and say which pattern the policy names.
                       ontology:
-                        allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                        allowedTools:
+                          [
+                            search_objects,
+                            get_neighbors,
+                            compute_function,
+                            knowledge_search,
+                            message,
+                          ]
                         knowledgeFoundations: [acme.aml-policy]
                         expectedOutput: The transactions that matter and the policy pattern they match.
 
@@ -630,15 +639,51 @@ trees:
                           title: Assemble the evidence
                           description: Gather the records the disposition will rest on.
                           ontology:
-                            allowedTools: [search_objects, get_neighbors, knowledge_search, message]
+                            allowedTools:
+                              [
+                                search_objects,
+                                get_neighbors,
+                                invoke_action,
+                                knowledge_search,
+                                message,
+                              ]
                             knowledgeFoundations: [acme.aml-policy, acme.privacy-standard]
-                            expectedOutput: The record ids the case rests on, with what each shows.
+                            actions:
+                              # The case is local; the alert and account evidence remain
+                              # in their systems of record. This records supplied known
+                              # metadata without inventing either external object or edge.
+                              - id: open-investigation-case
+                                title: Open the investigation case
+                                description: Record the supplied alert, status, and analyst metadata for the case file.
+                                parameters:
+                                  - { id: case-id, type: id, required: true }
+                                  - { id: alert-id, type: id, required: true }
+                                  - { id: status, type: string, required: true }
+                                  - { id: analyst, type: string }
+                                effects:
+                                  - {
+                                      entity: investigation-case,
+                                      kind: create,
+                                      description: Opens the local case file.,
+                                    }
+                            guidance: >-
+                              Open a case only from evidence actually supplied by the
+                              investigation. Record the known alert identifier and case
+                              metadata; do not fabricate alert, account, or transaction data.
+                            expectedOutput: The case id, its supplied evidence metadata, and the records it rests on.
 
                         - id: finops.risk.monitoring.investigation.case-file.disposition
                           title: Dispose of the case
                           description: Close the case or escalate it to a SAR.
                           ontology:
-                            allowedTools: [search_objects, compute_function, invoke_action, knowledge_search, message]
+                            allowedTools:
+                              [
+                                search_objects,
+                                compute_function,
+                                invoke_action,
+                                knowledge_search,
+                                message,
+                              ]
                             knowledgeFoundations: [acme.aml-policy]
                             actions:
                               - id: close-investigation
@@ -650,7 +695,11 @@ trees:
                                 preconditions:
                                   - The evidence step recorded what the disposition rests on.
                                 effects:
-                                  - { entity: investigation-case, kind: update, description: Records the outcome. }
+                                  - {
+                                      entity: investigation-case,
+                                      kind: update,
+                                      description: Records the outcome.,
+                                    }
                               # A GRAPH effect. The case is born in this workflow, so
                               # the edge back to the alert it answers is ours to write
                               # — and it is what lets get_neighbors walk from an alert
@@ -678,15 +727,16 @@ trees:
                   title: Draft the suspicious activity report
                   description: Write the SAR narrative for a case the policy says must be reported.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, invoke_action, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, invoke_action, knowledge_search, message]
                     knowledgeFoundations: [acme.aml-policy]
                     actions:
                       # The report is born in this workflow — no upstream system
                       # holds it — so this is where it comes into being, and the
                       # edge to the case that raised it is written in the same step.
-                      # A create is refused for an id that already exists
-                      # (ontology-actions.ts), which is what stops a second SAR
-                      # being drafted for one case.
+                      # A create is refused only when its `sar-id` already exists
+                      # (ontology-actions.ts). A case can produce multiple SARs, as
+                      # `case-files-sar` explicitly declares one-to-many.
                       - id: draft-sar
                         title: Write the SAR narrative
                         description: Open the report for a reportable case and write its narrative.
@@ -700,7 +750,11 @@ trees:
                         preconditions:
                           - The case is disposed as reportable.
                         effects:
-                          - { entity: sar, kind: create, description: Opens the report and records the narrative. }
+                          - {
+                              entity: sar,
+                              kind: create,
+                              description: Opens the report and records the narrative.,
+                            }
                       - id: attach-sar-to-case
                         title: Attach the report to its case
                         parameters:
@@ -884,7 +938,8 @@ trees:
                   title: Triage the claim
                   description: Band a newly submitted claim and say which queue it belongs in.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.claims-handbook]
                     # The same skill risk's alert triage declares. The digest names
                     # it under each step that depends on it rather than pooling
@@ -945,7 +1000,8 @@ trees:
                   title: Check coverage
                   description: Read the policy the claim is made under and say what it covers.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     # The one step that declares NO corpus and inherits the domain's
                     # instead. Every other step here narrows; this one shows the
                     # other half of the rule — a grant made by an ancestor reaches a
@@ -957,7 +1013,8 @@ trees:
                   title: Review the claim for fraud
                   description: Judge the claim's fraud indicators against the handbook's referral bar.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.claims-handbook]
                     constraints:
                       - id: refer-do-not-accuse
@@ -968,7 +1025,15 @@ trees:
                   title: Decide the claim
                   description: Accept, reduce, or decline the claim and record the outcome.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, compute_function, invoke_action, knowledge_search, message]
+                    allowedTools:
+                      [
+                        search_objects,
+                        get_neighbors,
+                        compute_function,
+                        invoke_action,
+                        knowledge_search,
+                        message,
+                      ]
                     knowledgeFoundations: [acme.claims-handbook]
                     actions:
                       - id: decide-claim
@@ -979,7 +1044,11 @@ trees:
                         preconditions:
                           - Coverage was checked and the fraud review did not refer it.
                         effects:
-                          - { entity: claim, kind: update, description: Records the adjudicated outcome. }
+                          - {
+                              entity: claim,
+                              kind: update,
+                              description: Records the adjudicated outcome.,
+                            }
                     guidance: >-
                       Decide only once both the coverage check and the fraud review have
                       answered. Their outcomes are the inputs to this write, and a
@@ -1037,7 +1106,8 @@ trees:
                     # place the model's choice between them is real. It reads and
                     # judges; it does not pay, so `invoke_action` is absent and the
                     # write stays on the sibling below.
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.claims-handbook]
                     guidance: >-
                       Read the claim's own amount and its derived cap from the object
@@ -1123,7 +1193,8 @@ trees:
                   title: Pursue recovery
                   description: Work a subrogation or overpayment recovery on a settled claim.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                    allowedTools:
+                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
                     knowledgeFoundations: [acme.claims-handbook]
                     expectedOutput: What is recoverable, from whom, and under which handbook rule.
 
@@ -1228,7 +1299,11 @@ trees:
                         preconditions:
                           - Every SAR in the period is drafted and disposed.
                         effects:
-                          - { entity: regulatory-report, kind: update, description: Records the submission. }
+                          - {
+                              entity: regulatory-report,
+                              kind: update,
+                              description: Records the submission.,
+                            }
                     guidance: >-
                       File the report the risk domain drafted — do not rewrite it here.
                       Check the deadline in the regulatory code before sending, and
@@ -1254,7 +1329,8 @@ trees:
               title: Report to management
               description: Summarize the period's alerts, cases, and claims for an internal audience.
               ontology:
-                allowedTools: [search_objects, get_neighbors, compute_function, knowledge_search, message]
+                allowedTools:
+                  [search_objects, get_neighbors, compute_function, knowledge_search, message]
                 knowledgeFoundations: [acme.regulatory-code]
                 expectedOutput: A short internal summary with the counts and the ids behind them.
 

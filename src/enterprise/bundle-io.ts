@@ -1,23 +1,32 @@
 /**
- * Workflow bundle import/export: a self-contained exchange artifact that carries
- * one workflow tree plus everything it references (inlined knowledge foundations
- * and a required-tools manifest), so a recipient can import it and run
- * identically with no extra setup. A superset of the tree exchange format in
- * `tree-io.ts`; `trees export`/`import` keep working unchanged.
+ * Workflow bundle import/export: a portable exchange artifact that carries one
+ * workflow tree, snapshot-capable owned knowledge, and manifests naming the
+ * external dependencies a recipient must configure. A superset of the tree
+ * exchange format in `tree-io.ts`; `trees export`/`import` keep working unchanged.
  *
  * Import is database-first and atomic: the tree and its inlined foundations
  * persist together in the tree store's transaction, so a CLI import survives the
  * process exit and the runtime re-registers the foundations at startup.
  */
+import { createHash } from "node:crypto";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveEnterpriseMcpServers } from "./active-runs.js";
+import {
+  getBundledKnowledgeTargetStateForTree,
+  listBundledKnowledgeFoundations,
+} from "./enterprise-knowledge-store.sqlite.js";
 import { policyCanFireInScope } from "./governance.js";
 import { reloadPersistedBundleFoundations } from "./knowledge-bundle-loader.js";
-import { snapshotEnterpriseKnowledgeFoundation } from "./knowledge.js";
+import {
+  listEnterpriseKnowledgeFoundations,
+  snapshotEnterpriseKnowledgeFoundation,
+} from "./knowledge.js";
+import { hashWorkflowTree } from "./plan.js";
 import { resolveEnterpriseMode } from "./runtime.js";
 import {
-  EnterpriseIdSchema,
+  BundledKnowledgeFoundationSchema,
   GovernancePolicySchema,
   WorkflowTreeDefinitionSchema,
 } from "./schema.js";
@@ -29,9 +38,9 @@ import {
   treeHasUnboundedKnowledgeScope,
 } from "./tree-references.js";
 import {
-  getWorkflowTreeRegistryEntry,
   getWorkflowTreeRegistrySnapshot,
   invalidateWorkflowTreeRegistry,
+  type WorkflowTreeRegistryEntry,
 } from "./tree-registry.js";
 import {
   upsertEnterpriseWorkflowTree,
@@ -43,6 +52,7 @@ import {
   WORKFLOW_BUNDLE_SCHEMA,
   WORKFLOW_BUNDLE_SCHEMA_VERSION,
   type BundledKnowledgeFoundation,
+  type EnterpriseMode,
   type GovernancePolicy,
   type WorkflowBundle,
   type WorkflowNodeDefinition,
@@ -55,35 +65,6 @@ import {
  * never a literal byte, which would make this file binary to `rg` and `grep`.
  */
 const SEQUENCE_SEPARATOR = "\u0000";
-
-const KnowledgeFoundationDescriptorSchema = z
-  .object({
-    kind: z.enum(["remote", "local"]),
-    displayName: z.string(),
-    detail: z.string().optional(),
-    description: z.string().optional(),
-  })
-  .strict();
-
-// The stored foundation id on a snippet is descriptive only — retrieval re-stamps
-// it with the querying foundation — so it stays a free string, not a dotted id.
-const KnowledgeSnippetSchema = z
-  .object({
-    foundationId: z.string(),
-    title: z.string().optional(),
-    text: z.string(),
-    score: z.number().optional(),
-    source: z.string().optional(),
-  })
-  .strict();
-
-const BundledKnowledgeFoundationSchema = z
-  .object({
-    id: EnterpriseIdSchema,
-    descriptor: KnowledgeFoundationDescriptorSchema,
-    snippets: z.array(KnowledgeSnippetSchema),
-  })
-  .strict();
 
 const WorkflowBundleSchema = z
   .object({
@@ -171,58 +152,86 @@ export type WorkflowBundleExportResult =
 /** One tree the import upserted, and which prior entry (if any) it replaced. */
 export type ImportedBundleTree = { id: string; replaced: "builtin" | "imported" | null };
 
+/** One parsed tree plus the current state a guarded UI apply must match. */
+export type PreviewedBundleTree = ImportedBundleTree & {
+  version: string;
+  currentVersion: string | null;
+  currentHash: string | null;
+};
+
+type WorkflowBundleImportDiagnostics = {
+  /** Inlined foundation ids that were persisted and registered. */
+  foundations: string[];
+  /**
+   * Foundation ids the trees reference but the bundle did not inline (the
+   * sender's export skipped them as server-backed). The recipient must
+   * configure these separately or `knowledge_search` runs without them.
+   */
+  missingFoundations: string[];
+  /** Existing owned foundations this import deletes because it omits them. */
+  removedFoundations: string[];
+  /** Existing owned foundations whose persisted rows this import replaces. */
+  replacedFoundations: string[];
+  /**
+   * Inlined ids a global/plugin foundation already owns. Runtime retrieval gives
+   * that live registration precedence, so the imported row is stored but unused.
+   */
+  shadowedFoundations: string[];
+  requiredTools: string[];
+  /** Skill ids the imported trees declare, so the recipient can spot any it lacks. */
+  requiredSkills: string[];
+  /**
+   * Capabilities a step declares that its own tool scope can never reach, so
+   * the recipient learns the work-map is partly inert BEFORE a run spends a
+   * turn on a declaration the gate refuses. Derived from the trees, like the
+   * manifests above — a stale exported array must not be able to hide one.
+   */
+  warnings: WorkflowTreeWarning[];
+  /**
+   * Policy ids the bundle carried that this deployment does NOT configure.
+   *
+   * Governance lives in `enterprise.governance.policies`, which is operator
+   * config — importing a bundle must not write it. Reporting the gap is the
+   * whole point: without it the work-map imports cleanly and runs with less
+   * enforcement than the sender had, and nothing says so.
+   */
+  missingGovernancePolicies: string[];
+  /**
+   * Set when the exporting deployment enforced more than this one does.
+   * Policies are only half the contract; the mode is the other half.
+   */
+  governanceModeDowngrade?: { from: EnterpriseMode; to: EnterpriseMode };
+  /**
+   * Policy ids this deployment configures DIFFERENTLY from the bundle.
+   *
+   * A policy id is a stable name, not an immutable definition: the recipient
+   * may have an `audit` rule where the sender had a `deny`. Reporting only
+   * missing ids would call that configured and enforce less without notice.
+   */
+  conflictingGovernancePolicies: string[];
+  /**
+   * `mcp.servers` names the imported trees attach. A server is deployment
+   * configuration, so the bundle carries only the name: without this the import
+   * looks complete while every attachment on the recipient is inert.
+   */
+  requiredMcpServers: string[];
+  /** Required server names absent from the enabled runtime configuration. */
+  missingMcpServers: string[];
+};
+
+type WorkflowBundleImportSuccess<TTree> = {
+  ok: true;
+  trees: TTree[];
+} & WorkflowBundleImportDiagnostics;
+type WorkflowBundleImportFailure = { ok: false; issues: WorkflowBundleValidationIssue[] };
+
+export type WorkflowBundleImportPreviewResult =
+  | (WorkflowBundleImportSuccess<PreviewedBundleTree> & { reviewToken: string })
+  | WorkflowBundleImportFailure;
+
 export type WorkflowBundleImportResult =
-  | {
-      ok: true;
-      trees: ImportedBundleTree[];
-      /** Inlined foundation ids that were persisted and registered. */
-      foundations: string[];
-      /**
-       * Foundation ids the trees reference but the bundle did not inline (the
-       * sender's export skipped them as server-backed). The recipient must
-       * configure these separately or `knowledge_search` runs without them.
-       */
-      missingFoundations: string[];
-      requiredTools: string[];
-      /** Skill ids the imported trees declare, so the recipient can spot any it lacks. */
-      requiredSkills: string[];
-      /**
-       * Capabilities a step declares that its own tool scope can never reach, so
-       * the recipient learns the work-map is partly inert BEFORE a run spends a
-       * turn on a declaration the gate refuses. Derived from the trees, like the
-       * manifests above — a stale exported array must not be able to hide one.
-       */
-      warnings: WorkflowTreeWarning[];
-      /**
-       * Policy ids the bundle carried that this deployment does NOT configure.
-       *
-       * Governance lives in `enterprise.governance.policies`, which is operator
-       * config — importing a bundle must not write it. Reporting the gap is the
-       * whole point: without it the work-map imports cleanly and runs with less
-       * enforcement than the sender had, and nothing says so.
-       */
-      missingGovernancePolicies: string[];
-      /**
-       * Set when the exporting deployment enforced more than this one does.
-       * Policies are only half the contract; the mode is the other half.
-       */
-      governanceModeDowngrade?: { from: string; to: string };
-      /**
-       * Policy ids this deployment configures DIFFERENTLY from the bundle.
-       *
-       * A policy id is a stable name, not an immutable definition: the recipient
-       * may have an `audit` rule where the sender had a `deny`. Reporting only
-       * missing ids would call that configured and enforce less without notice.
-       */
-      conflictingGovernancePolicies: string[];
-      /**
-       * `mcp.servers` names the imported trees attach. A server is deployment
-       * configuration, so the bundle carries only the name: without this the import
-       * looks complete while every attachment on the recipient is inert.
-       */
-      requiredMcpServers: string[];
-    }
-  | { ok: false; issues: WorkflowBundleValidationIssue[] };
+  | WorkflowBundleImportSuccess<ImportedBundleTree>
+  | WorkflowBundleImportFailure;
 
 export function serializeWorkflowBundle(
   bundle: WorkflowBundle,
@@ -289,9 +298,9 @@ export function parseWorkflowBundleContent(
 }
 
 /**
- * Build a self-contained bundle for one registered tree. Fails closed on a
- * corrupt store/override like `exportWorkflowTree`, and records any referenced
- * foundation it could not snapshot rather than shipping partial content.
+ * Build a portable bundle for one registered tree. Fails closed on a corrupt
+ * store/override like `exportWorkflowTree`, and records any referenced foundation
+ * it could not snapshot rather than claiming external dependencies are included.
  */
 export async function exportWorkflowBundle(
   params: {
@@ -324,9 +333,42 @@ export async function exportWorkflowBundle(
   const requiredMcpServers = collectReferencedMcpServers(entry.tree);
   const knowledgeFoundations: WorkflowBundle["knowledgeFoundations"] = [];
   const skippedFoundations: SkippedBundleFoundation[] = [];
+  let storedFoundations: ReturnType<typeof listBundledKnowledgeFoundations>;
+  try {
+    storedFoundations = listBundledKnowledgeFoundations(options);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `cannot read bundled knowledge for workflow tree "${entry.tree.id}": ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const ownedFoundations = new Map(
+    storedFoundations.records
+      .filter(({ treeId }) => treeId === entry.tree.id)
+      .map(({ foundation }) => [foundation.id, foundation]),
+  );
+  const unreadableOwnedFoundationIds = new Set(
+    storedFoundations.rowErrors
+      .filter(({ treeId }) => treeId === entry.tree.id)
+      .map(({ foundationId }) => foundationId),
+  );
   for (const id of foundationIds) {
-    // Scope the snapshot to the exporting tree: never inline knowledge another
-    // workflow owns for the same id (runtime retrieval hides it from this tree too).
+    // Preserve this tree's persisted bundle row before consulting the live
+    // registry. A global/plugin adapter wins at runtime, but exporting that
+    // adapter here would silently discard the tree-owned row on re-import.
+    if (unreadableOwnedFoundationIds.has(id)) {
+      return {
+        ok: false,
+        reason: `bundled knowledge foundation "${id}" owned by workflow tree "${entry.tree.id}" is invalid`,
+      };
+    }
+    const owned = ownedFoundations.get(id);
+    if (owned) {
+      knowledgeFoundations.push(owned);
+      continue;
+    }
+    // Scope any live snapshot to the exporting tree: never inline knowledge
+    // another workflow owns for the same id.
     const snap = await snapshotEnterpriseKnowledgeFoundation(entry.tree.id, id);
     if (snap.status === "ok") {
       knowledgeFoundations.push({ id, descriptor: snap.descriptor, snippets: snap.snippets });
@@ -370,35 +412,86 @@ export async function exportWorkflowBundle(
   };
 }
 
+type PreparedBundleTree = {
+  tree: WorkflowTreeDefinition;
+  existing: WorkflowTreeRegistryEntry | undefined;
+  bundledFoundations: BundledKnowledgeFoundation[];
+  targetKnowledgeFingerprint: string;
+  targetFoundationIds: string[];
+};
+
+type PreparedWorkflowBundleImport = {
+  trees: [PreparedBundleTree];
+  diagnostics: WorkflowBundleImportDiagnostics;
+};
+
+function bundleImportIssue(message: string): WorkflowBundleImportFailure {
+  return { ok: false, issues: [{ path: "trees.0.id", message }] };
+}
+
+function preparedBundleTargetState(tree: PreparedBundleTree) {
+  return {
+    treeId: tree.tree.id,
+    expectedSource: tree.existing?.source ?? ("absent" as const),
+    treeHash: tree.existing ? hashWorkflowTree(tree.existing.tree) : null,
+    knowledgeFingerprint: tree.targetKnowledgeFingerprint,
+  };
+}
+
 /**
- * Validate a bundle, then for each tree persist the tree and the foundations it
- * references in ONE transaction (see upsertEnterpriseWorkflowTree), so a bundle
- * import is atomic and a re-import replaces exactly that tree's foundation set.
- * Also registers every inlined foundation in the process registry for immediate
- * use; a fresh process re-hydrates them from SQLite at startup. Missing tools are
- * surfaced, not fatal.
+ * Bind the exact file bytes to every fact the operator reviewed. The token is
+ * opaque: apply recomputes it from current config/tree/knowledge instead of
+ * trusting client-supplied diagnostics or retaining server-side draft state.
  */
-export function importWorkflowBundle(
-  params: {
-    content: string;
-    format: WorkflowTreeSourceFormat;
-    /**
-     * Config to compare the bundle's carried policies against. Omitted means the
-     * caller cannot check, and every carried policy is reported as missing —
-     * the safe direction for a governance artifact.
-     */
-    config?: OpenClawConfig;
-  },
-  options: EnterpriseTreeStoreOptions = {},
-): WorkflowBundleImportResult {
+function bundleReviewToken(
+  params: { content: string; format: WorkflowTreeSourceFormat },
+  prepared: PreparedWorkflowBundleImport,
+): string {
+  const contentHash = createHash("sha256").update(params.content).digest("hex");
+  const material = {
+    format: params.format,
+    contentHash,
+    target: preparedBundleTargetState(prepared.trees[0]),
+    diagnostics: prepared.diagnostics,
+  };
+  const canonical = JSON.stringify(material, (_key, value: unknown) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.keys(record)
+          .toSorted()
+          .map((key) => [key, record[key]]),
+      );
+    }
+    return value;
+  });
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
+/** Parse and derive every import effect without mutating either registry or SQLite. */
+function prepareWorkflowBundleImport(
+  params: { content: string; format: WorkflowTreeSourceFormat; config?: OpenClawConfig },
+  options: EnterpriseTreeStoreOptions,
+): { ok: true; prepared: PreparedWorkflowBundleImport } | WorkflowBundleImportFailure {
   const parsed = parseWorkflowBundleContent(params.content, params.format);
   if (!parsed.ok) {
     return parsed;
   }
   const bundle = parsed.bundle;
+  const snapshot = getWorkflowTreeRegistrySnapshot(options);
+  if (snapshot.storeError) {
+    return bundleImportIssue(`cannot read the workflow tree store: ${snapshot.storeError}`);
+  }
+  const targetId = bundle.trees[0]?.id;
+  const importError = snapshot.importErrors.find((issue) => issue.treeId === targetId);
+  if (importError) {
+    return bundleImportIssue(
+      `stored workflow tree "${targetId}" is invalid; remove it before importing this bundle`,
+    );
+  }
   // Index the inlined foundations so each tree can claim the ones it references.
   const foundationsById = new Map(bundle.knowledgeFoundations.map((f) => [f.id, f]));
-  const trees: ImportedBundleTree[] = [];
+  const trees: PreparedBundleTree[] = [];
   // Foundation ids the trees reference but the bundle did not inline: the sender's
   // export skipped them as server-backed, so the recipient must configure them
   // separately. Collected across all trees, deduped and sorted for a stable warning.
@@ -415,7 +508,15 @@ export function importWorkflowBundle(
   const requiredMcpServers = new Set<string>();
   const warnings: WorkflowTreeWarning[] = [];
   for (const tree of bundle.trees) {
-    const existing = getWorkflowTreeRegistryEntry(tree.id, options);
+    const existing = snapshot.entries.find((entry) => entry.tree.id === tree.id);
+    let targetKnowledgeState;
+    try {
+      targetKnowledgeState = getBundledKnowledgeTargetStateForTree(tree.id, options);
+    } catch (error) {
+      return bundleImportIssue(
+        `cannot read bundled knowledge for workflow tree "${tree.id}": ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     warnings.push(...collectWorkflowTreeWarnings(tree));
     for (const tool of collectReferencedToolGlobs(tree)) {
       requiredTools.add(tool);
@@ -435,30 +536,177 @@ export function importWorkflowBundle(
         missing.add(id);
       }
     }
-    upsertEnterpriseWorkflowTree(
-      { tree, sourceFormat: params.format, bundledFoundations },
-      options,
-    );
-    trees.push({ id: tree.id, replaced: existing?.source ?? null });
+    trees.push({
+      tree,
+      existing,
+      bundledFoundations,
+      targetKnowledgeFingerprint: targetKnowledgeState.fingerprint,
+      targetFoundationIds: targetKnowledgeState.foundationIds,
+    });
   }
-  // Reconcile the live bundle registry with the canonical store (not just add the
-  // imported ids): a re-import that dropped a foundation removed its SQLite row
-  // above, and only a full rebuild evicts the stale in-memory adapter so
-  // same-process retrieval and export stop serving it. The rebuild also registers
-  // the imported foundations for immediate use this process.
-  reloadPersistedBundleFoundations(options);
-  invalidateWorkflowTreeRegistry();
+  const preparedTree = trees[0];
+  if (!preparedTree) {
+    return bundleImportIssue("bundle must contain exactly one workflow tree");
+  }
+  const sortedRequiredMcpServers = [...requiredMcpServers].toSorted();
+  const availableMcpServers = new Set(resolveEnterpriseMcpServers(params.config));
+  const incomingFoundationIds = new Set(
+    preparedTree.bundledFoundations.map((foundation) => foundation.id),
+  );
+  const globalFoundationIds = new Set(
+    listEnterpriseKnowledgeFoundations().map(({ foundationId }) => foundationId),
+  );
   return {
     ok: true,
-    trees,
-    foundations: bundle.knowledgeFoundations.map((foundation) => foundation.id),
-    missingFoundations: [...missing].toSorted(),
-    requiredTools: [...requiredTools].toSorted(),
-    requiredSkills: [...requiredSkills].toSorted(),
-    requiredMcpServers: [...requiredMcpServers].toSorted(),
-    warnings,
-    ...comparePolicies(bundle, params.config),
+    prepared: {
+      trees: [preparedTree],
+      diagnostics: {
+        foundations: bundle.knowledgeFoundations.map((foundation) => foundation.id),
+        missingFoundations: [...missing].toSorted(),
+        removedFoundations: preparedTree.targetFoundationIds.filter(
+          (foundation) => !incomingFoundationIds.has(foundation),
+        ),
+        replacedFoundations: preparedTree.targetFoundationIds.filter((foundation) =>
+          incomingFoundationIds.has(foundation),
+        ),
+        shadowedFoundations: [...incomingFoundationIds]
+          .filter((foundation) => globalFoundationIds.has(foundation))
+          .toSorted(),
+        requiredTools: [...requiredTools].toSorted(),
+        requiredSkills: [...requiredSkills].toSorted(),
+        requiredMcpServers: sortedRequiredMcpServers,
+        missingMcpServers: sortedRequiredMcpServers.filter(
+          (server) => !availableMcpServers.has(server),
+        ),
+        warnings,
+        ...comparePolicies(bundle, params.config),
+      },
+    },
   };
+}
+
+/**
+ * Validate a bundle and report its complete write/dependency impact. This is the
+ * UI review step: no tree, foundation, history row, or runtime registry changes.
+ */
+export function previewWorkflowBundleImport(
+  params: { content: string; format: WorkflowTreeSourceFormat; config?: OpenClawConfig },
+  options: EnterpriseTreeStoreOptions = {},
+): WorkflowBundleImportPreviewResult {
+  const prepared = prepareWorkflowBundleImport(params, options);
+  if (!prepared.ok) {
+    return prepared;
+  }
+  return {
+    ok: true,
+    reviewToken: bundleReviewToken(params, prepared.prepared),
+    trees: prepared.prepared.trees.map(({ tree, existing }) => ({
+      id: tree.id,
+      version: tree.version,
+      replaced: existing?.source ?? null,
+      currentVersion: existing?.tree.version ?? null,
+      currentHash: existing ? hashWorkflowTree(existing.tree) : null,
+    })),
+    ...prepared.prepared.diagnostics,
+  };
+}
+
+/**
+ * Validate a bundle, then persist its one tree and referenced foundations in ONE
+ * transaction (see upsertEnterpriseWorkflowTree). Gateway callers supply either
+ * `createOnly` or the hash returned by preview; the CLI keeps its explicit
+ * overwrite behavior by omitting both.
+ */
+export function importWorkflowBundle(
+  params: {
+    content: string;
+    format: WorkflowTreeSourceFormat;
+    /**
+     * Config to compare the bundle's carried policies against. Omitted means the
+     * caller cannot check, and every carried policy is reported as missing —
+     * the safe direction for a governance artifact.
+     */
+    config?: OpenClawConfig;
+    createOnly?: true;
+    expectedHash?: string;
+    /** Opaque token returned by preview; omitted only by the direct CLI API. */
+    reviewToken?: string;
+  },
+  options: EnterpriseTreeStoreOptions = {},
+): WorkflowBundleImportResult {
+  if (params.createOnly && params.expectedHash !== undefined) {
+    return bundleImportIssue("bundle import accepts one write precondition, not both");
+  }
+  const outcome = prepareWorkflowBundleImport(params, options);
+  if (!outcome.ok) {
+    return outcome;
+  }
+  if (
+    params.reviewToken !== undefined &&
+    bundleReviewToken(params, outcome.prepared) !== params.reviewToken
+  ) {
+    return bundleImportIssue(
+      "bundle target or deployment diagnostics changed since preview; preview the bundle again before importing",
+    );
+  }
+  const importedTrees: ImportedBundleTree[] = [];
+  for (const prepared of outcome.prepared.trees) {
+    const { tree, existing, bundledFoundations } = prepared;
+    const currentHash = existing ? hashWorkflowTree(existing.tree) : null;
+    if (params.createOnly && existing) {
+      return bundleImportIssue(`workflow tree "${tree.id}" already exists`);
+    }
+    if (params.expectedHash !== undefined && currentHash !== params.expectedHash) {
+      return bundleImportIssue(
+        `workflow tree "${tree.id}" changed since preview; preview the bundle again before importing`,
+      );
+    }
+    const precondition = params.reviewToken
+      ? ({ kind: "expected-bundle-state", ...preparedBundleTargetState(prepared) } as const)
+      : params.createOnly
+        ? ({ kind: "create-only" } as const)
+        : params.expectedHash !== undefined
+          ? ({
+              kind: "expected-hash",
+              hash: params.expectedHash,
+              expectedSource: existing?.source ?? "imported",
+            } as const)
+          : undefined;
+    const write = upsertEnterpriseWorkflowTree(
+      {
+        tree,
+        sourceFormat: params.format,
+        bundledFoundations,
+        ...(precondition ? { precondition } : {}),
+      },
+      options,
+    );
+    if (!write.upserted) {
+      // Another writer won after prepare. Rebuild both process views so the next
+      // preview describes the canonical tree and bundle content it will guard.
+      reloadPersistedBundleFoundations(options);
+      invalidateWorkflowTreeRegistry();
+      return bundleImportIssue(
+        write.reason === "already-exists"
+          ? `workflow tree "${tree.id}" already exists`
+          : `workflow tree "${tree.id}" changed since preview; preview the bundle again before importing`,
+      );
+    }
+    importedTrees.push({
+      id: tree.id,
+      replaced: write.replacedImported
+        ? "imported"
+        : existing?.source === "builtin"
+          ? "builtin"
+          : null,
+    });
+  }
+  // Reconcile the live bundle registry with the canonical store (not just add the
+  // imported ids): a re-import that dropped a foundation removed its SQLite row,
+  // and only a full rebuild evicts the stale in-memory adapter.
+  reloadPersistedBundleFoundations(options);
+  invalidateWorkflowTreeRegistry();
+  return { ok: true, trees: importedTrees, ...outcome.prepared.diagnostics };
 }
 
 /**
@@ -475,7 +723,7 @@ function comparePolicies(
 ): {
   missingGovernancePolicies: string[];
   conflictingGovernancePolicies: string[];
-  governanceModeDowngrade?: { from: string; to: string };
+  governanceModeDowngrade?: { from: EnterpriseMode; to: EnterpriseMode };
 } {
   // Mode first, and unconditionally: it is not a property of the policy list.
   const sourceMode = bundle.governanceMode;

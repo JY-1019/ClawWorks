@@ -826,7 +826,13 @@ describe("enterprise step tracing", () => {
       completeEnterpriseStep({ runId: first, summary: "step a done" });
       endEnterpriseRun({ runId: first, status: "aborted" });
       const firstRecord = getEnterpriseRunRecord(first);
-      expect(requestEnterpriseRunResume(firstRecord?.executionId ?? "", { now: 1 }).ok).toBe(true);
+      expect(
+        requestEnterpriseRunResume(firstRecord?.executionId ?? "", {
+          expectedSessionId: "t-resumeflow",
+          activeSessionId: "t-resumeflow",
+          now: 1,
+        }).ok,
+      ).toBe(true);
 
       // A runtime continuation must NOT take it: the operator armed this for the
       // request they are about to type, not for an exec-approval followup that

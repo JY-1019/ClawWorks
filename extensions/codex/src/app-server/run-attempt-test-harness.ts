@@ -423,17 +423,39 @@ export function createStartedThreadHarness(
     if (method === "turn/start") {
       return turnStartResult();
     }
+    if (method === "hooks/list") {
+      const cwds = (params as { cwds?: unknown }).cwds;
+      return {
+        data: Array.isArray(cwds)
+          ? cwds.map((cwd) => ({ cwd, hooks: [], warnings: [], errors: [] }))
+          : [],
+      };
+    }
+    if (method === "config/read") {
+      return { config: {}, origins: {}, layers: null };
+    }
     return {};
   }, options);
 }
 
 export function createResumeHarness() {
-  return createAppServerHarness(async (method) => {
+  return createAppServerHarness(async (method, params) => {
     if (method === "thread/resume") {
       return threadStartResult("thread-existing");
     }
     if (method === "turn/start") {
       return turnStartResult();
+    }
+    if (method === "hooks/list") {
+      const cwds = (params as { cwds?: unknown }).cwds;
+      return {
+        data: Array.isArray(cwds)
+          ? cwds.map((cwd) => ({ cwd, hooks: [], warnings: [], errors: [] }))
+          : [],
+      };
+    }
+    if (method === "config/read") {
+      return { config: {}, origins: {}, layers: null };
     }
     return {};
   });

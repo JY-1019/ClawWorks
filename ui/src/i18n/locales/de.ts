@@ -284,6 +284,49 @@ export const de: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "Überwachte Workflow-Ausführungen und registrierte Workflow-Bäume.",
+    historyOnly: "Removed work-map with restorable revisions",
+    historyOnlyBadge: "history only",
+    historyOnlyRestore: "This work-map was removed. Choose a saved revision below to restore it.",
+    removeFingerprintUnavailable:
+      "Cannot safely remove {treeId}: this gateway did not return the imported row identity. Refresh or update the gateway, then try again.",
+    bundle: {
+      import: "Import bundle",
+      exportYaml: "Bundle YAML",
+      exportJson: "Bundle JSON",
+      previewTitle: "Review workflow bundle",
+      previewBody:
+        "Nothing has been changed yet. Review the replacement, inlined knowledge, dependencies, and governance gaps before applying these exact file contents.",
+      create: "Creates a new work-map",
+      replace: "Replaces the current {source} work-map at version {version}",
+      inlinedKnowledge: "Knowledge included in the bundle",
+      requiredTools: "Required tools (verify this gateway provides them)",
+      requiredSkills: "Required skills",
+      requiredMcp: "Required MCP servers",
+      requiredKnowledge: "Knowledge sources",
+      missingSkills: "Missing or unavailable skills",
+      missingMcp: "Missing MCP servers",
+      missingKnowledge: "Knowledge not included in the bundle or globally available",
+      removedKnowledge: "Owned knowledge this import deletes (no revision history)",
+      replacedKnowledge: "Owned knowledge rows this import replaces (no revision history)",
+      shadowedKnowledge:
+        "Bundled knowledge ignored at runtime (a global/plugin foundation with the same id takes precedence)",
+      unverifiedKnowledge: "Knowledge not included in the bundle (verify local availability)",
+      verificationUnavailable: "Local availability could not be verified",
+      missingPolicies: "Missing governance policies",
+      conflictingPolicies: "Governance policies with different definitions",
+      modeDowngrade: "Governance is weaker here: {from} → {to}.",
+      authorWarnings: "Work-map authoring warnings",
+      apply: "Apply bundle",
+      previewRejected: "This bundle cannot be previewed: {issues}",
+      applyRejected: "Nothing was imported. Preview the current state again: {issues}",
+      applyUnknown:
+        "The result is unknown ({message}). Refresh before retrying so you do not overwrite a successful import.",
+      applied: "Imported bundle for {treeId}.",
+      exported: "Exported bundle for {treeId}.",
+      exportImplicitKnowledge:
+        "the work-map allows implicit knowledge that a bundle cannot enumerate",
+      exportWarning: "Bundle downloaded with portability warnings: {warnings}",
+    },
     toolsTab: {
       title: "Tools",
       subtitle:
@@ -330,7 +373,7 @@ export const de: TranslationMap = {
       configInvalid:
         "Die Gateway-Konfiguration kann nicht geparst werden, daher kann dieser Bildschirm nichts hinzufügen. Beheben Sie das Problem zuerst im Konfigurationseditor — das Speichern von hier würde die Datei nur mit diesem Eintrag ersetzen.",
       rawDraftPending:
-        "Sie haben ungespeicherte Änderungen im Raw-Config-Editor. Speichern oder verwerfen Sie diese zuerst — eine Registrierung hier würde diesen Entwurf überschreiben.",
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
       save: "Speichern",
       publish: "Speichern & Veröffentlichen",
       publishing: "Wird veröffentlicht...",
@@ -446,6 +489,11 @@ export const de: TranslationMap = {
       add: "Hinzufügen",
       cancel: "Cancel",
       removeTitle: "{entry} von diesem Schritt lösen",
+      removeLastAllowedTool:
+        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+      removeLastKnowledgeFoundation:
+        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+      requireMcpAttachments: "Require attachments",
       none: "Noch keine Einträge vorhanden.",
       scopeNarrowingApproval:
         "Dieser Schritt hat noch keine Tool-Positivliste und erlaubt daher jedes Tool, das nicht explizit abgelehnt wird. Durch Hinzufügen des ersten Eintrags wird eine Positivliste erstellt. Die aufgelisteten Tools werden frei ausgeführt, alles andere erfordert eine einmalige Genehmigung.",
@@ -461,6 +509,8 @@ export const de: TranslationMap = {
         "Verwenden Sie eine Foundation-ID: kleingeschriebene, durch Punkte getrennte Segmente, zum Beispiel acme.runbooks.",
       ancestorGateApproval:
         "Übergeordnete Schritte ({nodeIds}) haben dafür ihre eigene Erlaubnisliste. Die Governance prüft jeden Schritt ab dem Stammknoten, sodass ein hier hinzugefügter Eintrag nur ohne Nachfrage ausgeführt wird, wenn diese Schritte ihn ebenfalls erlauben; andernfalls ist eine einmalige Genehmigung erforderlich. Fügen Sie ihn auch zu diesen Schritten hinzu oder verwenden Sie abgelehnte Tools, um ihn direkt zu verweigern.",
+      ancestorGateKnowledge:
+        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "Geben Sie zuerst einen Wert ein.",
       duplicate: "Dieser Eintrag ist für diesen Schritt bereits vorhanden.",
       nodeMissing:
@@ -469,7 +519,7 @@ export const de: TranslationMap = {
       importFailed:
         "Das Speichern wurde nicht bestätigt. Es wurde möglicherweise angewendet oder auch nicht — aktualisieren Sie die Arbeitskarte, um dies zu prüfen, bevor Sie es erneut versuchen.",
       mcpFirstAttachment:
-        "Diese Work-Map steuert MCP noch nicht. Das Hinzufügen des ersten Servers hier aktiviert Deny-by-Default für die GESAMTE Work-Map: Jeder Schritt ohne Anhang erreicht dann keinen MCP-Server.",
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
       mcpNoneAttached:
         "Diesem Schritt ist kein MCP-Server zugewiesen, daher kann er keinen aufrufen. Anders als Tools und Wissen gewährt MCP standardmäßig nichts.",
       importNotSent:
@@ -508,13 +558,17 @@ export const de: TranslationMap = {
       noProperties: "No fields yet.",
       links: "Links",
       noLinks: "No links declared yet.",
+      editTitle: "Edit {item}",
+      formLabel: "Ontology editor",
       titleLabel: "Display name (optional)",
+      descriptionLabel: "Description",
       typeLabel: "Type",
       primaryKeyLabel: "Identifies an instance",
       primaryKeyMark: "(identity)",
       fromLabel: "From",
       toLabel: "To",
       cardinalityLabel: "Cardinality",
+      inverseLabel: "Inverse name (optional)",
       save: "Speichern",
       actions: "Actions",
       actionsSummary:
@@ -528,14 +582,31 @@ export const de: TranslationMap = {
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
       incompleteActionDetail:
-        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+        "This action cannot be called yet. Object writes need identity parameters (and creates need every required field); links need parameters for both endpoint identities.",
       removeEffectTitle: "Remove the {kind} effect on {entity}",
       removeParameterTitle: "Remove the {parameter} parameter",
       requiredLabel: "Required",
       requiredMark: "(required)",
+      toolsModeLabel: "Policy tool matching",
+      toolsModeHint:
+        "Chooses which tool calls this action's policy matches. Outward calls are added separately as effects.",
+      toolsMode: {
+        all: "Match all tool calls",
+        selected: "Match selected tool calls",
+        none: "Match no tool calls",
+      },
+      toolsLabel: "Matched tool selectors",
+      preconditionsLabel: "Advisory preconditions",
+      addListItem: "Add {item}",
+      removeListItem: "Remove {item}",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
       linkRelationshipLabel: "Link type",
+      linkEndpointsLabel: "Endpoint parameters",
+      linkFromParameterLabel: "From-object parameter",
+      linkToParameterLabel: "To-object parameter",
+      defaultIdentity: "Use the object type's identity field",
+      unavailableParameter: "{parameter} (not declared)",
       callToolLabel: "Tool",
       callToolPlaceholder: "server__operation",
       callToolHint:
@@ -546,6 +617,11 @@ export const de: TranslationMap = {
       functionEntityLabel: "Computed over",
       expressionLabel: "Expression",
       returnsLabel: "Returns",
+      constraints: "Constraints",
+      addConstraint: "Add constraint",
+      noConstraints: "No advisory constraints declared yet.",
+      shadowedDeclaration: "Shadowed by a later declaration with the same id",
+      removeConstraintTitle: "Remove the {constraint} constraint",
       idLabel: {
         entity: "Object type id",
         property: "Field id",
@@ -553,20 +629,26 @@ export const de: TranslationMap = {
         action: "Action id",
         "action-parameter": "Parameter id",
         function: "Derived value id",
+        constraint: "Constraint id",
       },
       error: {
         "invalid-id":
           "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
-        "endpoint-missing": "A link needs an object type at both ends.",
-        "duplicate-entry": "That id is already declared on this step.",
+        "endpoint-missing": "Choose the required object type, link type, or tool.",
+        "description-empty": "Enter a description.",
+        "selection-empty":
+          "Add at least one tool selector, or choose Match all tool calls or Match no tool calls.",
+        "duplicate-entry": "That id is already declared in this work-map scope.",
         "entity-not-found": "That object type is not in this step's scope.",
         "entity-in-use": "A link still points at this object type. Remove the link first.",
         "entity-referenced":
-          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+          "An action or derived value still uses an object or link type this edit would remove from its scope. Change that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
+        "identity-type-invalid":
+          "An identity field must be text, a number, a date, or an id. Boolean values cannot identify ontology objects.",
         "action-not-found": "That action is no longer declared on this step.",
         "effect-needs-identity":
           "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
@@ -576,6 +658,8 @@ export const de: TranslationMap = {
         "expression-type-invalid":
           "The expression does not type-check against this object type's fields.",
         "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "property-type-conflict":
+          "This work-map already declares that field on the same object type with a different type.",
         "create-required-unreachable":
           "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
         "effect-target-taken":
@@ -588,13 +672,31 @@ export const de: TranslationMap = {
       },
     },
     guidanceEditor: {
-      title: "Rollenprompt",
+      title: "Step behavior",
       guidanceNote:
-        "Wofür dieser Schritt gedacht ist, in Ihren eigenen Worten. Es wird als Anweisung in die Schrittzusammenfassung eingefügt und gewährt niemals etwas — ein Schritt kann weiterhin kein Tool aufrufen, das sein Geltungsbereich vorenthält, unabhängig davon, wie der Prompt formuliert ist.",
-      fieldLabel: "Rollen-Prompt für Schritt {nodeId}",
+        "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
+      titleLabel: "Step title",
+      parentLabel: "Parent step",
+      positionLabel: "Position among siblings",
+      descriptionLabel: "Description",
+      fieldLabel: "Instructions for step {nodeId}",
       placeholder: "z. B. Identität des Antragstellers bestätigen, bevor Beträge genannt werden.",
-      save: "Rollenprompt speichern",
+      contextHintsLabel: "Context hints",
+      contextHintsPlaceholder: "e.g. Prefer the policy handbook over assumptions.",
+      addContextHint: "Add context hint",
+      removeContextHint: "Remove context hint",
+      expectedOutputLabel: "Expected output",
+      expectedOutputPlaceholder: "e.g. A decision, rationale, and record id.",
+      auditLabel: "Record detailed tool-decision audit events",
+      save: "Save behavior",
       revert: "Zurücksetzen",
+      reparentWarning:
+        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+      error: {
+        "title-empty": "Enter a step title.",
+        "move-refused":
+          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+      },
     },
     capabilities: {
       toolsTitle: "Tools",
@@ -608,7 +710,7 @@ export const de: TranslationMap = {
         "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
       knowledgeTitle: "Wissen",
       knowledgeHint:
-        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -670,9 +772,11 @@ export const de: TranslationMap = {
         "Die Enterprise-Mediation beobachtet, daher werden Ablehnungen aufgezeichnet, aber nicht angewendet. Sobald sie durchgesetzt wird, gilt eine Ablehnung für diesen Schritt und alles darunter, und keine Freigabe weiter unten im Zweig kann sie rückgängig machen.",
       deniedToolsOff:
         "Die Enterprise-Mediation ist deaktiviert, daher werden Ablehnungen weder angewendet noch aufgezeichnet. Aktivieren Sie die Mediation, damit dies wirksam wird oder im Run-Trace erscheint.",
-      skillNotInstalled: "nicht installiert",
-      foundationNotRegistered: "nicht registriert",
+      skillNotModelVisible: "not available to the model for this agent",
+      foundationNotRegistered: "not retrievable by this work-map",
+      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "nicht in mcp.servers registriert",
+      mcpDisabled: "disabled in mcp.servers",
       inherited: "Von einem übergeordneten Schritt geerbt:",
     },
     skillsTab: {
@@ -702,6 +806,9 @@ export const de: TranslationMap = {
     executionCount: "{count} Ausführung(en) dieses Laufs",
     stepsTitle: "Schritte",
     resume: "Continue this run",
+    resumeChat: "Continue from unfinished step",
+    resumeChatHint:
+      "The unfinished step restarts on your next matching message. An in-flight external action is not resumed.",
     resumeHint:
       "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
     resumeRequested:
@@ -738,15 +845,20 @@ export const de: TranslationMap = {
       explicit: "Explizite Berechtigungen",
       inherited: "Geerbte Bereiche",
       explicitHintGated:
-        "Jeder Schritt soll die Tools, Skills, MCP-Server und Wissensgrundlagen verwenden, die er oder ein übergeordneter Schritt auflistet. Skills, MCP-Server und Wissensgrundlagen, die ein Schritt nicht auflistet, werden vollständig zurückgehalten. Ein nicht aufgelistetes Tool löst stattdessen eine einmalige Genehmigung aus, und Antworten und Lesen (message, read, memory_search) bleiben verfügbar, es sei denn, ein Schritt oder eine Governance-Richtlinie verweigert sie.",
+        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "Diese Work-Map gewährt Berechtigungen explizit, aber der Enterprise-Modus erzwingt diese nicht. Tool-, Skill- und MCP-Berechtigungen werden aufgezeichnet, aber nicht angewendet. Wissensberechtigungen schränken den Abruf in jedem Modus ein.",
       explicitHintOff:
         "Diese Work-Map gewährt Fähigkeiten explizit, aber die Unternehmensvermittlung ist nicht aktiv, sodass keine Gewährung gilt. Die unten aufgeführten Gewährungen sind gespeichert und treten in Kraft, sobald die Vermittlung aktiviert wird.",
       inheritedHint:
-        "Die Listen eines Schritts schränken ein, was seine übergeordneten Elemente erlaubt haben; ein Schritt, dessen Zweig nichts auflistet, kann jedes Tool oder jede Skill verwenden.",
+        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "Explizit gewähren",
       turnOff: "Vererbte Bereiche verwenden",
+      turnOffWarning:
+        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+      stopMcp: "Stop requiring MCP attachments",
+      stopMcpWarning:
+        "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
     structureTitle: "Struktur",
     ontologyTitle: "Ontologie",
@@ -762,7 +874,8 @@ export const de: TranslationMap = {
     addNodeTitle: "Neuer Unterknoten",
     addNodeIdLabel: "Knoten-ID (kleingeschrieben mit Punkten, z. B. support.triage)",
     addNodeTitleLabel: "Titel",
-    addNodeSubmit: "Zum Editor hinzufügen",
+    addNodeDescriptionLabel: "Description (optional)",
+    addNodeSubmit: "Add step",
     addNodeErrorIdEmpty: "Geben Sie eine Knoten-ID ein.",
     addNodeErrorIdPattern:
       "Die ID muss kleingeschrieben und mit Punkten getrennt sein, z. B. support.triage.",
@@ -770,6 +883,12 @@ export const de: TranslationMap = {
     addNodeErrorTitleEmpty: "Geben Sie einen Titel ein.",
     addNodeErrorParentMissing: "Der übergeordnete Knoten ist nicht mehr in diesem Baum vorhanden.",
     addNodeErrorExportFailed: "Die Baumdefinition konnte nicht zum Bearbeiten geladen werden.",
+    removeNode: "Delete step and descendants",
+    removeNodeWarning:
+      'Delete "{node}" and every step beneath it? This records a new work-map revision.',
+    structureEditRefused:
+      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+    editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "Knoten ziehen · scrollen zum Zoomen",
     routeTitle: "Gewählte Route",
     routeViewLabel: "Routenansicht",
@@ -812,6 +931,36 @@ export const de: TranslationMap = {
     contextHints: "Kontexthinweise: {hints}",
     expectedOutput: "Erwartete Ausgabe: {text}",
     newTree: "Neuer Baum",
+    importTree: "Import file",
+    newTreeTitle: "New workflow tree",
+    treeSettingsTitle: "Work-map settings",
+    treeSettingsButton: "Settings",
+    newTreeIdLabel: "Tree id",
+    newTreeIdPlaceholder: "support.intake",
+    treeSettingsVersionLabel: "Version",
+    newTreeNameLabel: "Name",
+    newTreeRootIdLabel: "First step id",
+    newTreeRootIdPlaceholder: "support",
+    newTreeRootTitleLabel: "First step title",
+    newTreeDescriptionLabel: "Description (optional)",
+    treeSettingsTriggersLabel: "Runs this work-map applies to",
+    treeSettingsTrigger: {
+      user: "User messages",
+      system: "System runs",
+      subagent: "Subagent runs",
+    },
+    treeSettingsPriorityLabel: "Routing priority (optional)",
+    newTreeReview: "Review definition",
+    newTreeErrorIdEmpty: "Enter a tree id.",
+    newTreeErrorIdPattern: "Tree id must be dotted lowercase.",
+    newTreeErrorIdDuplicate: "That tree already exists. Select it and use Edit instead.",
+    treeSettingsErrorVersionEmpty: "Enter a version.",
+    newTreeErrorNameEmpty: "Enter a tree name.",
+    treeSettingsErrorTriggersEmpty: "Choose at least one run type.",
+    treeSettingsErrorPriorityInvalid: "Priority must be a whole number.",
+    newTreeErrorRootIdEmpty: "Enter the first step id.",
+    newTreeErrorRootIdPattern: "Step id must be dotted lowercase.",
+    newTreeErrorRootTitleEmpty: "Enter the first step title.",
     edit: "Bearbeiten",
     exportYaml: "YAML exportieren",
     exportJson: "JSON exportieren",
@@ -819,6 +968,11 @@ export const de: TranslationMap = {
     editorTitle: "Baumdefinition bearbeiten",
     editorHint:
       "Bearbeiten Sie die Rohdefinition und speichern Sie, um eine neue Version zu erstellen.",
+    editorDiscardWarning: "Discard the unsaved tree draft?",
+    saveContinuesNavigation:
+      "This save has already been sent and will continue if you open another work-map. Open it anyway?",
+    editorFormatWarning: "Switch format and discard the current editor contents?",
+    treeWarnings: "Some declarations on this work-map cannot be reached by any run:",
     saveInvalid: "Die Definition konnte nicht validiert werden:",
     saving: "Speichern…",
     save: "Speichern",
@@ -829,8 +983,13 @@ export const de: TranslationMap = {
     confirmSaveBody: "Dies importiert die bearbeitete Definition und erstellt eine neue Revision.",
     confirmRemoveTitle: "Workflow-Baum entfernen?",
     confirmRemoveBody: "Den importierten Baum {treeId} aus der Registry entfernen.",
-    confirmRemoveWarning:
-      "Die aktive Definition wird gelöscht; ein verdecktes Built-in erscheint wieder. Der Versionsverlauf bleibt erhalten.",
+    confirmRemoveDataLossWarning:
+      "This permanently deletes the tree's live ontology objects, links, and bundled knowledge. Version history keeps only definitions. Workflow bundles preserve definitions and bundled knowledge, but cannot restore live objects or links. Back up ClawWorks state before deleting data you need. A shadowed built-in then reappears.",
+    removeNotSent:
+      "Nothing was removed: the gateway connection dropped before this was sent. Reconnect and try again.",
+    removeRefused: "The server refused the removal, so nothing was removed: {message}",
+    removeUnconfirmed:
+      "The removal did not confirm. It may or may not have been applied — refresh the work-map before trying again.",
   },
   sessionsView: {
     title: "Sitzungen",
@@ -1295,7 +1454,7 @@ export const de: TranslationMap = {
     layout: "Card layout",
     layoutCompact: "Kompakte Kartendichte",
     layoutComfortable: "Komfortable Kartendichte",
-    dispatch: "Dispatcher anstoßen",
+    dispatch: "Dispatch ready work",
     dispatchSummary:
       "Dispatch complete: started {started}, promoted {promoted}, blocked {blocked}, reclaimed {reclaimed}, orchestrated {orchestrated}, failures {failures}.",
     dispatchSummaryEmpty: "Dispatch complete: no ready work changed.",

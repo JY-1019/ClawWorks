@@ -609,6 +609,12 @@ export type PluginHookReplyPayloadSendingResult = {
 export type PluginHookToolKind = "code_mode_exec";
 export type PluginHookToolInputKind = "javascript" | "typescript";
 
+export type PluginHookToolApprovalContext = {
+  provider: string;
+  method: string;
+  request: Readonly<Record<string, unknown>>;
+};
+
 export type PluginHookToolContext = {
   agentId?: string;
   sessionKey?: string;
@@ -628,6 +634,8 @@ export type PluginHookToolContext = {
 export type PluginHookBeforeToolCallEvent = {
   toolName: string;
   params: Record<string, unknown>;
+  /** Provider approval envelope, kept separate from executable tool arguments. */
+  approval?: PluginHookToolApprovalContext;
   /** Host-authoritative discriminator for tools that intentionally share names. */
   toolKind?: PluginHookToolKind;
   /** Host-authoritative input/runtime family for tools whose payloads need policy distinction. */

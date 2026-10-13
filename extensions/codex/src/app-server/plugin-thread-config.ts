@@ -13,6 +13,7 @@ import {
 } from "./app-inventory-cache.js";
 import {
   resolveCodexPluginsPolicy,
+  stableStringifyJson,
   type CodexPluginDestructiveApprovalMode,
   type ResolvedCodexPluginPolicy,
   type ResolvedCodexPluginsPolicy,
@@ -590,20 +591,5 @@ function isPlainJsonObject(value: JsonValue | undefined): value is JsonObject {
 }
 
 function fingerprintJson(value: JsonValue): string {
-  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
-}
-
-function stableStringify(value: JsonValue | undefined): string {
-  // Fingerprints must be process-stable across object insertion order so prompt
-  // cache and thread-binding comparisons do not churn between runs.
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+  return crypto.createHash("sha256").update(stableStringifyJson(value)).digest("hex");
 }

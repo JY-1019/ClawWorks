@@ -603,6 +603,7 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
 
   const isWebchatConnect = (p: ConnectParams | null | undefined) => isWebchatClient(p?.client);
   const unauthorizedFloodGuard = new UnauthorizedFloodGuard();
+  const connectionAbortController = new AbortController();
   let deviceCredentialMutationBarrier: Promise<void> | undefined;
   const browserSecurity = resolveHandshakeBrowserSecurityContext({
     requestOrigin,
@@ -2320,6 +2321,7 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
           extraHandlers,
           methodRegistry: getMethodRegistry?.(),
           context: buildRequestContext(),
+          signal: connectionAbortController.signal,
         });
       })().catch((err: unknown) => {
         logGateway.error(`request handler failed: ${formatForLog(err)}`);
@@ -2344,6 +2346,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
     }
   };
 
+  // Long-running request handlers must stop when their owning client disconnects.
+  socket.once("close", () => connectionAbortController.abort());
   socket.on("message", (data) => {
     void runWithDiagnosticTraceContext(createDiagnosticTraceContext(), () => handleMessage(data));
   });

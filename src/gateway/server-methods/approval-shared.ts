@@ -129,6 +129,16 @@ function normalizeApprovalIdentities(values: readonly string[] | null | undefine
   return [...normalized];
 }
 
+/** Checks whether the caller presents the persisted device that created an approval. */
+export function isApprovalRecordRequestedByClientDevice<TPayload>(params: {
+  record: ExecApprovalRecord<TPayload>;
+  client: GatewayClient | null;
+}): boolean {
+  const requestedByDeviceId = normalizeApprovalIdentity(params.record.requestedByDeviceId);
+  const clientDeviceId = normalizeApprovalIdentity(params.client?.connect?.device?.id);
+  return requestedByDeviceId !== null && requestedByDeviceId === clientDeviceId;
+}
+
 /** Checks whether a client can observe or resolve an approval record. */
 export function isApprovalRecordVisibleToClient<TPayload>(params: {
   record: ExecApprovalRecord<TPayload>;
@@ -157,7 +167,7 @@ export function isApprovalRecordVisibleToClient<TPayload>(params: {
   // Device identity is the strongest requester binding; fall back to the
   // live connection only for older callers that have not attached a device.
   if (requestedByDeviceId) {
-    return requestedByDeviceId === normalizeApprovalIdentity(params.client?.connect?.device?.id);
+    return isApprovalRecordRequestedByClientDevice(params);
   }
 
   const requestedByConnId = normalizeApprovalIdentity(params.record.requestedByConnId);
@@ -366,47 +376,86 @@ export async function handleApprovalWaitDecision<TPayload>(params: {
   inputId: unknown;
   client?: GatewayClient | null;
   respond: RespondFn;
+  signal?: AbortSignal;
+  onWaitAborted?: () => Promise<void> | void;
 }): Promise<void> {
-  const id = normalizeOptionalString(params.inputId) ?? "";
-  if (!id) {
-    params.respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "id is required"));
-    return;
+  let state: "waiting" | "responded" | "aborted" = "waiting";
+  let abortCleanup: Promise<void> | undefined;
+  const removeAbortListener = () => params.signal?.removeEventListener("abort", onAbort);
+  const runAbortCleanup = () =>
+    (abortCleanup ??= (async () => {
+      await params.onWaitAborted?.();
+    })());
+  const onAbort = () => {
+    if (state !== "waiting") {
+      return;
+    }
+    state = "aborted";
+    removeAbortListener();
+    void runAbortCleanup();
+  };
+  const respond: RespondFn = (...args) => {
+    if (state === "aborted") {
+      return;
+    }
+    state = "responded";
+    removeAbortListener();
+    params.respond(...args);
+  };
+  const waitWasAborted = () => state === "aborted";
+  if (params.signal?.aborted) {
+    onAbort();
+  } else {
+    params.signal?.addEventListener("abort", onAbort, { once: true });
   }
-  const snapshot = params.manager.getSnapshot(id);
-  if (
-    !snapshot ||
-    !isApprovalRecordVisibleToClient({
-      record: snapshot,
-      client: params.client ?? null,
-    })
-  ) {
-    params.respond(
-      false,
+
+  try {
+    const id = normalizeOptionalString(params.inputId) ?? "";
+    if (!id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "id is required"));
+      return;
+    }
+    const snapshot = params.manager.getSnapshot(id);
+    if (
+      !snapshot ||
+      !isApprovalRecordVisibleToClient({
+        record: snapshot,
+        client: params.client ?? null,
+      })
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "approval expired or not found"),
+      );
+      return;
+    }
+    const decisionPromise = params.manager.awaitDecision(id);
+    if (!decisionPromise) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "approval expired or not found"),
+      );
+      return;
+    }
+    const decision = await decisionPromise;
+    respond(
+      true,
+      {
+        id,
+        decision,
+        createdAtMs: snapshot?.createdAtMs,
+        expiresAtMs: snapshot?.expiresAtMs,
+      },
       undefined,
-      errorShape(ErrorCodes.INVALID_REQUEST, "approval expired or not found"),
     );
-    return;
+  } finally {
+    removeAbortListener();
+    if (waitWasAborted()) {
+      await runAbortCleanup();
+    }
   }
-  const decisionPromise = params.manager.awaitDecision(id);
-  if (!decisionPromise) {
-    params.respond(
-      false,
-      undefined,
-      errorShape(ErrorCodes.INVALID_REQUEST, "approval expired or not found"),
-    );
-    return;
-  }
-  const decision = await decisionPromise;
-  params.respond(
-    true,
-    {
-      id,
-      decision,
-      createdAtMs: snapshot?.createdAtMs,
-      expiresAtMs: snapshot?.expiresAtMs,
-    },
-    undefined,
-  );
 }
 
 /** Broadcasts or routes a pending approval request, then responds after acceptance/decision. */
@@ -432,102 +481,173 @@ export async function handlePendingApprovalRequest<
   keepPendingWithoutRoute?: boolean;
   requireDeliveryRoute?: boolean;
   suppressDelivery?: boolean;
+  signal?: AbortSignal;
+  onRequestAborted?: () => Promise<void> | void;
+  markRequestDeliverySettled?: () => void;
 }): Promise<void> {
-  const suppressDelivery = params.suppressDelivery === true;
-  const approvalClientConnIds = suppressDelivery
-    ? null
-    : resolveApprovalRequestRecipientConnIds({
-        context: params.context,
-        record: params.record,
-        excludeConnId: params.clientConnId,
-      });
-  if (!suppressDelivery) {
-    if (approvalClientConnIds) {
-      params.context.broadcastToConnIds(
-        params.requestEventName,
-        params.requestEvent,
-        approvalClientConnIds,
-        {
-          dropIfSlow: true,
-        },
-      );
+  let responseState: "pending" | "acknowledged" | "aborted" =
+    params.twoPhase && params.signal && params.onRequestAborted ? "pending" : "acknowledged";
+  let requestDeliverySettled = false;
+  let abortCleanupPromise: Promise<void> | undefined;
+
+  const removeAbortListener = () => params.signal?.removeEventListener("abort", onAbort);
+  const runAbortCleanup = () => {
+    abortCleanupPromise ??= (async () => {
+      try {
+        await params.onRequestAborted?.();
+      } catch (err) {
+        params.context.logGateway?.error?.(`approval request abort cleanup failed: ${String(err)}`);
+      }
+    })();
+    return abortCleanupPromise;
+  };
+  const markRequestDeliverySettled = () => {
+    if (requestDeliverySettled) {
+      return;
+    }
+    requestDeliverySettled = true;
+    params.markRequestDeliverySettled?.();
+  };
+  const onAbort = () => {
+    if (responseState !== "pending") {
+      return;
+    }
+    responseState = "aborted";
+    removeAbortListener();
+    void runAbortCleanup();
+  };
+  const respond: RespondFn = (...args) => {
+    if (responseState === "aborted") {
+      return;
+    }
+    if (responseState === "pending") {
+      responseState = "acknowledged";
+      removeAbortListener();
+    }
+    params.respond(...args);
+  };
+  const requestWasAborted = () => responseState === "aborted";
+
+  if (responseState === "pending") {
+    if (params.signal?.aborted) {
+      onAbort();
     } else {
-      params.context.broadcast(params.requestEventName, params.requestEvent, { dropIfSlow: true });
+      params.signal?.addEventListener("abort", onAbort, { once: true });
     }
   }
 
-  const hasApprovalClients = suppressDelivery
-    ? false
-    : approvalClientConnIds !== null
-      ? approvalClientConnIds.size > 0
-      : (params.context.hasExecApprovalClients?.(params.clientConnId) ?? false);
-  const deliveredResult = suppressDelivery ? false : params.deliverRequest();
-  const delivered = isPromiseLike(deliveredResult) ? await deliveredResult : deliveredResult;
-  // A turn-source route can approve without an active approval client, so keep
-  // the record alive when the originating channel/account can still receive it.
-  const hasTurnSourceRoute =
-    !hasApprovalClients &&
-    !delivered &&
-    hasApprovalTurnSourceRoute({
-      turnSourceChannel: params.record.request.turnSourceChannel,
-      turnSourceAccountId: params.record.request.turnSourceAccountId,
-      approvalKind: params.approvalKind ?? "exec",
-    });
+  try {
+    const suppressDelivery = params.suppressDelivery === true;
+    const approvalClientConnIds = suppressDelivery
+      ? null
+      : resolveApprovalRequestRecipientConnIds({
+          context: params.context,
+          record: params.record,
+          excludeConnId: params.clientConnId,
+        });
+    if (!suppressDelivery) {
+      if (approvalClientConnIds) {
+        params.context.broadcastToConnIds(
+          params.requestEventName,
+          params.requestEvent,
+          approvalClientConnIds,
+          {
+            dropIfSlow: true,
+          },
+        );
+      } else {
+        params.context.broadcast(params.requestEventName, params.requestEvent, {
+          dropIfSlow: true,
+        });
+      }
+    }
 
-  if (
-    params.requireDeliveryRoute !== false &&
-    !params.keepPendingWithoutRoute &&
-    !hasApprovalClients &&
-    !hasTurnSourceRoute &&
-    !delivered
-  ) {
-    params.manager.expire(params.record.id, "no-approval-route");
-    params.respond(
-      true,
-      {
-        id: params.record.id,
-        decision: null,
-        createdAtMs: params.record.createdAtMs,
-        expiresAtMs: params.record.expiresAtMs,
-      },
-      undefined,
-    );
-    return;
-  }
+    const hasApprovalClients = suppressDelivery
+      ? false
+      : approvalClientConnIds !== null
+        ? approvalClientConnIds.size > 0
+        : (params.context.hasExecApprovalClients?.(params.clientConnId) ?? false);
+    const deliveredResult = suppressDelivery ? false : params.deliverRequest();
+    const delivered = isPromiseLike(deliveredResult) ? await deliveredResult : deliveredResult;
+    markRequestDeliverySettled();
+    if (requestWasAborted()) {
+      await runAbortCleanup();
+      return;
+    }
+    // A turn-source route can approve without an active approval client, so keep
+    // the record alive when the originating channel/account can still receive it.
+    const hasTurnSourceRoute =
+      !hasApprovalClients &&
+      !delivered &&
+      hasApprovalTurnSourceRoute({
+        turnSourceChannel: params.record.request.turnSourceChannel,
+        turnSourceAccountId: params.record.request.turnSourceAccountId,
+        approvalKind: params.approvalKind ?? "exec",
+      });
 
-  if (params.twoPhase) {
-    params.respond(
-      true,
-      {
-        status: "accepted",
-        id: params.record.id,
-        createdAtMs: params.record.createdAtMs,
-        expiresAtMs: params.record.expiresAtMs,
-      },
-      undefined,
-    );
-  }
+    if (
+      params.requireDeliveryRoute !== false &&
+      !params.keepPendingWithoutRoute &&
+      !hasApprovalClients &&
+      !hasTurnSourceRoute &&
+      !delivered
+    ) {
+      params.manager.expire(params.record.id, "no-approval-route");
+      respond(
+        true,
+        {
+          id: params.record.id,
+          decision: null,
+          createdAtMs: params.record.createdAtMs,
+          expiresAtMs: params.record.expiresAtMs,
+        },
+        undefined,
+      );
+      return;
+    }
 
-  const decision = await params.decisionPromise;
-  if (params.afterDecision) {
-    try {
-      await params.afterDecision(decision, params.requestEvent);
-    } catch (err) {
-      params.context.logGateway?.error?.(
-        `${params.afterDecisionErrorLabel ?? "approval follow-up failed"}: ${String(err)}`,
+    if (params.twoPhase) {
+      respond(
+        true,
+        {
+          status: "accepted",
+          id: params.record.id,
+          createdAtMs: params.record.createdAtMs,
+          expiresAtMs: params.record.expiresAtMs,
+        },
+        undefined,
       );
     }
+
+    const decision = await params.decisionPromise;
+    if (params.afterDecision) {
+      try {
+        await params.afterDecision(decision, params.requestEvent);
+      } catch (err) {
+        params.context.logGateway?.error?.(
+          `${params.afterDecisionErrorLabel ?? "approval follow-up failed"}: ${String(err)}`,
+        );
+      }
+    }
+    respond(
+      true,
+      {
+        id: params.record.id,
+        decision,
+        createdAtMs: params.record.createdAtMs,
+        expiresAtMs: params.record.expiresAtMs,
+      },
+      undefined,
+    );
+  } finally {
+    // Resolution forwarding must wait until request forwarding has installed
+    // its pending route; otherwise a fast UI decision can leave stale prompts.
+    markRequestDeliverySettled();
+    if (requestWasAborted()) {
+      await runAbortCleanup();
+    }
+    removeAbortListener();
   }
-  params.respond(
-    true,
-    {
-      id: params.record.id,
-      decision,
-      createdAtMs: params.record.createdAtMs,
-      expiresAtMs: params.record.expiresAtMs,
-    },
-    undefined,
-  );
 }
 
 /** Resolves a pending approval and broadcasts the final decision exactly once. */
@@ -538,6 +658,7 @@ export async function handleApprovalResolve<TPayload, TResolvedEvent extends obj
   respond: RespondFn;
   context: GatewayRequestContext;
   client: GatewayClient | null;
+  resolvedByOverride?: string | null;
   exposeAmbiguousPrefixError?: boolean;
   validateDecision?: (snapshot: ExecApprovalRecord<TPayload>) =>
     | {
@@ -609,7 +730,9 @@ export async function handleApprovalResolve<TPayload, TResolvedEvent extends obj
   }
 
   const resolvedBy =
-    params.client?.connect?.client?.displayName ?? params.client?.connect?.client?.id ?? null;
+    params.resolvedByOverride !== undefined
+      ? params.resolvedByOverride
+      : (params.client?.connect?.client?.displayName ?? params.client?.connect?.client?.id ?? null);
   const ok = params.manager.resolve(resolved.approvalId, params.decision, resolvedBy);
   if (!ok) {
     respondUnknownOrExpiredApproval(params.respond);

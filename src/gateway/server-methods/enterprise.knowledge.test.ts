@@ -7,6 +7,7 @@ import { registerBuiltinExampleKnowledgeFoundations } from "../../enterprise/bui
 import {
   clearBundleKnowledgeFoundations,
   clearEnterpriseKnowledgeFoundations,
+  registerBundleKnowledgeFoundation,
   registerEnterpriseKnowledgeFoundation,
 } from "../../enterprise/knowledge.js";
 import { importWorkflowTreeContent } from "../../enterprise/tree-io.js";
@@ -45,7 +46,7 @@ const REFERENCING_TREE = JSON.stringify({
   root: {
     id: "root",
     title: "Root",
-    ontology: { knowledgeFoundations: ["acme.kb"] },
+    ontology: { knowledgeFoundations: ["acme.kb", "shared.bundle"] },
     children: [
       {
         id: "root.leaf",
@@ -59,10 +60,26 @@ const REFERENCING_TREE = JSON.stringify({
   },
 });
 
+const OTHER_REFERENCING_TREE = JSON.stringify({
+  schema: "clawworks.workflow-tree",
+  schemaVersion: 1,
+  id: "test.knowledge.other",
+  version: "1.0.0",
+  name: "Other knowledge test",
+  root: {
+    id: "other-root",
+    title: "Other root",
+    ontology: { knowledgeFoundations: ["shared.bundle"] },
+  },
+});
+
 beforeAll(() => {
   setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
   invalidateWorkflowTreeRegistry();
   expect(importWorkflowTreeContent({ content: REFERENCING_TREE, format: "json" }).ok).toBe(true);
+  expect(importWorkflowTreeContent({ content: OTHER_REFERENCING_TREE, format: "json" }).ok).toBe(
+    true,
+  );
   invalidateWorkflowTreeRegistry();
   // The import rebuilt the bundle registry, which registers the shipped example
   // foundation. These cases assert the projection of what they register
@@ -104,6 +121,57 @@ describe("enterprise.knowledge.foundations.list", () => {
       displayName: "Acme KB",
       detail: "http://kb:9621",
     });
+  });
+
+  it("keeps reused bundle descriptors and references scoped to their owning trees", async () => {
+    registerBundleKnowledgeFoundation("test.knowledge", "shared.bundle", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Primary bundle" }),
+    });
+    registerBundleKnowledgeFoundation("test.knowledge.other", "shared.bundle", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Other bundle" }),
+    });
+
+    const { payload } = await invoke("enterprise.knowledge.foundations.list", {});
+    const { foundations } = payload as {
+      foundations: Array<{
+        id: string;
+        displayName: string;
+        ownerTreeIds: string[];
+        referencedBy: Array<{ treeId: string }>;
+      }>;
+    };
+    expect(foundations.filter((foundation) => foundation.id === "shared.bundle")).toEqual([
+      {
+        id: "shared.bundle",
+        kind: "remote",
+        displayName: "Primary bundle",
+        ownerTreeIds: ["test.knowledge"],
+        referencedBy: [
+          {
+            treeId: "test.knowledge",
+            treeName: "Knowledge test",
+            nodeId: "root",
+            nodeTitle: "Root",
+          },
+        ],
+      },
+      {
+        id: "shared.bundle",
+        kind: "remote",
+        displayName: "Other bundle",
+        ownerTreeIds: ["test.knowledge.other"],
+        referencedBy: [
+          {
+            treeId: "test.knowledge.other",
+            treeName: "Other knowledge test",
+            nodeId: "other-root",
+            nodeTitle: "Other root",
+          },
+        ],
+      },
+    ]);
   });
 
   it("omits detail entirely for an adapter that reports none", async () => {

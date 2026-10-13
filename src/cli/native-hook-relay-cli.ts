@@ -97,6 +97,7 @@ export async function runNativeHookRelayCli(
           generation,
           event,
           rawPayload,
+          deadlineAtMs: deadline.expiresAtMs,
           registrationTimeoutMs: Math.min(100, remainingMs),
           timeoutMs: remainingMs,
         }),
@@ -128,7 +129,14 @@ export async function runNativeHookRelayCli(
         deadline,
         callGatewayFn<NativeHookRelayProcessResponse>({
           method: "nativeHook.invoke",
-          params: { provider, relayId, generation, event, rawPayload },
+          params: {
+            provider,
+            relayId,
+            generation,
+            event,
+            rawPayload,
+            deadlineAtMs: deadline.expiresAtMs,
+          },
           timeoutMs: remainingNativeHookRelayDeadlineMs(deadline),
           signal: deadline.signal,
           scopes: [ADMIN_SCOPE],

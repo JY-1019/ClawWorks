@@ -19,7 +19,8 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Knowledge foundation id referenced by ontology.knowledgeFoundations."
+              "pattern": "^[a-z0-9][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$",
+              "description": "Knowledge foundation id referenced by ontology.knowledgeFoundations. Dotted lowercase segments of [a-z0-9-], for example acme.runbooks. Constrained to what the ontology schema accepts: an id it would reject registers a store the Knowledge tab lists and no step can ever be wired to."
             },
             "serverUrl": {
               "type": "string",

@@ -5,21 +5,26 @@ import path from "node:path";
 import { reviewExecRequestWithConfiguredModel } from "openclaw/plugin-sdk/agent-harness-exec-review-runtime";
 import {
   callGatewayTool,
+  cancelPluginApprovalForRunAbort,
+  finalizeNativeHookRelayToolRelease,
+  getNativeHookRelayDeferredToolApproval,
   hasNativeHookRelayInvocation,
   invokeNativeHookRelay,
-  resolveNativeHookRelayDeferredToolApproval,
   runBeforeToolCallHook,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApprovalResponse, handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
+import type { JsonObject, JsonValue } from "./protocol.js";
 
 vi.mock("openclaw/plugin-sdk/agent-harness-runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("openclaw/plugin-sdk/agent-harness-runtime")>()),
   callGatewayTool: vi.fn(),
+  cancelPluginApprovalForRunAbort: vi.fn(),
+  finalizeNativeHookRelayToolRelease: vi.fn(),
+  getNativeHookRelayDeferredToolApproval: vi.fn(),
   hasNativeHookRelayInvocation: vi.fn(() => false),
   invokeNativeHookRelay: vi.fn(),
-  resolveNativeHookRelayDeferredToolApproval: vi.fn(),
   runBeforeToolCallHook: vi.fn(async ({ params }: { params: unknown }) => ({
     blocked: false,
     params,
@@ -34,11 +39,13 @@ vi.mock("openclaw/plugin-sdk/agent-harness-exec-review-runtime", async (importOr
 }));
 
 const mockCallGatewayTool = vi.mocked(callGatewayTool);
+const mockCancelPluginApprovalForRunAbort = vi.mocked(cancelPluginApprovalForRunAbort);
+const mockFinalizeNativeHookRelayToolRelease = vi.mocked(finalizeNativeHookRelayToolRelease);
+const mockGetNativeHookRelayDeferredToolApproval = vi.mocked(
+  getNativeHookRelayDeferredToolApproval,
+);
 const mockHasNativeHookRelayInvocation = vi.mocked(hasNativeHookRelayInvocation);
 const mockInvokeNativeHookRelay = vi.mocked(invokeNativeHookRelay);
-const mockResolveNativeHookRelayDeferredToolApproval = vi.mocked(
-  resolveNativeHookRelayDeferredToolApproval,
-);
 const mockReviewExecRequestWithConfiguredModel = vi.mocked(reviewExecRequestWithConfiguredModel);
 const mockRunBeforeToolCallHook = vi.mocked(runBeforeToolCallHook);
 
@@ -47,6 +54,10 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`Expected ${label}`);
   }
   return value as Record<string, unknown>;
+}
+
+function jsonObject(value: JsonObject): JsonObject {
+  return value;
 }
 
 function gatewayCallAt(callIndex = 0) {
@@ -118,11 +129,14 @@ function createParams(): EmbeddedRunAttemptParams {
 describe("Codex app-server approval bridge", () => {
   beforeEach(() => {
     mockCallGatewayTool.mockReset();
+    mockCancelPluginApprovalForRunAbort.mockReset();
+    mockCancelPluginApprovalForRunAbort.mockResolvedValue(undefined);
+    mockFinalizeNativeHookRelayToolRelease.mockReset();
+    mockFinalizeNativeHookRelayToolRelease.mockReturnValue(undefined);
+    mockGetNativeHookRelayDeferredToolApproval.mockReset();
     mockHasNativeHookRelayInvocation.mockReset();
     mockHasNativeHookRelayInvocation.mockReturnValue(false);
     mockInvokeNativeHookRelay.mockReset();
-    mockResolveNativeHookRelayDeferredToolApproval.mockReset();
-    mockResolveNativeHookRelayDeferredToolApproval.mockResolvedValue(undefined);
     mockReviewExecRequestWithConfiguredModel.mockReset();
     mockReviewExecRequestWithConfiguredModel.mockResolvedValue({
       decision: "ask",
@@ -177,6 +191,7 @@ describe("Codex app-server approval bridge", () => {
         turnId: "turn-1",
         itemId: "patch-yolo",
         reason: "needs write access",
+        grantRoot: "/workspace",
       },
       paramsForRun: params,
       threadId: "thread-1",
@@ -186,6 +201,29 @@ describe("Codex app-server approval bridge", () => {
 
     expect(result).toEqual({ decision: "acceptForSession" });
     expect(mockCallGatewayTool).not.toHaveBeenCalled();
+    expect(mockRunBeforeToolCallHook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "apply_patch",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "patch-yolo",
+          reason: "needs write access",
+          grantRoot: "/workspace",
+        },
+        approval: {
+          provider: "codex",
+          method: "item/fileChange/requestApproval",
+          request: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "patch-yolo",
+            reason: "needs write access",
+            grantRoot: "/workspace",
+          },
+        },
+      }),
+    );
     findApprovalEvent(params, {
       status: "approved",
       reason: "needs write access",
@@ -206,6 +244,7 @@ describe("Codex app-server approval bridge", () => {
         turnId: "turn-1",
         itemId: "cmd-1",
         command: "pnpm test extensions/codex/src/app-server",
+        cwd: "/workspace",
       },
       paramsForRun: params,
       threadId: "thread-1",
@@ -230,18 +269,33 @@ describe("Codex app-server approval bridge", () => {
       toolName: "exec",
       params: {
         command: "pnpm test extensions/codex/src/app-server",
+        cwd: "/workspace",
         approval: {
           threadId: "thread-1",
           turnId: "turn-1",
           itemId: "cmd-1",
           command: "pnpm test extensions/codex/src/app-server",
+          cwd: "/workspace",
+        },
+      },
+      approval: {
+        provider: "codex",
+        method: "item/commandExecution/requestApproval",
+        request: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "cmd-1",
+          command: "pnpm test extensions/codex/src/app-server",
+          cwd: "/workspace",
         },
       },
       toolCallId: "cmd-1",
       approvalMode: "request",
+      deferRelease: true,
       signal: undefined,
       ctx: {
         agentId: "main",
+        cwd: "/workspace",
         sessionKey: "agent:main:session-1",
         channelId: "chat-1",
       },
@@ -249,6 +303,341 @@ describe("Codex app-server approval bridge", () => {
     findApprovalEvent(params, { status: "pending", approvalId: "plugin:approval-1" });
     findApprovalEvent(params, { status: "approved", approvalId: "plugin:approval-1" });
   });
+
+  it.each([
+    { decision: "allow-once", released: true, response: { decision: "accept" } },
+    { decision: "deny", released: false, response: { decision: "decline" } },
+  ])("settles deferred execution after the outer UI decides $decision", async (testCase) => {
+    const params = createParams();
+    const finalizeRelease = vi.fn();
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+      blocked: false,
+      params: toolParams,
+      finalizeRelease,
+    }));
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-release", status: "accepted" })
+      .mockResolvedValueOnce({
+        id: "plugin:approval-release",
+        decision: testCase.decision,
+      });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-release",
+        command: "node --version",
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual(testCase.response);
+    expect(finalizeRelease).toHaveBeenCalledOnce();
+    expect(finalizeRelease).toHaveBeenCalledWith(testCase.released);
+  });
+
+  it("shows deferred policy context in the outer capability approval", async () => {
+    const params = createParams();
+    const onResolution = vi.fn();
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+      blocked: false,
+      params: toolParams,
+      deferredApproval: {
+        approval: {
+          title: "Review managed network",
+          description: "Policy requires a one-time approval.",
+          severity: "critical" as const,
+          allowedDecisions: ["allow-once", "deny"] as const,
+          onResolution,
+        },
+        toolName: "exec",
+        baseParams: toolParams,
+        lifecycle: { status: "pending" as const },
+      },
+    }));
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-policy-context", status: "accepted" })
+      .mockResolvedValueOnce({
+        id: "plugin:approval-policy-context",
+        decision: "allow-always",
+      });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-policy-context",
+        command: "curl https://example.test",
+        availableDecisions: ["accept", "acceptForSession"],
+        networkApprovalContext: { host: "example.test", protocol: "https" },
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({ decision: "acceptForSession" });
+    expect(onResolution).toHaveBeenCalledWith("allow-once");
+    expect(gatewayRequestPayload()).toMatchObject({
+      title: "Review managed network: Codex app-server command approval",
+      severity: "critical",
+      allowedDecisions: ["allow-once", "allow-always", "deny"],
+    });
+    expect(gatewayRequestPayload().description).toContain("Command: curl https://example.test");
+    expect(gatewayRequestPayload().description).toContain("Policy requires a one-time approval.");
+  });
+
+  it("does not expose or accept allow decisions for a deny-only deferred policy", async () => {
+    const params = createParams();
+    const onResolution = vi.fn();
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+      blocked: false,
+      params: toolParams,
+      deferredApproval: {
+        approval: {
+          title: "Blocked by policy",
+          description: "This action cannot be approved.",
+          allowedDecisions: ["deny"] as const,
+          onResolution,
+        },
+        toolName: "exec",
+        baseParams: toolParams,
+        lifecycle: { status: "pending" as const },
+      },
+    }));
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-deny-only", status: "accepted" })
+      .mockResolvedValueOnce({ id: "plugin:approval-deny-only", decision: "allow-once" });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-deny-only",
+        command: "curl https://example.test",
+        networkApprovalContext: { host: "example.test", protocol: "https" },
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({ decision: "decline" });
+    expect(gatewayRequestPayload().allowedDecisions).toEqual(["deny"]);
+    expect(onResolution).toHaveBeenCalledWith("cancelled");
+  });
+
+  it.each([
+    {
+      decision: "allow-once",
+      availableDecisions: ["decline"],
+    },
+    {
+      decision: "allow-always",
+      availableDecisions: [
+        {
+          applyNetworkPolicyAmendment: {
+            network_policy_amendment: { host: "example.test", action: "deny" },
+          },
+        },
+      ],
+    },
+  ])(
+    "does not release when $decision cannot produce an approving Codex decision",
+    async (testCase) => {
+      const params = createParams();
+      const finalizeRelease = vi.fn();
+      const onResolution = vi.fn();
+      mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+        blocked: false,
+        params: toolParams,
+        finalizeRelease,
+        deferredApproval: {
+          approval: {
+            title: "Review command",
+            description: "Review the policy before running.",
+            onResolution,
+          },
+          toolName: "exec",
+          baseParams: toolParams,
+          lifecycle: { status: "pending" },
+        },
+      }));
+      mockCallGatewayTool
+        .mockResolvedValueOnce({ id: "plugin:approval-unencodable", status: "accepted" })
+        .mockResolvedValueOnce({
+          id: "plugin:approval-unencodable",
+          decision: testCase.decision,
+        });
+
+      const result = await handleCodexAppServerApprovalRequest({
+        method: "item/commandExecution/requestApproval",
+        requestParams: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "cmd-unencodable",
+          command: "node --version",
+          availableDecisions: testCase.availableDecisions,
+        },
+        paramsForRun: params,
+        threadId: "thread-1",
+        turnId: "turn-1",
+      });
+
+      expect(result).toEqual({ decision: "decline" });
+      expect(finalizeRelease).toHaveBeenCalledOnce();
+      expect(finalizeRelease).toHaveBeenCalledWith(false);
+      expect(onResolution).toHaveBeenCalledOnce();
+      expect(onResolution).toHaveBeenCalledWith("cancelled");
+      expect(gatewayRequestPayload().allowedDecisions).toEqual(["deny"]);
+      findApprovalEvent(params, { status: "unavailable" });
+    },
+  );
+
+  it("denies an approved request when the final release gate fails", async () => {
+    const params = createParams();
+    const finalizeRelease = vi.fn((released: boolean) =>
+      released ? "enterprise run changed before release" : undefined,
+    );
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+      blocked: false,
+      params: toolParams,
+      finalizeRelease,
+    }));
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-release-veto", status: "accepted" })
+      .mockResolvedValueOnce({
+        id: "plugin:approval-release-veto",
+        decision: "allow-once",
+      });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-release-veto",
+        command: "node --version",
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({ decision: "decline" });
+    expect(finalizeRelease).toHaveBeenCalledOnce();
+    findApprovalEvent(params, {
+      status: "denied",
+      message: "enterprise run changed before release",
+    });
+  });
+
+  it("cancels a deferred callback when the provider release gate vetoes", async () => {
+    const params = createParams();
+    const onResolution = vi.fn();
+    const finalizeApprovedParams = vi.fn(() => "");
+    const finalizeRelease = vi.fn((released: boolean) =>
+      released ? "enterprise run changed before release" : undefined,
+    );
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+      blocked: false,
+      params: toolParams,
+      finalizeRelease,
+      deferredApproval: {
+        approval: {
+          title: "Review command",
+          description: "Review the policy before running.",
+          onResolution,
+        },
+        toolName: "exec",
+        baseParams: toolParams,
+        finalizeApprovedParams,
+        lifecycle: { status: "pending" },
+      },
+    }));
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-deferred-veto", status: "accepted" })
+      .mockResolvedValueOnce({
+        id: "plugin:approval-deferred-veto",
+        decision: "allow-once",
+      });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-deferred-veto",
+        command: "node --version",
+        networkApprovalContext: { host: "example.test", protocol: "https" },
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({ decision: "decline" });
+    expect(finalizeRelease).toHaveBeenCalledOnce();
+    expect(finalizeRelease).toHaveBeenCalledWith(true);
+    expect(finalizeApprovedParams).toHaveBeenCalledOnce();
+    expect(onResolution).toHaveBeenCalledOnce();
+    expect(onResolution).toHaveBeenCalledWith("cancelled");
+    findApprovalEvent(params, {
+      status: "denied",
+      message: "enterprise run changed before release",
+    });
+  });
+
+  it.each(["throws", "rejects"])(
+    "keeps an approved release when the resolved event handler $s",
+    async (failureMode) => {
+      const params = createParams();
+      const finalizeRelease = vi.fn();
+      let eventCount = 0;
+      params.onAgentEvent = vi.fn(() => {
+        eventCount += 1;
+        if (eventCount !== 2) {
+          return undefined;
+        }
+        if (failureMode === "throws") {
+          throw new Error("event failed");
+        }
+        return Promise.reject(new Error("event failed"));
+      });
+      mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+        blocked: false,
+        params: toolParams,
+        finalizeRelease,
+      }));
+      mockCallGatewayTool
+        .mockResolvedValueOnce({ id: "plugin:approval-event", status: "accepted" })
+        .mockResolvedValueOnce({ id: "plugin:approval-event", decision: "allow-once" });
+
+      const result = await handleCodexAppServerApprovalRequest({
+        method: "item/commandExecution/requestApproval",
+        requestParams: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "cmd-event",
+          command: "node --version",
+        },
+        paramsForRun: params,
+        threadId: "thread-1",
+        turnId: "turn-1",
+      });
+
+      await Promise.resolve();
+      expect(result).toEqual({ decision: "accept" });
+      expect(finalizeRelease).toHaveBeenCalledOnce();
+      expect(finalizeRelease).toHaveBeenCalledWith(true);
+    },
+  );
 
   it("uses the configured ClawWorks exec auto-review model before plugin approvals", async () => {
     const params = createParams();
@@ -358,6 +747,11 @@ describe("Codex app-server approval bridge", () => {
 
   it("falls back to plugin approval for managed-network command approvals", async () => {
     const params = createParams();
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => ({
+      blocked: false,
+      params: toolParams,
+      approvalResolution: "allow-once",
+    }));
     params.config = {
       tools: {
         exec: {
@@ -383,10 +777,8 @@ describe("Codex app-server approval bridge", () => {
         threadId: "thread-1",
         turnId: "turn-1",
         itemId: "cmd-auto-review-network",
-        command: "curl https://example.test",
         networkApprovalContext: {
           host: "example.test",
-          port: 443,
           protocol: "https",
         },
       },
@@ -395,14 +787,47 @@ describe("Codex app-server approval bridge", () => {
       turnId: "turn-1",
       execPolicy: { mode: "auto" },
       internalExecAutoReview: true,
+      autoApprove: true,
     });
 
     expect(result).toEqual({ decision: "accept" });
     expect(mockReviewExecRequestWithConfiguredModel).not.toHaveBeenCalled();
+    expect(mockRunBeforeToolCallHook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "exec",
+        params: {
+          approval: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "cmd-auto-review-network",
+            networkApprovalContext: {
+              host: "example.test",
+              protocol: "https",
+            },
+          },
+        },
+        approvalMode: "defer",
+        deferRelease: true,
+        approval: {
+          provider: "codex",
+          method: "item/commandExecution/requestApproval",
+          request: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "cmd-auto-review-network",
+            networkApprovalContext: {
+              host: "example.test",
+              protocol: "https",
+            },
+          },
+        },
+      }),
+    );
     expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
       "plugin.approval.request",
       "plugin.approval.waitDecision",
     ]);
+    expect(gatewayRequestPayload().description).toContain("Network request: https example.test");
   });
 
   it.each(["lmstudio/local-model", "local-model"])(
@@ -1164,6 +1589,88 @@ describe("Codex app-server approval bridge", () => {
     });
   });
 
+  it("closes a pending command approval when the run aborts during the user wait", async () => {
+    const params = createParams();
+    const abortController = new AbortController();
+    mockCallGatewayTool.mockResolvedValueOnce({ id: "plugin:approval-abort", status: "accepted" });
+    mockCallGatewayTool.mockImplementationOnce((_method, opts) => {
+      const signal = (opts as { signal?: AbortSignal }).signal;
+      return new Promise((_, reject) => {
+        const rejectAbort = () => {
+          const error = new Error("gateway request aborted");
+          error.name = "AbortError";
+          reject(error);
+        };
+        if (signal?.aborted) {
+          rejectAbort();
+        } else {
+          signal?.addEventListener("abort", rejectAbort, { once: true });
+        }
+      });
+    });
+
+    const resultPromise = handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-user-wait-abort",
+        command: "node --version",
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+      signal: abortController.signal,
+    });
+    await vi.waitFor(() => expect(mockCallGatewayTool).toHaveBeenCalledTimes(2));
+    abortController.abort(new Error("run stopped"));
+
+    await expect(resultPromise).resolves.toEqual({ decision: "cancel" });
+    expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
+    expect(gatewayCallAt(0)[1]).toMatchObject({ signal: abortController.signal });
+    expect(gatewayCallAt(1)[1]).toMatchObject({ signal: abortController.signal });
+    expect(mockCancelPluginApprovalForRunAbort).toHaveBeenCalledWith("plugin:approval-abort");
+  });
+
+  it("closes an accepted command approval when abort wins before the wait connects", async () => {
+    const params = createParams();
+    const abortController = new AbortController();
+    const abortReason = new Error("run stopped between approval phases");
+    mockCallGatewayTool
+      .mockImplementationOnce(async () => {
+        abortController.abort(abortReason);
+        return { id: "plugin:approval-handoff-abort", status: "accepted" };
+      })
+      .mockRejectedValueOnce(abortReason);
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-handoff-abort",
+        command: "node --version",
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+      signal: abortController.signal,
+    });
+
+    expect(result).toEqual({ decision: "cancel" });
+    expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
+    expect(gatewayCallAt(1)[1]).toMatchObject({ signal: abortController.signal });
+    expect(mockCancelPluginApprovalForRunAbort).toHaveBeenCalledWith(
+      "plugin:approval-handoff-abort",
+    );
+  });
+
   it("normalizes prefixed channel targets for ClawWorks tool policy context", async () => {
     const params = createParams();
     params.messageChannel = "telegram";
@@ -1267,6 +1774,17 @@ describe("Codex app-server approval bridge", () => {
       rawPayload: {
         hook_event_name: "PreToolUse",
         openclaw_approval_mode: "report",
+        openclaw_approval_context: {
+          provider: "codex",
+          method: "item/commandExecution/requestApproval",
+          request: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "cmd-native-relay",
+            command: "cat /tmp/private_key",
+            cwd: "/workspace",
+          },
+        },
         tool_name: "exec_command",
         tool_use_id: "cmd-native-relay",
         cwd: "/workspace",
@@ -1285,11 +1803,78 @@ describe("Codex app-server approval bridge", () => {
         },
       },
       requireGeneration: true,
+      projectToolInputForRewriteCheck: expect.any(Function),
     });
     findApprovalEvent(params, {
       status: "denied",
       message: "blocked by native relay",
     });
+  });
+
+  it("uses the outer UI to settle an existing native capability approval", async () => {
+    const params = createParams();
+    mockHasNativeHookRelayInvocation.mockReturnValue(true);
+    mockGetNativeHookRelayDeferredToolApproval.mockReturnValue({
+      title: "Review native network policy",
+      description: "Native policy requires a one-time approval.",
+      severity: "critical",
+      allowedDecisions: ["allow-once", "deny"],
+    });
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-native-network", status: "accepted" })
+      .mockResolvedValueOnce({
+        id: "plugin:approval-native-network",
+        decision: "allow-always",
+      });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-native-network",
+        command: "curl https://example.test",
+        availableDecisions: ["accept", "acceptForSession"],
+        networkApprovalContext: { host: "example.test", protocol: "https" },
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+      nativeHookRelay: {
+        relayId: "relay-1",
+        generation: "generation-1",
+        allowedEvents: ["pre_tool_use"],
+      },
+      autoApprove: true,
+    });
+
+    expect(result).toEqual({ decision: "acceptForSession" });
+    expect(mockInvokeNativeHookRelay).not.toHaveBeenCalled();
+    expect(mockRunBeforeToolCallHook).not.toHaveBeenCalled();
+    expect(mockGetNativeHookRelayDeferredToolApproval).toHaveBeenCalledWith({
+      relayId: "relay-1",
+      toolUseId: "cmd-native-network",
+      generation: "generation-1",
+    });
+    expect(mockFinalizeNativeHookRelayToolRelease).toHaveBeenCalledWith({
+      relayId: "relay-1",
+      toolUseId: "cmd-native-network",
+      generation: "generation-1",
+      resolution: "allow-always",
+    });
+    expect(gatewayRequestPayload()).toMatchObject({
+      title: "Review native network policy: Codex app-server command approval",
+      severity: "critical",
+      allowedDecisions: ["allow-once", "allow-always", "deny"],
+    });
+    expect(gatewayRequestPayload().description).toContain("Command: curl https://example.test");
+    expect(gatewayRequestPayload().description).toContain(
+      "Native policy requires a one-time approval.",
+    );
+    expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
   });
 
   it("falls through to plugin approval when the native hook relay has no decision", async () => {
@@ -1325,10 +1910,10 @@ describe("Codex app-server approval bridge", () => {
     expect(result).toEqual({ decision: "accept" });
     expect(mockRunBeforeToolCallHook).not.toHaveBeenCalled();
     expect(mockInvokeNativeHookRelay).toHaveBeenCalledTimes(1);
-    expect(mockResolveNativeHookRelayDeferredToolApproval).toHaveBeenCalledWith({
+    expect(mockGetNativeHookRelayDeferredToolApproval).toHaveBeenCalledWith({
       relayId: "relay-1",
       toolUseId: "cmd-native-relay-noop",
-      signal: undefined,
+      generation: "generation-1",
     });
     expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
       "plugin.approval.request",
@@ -1377,10 +1962,10 @@ describe("Codex app-server approval bridge", () => {
       event: "pre_tool_use",
       toolUseId: "cmd-native-relay-observed",
     });
-    expect(mockResolveNativeHookRelayDeferredToolApproval).toHaveBeenCalledWith({
+    expect(mockGetNativeHookRelayDeferredToolApproval).toHaveBeenCalledWith({
       relayId: "relay-1",
       toolUseId: "cmd-native-relay-observed",
-      signal: undefined,
+      generation: "generation-1",
     });
     expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
       "plugin.approval.request",
@@ -1388,13 +1973,17 @@ describe("Codex app-server approval bridge", () => {
     ]);
   });
 
-  it("accepts command approvals from deferred native PreToolUse plugin approvals", async () => {
+  it("merges deferred native policy into the outer command approval", async () => {
     const params = createParams();
     mockHasNativeHookRelayInvocation.mockReturnValueOnce(true);
-    mockResolveNativeHookRelayDeferredToolApproval.mockResolvedValueOnce({
-      handled: true,
-      outcome: "approved-once",
+    mockGetNativeHookRelayDeferredToolApproval.mockReturnValueOnce({
+      title: "Review managed command",
+      description: `Native policy requires approval: ${"p".repeat(400)}`,
+      severity: "critical",
     });
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:native-deferred", status: "accepted" })
+      .mockResolvedValueOnce({ id: "plugin:native-deferred", decision: "allow-once" });
 
     const result = await handleCodexAppServerApprovalRequest({
       method: "item/commandExecution/requestApproval",
@@ -1402,7 +1991,7 @@ describe("Codex app-server approval bridge", () => {
         threadId: "thread-1",
         turnId: "turn-1",
         itemId: "cmd-native-relay-deferred",
-        command: "pnpm test extensions/codex/src/app-server",
+        command: `curl https://network-proof.example.test/${"x".repeat(400)}`,
         cwd: "/workspace",
       },
       paramsForRun: params,
@@ -1410,6 +1999,7 @@ describe("Codex app-server approval bridge", () => {
       turnId: "turn-1",
       nativeHookRelay: {
         relayId: "relay-1",
+        generation: "generation-1",
         allowedEvents: ["pre_tool_use"],
       },
     });
@@ -1417,10 +2007,13 @@ describe("Codex app-server approval bridge", () => {
     expect(result).toEqual({ decision: "accept" });
     expect(mockRunBeforeToolCallHook).not.toHaveBeenCalled();
     expect(mockInvokeNativeHookRelay).not.toHaveBeenCalled();
-    expect(mockCallGatewayTool).not.toHaveBeenCalled();
+    const description = String(gatewayRequestPayload().description);
+    expect(description).toContain("Command: curl https://network-proof.example.test/");
+    expect(description).toContain("Native policy requires approval:");
+    expect(description.length).toBeLessThanOrEqual(256);
     findApprovalEvent(params, {
       status: "approved",
-      message: "Codex app-server approval granted for this turn.",
+      approvalId: "plugin:native-deferred",
     });
   });
 
@@ -1628,17 +2221,10 @@ describe("Codex app-server approval bridge", () => {
 
   it("denies command approvals when ClawWorks tool policy rewrites params", async () => {
     const params = createParams();
-    mockRunBeforeToolCallHook.mockResolvedValueOnce({
-      blocked: false,
-      params: {
-        command: "echo rewritten",
-        approval: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "cmd-rewritten",
-          command: "echo rewritten",
-        },
-      },
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => {
+      const rewrittenParams = requireRecord(toolParams, "tool policy params");
+      rewrittenParams.command = "echo rewritten";
+      return { blocked: false, params: rewrittenParams };
     });
 
     const result = await handleCodexAppServerApprovalRequest({
@@ -1663,19 +2249,104 @@ describe("Codex app-server approval bridge", () => {
     });
   });
 
-  it("keeps ClawWorks plugin allow-always approvals scoped to one Codex request", async () => {
+  it.each([
+    {
+      authority: "command cwd",
+      method: "item/commandExecution/requestApproval",
+      requestParams: jsonObject({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-cwd-rewritten",
+        command: "pnpm test",
+        cwd: "/workspace",
+      }),
+      rewrite: (toolParams: Record<string, unknown>) => {
+        toolParams.cwd = "/tmp";
+      },
+      expected: { decision: "decline" },
+    },
+    {
+      authority: "file grant root",
+      method: "item/fileChange/requestApproval",
+      requestParams: jsonObject({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "patch-root-rewritten",
+        grantRoot: "/workspace",
+      }),
+      rewrite: (toolParams: Record<string, unknown>) => {
+        toolParams.grantRoot = "/";
+      },
+      expected: { decision: "decline" },
+    },
+    {
+      authority: "requested permissions",
+      method: "item/permissions/requestApproval",
+      requestParams: jsonObject({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "permissions-rewritten",
+        environmentId: "local",
+        cwd: "/workspace",
+        permissions: { network: { allowHosts: ["example.com", "*.internal"] } },
+      }),
+      rewrite: (toolParams: Record<string, unknown>) => {
+        toolParams.permissions = { network: { allowHosts: ["example.com"] } };
+      },
+      expected: { permissions: {}, scope: "turn" },
+    },
+    {
+      authority: "available command decisions",
+      method: "item/commandExecution/requestApproval",
+      requestParams: jsonObject({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-decisions-rewritten",
+        command: "pnpm test",
+        availableDecisions: ["decline"],
+      }),
+      rewrite: (toolParams: Record<string, unknown>) => {
+        const approval = requireRecord(toolParams.approval, "approval context");
+        approval.availableDecisions = ["accept"];
+      },
+      expected: { decision: "decline" },
+    },
+  ] satisfies Array<{
+    authority: string;
+    method: string;
+    requestParams: JsonObject;
+    rewrite: (toolParams: Record<string, unknown>) => void;
+    expected: JsonValue;
+  }>)("denies approvals when policy rewrites $authority", async (testCase) => {
+    const params = createParams();
+    mockRunBeforeToolCallHook.mockImplementationOnce(async ({ params: toolParams }) => {
+      const rewrittenParams = requireRecord(toolParams, "tool policy params");
+      testCase.rewrite(rewrittenParams);
+      return { blocked: false, params: rewrittenParams };
+    });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: testCase.method,
+      requestParams: testCase.requestParams,
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual(testCase.expected);
+    expect(mockCallGatewayTool).not.toHaveBeenCalled();
+    findApprovalEvent(params, {
+      status: "denied",
+      message:
+        "ClawWorks tool policy rewrote Codex app-server approval params; refusing original request.",
+    });
+  });
+
+  it("allows policy to omit display-only approval context", async () => {
     const params = createParams();
     mockRunBeforeToolCallHook.mockResolvedValueOnce({
       blocked: false,
-      params: {
-        command: "pnpm test",
-        approval: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "cmd-needs-approval",
-          command: "pnpm test",
-        },
-      },
+      params: { command: "pnpm test", cwd: "/workspace" },
       approvalResolution: "allow-always",
     });
 
@@ -1685,7 +2356,10 @@ describe("Codex app-server approval bridge", () => {
         threadId: "thread-1",
         turnId: "turn-1",
         itemId: "cmd-needs-approval",
+        startedAtMs: 1_725_000_000_000,
+        reason: "display-only context",
         command: "pnpm test",
+        cwd: "/workspace",
       },
       paramsForRun: params,
       threadId: "thread-1",
@@ -2213,6 +2887,9 @@ describe("Codex app-server approval bridge", () => {
         threadId: "thread-1",
         turnId: "turn-1",
         itemId: "perm-1",
+        environmentId: "local",
+        cwd: "/workspace",
+        reason: "needs scoped access",
         permissions: {
           network: { allowHosts: ["example.com", "*.internal"] },
           fileSystem: { roots: ["/"], writePaths: ["/home/simone"] },
@@ -2244,6 +2921,39 @@ describe("Codex app-server approval bridge", () => {
       "High-risk targets: wildcard hosts, private-network wildcards, filesystem root",
     );
     expect(description).not.toContain("agent:main:session-1");
+    expect(mockRunBeforeToolCallHook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "codex_permission_approval",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "perm-1",
+          environmentId: "local",
+          cwd: "/workspace",
+          reason: "needs scoped access",
+          permissions: {
+            network: { allowHosts: ["example.com", "*.internal"] },
+            fileSystem: { roots: ["/"], writePaths: ["/home/simone"] },
+          },
+        },
+        approval: {
+          provider: "codex",
+          method: "item/permissions/requestApproval",
+          request: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "perm-1",
+            environmentId: "local",
+            cwd: "/workspace",
+            reason: "needs scoped access",
+            permissions: {
+              network: { allowHosts: ["example.com", "*.internal"] },
+              fileSystem: { roots: ["/"], writePaths: ["/home/simone"] },
+            },
+          },
+        },
+      }),
+    );
   });
 
   it("keeps permission detail bounded with truncated and compacted target samples", async () => {
@@ -2465,7 +3175,8 @@ describe("Codex app-server approval bridge", () => {
             {
               applyNetworkPolicyAmendment: {
                 network_policy_amendment: {
-                  domain: "registry.npmjs.org",
+                  host: "registry.npmjs.org",
+                  action: "allow",
                 },
               },
             },
@@ -2477,7 +3188,8 @@ describe("Codex app-server approval bridge", () => {
       decision: {
         applyNetworkPolicyAmendment: {
           network_policy_amendment: {
-            domain: "registry.npmjs.org",
+            host: "registry.npmjs.org",
+            action: "allow",
           },
         },
       },

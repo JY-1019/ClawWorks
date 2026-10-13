@@ -85,8 +85,12 @@ export function registerEnterpriseCli(program: Command) {
     });
   trees
     .command("remove")
-    .description("Remove an imported workflow tree (built-ins reappear)")
+    .description("Permanently remove an imported tree and live data; back up state first")
     .argument("<treeId>", "Tree id")
+    .addHelpText(
+      "after",
+      "\nThis permanently deletes the tree's live ontology objects, links, and bundled knowledge. Definition history and workflow bundles cannot restore live objects or links. Back up ClawWorks state first with openclaw backup create --verify. A same-id built-in reappears.\n",
+    )
     .action(async (treeId: string) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         enterpriseTreesRemoveCommand(treeId, defaultRuntime);

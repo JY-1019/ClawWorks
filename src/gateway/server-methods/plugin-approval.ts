@@ -9,6 +9,7 @@ import {
   validatePluginApprovalResolveParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { ExecApprovalForwarder } from "../../infra/exec-approval-forwarder.js";
+import type { ExecApprovalDecision } from "../../infra/exec-approvals.js";
 import type { PluginApprovalRequestPayload } from "../../infra/plugin-approvals.js";
 import {
   resolvePluginApprovalRequestAllowedDecisions,
@@ -21,22 +22,79 @@ import {
   handleApprovalResolve,
   handleApprovalWaitDecision,
   handlePendingApprovalRequest,
+  isApprovalRecordRequestedByClientDevice,
   listVisiblePendingApprovalRequests,
   registerPendingApprovalRecord,
   resolveApprovalDecisionParams,
+  respondPendingApprovalLookupError,
 } from "./approval-shared.js";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 
 /** Create plugin approval handlers backed by the shared approval manager. */
 export function createPluginApprovalHandlers(
   manager: ExecApprovalManager<PluginApprovalRequestPayload>,
   opts?: { forwarder?: ExecApprovalForwarder },
 ): GatewayRequestHandlers {
+  // A resolution can race async channel routing. Keep the delivery gate by id so
+  // channel forwarding never emits "resolved" before its pending route exists.
+  const requestDeliverySettledById = new Map<string, Promise<void>>();
+  const resolveApproval = async (params: {
+    inputId: string;
+    decision: ExecApprovalDecision;
+    respond: GatewayRequestHandlerOptions["respond"];
+    context: GatewayRequestHandlerOptions["context"];
+    client: GatewayRequestHandlerOptions["client"];
+    enforceAllowedDecisions?: boolean;
+    resolvedByOverride?: string | null;
+  }) => {
+    await handleApprovalResolve({
+      manager,
+      inputId: params.inputId,
+      decision: params.decision,
+      respond: params.respond,
+      context: params.context,
+      client: params.client,
+      resolvedByOverride: params.resolvedByOverride,
+      exposeAmbiguousPrefixError: false,
+      validateDecision:
+        params.enforceAllowedDecisions === false
+          ? undefined
+          : (snapshot) =>
+              resolvePluginApprovalRequestAllowedDecisions(snapshot.request).includes(
+                params.decision,
+              )
+                ? null
+                : {
+                    message: `${params.decision} is unavailable for this plugin approval`,
+                    details: {
+                      allowedDecisions: resolvePluginApprovalRequestAllowedDecisions(
+                        snapshot.request,
+                      ),
+                    },
+                  },
+      resolvedEventName: "plugin.approval.resolved",
+      buildResolvedEvent: ({ approvalId, decision, resolvedBy, snapshot, nowMs }) => ({
+        id: approvalId,
+        decision,
+        resolvedBy,
+        ts: nowMs,
+        request: snapshot.request,
+      }),
+      forwardResolved: opts?.forwarder?.handlePluginApprovalResolved
+        ? async (resolvedEvent) => {
+            await requestDeliverySettledById.get(resolvedEvent.id);
+            await opts.forwarder?.handlePluginApprovalResolved?.(resolvedEvent);
+          }
+        : undefined,
+      forwardResolvedErrorLabel: "plugin approvals: forward resolve failed",
+    });
+  };
+
   return {
     "plugin.approval.list": async ({ respond, client }) => {
       respond(true, listVisiblePendingApprovalRequests({ manager, client }), undefined);
     },
-    "plugin.approval.request": async ({ params, client, respond, context }) => {
+    "plugin.approval.request": async ({ params, client, respond, context, signal }) => {
       if (!validatePluginApprovalRequestParams(params)) {
         respond(
           false,
@@ -69,6 +127,10 @@ export function createPluginApprovalHandlers(
       };
       const twoPhase = p.twoPhase === true;
       const timeoutMs = resolvePluginApprovalTimeoutMs(p.timeoutMs);
+
+      if (signal?.aborted) {
+        return;
+      }
 
       const normalizeTrimmedString = (value?: string | null): string | null =>
         normalizeOptionalString(value) || null;
@@ -111,40 +173,81 @@ export function createPluginApprovalHandlers(
       }
 
       const requestEvent = buildRequestedApprovalEvent(record);
-
-      await handlePendingApprovalRequest({
-        manager,
-        record,
-        decisionPromise,
-        respond,
-        context,
-        clientConnId: client?.connId,
-        requestEventName: "plugin.approval.requested",
-        requestEvent,
-        twoPhase,
-        approvalKind: "plugin",
-        deliverRequest: () => {
-          if (!opts?.forwarder?.handlePluginApprovalRequested) {
-            return false;
-          }
-          return opts.forwarder
-            .handlePluginApprovalRequested(requestEvent)
-            .catch((err: unknown) => {
-              context.logGateway?.error?.(
-                `plugin approvals: forward request failed: ${String(err)}`,
-              );
-              return false;
-            });
-        },
+      let markRequestDeliverySettled = () => {};
+      const requestDeliverySettled = new Promise<void>((resolve) => {
+        markRequestDeliverySettled = resolve;
       });
+      requestDeliverySettledById.set(record.id, requestDeliverySettled);
+
+      try {
+        await handlePendingApprovalRequest({
+          manager,
+          record,
+          decisionPromise,
+          respond,
+          context,
+          clientConnId: client?.connId,
+          requestEventName: "plugin.approval.requested",
+          requestEvent,
+          twoPhase,
+          approvalKind: "plugin",
+          // A normal UI disconnect is not a decision. Only the server-issued
+          // approval runtime token may translate its cancelled turn into deny.
+          signal: client?.internal?.approvalRuntime === true ? signal : undefined,
+          onRequestAborted: () =>
+            resolveApproval({
+              inputId: record.id,
+              decision: "deny",
+              respond: () => {},
+              context,
+              client,
+              enforceAllowedDecisions: false,
+              resolvedByOverride: "request-aborted",
+            }),
+          markRequestDeliverySettled,
+          deliverRequest: () => {
+            if (!opts?.forwarder?.handlePluginApprovalRequested) {
+              return false;
+            }
+            return opts.forwarder
+              .handlePluginApprovalRequested(requestEvent)
+              .catch((err: unknown) => {
+                context.logGateway?.error?.(
+                  `plugin approvals: forward request failed: ${String(err)}`,
+                );
+                return false;
+              });
+          },
+        });
+      } finally {
+        markRequestDeliverySettled();
+        requestDeliverySettledById.delete(record.id);
+      }
     },
 
-    "plugin.approval.waitDecision": async ({ params, respond, client }) => {
+    "plugin.approval.waitDecision": async ({ params, respond, client, context, signal }) => {
+      const inputId = (params as { id?: string }).id;
+      // The trusted runtime owns the tool turn; its cancelled wait must close the
+      // matching approval without granting plugins a general resolve capability.
+      const trustedSignal = client?.internal?.approvalRuntime === true ? signal : undefined;
       await handleApprovalWaitDecision({
         manager,
-        inputId: (params as { id?: string }).id,
+        inputId,
         client,
         respond,
+        signal: trustedSignal,
+        onWaitAborted: trustedSignal
+          ? () =>
+              resolveApproval({
+                inputId: inputId ?? "",
+                decision: "deny",
+                respond: () => {},
+                context,
+                client,
+                enforceAllowedDecisions: false,
+                resolvedByOverride: "request-aborted",
+              })
+          : undefined,
       });
     },
 
@@ -159,40 +262,48 @@ export function createPluginApprovalHandlers(
         return;
       }
       const { inputId, decision } = resolveParams;
-      await handleApprovalResolve({
-        manager,
+      if (client?.internal?.approvalRuntime === true) {
+        if (decision !== "deny") {
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              "approval runtime may only cancel plugin approvals with deny",
+            ),
+          );
+          return;
+        }
+        // The runtime token marks an aborted tool turn, but the persisted device
+        // proves this exact approval belongs to that runtime rather than another run.
+        const snapshot = manager.getSnapshot(inputId);
+        if (
+          !snapshot ||
+          !isApprovalRecordRequestedByClientDevice({
+            record: snapshot,
+            client,
+          })
+        ) {
+          respondPendingApprovalLookupError({ respond, response: "missing" });
+          return;
+        }
+        await resolveApproval({
+          inputId,
+          decision,
+          respond,
+          context,
+          client,
+          enforceAllowedDecisions: false,
+          resolvedByOverride: "request-aborted",
+        });
+        return;
+      }
+      await resolveApproval({
         inputId,
         decision,
         respond,
         context,
         client,
-        exposeAmbiguousPrefixError: false,
-        validateDecision: (snapshot) =>
-          resolvePluginApprovalRequestAllowedDecisions(snapshot.request).includes(decision)
-            ? null
-            : {
-                message: `${decision} is unavailable for this plugin approval`,
-                details: {
-                  allowedDecisions: resolvePluginApprovalRequestAllowedDecisions(snapshot.request),
-                },
-              },
-        resolvedEventName: "plugin.approval.resolved",
-        buildResolvedEvent: ({
-          approvalId,
-          decision: decisionLocal,
-          resolvedBy,
-          snapshot,
-          nowMs,
-        }) => ({
-          id: approvalId,
-          decision: decisionLocal,
-          resolvedBy,
-          ts: nowMs,
-          request: snapshot.request,
-        }),
-        forwardResolved: (resolvedEvent) =>
-          opts?.forwarder?.handlePluginApprovalResolved?.(resolvedEvent),
-        forwardResolvedErrorLabel: "plugin approvals: forward resolve failed",
       });
     },
   };

@@ -128,7 +128,13 @@ describe("enterprise.objects.list", () => {
     const real = treeRegistry.getWorkflowTreeRegistrySnapshot();
     const spy = vi.spyOn(treeRegistry, "getWorkflowTreeRegistrySnapshot").mockReturnValue({
       ...real,
-      importErrors: [{ treeId: "acme.objects", message: "definition_json invalid" }],
+      importErrors: [
+        {
+          treeId: "acme.objects",
+          message: "definition_json invalid",
+          fingerprint: "0".repeat(64),
+        },
+      ],
     });
     try {
       const { ok, payload } = invoke({ treeId: "acme.objects", entity: "claim" });

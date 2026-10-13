@@ -1,5 +1,6 @@
 // Control UI tests cover navigation behavior.
 import { describe, expect, it, vi } from "vitest";
+import { beginEnterpriseMcpDraft, editEnterpriseMcpDraft } from "./controllers/enterprise.ts";
 import { mountApp as mountTestApp, registerAppMountHooks } from "./test-helpers/app-mount.ts";
 
 registerAppMountHooks();
@@ -66,6 +67,38 @@ function expectConfirmedGatewayChange(app: ReturnType<typeof mountApp>) {
 }
 
 describe("control UI routing", () => {
+  it("discards sensitive enterprise drafts when the gateway disconnects", async () => {
+    const app = mountApp("/chat");
+    app.hello = {
+      type: "hello-ok",
+      protocol: 4,
+      auth: { role: "operator", scopes: ["operator.admin"] },
+    };
+    await app.updateComplete;
+    const hello = app.hello;
+
+    app.enterpriseBundleDraft = {
+      fileName: "private-bundle.json",
+      content: '{"private":"knowledge"}',
+      format: "json",
+      preview: { ok: true },
+    } as never;
+    app.enterpriseBundleStatus = { kind: "warning", message: "protected policy" };
+    beginEnterpriseMcpDraft(app);
+    editEnterpriseMcpDraft(app, {
+      headers: [{ name: "Authorization", value: "secret", stored: false }],
+    });
+    await app.updateComplete;
+
+    app.connected = false;
+    await app.updateComplete;
+
+    expect(app.hello).toBe(hello);
+    expect(app.enterpriseBundleDraft).toBeNull();
+    expect(app.enterpriseBundleStatus).toBeNull();
+    expect(app.enterpriseMcpDraft).toBeNull();
+  });
+
   it("renders responsive navigation shell, drawer, and collapsed states", async () => {
     const app = mountApp("/chat");
     await app.updateComplete;

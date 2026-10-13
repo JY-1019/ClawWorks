@@ -142,18 +142,27 @@ function selectorsCoverCall(selectors: readonly string[], call: McpCallIdentity)
   );
 }
 
+/** Active declarations use the same last-wins shadowing as the runtime and UI. */
+function effectiveActionsOnPath(path: readonly EnterprisePlanNode[]): OntologyAction[] {
+  const effective = new Map<string, OntologyAction>();
+  for (const node of path) {
+    for (const action of node.ontology.actions ?? []) {
+      effective.set(action.id, action);
+    }
+  }
+  return [...effective.values()];
+}
+
 function actionsCoveringTool(
   path: readonly EnterprisePlanNode[],
   call: McpCallIdentity,
 ): OntologyAction[] {
-  return path
-    .flatMap((node) => node.ontology.actions ?? [])
-    .filter((action) => {
-      if (action.tools === undefined) {
-        return true;
-      }
-      return action.tools.length > 0 && selectorsCoverCall(action.tools, call);
-    });
+  return effectiveActionsOnPath(path).filter((action) => {
+    if (action.tools === undefined) {
+      return true;
+    }
+    return action.tools.length > 0 && selectorsCoverCall(action.tools, call);
+  });
 }
 
 /**
@@ -167,8 +176,7 @@ function actionsCoveringTool(
 function outwardActionsOnPath(
   path: readonly EnterprisePlanNode[],
 ): { action: OntologyAction; tools: string[] }[] {
-  return path
-    .flatMap((node) => node.ontology.actions ?? [])
+  return effectiveActionsOnPath(path)
     .map((action) => ({
       action,
       tools: (action.effects ?? [])
@@ -183,9 +191,21 @@ function actionContractViolation(
   action: OntologyAction,
   args: Record<string, OntologyValue>,
 ): string | null {
-  for (const parameter of action.parameters ?? []) {
+  const parameters = action.parameters ?? [];
+  const declared = new Set(parameters.map((parameter) => parameter.id));
+  if (declared.size !== parameters.length) {
+    return `action "${action.id}" declares the same parameter more than once`;
+  }
+  for (const name of Object.keys(args)) {
+    if (!declared.has(name)) {
+      return `action "${action.id}" does not declare a parameter "${name}"; it declares: ${
+        [...declared].toSorted().join(", ") || "(none)"
+      }`;
+    }
+  }
+  for (const parameter of parameters) {
     const value = args[parameter.id];
-    if (value === undefined) {
+    if (value === undefined || value === null) {
       // Required-ness is the whole point of the outward lane: an external system
       // takes the call whatever we think of it, so a missing reason code or case
       // id can never be recovered after the fact.
@@ -989,9 +1009,7 @@ export function evaluateToolCallGovernance(params: {
       : null;
 
   const coveringActions = actionsCoveringTool(path, call);
-  const declaredActions = new Set(
-    path.flatMap((node) => (node.ontology.actions ?? []).map((action) => action.id)),
-  );
+  const declaredActions = new Set(effectiveActionsOnPath(path).map((action) => action.id));
   const matching = params.policies.filter((policy) =>
     policyAppliesToToolCall(policy, {
       treeId: params.plan.treeId,

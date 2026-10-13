@@ -726,7 +726,7 @@ export type EnterpriseResumeRequest =
  */
 export function requestEnterpriseRunResume(
   executionId: string,
-  params: { now?: number } = {},
+  params: { expectedSessionId: string; activeSessionId: string | null; now?: number },
   options: EnterpriseTraceStoreOptions = {},
 ): EnterpriseResumeRequest {
   if (!enterpriseStateDatabaseExists(options)) {
@@ -781,6 +781,15 @@ export function requestEnterpriseRunResume(
     const sessionKey = row.session_key;
     if (refusal || !sessionKey) {
       result = { ok: false, reason: refusal ?? "no-session" };
+      return;
+    }
+    // A reset keeps the lane key but rotates its transcript. Compare the stored
+    // row to both the caller token and the gateway's session-owner snapshot in
+    // the same write transaction as the marker update. The owner read itself is
+    // outside this SQLite transaction; a later reset is still safe because
+    // takeEnterpriseRunResume binds consumption to the new transcript id.
+    if (row.session_id !== params.expectedSessionId || row.session_id !== params.activeSessionId) {
+      result = { ok: false, reason: "transcript-rotated" };
       return;
     }
     if (

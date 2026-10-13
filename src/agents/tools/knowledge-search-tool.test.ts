@@ -105,6 +105,50 @@ describe("createKnowledgeSearchTool", () => {
     expect(tool.description).toContain("acme.kb");
   });
 
+  it("glosses every store in scope when no step narrows them, so the model can route", () => {
+    // The multi-store default: several foundations registered, no step naming
+    // any. Without this the model is handed a tool over N sources and no way to
+    // learn that more than one exists, let alone which to target.
+    registerEnterpriseActiveRun(activeRun());
+    registerEnterpriseKnowledgeFoundation("acme.invoices", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Invoices", description: "Billing rules" }),
+    });
+    registerEnterpriseKnowledgeFoundation("acme.contracts", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "Contracts", description: "Legal terms" }),
+    });
+    const tool = createKnowledgeSearchTool({ runId: "run-tool" });
+    expect(tool.description).toContain("acme.contracts (Legal terms)");
+    expect(tool.description).toContain("acme.invoices (Billing rules)");
+  });
+
+  it("omits a declared store nobody registered from the routing glossary", () => {
+    registerEnterpriseActiveRun(activeRun(["acme.kb", "acme.retired"]));
+    registerEnterpriseKnowledgeFoundation("acme.kb", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: "acme.kb", description: "Support policies" }),
+    });
+    const tool = createKnowledgeSearchTool({ runId: "run-tool" });
+    expect(tool.description).toContain("acme.kb (Support policies)");
+    // Advertising it would spend a turn on a target that can never answer.
+    expect(tool.description).not.toContain("acme.retired");
+  });
+
+  it("reports which foundations answered, so an empty result stays actionable", async () => {
+    registerEnterpriseActiveRun(activeRun());
+    registerEnterpriseKnowledgeFoundation(
+      "acme.kb",
+      new InMemoryKnowledgeFoundation([{ foundationId: "seed", text: "Refund window is 30 days" }]),
+    );
+    const tool = createKnowledgeSearchTool({ runId: "run-tool" });
+
+    const result = await tool.execute("call-s", { query: "unrelated-term" });
+    const details = result.details as { snippets: unknown[]; searched: string[] };
+    expect(details.snippets).toEqual([]);
+    expect(details.searched).toEqual(["acme.kb"]);
+  });
+
   it("rejects a missing query", async () => {
     registerEnterpriseActiveRun(activeRun());
     const tool = createKnowledgeSearchTool({ runId: "run-tool" });

@@ -6868,6 +6868,48 @@ details[open] > .ov-expandable-toggle::after {
  * data-kind, and the accent below is the only thing telling tools from skills
  * from MCP at a glance — without it the operator reads five identical headers.
  */
+.capability-grants {
+  flex-wrap: wrap;
+}
+
+.capability-grants > .muted {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.capability-grants > .row {
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.node-guidance-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(260px, calc(50% - 6px))), 1fr));
+  align-items: start;
+}
+
+.node-guidance-form > .field {
+  min-width: 0;
+}
+
+.node-guidance-form .input {
+  min-width: 0;
+  width: 100%;
+}
+
+.node-guidance-form textarea {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.node-guidance-form input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .node-inspector__head {
   display: flex;
   align-items: baseline;

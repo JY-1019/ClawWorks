@@ -4,6 +4,7 @@ import {
   clearEnterpriseChatRoute,
   loadEnterpriseChatMode,
   loadEnterpriseChatRoute,
+  requestEnterpriseChatRunResume,
   setEnterpriseChatMode,
   type EnterpriseChatState,
 } from "./enterprise-chat.ts";
@@ -18,9 +19,12 @@ function createState(): {
   const state: EnterpriseChatState = {
     client: { request } as unknown as EnterpriseChatState["client"],
     connected: true,
+    currentSessionId: "transcript-current",
     enterpriseChatMode: null,
     enterpriseChatModeBusy: false,
     enterpriseChatModeError: null,
+    enterpriseChatResumeBusy: false,
+    enterpriseChatResumeError: null,
     enterpriseChatRun: null,
     enterpriseChatRunTree: null,
     enterpriseChatStep: null,
@@ -39,6 +43,31 @@ const runSummary = (executionId: string, sessionKey: string | null) => ({
   requestSummary: "pay the claim",
   activeNodeId: "finops",
   createdAt: Number.MAX_SAFE_INTEGER,
+  updatedAt: 2,
+  endedAt: 2,
+});
+
+const resumableRun = (
+  executionId: string,
+): NonNullable<EnterpriseChatState["enterpriseChatRun"]> => ({
+  executionId,
+  runId: `run-${executionId}`,
+  sessionKey: "agent:main:me",
+  sessionId: "transcript-current",
+  agentId: "main",
+  treeId: "acme.support",
+  treeVersion: "1.0.0",
+  treeName: "Support",
+  mode: "enforce",
+  status: "aborted",
+  resumable: true,
+  matchedBy: "planner",
+  requestSummary: "help",
+  activeNodeId: "support.resolve",
+  nodes: [],
+  events: [],
+  executionCount: 1,
+  createdAt: 1,
   updatedAt: 2,
   endedAt: 2,
 });
@@ -82,6 +111,168 @@ describe("setEnterpriseChatMode", () => {
     expect(state.enterpriseChatMode).toBe("enforce");
     expect(state.enterpriseChatModeError).toContain("operator.admin");
     expect(state.enterpriseChatModeBusy).toBe(false);
+  });
+});
+
+describe("requestEnterpriseChatRunResume", () => {
+  it("marks the stopped run as waiting when the gateway accepts", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    request.mockResolvedValue({ ok: true });
+
+    await requestEnterpriseChatRunResume(state, "exec-1");
+
+    expect(request).toHaveBeenCalledWith("enterprise.runs.resume", {
+      executionId: "exec-1",
+      sessionId: "transcript-current",
+    });
+    expect(state.enterpriseChatRun?.resumeRequested).toBe(true);
+    expect(state.enterpriseChatResumeBusy).toBe(false);
+  });
+
+  it("does not request resume after reset rotates the current transcript", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    state.currentSessionId = "transcript-after-reset";
+
+    await requestEnterpriseChatRunResume(state, "exec-1");
+
+    expect(request).not.toHaveBeenCalled();
+    expect(state.enterpriseChatResumeBusy).toBe(false);
+  });
+
+  it("does not publish an accepted resume after reset wins the response race", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    let resolveRequest: ((value: unknown) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+
+    const pending = requestEnterpriseChatRunResume(state, "exec-1");
+    await vi.waitFor(() => expect(resolveRequest).toBeDefined());
+    state.currentSessionId = "transcript-after-reset";
+    resolveRequest?.({ ok: true });
+    await pending;
+
+    expect(state.enterpriseChatRun?.resumeRequested).toBeUndefined();
+    expect(state.enterpriseChatResumeBusy).toBe(false);
+  });
+
+  it("does not leak a late failure into the next chat", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    let rejectRequest: ((error: Error) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+
+    const pending = requestEnterpriseChatRunResume(state, "exec-1");
+    clearEnterpriseChatRoute(state);
+    rejectRequest?.(new Error("old chat failed"));
+    await pending;
+
+    expect(state.enterpriseChatResumeError).toBeNull();
+    expect(state.enterpriseChatResumeBusy).toBe(false);
+  });
+
+  it("does not let an older route read undo an accepted resume", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    let resolveFirstDetail: ((value: unknown) => void) | undefined;
+    let detailCalls = 0;
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-1", "agent:main:me")] };
+      }
+      if (method === "enterprise.runs.get") {
+        detailCalls += 1;
+        if (detailCalls === 1) {
+          return new Promise((resolve) => {
+            resolveFirstDetail = resolve;
+          });
+        }
+        return { run: { ...resumableRun("exec-1"), resumable: false, resumeRequested: true } };
+      }
+      if (method === "enterprise.runs.resume") {
+        return { ok: true };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const staleRoute = loadEnterpriseChatRoute(state, "agent:main:me");
+    await vi.waitFor(() => expect(resolveFirstDetail).toBeDefined());
+    await requestEnterpriseChatRunResume(state, "exec-1");
+    resolveFirstDetail?.({ run: resumableRun("exec-1") });
+    await staleRoute;
+
+    await vi.waitFor(() => expect(state.enterpriseChatRun?.resumeRequested).toBe(true));
+  });
+
+  it("replays a terminal route refresh requested while resume is busy", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    let resolveResume: ((value: unknown) => void) | undefined;
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.resume") {
+        return new Promise((resolve) => {
+          resolveResume = resolve;
+        });
+      }
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-2", "agent:main:me")] };
+      }
+      if (method === "enterprise.runs.get") {
+        return { run: { ...resumableRun("exec-2"), status: "completed", resumable: false } };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const resume = requestEnterpriseChatRunResume(state, "exec-1");
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    resolveResume?.({ ok: true });
+    await resume;
+
+    await vi.waitFor(() => expect(state.enterpriseChatRun?.executionId).toBe("exec-2"));
+  });
+
+  it("replays an in-flight newer route after resume invalidates its first read", async () => {
+    const { state, request } = createState();
+    state.enterpriseChatRun = resumableRun("exec-1");
+    let resolveFirstDetail: ((value: unknown) => void) | undefined;
+    let detailCalls = 0;
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-2", "agent:main:me")] };
+      }
+      if (method === "enterprise.runs.get") {
+        detailCalls += 1;
+        if (detailCalls === 1) {
+          return new Promise((resolve) => {
+            resolveFirstDetail = resolve;
+          });
+        }
+        return { run: { ...resumableRun("exec-2"), status: "completed", resumable: false } };
+      }
+      if (method === "enterprise.runs.resume") {
+        return { ok: true };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const route = loadEnterpriseChatRoute(state, "agent:main:me");
+    await vi.waitFor(() => expect(resolveFirstDetail).toBeDefined());
+    await requestEnterpriseChatRunResume(state, "exec-1");
+    resolveFirstDetail?.({ run: resumableRun("exec-2") });
+    await route;
+
+    await vi.waitFor(() => expect(state.enterpriseChatRun?.executionId).toBe("exec-2"));
   });
 });
 
@@ -143,7 +334,7 @@ describe("loadEnterpriseChatRoute", () => {
     expect(state.enterpriseChatRun).toBeNull();
   });
 
-  it("keeps the run on its own bubble when this turn produced no governed run", async () => {
+  it("refreshes resume state when this turn produced no newer governed run", async () => {
     // Enterprise switched off mid-thread: the turn traces nothing, so the newest
     // run is still the one already on screen. It must STAY — the card belongs to
     // the bubble that run wrote, and the group binding keeps it off the newer,
@@ -157,10 +348,20 @@ describe("loadEnterpriseChatRoute", () => {
       if (method === "enterprise.runs.list") {
         return { runs: [runSummary("exec-old", "agent:main:me")] };
       }
-      throw new Error("runs.get must not be reached for an unchanged run");
+      if (method === "enterprise.runs.get") {
+        return {
+          run: {
+            ...resumableRun("exec-old"),
+            status: "completed",
+            resumeRequested: true,
+          },
+        };
+      }
+      throw new Error(`unexpected method ${method}`);
     });
     await loadEnterpriseChatRoute(state, "agent:main:me");
     expect(state.enterpriseChatRun?.executionId).toBe("exec-old");
+    expect(state.enterpriseChatRun?.resumeRequested).toBe(true);
   });
 
   it("refetches the SAME run once it leaves running", async () => {
@@ -223,7 +424,11 @@ describe("loadEnterpriseChatRoute", () => {
       if (method === "enterprise.runs.get") {
         return { run: { executionId: "exec-1", treeName: "T", treeId: "t", treeHash: "h1" } };
       }
-      return { tree: { id: "t", hash: "h1", nodes: [] }, importError: "bad yaml" };
+      return {
+        tree: { id: "t", hash: "h1", nodes: [] },
+        importError: "bad yaml",
+        importErrorFingerprint: "t-v1",
+      };
     });
     await loadEnterpriseChatRoute(state, "agent:main:me");
     expect(state.enterpriseChatRun?.executionId).toBe("exec-1");

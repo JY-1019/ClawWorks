@@ -141,7 +141,7 @@ export {
 } from "../agents/embedded-agent-runner/result-fallback-classifier.js";
 export { resolveEmbeddedAgentRuntime } from "../agents/agent-runtime-id.js";
 export { resolveUserPath } from "../utils.js";
-export { callGatewayTool } from "../agents/tools/gateway.js";
+export { callGatewayTool, cancelPluginApprovalForRunAbort } from "../agents/tools/gateway.js";
 export type { NodeListNode } from "../agents/tools/nodes-utils.js";
 export {
   listNodes,
@@ -318,11 +318,13 @@ export { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 export {
   consumeAdjustedParamsForToolCall,
   consumePreExecutionBlockedToolCall,
+  finalizeDeferredPluginToolApprovalResolution,
   finalizeToolTerminalPresentation,
   getBeforeToolCallPolicyDiagnosticState,
   hasBeforeToolCallPolicy,
   isToolWrappedWithBeforeToolCallHook,
   requestDeferredPluginToolApproval,
+  resolveDeferredPluginToolApprovalParams,
   runBeforeToolCallHook,
   setBeforeToolCallDiagnosticsEnabled,
   wrapToolWithBeforeToolCallHook,
@@ -387,11 +389,15 @@ export {
 } from "../agents/harness/lifecycle-hook-helpers.js";
 export {
   buildNativeHookRelayCommand,
+  finalizeNativeHookRelayExecutedTool,
+  finalizeNativeHookRelayToolRelease,
+  getNativeHookRelayDeferredToolApproval,
   hasNativeHookRelayInvocation,
   invokeNativeHookRelay,
   resolveNativeHookRelayDeferredToolApproval,
   testing as nativeHookRelayTesting,
   registerNativeHookRelay,
+  type NativeHookRelayDeferredToolApproval,
 } from "../agents/harness/native-hook-relay.js";
 
 /**

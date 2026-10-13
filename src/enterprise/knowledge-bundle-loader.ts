@@ -1,20 +1,19 @@
 /**
  * Registers the knowledge foundations a prior `bundle import` persisted to
  * SQLite into the process-local retrieval registry, so `knowledge_search` works
- * after a gateway restart. The store is the canonical source; this only
- * re-hydrates the in-memory registry.
+ * after a gateway restart. Persisted rows retain the content; the current healthy
+ * imported tree decides which rows are active in the in-memory registry.
  */
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerBuiltinExampleKnowledgeFoundations } from "./builtin-knowledge.js";
-import {
-  listBundledKnowledgeFoundations,
-  type EnterpriseKnowledgeStoreOptions,
-} from "./enterprise-knowledge-store.sqlite.js";
+import type { EnterpriseKnowledgeStoreOptions } from "./enterprise-knowledge-store.sqlite.js";
 import {
   clearBundleKnowledgeFoundations,
   InMemoryKnowledgeFoundation,
   registerBundleKnowledgeFoundation,
 } from "./knowledge.js";
+import { collectReferencedFoundationIds } from "./tree-references.js";
+import { readEnterpriseWorkflowKnowledgeSnapshot } from "./tree-store.sqlite.js";
 
 const log = createSubsystemLogger("enterprise");
 
@@ -47,9 +46,9 @@ export function ensureBundleFoundationsLoadedOnce(
 export function loadPersistedBundleFoundations(
   options: EnterpriseKnowledgeStoreOptions = {},
 ): void {
-  let result;
+  let snapshot: ReturnType<typeof readEnterpriseWorkflowKnowledgeSnapshot>;
   try {
-    result = listBundledKnowledgeFoundations(options);
+    snapshot = readEnterpriseWorkflowKnowledgeSnapshot(options);
   } catch (err) {
     // A store read fault must not block runtime startup: the persisted
     // foundations are simply absent until repaired (knowledge_search returns
@@ -62,12 +61,23 @@ export function loadPersistedBundleFoundations(
     );
     return;
   }
-  // (tree, foundation) tuples an operator's import owns, healthy or corrupt.
+  const { foundations: result, trees: treeResult } = snapshot;
+  const referencedByTree = new Map(
+    treeResult.records.map(({ tree }) => [tree.id, new Set(collectReferencedFoundationIds(tree))]),
+  );
+  const unreadableTreeIds = new Set(treeResult.rowErrors.map(({ treeId }) => treeId));
+  // Referenced (tree, foundation) tuples an operator's healthy import owns,
+  // including a corrupt foundation row whose identity is still readable.
   const claimed = new Set<string>();
   // A space cannot appear in either id (both are dotted-lowercase), so it is an
   // unambiguous separator — and unlike a NUL byte it keeps this file text for git.
   const claimKey = (treeId: string, foundationId: string) => `${treeId} ${foundationId}`;
   for (const record of result.records) {
+    // Plain tree edits preserve the only persisted copy of bundle content. Keep
+    // detached rows dormant until a healthy definition references them again.
+    if (!referencedByTree.get(record.treeId)?.has(record.foundation.id)) {
+      continue;
+    }
     // Register scoped to the owning tree so bundle knowledge stays workflow-local.
     // Re-imports are idempotent (content keyed by id, ownership accumulates). The
     // stored label is kept, but the kind is forced to "remote": an inlined snapshot
@@ -84,6 +94,9 @@ export function loadPersistedBundleFoundations(
     claimed.add(claimKey(record.treeId, record.foundation.id));
   }
   for (const rowError of result.rowErrors) {
+    if (!referencedByTree.get(rowError.treeId)?.has(rowError.foundationId)) {
+      continue;
+    }
     // Claimed as well: the tuple belongs to the operator even though its content
     // is unreadable, so the shipped example must not quietly stand in for it.
     claimed.add(claimKey(rowError.treeId, rowError.foundationId));
@@ -94,19 +107,27 @@ export function loadPersistedBundleFoundations(
   // Shipped examples belong to the same registry and the same clear-then-rebuild
   // lifecycle as the persisted rows, so they are registered here rather than at
   // import time — reload() would otherwise drop them. Last, and only for tuples
-  // no import owns.
-  registerBuiltinExampleKnowledgeFoundations((treeId, foundationId) =>
-    claimed.has(claimKey(treeId, foundationId)),
-  );
+  // no import owns. An imported override that omits the example foundation also
+  // suppresses it: otherwise an unscoped edit would silently query the stock corpus.
+  registerBuiltinExampleKnowledgeFoundations((treeId, foundationId) => {
+    const importedReferences = referencedByTree.get(treeId);
+    return (
+      unreadableTreeIds.has(treeId) ||
+      claimed.has(claimKey(treeId, foundationId)) ||
+      (importedReferences !== undefined && !importedReferences.has(foundationId))
+    );
+  });
 }
 
 /**
- * Rebuild the bundle registry from the current SQLite rows. Used at the gateway
- * lifecycle restart boundary (globalThis survives an in-process restart, so the
- * once-flag alone would keep serving pre-import content) and after a tree removal
+ * Rebuild the bundle registry from the current healthy tree definitions and their
+ * SQLite rows. Used at the gateway lifecycle restart boundary (globalThis survives
+ * an in-process restart, so the once-flag alone would keep serving pre-import
+ * content) and after a tree removal
  * (which deletes that tree's rows). The store is canonical, so clearing and
  * re-registering evicts foundations no remaining tree carries while keeping shared
- * ones. Marks the once-flag satisfied so a later ensure-once call does not re-read.
+ * ones. The rows plus healthy definitions are canonical; marks the once-flag
+ * satisfied so a later ensure-once call does not re-read.
  */
 export function reloadPersistedBundleFoundations(
   options: EnterpriseKnowledgeStoreOptions = {},

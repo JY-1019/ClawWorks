@@ -533,6 +533,8 @@ export function evaluateEnterpriseToolCall(params: {
    * can retract an appended event.
    */
   record?: boolean;
+  /** False records the decision without claiming the call was dispatched. */
+  released?: boolean;
   /**
    * The call's arguments. The outward lane needs them: an action that declares
    * the external tool it calls is only satisfied by a call that carries the
@@ -633,7 +635,7 @@ export function evaluateEnterpriseToolCall(params: {
     // external system accepted it. A local write is recorded after it commits, so
     // the two must not read alike in the trail.
     if (
-      shouldRecord &&
+      params.released !== false &&
       decision.outwardActionId &&
       !verdict.blocked &&
       !verdict.requiresApproval &&

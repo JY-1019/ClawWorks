@@ -3,6 +3,7 @@ import type { EnterpriseTreeDetail } from "../../../../packages/gateway-protocol
 import { t } from "../../i18n/index.ts";
 import { ONTOLOGY_EDIT_REASONS_REPORTED } from "../controllers/enterprise.ts";
 import {
+  collectNodeOntologyGraph,
   collectOntologyGraph,
   declaredExecutableEntityIds,
   nodeObjectEntityIds,
@@ -148,6 +149,31 @@ describe("collectOntologyGraph", () => {
     );
     expect(result.relationships[0].cardinality).toBe("one-to-many");
     expect(result.relationships[0].inverse).toBe("account-owned-by");
+  });
+});
+
+describe("collectNodeOntologyGraph", () => {
+  it("uses the descendant relationship declaration when an id is re-declared", () => {
+    const descendant = { id: "assigned-to", from: "case", to: "owner" };
+    const result = collectNodeOntologyGraph(
+      tree([
+        node("root", {
+          relationships: [
+            {
+              id: "assigned-to",
+              from: "claim",
+              to: "reviewer",
+              cardinality: "one-to-many",
+            },
+          ],
+        }),
+        node("root.step", { relationships: [descendant] }, 1),
+      ]),
+      "root.step",
+    );
+
+    expect(result.relationships).toEqual([descendant]);
+    expect(result.entities.map((entity) => entity.id).toSorted()).toEqual(["case", "owner"]);
   });
 });
 

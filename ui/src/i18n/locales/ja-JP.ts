@@ -283,6 +283,49 @@ export const ja_JP: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "管理されたワークフロー実行と登録済みワークフローツリー。",
+    historyOnly: "Removed work-map with restorable revisions",
+    historyOnlyBadge: "history only",
+    historyOnlyRestore: "This work-map was removed. Choose a saved revision below to restore it.",
+    removeFingerprintUnavailable:
+      "Cannot safely remove {treeId}: this gateway did not return the imported row identity. Refresh or update the gateway, then try again.",
+    bundle: {
+      import: "Import bundle",
+      exportYaml: "Bundle YAML",
+      exportJson: "Bundle JSON",
+      previewTitle: "Review workflow bundle",
+      previewBody:
+        "Nothing has been changed yet. Review the replacement, inlined knowledge, dependencies, and governance gaps before applying these exact file contents.",
+      create: "Creates a new work-map",
+      replace: "Replaces the current {source} work-map at version {version}",
+      inlinedKnowledge: "Knowledge included in the bundle",
+      requiredTools: "Required tools (verify this gateway provides them)",
+      requiredSkills: "Required skills",
+      requiredMcp: "Required MCP servers",
+      requiredKnowledge: "Knowledge sources",
+      missingSkills: "Missing or unavailable skills",
+      missingMcp: "Missing MCP servers",
+      missingKnowledge: "Knowledge not included in the bundle or globally available",
+      removedKnowledge: "Owned knowledge this import deletes (no revision history)",
+      replacedKnowledge: "Owned knowledge rows this import replaces (no revision history)",
+      shadowedKnowledge:
+        "Bundled knowledge ignored at runtime (a global/plugin foundation with the same id takes precedence)",
+      unverifiedKnowledge: "Knowledge not included in the bundle (verify local availability)",
+      verificationUnavailable: "Local availability could not be verified",
+      missingPolicies: "Missing governance policies",
+      conflictingPolicies: "Governance policies with different definitions",
+      modeDowngrade: "Governance is weaker here: {from} → {to}.",
+      authorWarnings: "Work-map authoring warnings",
+      apply: "Apply bundle",
+      previewRejected: "This bundle cannot be previewed: {issues}",
+      applyRejected: "Nothing was imported. Preview the current state again: {issues}",
+      applyUnknown:
+        "The result is unknown ({message}). Refresh before retrying so you do not overwrite a successful import.",
+      applied: "Imported bundle for {treeId}.",
+      exported: "Exported bundle for {treeId}.",
+      exportImplicitKnowledge:
+        "the work-map allows implicit knowledge that a bundle cannot enumerate",
+      exportWarning: "Bundle downloaded with portability warnings: {warnings}",
+    },
     toolsTab: {
       title: "ツール",
       subtitle:
@@ -328,7 +371,7 @@ export const ja_JP: TranslationMap = {
       configInvalid:
         "Gateway の設定が解析できないため、この画面で追加する対象がありません。まず設定エディターで修正してください。ここから保存すると、ファイルがこのエントリのみに置き換えられます。",
       rawDraftPending:
-        "Raw設定エディターに未保存の変更があります。先に保存または破棄してください。ここで登録すると、その下書きが上書きされます。",
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
       save: "保存",
       publish: "保存して公開",
       publishing: "公開中...",
@@ -441,6 +484,11 @@ export const ja_JP: TranslationMap = {
       add: "追加",
       cancel: "Cancel",
       removeTitle: "このステップから {entry} を切り離す",
+      removeLastAllowedTool:
+        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+      removeLastKnowledgeFoundation:
+        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+      requireMcpAttachments: "Require attachments",
       none: "まだ宣言されていません。",
       scopeNarrowingApproval:
         "このステップにはまだツール許可リストがないため、拒否されたツール以外のすべてのツールが許可されます。最初のエントリを追加すると、許可リストに切り替わります。リストに含まれるツールは自由に実行でき、それ以外のツールには都度承認が必要です。",
@@ -456,6 +504,8 @@ export const ja_JP: TranslationMap = {
         "ファウンデーションIDを使用してください: ドット区切りの小文字セグメント（例: acme.runbooks）。",
       ancestorGateApproval:
         "親ステップ ({nodeIds}) には、この項目に対する独自の許可リストがあります。ガバナンスはルートから各ステップを順にチェックするため、ここに追加されたエントリは、それらのステップでも許可されている場合にのみ確認なしで実行されます。そうでない場合は、一回限りの承認が必要です。それらのステップにも追加するか、拒否ツールを使用して完全に拒否してください。",
+      ancestorGateKnowledge:
+        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "先に値を入力してください。",
       duplicate: "そのエントリはこのステップで既に宣言されています。",
       nodeMissing: "そのステップはツリーに存在しません。再読み込みしてもう一度お試しください。",
@@ -463,7 +513,7 @@ export const ja_JP: TranslationMap = {
       importFailed:
         "保存が確認できませんでした。適用された可能性もされていない可能性もあります。再試行する前にワークマップを更新して状態を確認してください。",
       mcpFirstAttachment:
-        "このワークマップはまだ MCP を管理していません。ここに最初のサーバーを追加すると、ワークマップ全体でデフォルト拒否が有効になります。添付のないすべてのステップは MCP サーバーにアクセスできなくなります。",
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
       mcpNoneAttached:
         "このステップには MCP サーバーが接続されていないため、何も呼び出せません。ツールやナレッジとは異なり、MCP はデフォルトでは何も付与しません。",
       importNotSent:
@@ -500,13 +550,17 @@ export const ja_JP: TranslationMap = {
       noProperties: "No fields yet.",
       links: "Links",
       noLinks: "No links declared yet.",
+      editTitle: "Edit {item}",
+      formLabel: "Ontology editor",
       titleLabel: "Display name (optional)",
+      descriptionLabel: "Description",
       typeLabel: "Type",
       primaryKeyLabel: "Identifies an instance",
       primaryKeyMark: "(identity)",
       fromLabel: "From",
       toLabel: "To",
       cardinalityLabel: "Cardinality",
+      inverseLabel: "Inverse name (optional)",
       save: "保存",
       actions: "Actions",
       actionsSummary:
@@ -520,14 +574,31 @@ export const ja_JP: TranslationMap = {
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
       incompleteActionDetail:
-        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+        "This action cannot be called yet. Object writes need identity parameters (and creates need every required field); links need parameters for both endpoint identities.",
       removeEffectTitle: "Remove the {kind} effect on {entity}",
       removeParameterTitle: "Remove the {parameter} parameter",
       requiredLabel: "Required",
       requiredMark: "(required)",
+      toolsModeLabel: "Policy tool matching",
+      toolsModeHint:
+        "Chooses which tool calls this action's policy matches. Outward calls are added separately as effects.",
+      toolsMode: {
+        all: "Match all tool calls",
+        selected: "Match selected tool calls",
+        none: "Match no tool calls",
+      },
+      toolsLabel: "Matched tool selectors",
+      preconditionsLabel: "Advisory preconditions",
+      addListItem: "Add {item}",
+      removeListItem: "Remove {item}",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
       linkRelationshipLabel: "Link type",
+      linkEndpointsLabel: "Endpoint parameters",
+      linkFromParameterLabel: "From-object parameter",
+      linkToParameterLabel: "To-object parameter",
+      defaultIdentity: "Use the object type's identity field",
+      unavailableParameter: "{parameter} (not declared)",
       callToolLabel: "Tool",
       callToolPlaceholder: "server__operation",
       callToolHint:
@@ -538,6 +609,11 @@ export const ja_JP: TranslationMap = {
       functionEntityLabel: "Computed over",
       expressionLabel: "Expression",
       returnsLabel: "Returns",
+      constraints: "Constraints",
+      addConstraint: "Add constraint",
+      noConstraints: "No advisory constraints declared yet.",
+      shadowedDeclaration: "Shadowed by a later declaration with the same id",
+      removeConstraintTitle: "Remove the {constraint} constraint",
       idLabel: {
         entity: "Object type id",
         property: "Field id",
@@ -545,20 +621,26 @@ export const ja_JP: TranslationMap = {
         action: "Action id",
         "action-parameter": "Parameter id",
         function: "Derived value id",
+        constraint: "Constraint id",
       },
       error: {
         "invalid-id":
           "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
-        "endpoint-missing": "A link needs an object type at both ends.",
-        "duplicate-entry": "That id is already declared on this step.",
+        "endpoint-missing": "Choose the required object type, link type, or tool.",
+        "description-empty": "Enter a description.",
+        "selection-empty":
+          "Add at least one tool selector, or choose Match all tool calls or Match no tool calls.",
+        "duplicate-entry": "That id is already declared in this work-map scope.",
         "entity-not-found": "That object type is not in this step's scope.",
         "entity-in-use": "A link still points at this object type. Remove the link first.",
         "entity-referenced":
-          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+          "An action or derived value still uses an object or link type this edit would remove from its scope. Change that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
+        "identity-type-invalid":
+          "An identity field must be text, a number, a date, or an id. Boolean values cannot identify ontology objects.",
         "action-not-found": "That action is no longer declared on this step.",
         "effect-needs-identity":
           "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
@@ -568,6 +650,8 @@ export const ja_JP: TranslationMap = {
         "expression-type-invalid":
           "The expression does not type-check against this object type's fields.",
         "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "property-type-conflict":
+          "This work-map already declares that field on the same object type with a different type.",
         "create-required-unreachable":
           "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
         "effect-target-taken":
@@ -580,13 +664,31 @@ export const ja_JP: TranslationMap = {
       },
     },
     guidanceEditor: {
-      title: "ロールプロンプト",
+      title: "Step behavior",
       guidanceNote:
-        "このステップの目的を自分の言葉で記述します。これはステップダイジェストに指示として反映されますが、何も許可しません — プロンプトの文言に関わらず、スコープで許可されていないツールをステップが呼び出すことはできません。",
-      fieldLabel: "ステップ {nodeId} のロールプロンプト",
+        "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
+      titleLabel: "Step title",
+      parentLabel: "Parent step",
+      positionLabel: "Position among siblings",
+      descriptionLabel: "Description",
+      fieldLabel: "Instructions for step {nodeId}",
       placeholder: "例: 金額を提示する前に請求者の本人確認を行ってください。",
-      save: "ロールプロンプトを保存",
+      contextHintsLabel: "Context hints",
+      contextHintsPlaceholder: "e.g. Prefer the policy handbook over assumptions.",
+      addContextHint: "Add context hint",
+      removeContextHint: "Remove context hint",
+      expectedOutputLabel: "Expected output",
+      expectedOutputPlaceholder: "e.g. A decision, rationale, and record id.",
+      auditLabel: "Record detailed tool-decision audit events",
+      save: "Save behavior",
       revert: "元に戻す",
+      reparentWarning:
+        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+      error: {
+        "title-empty": "Enter a step title.",
+        "move-refused":
+          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+      },
     },
     capabilities: {
       toolsTitle: "ツール",
@@ -600,7 +702,7 @@ export const ja_JP: TranslationMap = {
         "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
       knowledgeTitle: "ナレッジ",
       knowledgeHint:
-        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -661,9 +763,11 @@ export const ja_JP: TranslationMap = {
         "エンタープライズメディエーションは監視中のため、拒否は記録されますが適用されません。強制モードになると、拒否はこのステップとその配下のすべてに適用され、ブランチのさらに下位での許可によって取り消すことはできません。",
       deniedToolsOff:
         "エンタープライズメディエーションはオフのため、拒否は適用も記録もされません。これを有効にするか実行トレースに表示するには、メディエーションをオンにしてください。",
-      skillNotInstalled: "未インストール",
-      foundationNotRegistered: "未登録",
+      skillNotModelVisible: "not available to the model for this agent",
+      foundationNotRegistered: "not retrievable by this work-map",
+      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "mcp.servers に未登録",
+      mcpDisabled: "disabled in mcp.servers",
       inherited: "親ステップから継承:",
     },
     skillsTab: {
@@ -693,6 +797,9 @@ export const ja_JP: TranslationMap = {
     executionCount: "この実行の {count} 件の実行",
     stepsTitle: "ステップ",
     resume: "Continue this run",
+    resumeChat: "Continue from unfinished step",
+    resumeChatHint:
+      "The unfinished step restarts on your next matching message. An in-flight external action is not resumed.",
     resumeHint:
       "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
     resumeRequested:
@@ -728,15 +835,20 @@ export const ja_JP: TranslationMap = {
       explicit: "明示的な付与",
       inherited: "継承されたスコープ",
       explicitHintGated:
-        "各ステップは、自身またはその上位ステップに記載されたツール、Skills、MCP サーバー、およびナレッジファンデーションを使用するようになっています。ステップに記載されていない Skills、MCP サーバー、ナレッジファンデーションは完全に制限されます。記載されていないツールは都度承認が必要になり、返信と読み取り（message、read、memory_search）はステップまたはガバナンスポリシーで拒否されない限り利用可能です。",
+        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "このワークマップは機能を明示的に付与していますが、エンタープライズモードは適用されていません。ツール、Skills、および MCP の付与は適用されず、記録のみされます。ナレッジの付与はすべてのモードで検索のスコープに影響します。",
       explicitHintOff:
         "このワークマップは明示的に機能を付与しますが、エンタープライズメディエーションが有効でないため、付与は適用されません。以下の付与は保存されており、メディエーションが有効になると適用されます。",
       inheritedHint:
-        "ステップのリストは、上位で許可された内容を絞り込みます。ブランチリストに何も指定されていないステップは、任意のツールやSkillsを使用できます。",
+        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "明示的に付与",
       turnOff: "継承されたスコープを使用",
+      turnOffWarning:
+        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+      stopMcp: "Stop requiring MCP attachments",
+      stopMcpWarning:
+        "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
     structureTitle: "構造",
     ontologyTitle: "オントロジー",
@@ -752,13 +864,20 @@ export const ja_JP: TranslationMap = {
     addNodeTitle: "新しい子ノード",
     addNodeIdLabel: "ノードID（ドット区切りの小文字、例: support.triage）",
     addNodeTitleLabel: "タイトル",
-    addNodeSubmit: "エディターに追加",
+    addNodeDescriptionLabel: "Description (optional)",
+    addNodeSubmit: "Add step",
     addNodeErrorIdEmpty: "ノードIDを入力してください。",
     addNodeErrorIdPattern: "IDはドット区切りの小文字である必要があります（例: support.triage）。",
     addNodeErrorIdDuplicate: "そのIDのノードはこのツリーに既に存在します。",
     addNodeErrorTitleEmpty: "タイトルを入力してください。",
     addNodeErrorParentMissing: "親ノードはこのツリーに存在しなくなりました。",
     addNodeErrorExportFailed: "編集するツリー定義を読み込めませんでした。",
+    removeNode: "Delete step and descendants",
+    removeNodeWarning:
+      'Delete "{node}" and every step beneath it? This records a new work-map revision.',
+    structureEditRefused:
+      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+    editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "ノードをドラッグ · スクロールでズーム",
     routeTitle: "選択されたルート",
     routeViewLabel: "ルート表示",
@@ -800,12 +919,47 @@ export const ja_JP: TranslationMap = {
     contextHints: "コンテキストヒント: {hints}",
     expectedOutput: "期待される出力: {text}",
     newTree: "新規ツリー",
+    importTree: "Import file",
+    newTreeTitle: "New workflow tree",
+    treeSettingsTitle: "Work-map settings",
+    treeSettingsButton: "Settings",
+    newTreeIdLabel: "Tree id",
+    newTreeIdPlaceholder: "support.intake",
+    treeSettingsVersionLabel: "Version",
+    newTreeNameLabel: "名前",
+    newTreeRootIdLabel: "First step id",
+    newTreeRootIdPlaceholder: "support",
+    newTreeRootTitleLabel: "First step title",
+    newTreeDescriptionLabel: "Description (optional)",
+    treeSettingsTriggersLabel: "Runs this work-map applies to",
+    treeSettingsTrigger: {
+      user: "User messages",
+      system: "System runs",
+      subagent: "Subagent runs",
+    },
+    treeSettingsPriorityLabel: "Routing priority (optional)",
+    newTreeReview: "Review definition",
+    newTreeErrorIdEmpty: "Enter a tree id.",
+    newTreeErrorIdPattern: "Tree id must be dotted lowercase.",
+    newTreeErrorIdDuplicate: "That tree already exists. Select it and use Edit instead.",
+    treeSettingsErrorVersionEmpty: "Enter a version.",
+    newTreeErrorNameEmpty: "Enter a tree name.",
+    treeSettingsErrorTriggersEmpty: "Choose at least one run type.",
+    treeSettingsErrorPriorityInvalid: "Priority must be a whole number.",
+    newTreeErrorRootIdEmpty: "Enter the first step id.",
+    newTreeErrorRootIdPattern: "Step id must be dotted lowercase.",
+    newTreeErrorRootTitleEmpty: "Enter the first step title.",
     edit: "編集",
     exportYaml: "YAML をエクスポート",
     exportJson: "JSON をエクスポート",
     remove: "削除",
     editorTitle: "ツリー定義を編集",
     editorHint: "定義を直接編集し、保存して新しいバージョンを記録します。",
+    editorDiscardWarning: "Discard the unsaved tree draft?",
+    saveContinuesNavigation:
+      "This save has already been sent and will continue if you open another work-map. Open it anyway?",
+    editorFormatWarning: "Switch format and discard the current editor contents?",
+    treeWarnings: "Some declarations on this work-map cannot be reached by any run:",
     saveInvalid: "定義の検証に失敗しました:",
     saving: "保存中…",
     save: "保存",
@@ -816,8 +970,13 @@ export const ja_JP: TranslationMap = {
     confirmSaveBody: "編集された定義をインポートし、新しいリビジョンを記録します。",
     confirmRemoveTitle: "ワークフローツリーを削除しますか？",
     confirmRemoveBody: "インポートされたツリー {treeId} をレジストリから削除します。",
-    confirmRemoveWarning:
-      "ライブ定義は削除され、シャドウされていた組み込み定義が復元されます。バージョン履歴は保持されます。",
+    confirmRemoveDataLossWarning:
+      "This permanently deletes the tree's live ontology objects, links, and bundled knowledge. Version history keeps only definitions. Workflow bundles preserve definitions and bundled knowledge, but cannot restore live objects or links. Back up ClawWorks state before deleting data you need. A shadowed built-in then reappears.",
+    removeNotSent:
+      "Nothing was removed: the gateway connection dropped before this was sent. Reconnect and try again.",
+    removeRefused: "The server refused the removal, so nothing was removed: {message}",
+    removeUnconfirmed:
+      "The removal did not confirm. It may or may not have been applied — refresh the work-map before trying again.",
   },
   sessionsView: {
     title: "セッション",
@@ -1281,7 +1440,7 @@ export const ja_JP: TranslationMap = {
     layout: "Card layout",
     layoutCompact: "コンパクトなカード密度",
     layoutComfortable: "ゆったりしたカード密度",
-    dispatch: "ディスパッチャーを促す",
+    dispatch: "Dispatch ready work",
     dispatchSummary:
       "Dispatch complete: started {started}, promoted {promoted}, blocked {blocked}, reclaimed {reclaimed}, orchestrated {orchestrated}, failures {failures}.",
     dispatchSummaryEmpty: "Dispatch complete: no ready work changed.",

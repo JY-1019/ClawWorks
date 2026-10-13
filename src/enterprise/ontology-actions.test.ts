@@ -10,6 +10,7 @@ import {
   getOntologyObject,
   runOntologyObjectWrite,
   searchOntologyObjects,
+  upsertOntologyLink,
   upsertOntologyObject,
 } from "./object-store.sqlite.js";
 import { invokeOntologyAction } from "./ontology-actions.js";
@@ -580,6 +581,17 @@ describe("graph effects", () => {
   };
   const RELATED: OntologyRelationship = { id: "claim-of-case", from: "case", to: "claim" };
 
+  beforeAll(() => {
+    runOntologyObjectWrite((database) =>
+      upsertOntologyObject(database, {
+        treeId: TREE_ID,
+        entity: "case",
+        objectId: "CS-1",
+        properties: { "case-id": "CS-1" },
+      }),
+    );
+  });
+
   function graphScope(actions: OntologyAction[]): NodeOntologyScope {
     return {
       treeId: TREE_ID,
@@ -642,6 +654,84 @@ describe("graph effects", () => {
     ).toEqual([]);
   });
 
+  it("refuses a link to an object that does not exist", () => {
+    const result = runGraph(ATTACH, { "case-id": "CS-404", "claim-id": "C-1" });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain('missing "case" object "CS-404"');
+  });
+
+  it("allows an action to create an endpoint and link it atomically", () => {
+    const createAndAttach: OntologyAction = {
+      ...ATTACH,
+      id: "create-and-attach-claim",
+      effects: [
+        { entity: "case", kind: "create" },
+        { kind: "link", relationship: "claim-of-case" },
+      ],
+    };
+
+    const result = runGraph(createAndAttach, { "case-id": "CS-2", "claim-id": "C-1" });
+    expect(result.ok).toBe(true);
+    expect(getOntologyObject({ treeId: TREE_ID, entity: "case", objectId: "CS-2" })).not.toBeNull();
+    expect(
+      getOntologyNeighbors({ treeId: TREE_ID, entity: "case", objectId: "CS-2", limit: 10 }),
+    ).toHaveLength(1);
+  });
+
+  it("refuses blank or padded link identities", () => {
+    const padded = runGraph(ATTACH, { "case-id": " CS-1 ", "claim-id": "C-1" });
+    expect(padded.ok).toBe(false);
+    expect(!padded.ok && padded.error).toContain("leading or trailing whitespace");
+
+    const blank = runGraph(ATTACH, { "case-id": "", "claim-id": "C-1" });
+    expect(blank.ok).toBe(false);
+    expect(!blank.ok && blank.error).toContain("must not be blank");
+  });
+
+  it("refuses to link an endpoint the same action deletes", () => {
+    const deleteAndAttach: OntologyAction = {
+      ...ATTACH,
+      id: "delete-and-attach-claim",
+      effects: [
+        { entity: "case", kind: "delete" },
+        { kind: "link", relationship: "claim-of-case" },
+      ],
+    };
+
+    const result = runGraph(deleteAndAttach, { "case-id": "CS-1", "claim-id": "C-1" });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain('cannot link deleted "case" object "CS-1"');
+    expect(getOntologyObject({ treeId: TREE_ID, entity: "case", objectId: "CS-1" })).not.toBeNull();
+  });
+
+  it("still permits unlink to clean up an old dangling edge", () => {
+    runOntologyObjectWrite((database) =>
+      upsertOntologyLink(database, {
+        treeId: TREE_ID,
+        relationship: RELATED.id,
+        fromEntity: "case",
+        fromObjectId: "CS-dangling",
+        toEntity: "claim",
+        toObjectId: "C-missing",
+      }),
+    );
+    const detach: OntologyAction = {
+      ...ATTACH,
+      id: "detach-dangling-claim",
+      effects: [{ kind: "unlink", relationship: "claim-of-case" }],
+    };
+
+    expect(runGraph(detach, { "case-id": "CS-dangling", "claim-id": "C-missing" }).ok).toBe(true);
+    expect(
+      getOntologyNeighbors({
+        treeId: TREE_ID,
+        entity: "case",
+        objectId: "CS-dangling",
+        limit: 10,
+      }),
+    ).toEqual([]);
+  });
+
   it("names the parameter for each end when both ends are the same object type", () => {
     // Both ends would otherwise read the same primaryKey parameter and the edge
     // would loop an object back onto itself.
@@ -660,16 +750,50 @@ describe("graph effects", () => {
       effects: [{ kind: "link", relationship: "related-claim", to: "other-claim-id" }],
     };
     scope.actions.set(action.id, action);
+    runOntologyObjectWrite((database) =>
+      upsertOntologyObject(database, {
+        treeId: TREE_ID,
+        entity: "claim",
+        objectId: "C-related",
+        properties: { "claim-id": "C-related", amount: 20 },
+      }),
+    );
     const result = runOntologyObjectWrite((database) =>
       invokeOntologyAction(database, {
         scope,
         action,
-        args: { "claim-id": "C-1", "other-claim-id": "C-2" },
+        args: { "claim-id": "C-1", "other-claim-id": "C-related" },
       }),
     );
     expect(result.ok && result.writes).toEqual([
-      { relationship: "related-claim", from: "C-1", to: "C-2", kind: "link" },
+      { relationship: "related-claim", from: "C-1", to: "C-related", kind: "link" },
     ]);
+  });
+
+  it("refuses to reuse one default parameter for both ends of a same-type relationship", () => {
+    const scope = graphScope([]);
+    scope.relationships.set("related-claim", {
+      id: "related-claim",
+      from: "claim",
+      to: "claim",
+    });
+    const action: OntologyAction = {
+      id: "relate-claim-to-itself",
+      parameters: [{ id: "claim-id", type: "id", required: true }],
+      effects: [{ kind: "link", relationship: "related-claim" }],
+    };
+    scope.actions.set(action.id, action);
+
+    const result = runOntologyObjectWrite((database) =>
+      invokeOntologyAction(database, {
+        scope,
+        action,
+        args: { "claim-id": "C-1" },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("distinct endpoint parameters");
   });
 
   it("refuses a relationship the step does not declare", () => {

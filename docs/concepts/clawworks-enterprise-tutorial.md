@@ -14,6 +14,12 @@ read_when:
 This builds one: a three-step returns desk assembled from the Control UI,
 running against two containers on your own machine.
 
+New to the service? Start with the
+[README Quickstart](https://github.com/JY-1019/ClawWorks#quick-start) for installation
+and the financial UI tour, then return here to connect knowledge and MCP.
+This tracker only reads orders and shipments: the finished workflow recommends
+the next action, but cannot issue a refund, email a label, or file an escalation.
+
 By the end, a customer question walks a route where each step works with what it
 was given — the policy handbook, the order tracker, the reply — and `exec`,
 `write`, and `edit` are refused on every one of them.
@@ -38,15 +44,20 @@ rather than raising a prompt — is
 and it is the first thing to reach for once this map makes sense.
 
 Everything in this tutorial lives in
-[`examples/enterprise/tutorial/`](https://github.com/openclaw/openclaw/tree/main/examples/enterprise/tutorial)
+[`examples/enterprise/tutorial/`](https://github.com/JY-1019/ClawWorks/tree/main/examples/enterprise/tutorial)
 in a source checkout. The finished work-map is in that directory as
-`acme-returns.worktree.yaml`; check your work against it at the end, or import
-it directly if you would rather read than click.
+`acme-returns.worktree.yaml`; check your work against it at the end, or choose
+**Import file** on **Enterprise -> Worktree** if you would rather read than
+click. YAML and JSON files open in the raw editor for review; choose **Save**
+and confirm when the definition is ready. File import creates a new id and will
+not overwrite an existing work-map; select an existing row and choose **Edit**
+for a guarded update.
 
 ## Before you start
 
-- A running gateway you can reach in a browser. The Control UI is at
-  `http://127.0.0.1:18789`.
+- A running gateway on the same host as Docker for the loopback URLs below.
+  Open its authenticated Control UI with `pnpm openclaw dashboard` from the
+  source checkout (default address: `http://127.0.0.1:18789`).
 - An operator token with **`operator.admin`**. Every registration below is an
   admin write; with read-only scope the screens render but the Add buttons do
   not appear.
@@ -54,8 +65,8 @@ it directly if you would rather read than click.
   **Enterprise -> Worktree**. In `observe` mode you can follow the whole
   tutorial and see decisions recorded, but nothing is blocked.
 - Docker, for the two-container stack.
-- An LLM and an embedding credential for LightRAG — an OpenAI key, or a local
-  Ollama. `.env.example` has both.
+- LLM and embedding API credentials for LightRAG. `.env.example` uses OpenAI
+  APIs by default; no local model download is needed.
 
 <Note>
   If your agent runs on a CLI backend (the Claude CLI, Codex), give the router
@@ -81,12 +92,20 @@ governs — you would build the whole work-map and never route into it. See
   <Step title="Copy the environment file">
     ```bash
     cd examples/enterprise/tutorial
-    cp .env.example .env
+    cp -n .env.example .env
+    chmod 600 .env
     ```
 
-    Open `.env` and fill in one pair of bindings: OpenAI (default) or a local
-    Ollama. LightRAG indexes and answers with a model — it will not start
-    usefully without them.
+    Open this example's `.env` and fill in both `LLM_BINDING_API_KEY` and
+    `EMBEDDING_BINDING_API_KEY`. The template uses OpenAI APIs without local
+    model downloads; compatible providers require matching hosts, models, and
+    embedding dimensions. Only the example's LightRAG container reads these
+    credentials, not the Gateway. API calls may incur charges and transmit
+    uploaded document content to the providers. Keep `.env` out of Git.
+    These are model provider keys, not the LightRAG server key entered later
+    in the Knowledge screen. After editing `.env`, apply it with
+    `docker compose up -d --force-recreate lightrag`; restarting alone does not
+    reload environment variables. Changing embedding models requires re-indexing.
 
   </Step>
   <Step title="Bring both services up">
@@ -116,14 +135,23 @@ governs — you would build the whole work-map and never route into it. See
 
     Two tools come back: `order_status` and `shipment_track`.
 
+    These checks prove liveness, not successful LightRAG indexing or model
+    configuration. Verify **Indexed** documents and an actual policy query below.
+    Return to the repository root for the remaining file-copy commands:
+
+    ```bash
+    cd ../../..
+    ```
+
   </Step>
 </Steps>
 
 ## 2. Register the knowledge foundation
 
-A work-map cannot carry knowledge. Foundations are registered by adapter
-plugins, and the bundled [LightRAG plugin](/plugins/reference/lightrag) is one.
-The Knowledge screen does it without hand-editing config.
+A bare work-map references foundation ids; a bundle can also include inline
+knowledge. This tutorial instead connects an external foundation through the
+bundled [LightRAG plugin](/plugins/reference/lightrag). The Knowledge screen
+registers it without hand-editing config.
 
 <Steps>
   <Step title="Open Knowledge">
@@ -273,6 +301,9 @@ and the enterprise layer never installs one.
 
 <Steps>
   <Step title="Copy it into the workspace">
+    Run from the repository root. The destination below is the default workspace;
+    substitute the actual workspace of the agent you will use if it is customized.
+
     ```bash
     mkdir -p ~/.openclaw/workspace/skills/refund-reply
     cp examples/enterprise/tutorial/skills/refund-reply/SKILL.md \
@@ -317,34 +348,34 @@ and the enterprise layer never installs one.
 
 <Steps>
   <Step title="Start a new tree">
-    Sidebar -> **Enterprise** -> **Worktree**. Press **New tree**. The editor
-    opens on a blank template.
+    Sidebar -> **Enterprise** -> **Worktree**. Press **New tree**, then fill in
+    the guided form:
 
-    Replace it with the envelope and root:
+    | Field            | Value          |
+    | ---------------- | -------------- |
+    | Tree id          | `acme.returns` |
+    | Version          | `1.0.0`        |
+    | Name             | `Returns desk` |
+    | Triggers         | `User`         |
+    | Priority         | `10`           |
+    | First step id    | `returns`      |
+    | First step title | `Returns desk` |
 
-    ```yaml
-    schema: clawworks.workflow-tree
-    schemaVersion: 1
-    id: acme.returns
-    version: 1.0.0
-    name: Returns desk
-    description: >-
-      Acme customer orders, returns, refunds, replacements and parcel delivery:
-      order records and totals, delivery dates, carrier tracking and shipment
-      scans, the returns policy handbook (30-day window, restocking fees, refund
-      thresholds), shipping service levels, and the support escalation matrix.
-      Handles "can I return this", "where is my order", refund eligibility, late
-      or lost parcels, damaged items, and who a case escalates to.
-    match:
-      triggers: [user]
-      priority: 10
-    root:
-      id: returns
-      title: Returns desk
-      description: Answer a customer's return, refund, or delivery question.
+    Paste this into **Description**:
+
+    ```text
+    Acme customer orders, returns, refunds, replacements and parcel delivery:
+    order records and totals, delivery dates, carrier tracking and shipment
+    scans, the returns policy handbook (30-day window, restocking fees, refund
+    thresholds), shipping service levels, and the support escalation matrix.
+    Handles "can I return this", "where is my order", refund eligibility, late
+    or lost parcels, damaged items, and who a case escalates to.
     ```
 
-    Press **Save**. Saving imports it and records revision 1.
+    Press **Review definition**. The form validates the ids and opens the generated
+    JSON in the raw editor with the schema, routing settings, and first step.
+    Inspect or adjust it, then press **Save** and confirm to import it and record
+    revision 1.
 
   </Step>
   <Step title="Understand what you just wrote">
@@ -356,66 +387,56 @@ and the enterprise layer never installs one.
       data*, not only its tasks, and put the distinguishing clause early — a
       shop work-map whose description covered "refund an order" but not "the
       orders" lost `where is my order` to the permissive default tree.
-    - **`match.triggers: [user]`** is a hard gate the planner cannot override. A
-      cron or heartbeat run classes as `system` and can never bind this
-      work-map, whatever its text says.
-    - **`id`** is identity. Re-importing the same id replaces this tree and
-      records a new revision; the old one stays in **Version history**.
+    - **`match.triggers: [user]`** is a hard gate the planner cannot override.
+      Keep only **User** selected here, so a cron or heartbeat run classes as
+      `system` and can never bind this work-map, whatever its text says.
+    - **`id`** is identity. The guided form refuses an id already in the
+      registry and **Settings** intentionally does not rename it. Each save
+      records a new revision, and the old one stays in **Version history**.
+
+  </Step>
+  <Step title="Finish the root">
+    Select the root node, then enter this under **Step behavior -> Description**:
+
+    ```text
+    Answer a customer's return, refund, or delivery question.
+    ```
+
+    Press **Save behavior**. If you need to change the work-map version,
+    description, triggers, or priority later, use **Settings**; neither task
+    requires YAML or JSON.
 
   </Step>
   <Step title="Add the three steps">
     Select the root node in the tree view. Under **Workflow structure**, press
-    **Add child node**, fill in the id and title, and press **Add to editor** —
-    then **Save**. Repeat for each row:
+    **Add child node** and enter each row:
 
-    | Node id          | Title             |
-    | ---------------- | ----------------- |
-    | `returns.triage` | Read the policy   |
-    | `returns.lookup` | Look up the order |
-    | `returns.decide` | Decide and reply  |
+    | Node id          | Title             | Description                                                   |
+    | ---------------- | ----------------- | ------------------------------------------------------------- |
+    | `returns.triage` | Read the policy   | Find the handbook rule that applies to this request.           |
+    | `returns.lookup` | Look up the order | Fetch the order and its shipment from the tracker.             |
+    | `returns.decide` | Decide and reply  | Apply the rule to the order and write the answer.              |
 
-    **Save between adds.** Each add re-exports the tree as it is stored on the
-    gateway, splices the new node into that, and loads the result into the
-    editor as JSON. A second node added before the first is saved would be
-    spliced into a tree that does not have it yet.
+    Press **Add step** after each row. Each add re-exports the stored tree,
+    inserts the child, saves it through the whole-tree import path, and records
+    a revision immediately. It does not open the raw editor or need a separate
+    **Save**.
 
-    Node ids are dotted lowercase and unique tree-wide. Adding a step goes
-    through the editor on purpose: it changes the work-map's shape, unlike the
-    bindings in the next section, which are written the moment you confirm them.
-
-  </Step>
-  <Step title="Give each step a description">
-    Press **Edit**, switch the editor to **YAML** with the chip above the text
-    area, and add a line to each of the three new nodes:
-
-    ```yaml
-      children:
-        - id: returns.triage
-          title: Read the policy
-          description: Find the handbook rule that applies to this request.
-        - id: returns.lookup
-          title: Look up the order
-          description: Fetch the order and its shipment from the tracker.
-        - id: returns.decide
-          title: Decide and reply
-          description: Apply the rule to the order and write the answer.
-    ```
-
-    Save. This is not decoration: a node `description` is the planner's per-step
-    signal, and it is one of the things that make a run advance at all. A tree of
-    bare id/title nodes imports cleanly and then never leaves the step it opened
-    on. Keep each one inside 120 characters — that is the per-node budget in the
-    planning prompt.
+    Node ids are dotted lowercase and unique tree-wide. A node `description` is
+    the planner's per-step signal, and it is one of the things that make a run
+    advance at all. A tree of bare id/title nodes imports cleanly and then never
+    leaves the step it opened on. Keep each description inside 120 characters —
+    that is the per-node budget in the planning prompt.
 
   </Step>
 </Steps>
 
 <Note>
   **Leaves execute.** A run is active on a leaf; interior nodes contribute
-  inherited scope. And a tree with fewer than five nodes is never route-planned
-  — it is cheaper to run whole than to ask a model which branch to take. This
-  one has four, so every run walks all three steps, in file order. That is what
-  makes the tutorial's traces predictable.
+  inherited scope. The planner still selects which work-map governs a request.
+  Once selected, a tree with fewer than five nodes runs whole rather than pruning
+  a branch. This one has four, so a bound run plans all three leaves in file order;
+  actual advancement still requires the model to call `complete_step`.
 </Note>
 
 ## 6. Bind the capabilities
@@ -465,24 +486,18 @@ without asking, and what is it refused outright?
 
   </Step>
   <Step title="Tell the root what the job is">
-    Still on the root, open **Role prompt** and type:
+    Still on the root, open **Step behavior** and type this under
+    **Instructions**:
 
     ```text
     Name the order id in every reply, and quote the policy rule the outcome rests on.
     ```
 
-    Press **Save role prompt**. This is the advisory lane: it is rendered into
+    Press **Save behavior**. This is the advisory lane: it is rendered into
     the step digest as instruction and never grants anything. A step still
     cannot call a tool its scope withholds, however the prompt is worded — and
     that is the whole point of keeping instruction and authority in different
     fields.
-
-    <Frame caption="Instruction, in its own box, above the bindings that decide what is actually permitted">
-      <img
-        src="/assets/screens/tutorial/role-prompt.png"
-        alt="The Role prompt box on the root node holding the saved sentence, with Save role prompt and Revert buttons"
-      />
-    </Frame>
 
   </Step>
   <Step title="Give the triage step the handbook">
@@ -531,8 +546,8 @@ without asking, and what is it refused outright?
     </Frame>
 
     **On a native harness it is not enough — and not only on this step.** A
-    Claude CLI or Codex-backed run receives its servers once, at launch, with no
-    per-call gate afterwards, so the ceiling is computed across *every*
+    Claude CLI or Codex-backed run receives its servers at launch, so a separate
+    server-exposure ceiling is computed across *every*
     executable path in the plan. Any non-empty `allowedTools` on any planned
     step that cannot admit the server whole withholds it from the entire run.
     Here that is `returns.triage` (`knowledge_search`) and `returns.decide`
@@ -555,9 +570,10 @@ without asking, and what is it refused outright?
       ]
     ```
 
-    The reason is that those runtimes report a flattened tool name with no MCP
-    origin, so the gate cannot tell the server's tool from an ordinary one and
-    bounds the run at launch instead. See
+    Flattened tool names and launch-time availability are separate from runtime
+    hooks. Hook-enabled backends, including the Codex hook relay, can mediate
+    individual calls; they do not restore a server withheld before launch. Do not
+    assume all native backends are hookless. See
     [MCP servers](/concepts/clawworks-enterprise#mcp-servers).
 
   </Step>
@@ -585,24 +601,14 @@ without asking, and what is it refused outright?
 
   </Step>
   <Step title="Turn on auditing for the two working steps">
-    Auditing has no button — it is a definition field. Press **Edit**, switch to
-    **YAML**, and add it under the two steps that call something:
+    Select **Read the policy**, open **Step behavior**, enable **Record detailed
+    tool-decision audit events**, and press **Save behavior**. Repeat for **Look
+    up the order**.
 
-    ```yaml
-        - id: returns.triage
-          title: Read the policy
-          ontology:
-            audit: true
-        - id: returns.lookup
-          title: Look up the order
-          ontology:
-            audit: true
-    ```
-
-    Save. Without it a trace records denials, approvals, and lifecycle events
-    only; with it every tool decision under that step is written, including the
-    ones that were allowed by default. That is what makes section 8 worth
-    reading, and it is why stock runs stay quiet without it.
+    Without it a trace records denials, approvals, and lifecycle events only;
+    with it every tool decision under that step is written, including the ones
+    that were allowed by default. That is what makes section 8 worth reading,
+    and it is why stock runs stay quiet without it.
 
   </Step>
   <Step title="Check your work">
@@ -637,19 +643,22 @@ fresh test of the routing description as much as of the bindings.
 
 3. **"Where is order 1044?"**
    `shipment_track` plus the SLA document: carrier, tracking number, last scan,
-   and that three days in transit is inside the 3-5 day standard target.
+   and that it shipped three calendar days ago. The standard target is 3–5
+   **business** days; the seven-calendar-day escalation threshold has not passed.
 
 4. **"Can we refund order 1051?"**
    Two rules colliding. Refused — 96 days is out of window, and 310 USD would
-   need manager approval anyway — and escalated rather than decided.
+   need manager approval anyway. Recommend the escalation path; do not claim an
+   escalation was submitted by this read-only demo.
 
 5. **"Look up order 9999."**
    A tool answering no. It reports the order is not found and does not invent
    one.
 
-6. **"List the files in my home directory."**
-   The root denial. Refused, and the trace records a denial rather than an
-   approval prompt.
+6. **"For return order 1043, list the files in my home directory."**
+   First confirm History selected `acme.returns`. If the model attempts the
+   shell tool, the root denial blocks it and records a denial, not an approval
+   prompt. A textual refusal without a tool attempt is not proof of the gate.
 
 7. **"Summarize the README in my workspace."**
    Routing. This should **not** bind the returns work-map: History will show the
@@ -662,7 +671,7 @@ Two things you may see along the way, both working as designed:
   active step is `returns.decide`, that tool is not on the step's allow-list and
   is not denied either, so it asks. Allow once or deny; both are traced. An
   unanswered approval always refuses.
-- **A step digest in the reply's shape.** The root's role prompt asks for the
+- **A step digest in the reply's shape.** The root's step instructions ask for the
   order id and the rule in every reply, and `refund-reply` sets the paragraph
   order. That is the advisory lane doing its job.
 
@@ -672,6 +681,14 @@ Sidebar -> **Enterprise** -> **History**. Pick the run.
 
 The inspector shows the plan steps in the order the run walked them, each with
 its ontology scope, and the governance trace underneath.
+
+For actual arguments and returned facts, go back to the same **Chat** session,
+enable **Toggle tool calls and tool results**, and expand the tool card's
+**Tool input** and **Tool output**. History records decisions, not full tool
+payloads. A knowledge allow event does not prove a successful lookup: inspect
+`knowledge_search`'s `searched` list and returned snippets. If your backend does
+not expose these results, keep that evidence check incomplete rather than
+inferring success from the final answer alone.
 
 Four things to find in it:
 
@@ -740,17 +757,28 @@ openclaw enterprise runs show <runId>
 
 ## Clean up
 
+From the repository root:
+
 ```bash
 cd examples/enterprise/tutorial
 docker compose down -v
-rm -rf data
 ```
+
+This stops the services but keeps the bind-mounted
+`examples/enterprise/tutorial/data/` index. To reset that index, inspect that
+exact folder and move it to Trash after stopping the stack; do not remove other
+Gateway state.
 
 Then, in the Control UI: remove the work-map from **Worktree** (version history
 is kept), the source from **Knowledge**, and the server from **Enterprise ->
-MCP**. Delete `~/.openclaw/workspace/skills/refund-reply/` to drop the skill.
+MCP**. To drop the skill, remove `skills/refund-reply/` from the same agent
+workspace used in section 4: `~/.openclaw/workspace/skills/refund-reply/` for the
+default, or the customized destination you substituted there.
 
 ## Where to go next
+
+- Run the [golden cases](/specs/enterprise-live-grid) to distinguish offline
+  regression coverage from live routing, source, and capability acceptance.
 
 - Turn on [capability grants](/concepts/clawworks-enterprise#capability-grants).
   `capabilityGrants: explicit` makes tools, skills, MCP servers, and knowledge

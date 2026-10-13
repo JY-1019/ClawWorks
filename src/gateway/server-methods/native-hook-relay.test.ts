@@ -74,9 +74,32 @@ describe("native hook relay gateway method", () => {
     expectInvalidRequest(respond, "native hook relay bridge stale registration");
     expect(testing.getNativeHookRelayInvocationsForTests()).toStrictEqual([]);
   });
+
+  it("cancels a relay invocation with its gateway request", async () => {
+    const relay = registerNativeHookRelay({
+      provider: "codex",
+      sessionId: "session-1",
+      runId: "run-1",
+      allowedEvents: ["post_tool_use"],
+    });
+
+    const respond = await invokeNativeHook(
+      {
+        provider: "codex",
+        relayId: relay.relayId,
+        generation: relay.generation,
+        event: "post_tool_use",
+        rawPayload: POST_TOOL_USE_PAYLOAD,
+      },
+      AbortSignal.abort(new Error("gateway connection closed")),
+    );
+
+    expectInvalidRequest(respond, "gateway connection closed");
+    expect(testing.getNativeHookRelayInvocationsForTests()).toStrictEqual([]);
+  });
 });
 
-async function invokeNativeHook(params: Record<string, unknown>) {
+async function invokeNativeHook(params: Record<string, unknown>, signal?: AbortSignal) {
   const respond = viRespond();
   await nativeHookRelayHandlers["nativeHook.invoke"]({
     req: { type: "req", id: "1", method: "nativeHook.invoke" },
@@ -85,6 +108,7 @@ async function invokeNativeHook(params: Record<string, unknown>) {
     isWebchatConnect: () => false,
     respond,
     context: {} as never,
+    signal,
   });
   return respond;
 }

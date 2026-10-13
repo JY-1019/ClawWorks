@@ -2764,6 +2764,240 @@ describe("CodexAppServerEventProjector", () => {
     });
   });
 
+  it("settles a completed native item from the final snapshot when PostToolUse is missing", async () => {
+    const onNativeToolResultRecorded = vi.fn();
+    const projector = await createProjector(await createParams(), {
+      nativePostToolUseRelayEnabled: true,
+      onNativeToolResultRecorded,
+    });
+    const item = {
+      type: "commandExecution",
+      id: "cmd-missing-post",
+      command: "pnpm test extensions/codex",
+      cwd: "/workspace",
+      processId: "123",
+      source: "agent",
+      status: "completed",
+      commandActions: [],
+      aggregatedOutput: "ok",
+      exitCode: 0,
+      durationMs: 42,
+    };
+
+    await projector.handleNotification(forCurrentTurn("item/completed", { item }));
+    expect(onNativeToolResultRecorded).not.toHaveBeenCalled();
+
+    await projector.handleNotification(
+      turnCompleted([{ id: "agent-final", type: "agentMessage", text: "Done." }]),
+    );
+    expect(onNativeToolResultRecorded).toHaveBeenCalledOnce();
+    expect(onNativeToolResultRecorded).toHaveBeenCalledWith({
+      toolCallId: "cmd-missing-post",
+      released: true,
+    });
+  });
+
+  it.each(["failed", "interrupted"])(
+    "settles a still-running MCP item from a %s turn snapshot",
+    async (turnStatus) => {
+      const onNativeToolResultRecorded = vi.fn();
+      const projector = await createProjector(await createParams(), {
+        nativePostToolUseRelayEnabled: true,
+        onNativeToolResultRecorded,
+      });
+
+      await projector.handleNotification(
+        turnWithStatus(turnStatus, [
+          {
+            type: "mcpToolCall",
+            id: `mcp-running-${turnStatus}`,
+            server: "github",
+            tool: "create_issue",
+            status: "inProgress",
+            arguments: { title: turnStatus },
+            result: null,
+            error: null,
+            durationMs: null,
+          },
+        ]),
+      );
+
+      expect(onNativeToolResultRecorded).toHaveBeenCalledOnce();
+      expect(onNativeToolResultRecorded).toHaveBeenCalledWith({
+        toolCallId: `mcp-running-${turnStatus}`,
+        released: true,
+        toolInput: { title: turnStatus },
+      });
+    },
+  );
+
+  it("reports whether native command results were released", async () => {
+    const onNativeToolResultRecorded = vi.fn();
+    const projector = await createProjector(await createParams(), {
+      onNativeToolResultRecorded,
+    });
+
+    for (const [id, status] of [
+      ["cmd-failed", "failed"],
+      ["cmd-blocked", "declined"],
+    ] as const) {
+      await projector.handleNotification(
+        forCurrentTurn("item/completed", {
+          item: {
+            type: "commandExecution",
+            id,
+            command: `run ${id}`,
+            cwd: "/workspace",
+            processId: null,
+            source: "agent",
+            status,
+            commandActions: [],
+            aggregatedOutput: "",
+            exitCode: status === "failed" ? 1 : null,
+            durationMs: 5,
+          },
+        }),
+      );
+    }
+
+    expect(onNativeToolResultRecorded.mock.calls).toEqual([
+      [{ toolCallId: "cmd-failed", released: true }],
+      [{ toolCallId: "cmd-blocked", released: false }],
+    ]);
+
+    await projector.handleNotification(
+      forCurrentTurn("item/completed", {
+        item: {
+          type: "commandExecution",
+          id: "cmd-approval-failed",
+          command: "run cmd-approval-failed",
+          cwd: "/workspace",
+          processId: null,
+          source: "agent",
+          status: "failed",
+          commandActions: [],
+          aggregatedOutput: null,
+          exitCode: null,
+          durationMs: null,
+        },
+      }),
+    );
+    expect(onNativeToolResultRecorded).toHaveBeenLastCalledWith({
+      toolCallId: "cmd-approval-failed",
+      released: false,
+    });
+  });
+
+  it("distinguishes an exact legacy MCP denial from result-less dispatch failures", async () => {
+    const onNativeToolResultRecorded = vi.fn();
+    const projector = await createProjector(await createParams(), {
+      onNativeToolResultRecorded,
+    });
+
+    projector.recordLegacyMcpApprovalResult(
+      {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "mcp-legacy-denied",
+        questions: [
+          {
+            id: "mcp_tool_call_approval_mcp-legacy-denied",
+            header: "Approve app tool call?",
+            question: "Allow GitHub to create an issue?",
+          },
+        ],
+      },
+      { answers: {} },
+    );
+    await projector.handleNotification(
+      forCurrentTurn("item/completed", {
+        item: {
+          type: "mcpToolCall",
+          id: "mcp-legacy-denied",
+          server: "github",
+          tool: "create_issue",
+          status: "failed",
+          arguments: { title: "denied" },
+          result: null,
+          error: { message: "MCP tool call cancelled by user" },
+          durationMs: 0,
+        },
+      }),
+    );
+    expect(onNativeToolResultRecorded).toHaveBeenLastCalledWith({
+      toolCallId: "mcp-legacy-denied",
+      released: false,
+      toolInput: { title: "denied" },
+    });
+
+    await projector.handleNotification(
+      forCurrentTurn("item/completed", {
+        item: {
+          type: "mcpToolCall",
+          id: "mcp-resultless-failure",
+          server: "github",
+          tool: "create_issue",
+          status: "failed",
+          arguments: { title: "exact hook input" },
+          result: null,
+          error: { message: "MCP transport timed out after dispatch" },
+          durationMs: 0,
+        },
+      }),
+    );
+
+    expect(onNativeToolResultRecorded).toHaveBeenCalledWith({
+      toolCallId: "mcp-resultless-failure",
+      released: true,
+      toolInput: { title: "exact hook input" },
+    });
+
+    await projector.handleNotification(
+      forCurrentTurn("item/completed", {
+        item: {
+          type: "mcpToolCall",
+          id: "mcp-server-error",
+          server: "github",
+          tool: "create_issue",
+          status: "failed",
+          arguments: { title: "exact hook input" },
+          result: {
+            content: [{ type: "text", text: "remote error" }],
+            structuredContent: null,
+            _meta: null,
+          },
+          error: null,
+          durationMs: 5,
+        },
+      }),
+    );
+    expect(onNativeToolResultRecorded).toHaveBeenLastCalledWith({
+      toolCallId: "mcp-server-error",
+      released: true,
+      toolInput: { title: "exact hook input" },
+    });
+
+    await projector.handleNotification(
+      forCurrentTurn("item/completed", {
+        item: {
+          type: "mcpToolCall",
+          id: "mcp-empty",
+          server: "github",
+          tool: "list_issues",
+          status: "completed",
+          arguments: null,
+          result: { content: [] },
+          error: null,
+          durationMs: 5,
+        },
+      }),
+    );
+    expect(onNativeToolResultRecorded).toHaveBeenLastCalledWith({
+      toolCallId: "mcp-empty",
+      released: true,
+    });
+  });
+
   it("uses Codex web search action metadata when the top-level query is empty", async () => {
     const afterToolCall = vi.fn();
     initializeGlobalHookRunner(

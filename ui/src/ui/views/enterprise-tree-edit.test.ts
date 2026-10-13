@@ -8,20 +8,30 @@ import {
   addNodeOntologyAction,
   addNodeOntologyActionEffect,
   addNodeOntologyActionParameter,
+  addNodeOntologyConstraint,
   addNodeOntologyEntity,
   addNodeOntologyFunction,
   addNodeOntologyProperty,
   addNodeOntologyRelationship,
+  disableTreeMcpGovernance,
+  enableNodeMcpGovernance,
+  ONTOLOGY_CARDINALITIES,
   removeNodeOntologyAction,
   removeNodeOntologyActionEffect,
   removeNodeOntologyActionParameter,
+  removeNodeOntologyConstraint,
   removeNodeOntologyEntity,
   removeNodeOntologyEntry,
   removeNodeOntologyFunction,
+  removeTreeNode,
   type OntologyEffectKindName,
   removeNodeOntologyProperty,
   removeNodeOntologyRelationship,
-  setNodeGuidance,
+  moveTreeNode,
+  setNodeBehavior,
+  setTreeSettings,
+  type NodeOntologyMetadataUpdate,
+  updateNodeOntologyMetadata,
 } from "./enterprise-tree-edit.ts";
 
 function definition(): EditableTreeDefinition {
@@ -125,6 +135,462 @@ describe("insertChildNode", () => {
       title: "Dup",
     });
     expect(result).toEqual({ ok: false, reason: "duplicate-id" });
+  });
+});
+
+describe("ONTOLOGY_CARDINALITIES", () => {
+  it("matches the schema without duplicate one-to-one entries", () => {
+    expect(ONTOLOGY_CARDINALITIES).toEqual([
+      "one-to-one",
+      "one-to-many",
+      "many-to-one",
+      "many-to-many",
+    ]);
+    expect(new Set(ONTOLOGY_CARDINALITIES).size).toBe(ONTOLOGY_CARDINALITIES.length);
+  });
+});
+
+describe("setTreeSettings", () => {
+  it("updates guided fields while preserving the envelope, root, and legacy match keys", () => {
+    const original = definition();
+    original.description = "Old description";
+    original.custom = { keep: true };
+    original.match = {
+      keywords: ["legacy"],
+      custom: "keep",
+      triggers: ["system"],
+      priority: 9,
+    };
+    const snapshot = structuredClone(original);
+
+    const result = setTreeSettings(original, {
+      version: " 2.0.0 ",
+      name: " Updated support ",
+      description: "   ",
+      triggers: ["user"],
+    });
+
+    expect(result.definition).toMatchObject({
+      schema: "clawworks.workflow-tree",
+      schemaVersion: 1,
+      id: "acme.support",
+      version: "2.0.0",
+      name: "Updated support",
+      custom: { keep: true },
+      match: { keywords: ["legacy"], custom: "keep" },
+    });
+    expect(result.definition).not.toHaveProperty("description");
+    expect(result.definition.root).toEqual(original.root);
+    expect(result.definition.root).not.toBe(original.root);
+    expect(original).toEqual(snapshot);
+  });
+
+  it("preserves priority zero and writes non-default triggers", () => {
+    const result = setTreeSettings(definition(), {
+      version: "1.0.1",
+      name: "Support",
+      description: "Help customers",
+      triggers: ["system", "subagent"],
+      priority: 0,
+    });
+
+    expect(result.definition.description).toBe("Help customers");
+    expect(result.definition.match).toEqual({
+      triggers: ["system", "subagent"],
+      priority: 0,
+    });
+  });
+
+  it("drops an otherwise empty match for the default user trigger", () => {
+    const original = definition();
+    original.match = { triggers: ["system"], priority: 4 };
+    const result = setTreeSettings(original, {
+      version: "1.0.0",
+      name: "Support",
+      description: "",
+      triggers: ["user"],
+    });
+
+    expect(result.definition).not.toHaveProperty("match");
+  });
+});
+
+function structureDefinition(): EditableTreeDefinition {
+  return {
+    ...definition(),
+    root: {
+      id: "support",
+      title: "Support",
+      description: "Root description",
+      children: [
+        {
+          id: "support.triage",
+          title: "Triage",
+          description: "Triage description",
+          ontology: { allowedTools: ["read"] },
+          children: [{ id: "support.triage.review", title: "Review" }],
+        },
+        { id: "support.resolve", title: "Resolve" },
+        { id: "support.close", title: "Close" },
+      ],
+    },
+  };
+}
+
+describe("moveTreeNode", () => {
+  it("reparents a whole subtree at the requested final index without mutating the input", () => {
+    const original = structureDefinition();
+    const snapshot = structuredClone(original);
+    const result = moveTreeNode(original, "support.triage", {
+      parentId: "support.resolve",
+      index: 0,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.definition.root.children?.map((node) => node.id)).toEqual([
+      "support.resolve",
+      "support.close",
+    ]);
+    const moved = result.definition.root.children?.[0]?.children?.[0];
+    expect(moved).toMatchObject({
+      id: "support.triage",
+      description: "Triage description",
+      ontology: { allowedTools: ["read"] },
+      children: [{ id: "support.triage.review", title: "Review" }],
+    });
+    expect(original).toEqual(snapshot);
+  });
+
+  it("reorders siblings using an index in the final child list", () => {
+    const result = moveTreeNode(structureDefinition(), "support.triage", {
+      parentId: "support",
+      index: 2,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.definition.root.children?.map((node) => node.id)).toEqual([
+      "support.resolve",
+      "support.close",
+      "support.triage",
+    ]);
+  });
+
+  it.each([
+    ["support", "support.resolve", 0, "root-node"],
+    ["missing", "support", 0, "node-not-found"],
+    ["support.triage", "missing", 0, "parent-not-found"],
+    ["support.triage", "support.triage", 0, "invalid-parent"],
+    ["support.triage", "support.triage.review", 0, "invalid-parent"],
+    ["support.triage", "support.resolve", -1, "invalid-index"],
+    ["support.triage", "support.resolve", 1, "invalid-index"],
+  ] as const)("refuses invalid move %s -> %s (%s)", (nodeId, parentId, index, reason) => {
+    const original = structureDefinition();
+    const snapshot = structuredClone(original);
+    expect(moveTreeNode(original, nodeId, { parentId, index })).toEqual({ ok: false, reason });
+    expect(original).toEqual(snapshot);
+  });
+
+  it("refuses a reparent that makes the moved subtree lose its ontology scope", () => {
+    const original = structureDefinition();
+    const triage = original.root.children?.[0];
+    const consumer = triage?.children?.[0];
+    if (!triage || !consumer) {
+      throw new Error("fixture failed");
+    }
+    triage.ontology = {
+      entities: [{ id: "claim", properties: [{ id: "amount", type: "number" }] }],
+    };
+    consumer.ontology = {
+      functions: [{ id: "total", entity: "claim", expression: "$amount", returns: "number" }],
+    };
+
+    expect(
+      moveTreeNode(original, "support.triage.review", {
+        parentId: "support.resolve",
+        index: 0,
+      }),
+    ).toEqual({ ok: false, reason: "entity-referenced" });
+  });
+
+  it("does not treat an outward call as a local ontology reference", () => {
+    const original = structureDefinition();
+    original.root.ontology = {
+      actions: [{ id: "notify", effects: [{ kind: "call", tool: "message" }] }],
+    };
+
+    expect(
+      moveTreeNode(original, "support.triage.review", {
+        parentId: "support.resolve",
+        index: 0,
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("refuses a reparent that detaches a link action from its relationship", () => {
+    const original = structureDefinition();
+    const triage = original.root.children?.[0];
+    const consumer = triage?.children?.[0];
+    if (!triage || !consumer) {
+      throw new Error("fixture failed");
+    }
+    triage.ontology = {
+      entities: [
+        {
+          id: "claim",
+          properties: [{ id: "claim-id", type: "id", primaryKey: true }],
+        },
+      ],
+      relationships: [{ id: "claim-parent", from: "claim", to: "claim" }],
+    };
+    consumer.ontology = {
+      actions: [
+        {
+          id: "relate",
+          parameters: [{ id: "claim-id", type: "id" }],
+          effects: [{ kind: "link", relationship: "claim-parent" }],
+        },
+      ],
+    };
+
+    expect(
+      moveTreeNode(original, "support.triage.review", {
+        parentId: "support.resolve",
+        index: 0,
+      }),
+    ).toEqual({ ok: false, reason: "entity-referenced" });
+  });
+
+  it.each(["actions", "functions", "relationships"] as const)(
+    "refuses a reparent that shadows an existing %s declaration",
+    (field) => {
+      const original = structureDefinition();
+      original.root.ontology = {
+        entities: [
+          {
+            id: "claim",
+            properties: [
+              { id: "claim-id", type: "id", primaryKey: true },
+              { id: "amount", type: "number" },
+            ],
+          },
+        ],
+      };
+      const triage = original.root.children?.[0];
+      const review = triage?.children?.[0];
+      const resolve = original.root.children?.[1];
+      if (!review || !resolve) {
+        throw new Error("fixture failed");
+      }
+      const declaration =
+        field === "actions"
+          ? [{ id: "same", effects: [{ kind: "call", tool: "message" }] }]
+          : field === "functions"
+            ? [{ id: "same", entity: "claim", expression: "$amount", returns: "number" }]
+            : [{ id: "same", from: "claim", to: "claim" }];
+      review.ontology = { [field]: declaration };
+      resolve.ontology = { [field]: declaration };
+
+      expect(moveTreeNode(original, review.id, { parentId: resolve.id, index: 0 })).toEqual({
+        ok: false,
+        reason: "duplicate-entry",
+      });
+    },
+  );
+
+  it("refuses a reparent that turns a rationale into an incompatible field write", () => {
+    const original = structureDefinition();
+    original.root.ontology = {
+      entities: [{ id: "claim", properties: [{ id: "claim-id", type: "id", primaryKey: true }] }],
+    };
+    const review = original.root.children?.[0]?.children?.[0];
+    const resolve = original.root.children?.[1];
+    if (!review || !resolve) {
+      throw new Error("fixture failed");
+    }
+    review.ontology = {
+      actions: [
+        {
+          id: "decide",
+          parameters: [
+            { id: "claim-id", type: "id" },
+            { id: "status", type: "number" },
+          ],
+          effects: [{ entity: "claim", kind: "update" }],
+        },
+      ],
+    };
+    resolve.ontology = {
+      entities: [{ id: "claim", properties: [{ id: "status", type: "string" }] }],
+    };
+
+    expect(moveTreeNode(original, review.id, { parentId: resolve.id, index: 0 })).toEqual({
+      ok: false,
+      reason: "property-in-use",
+    });
+  });
+});
+
+describe("removeTreeNode", () => {
+  it("removes exactly one non-root subtree and preserves the rest", () => {
+    const original = structureDefinition();
+    const snapshot = structuredClone(original);
+    const result = removeTreeNode(original, "support.triage");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.definition.root.children?.map((node) => node.id)).toEqual([
+      "support.resolve",
+      "support.close",
+    ]);
+    expect(result.ok && result.definition.root.description).toBe("Root description");
+    expect(original).toEqual(snapshot);
+  });
+
+  it("refuses the root and a missing node", () => {
+    expect(removeTreeNode(structureDefinition(), "support")).toEqual({
+      ok: false,
+      reason: "root-node",
+    });
+    expect(removeTreeNode(structureDefinition(), "missing")).toEqual({
+      ok: false,
+      reason: "node-not-found",
+    });
+  });
+
+  it("refuses deleting the only descendant scope an ancestor consumer needs", () => {
+    const original = structureDefinition();
+    original.root.ontology = {
+      functions: [{ id: "total", entity: "claim", expression: "$amount", returns: "number" }],
+    };
+    const triage = original.root.children?.[0];
+    if (!triage) {
+      throw new Error("fixture failed");
+    }
+    triage.ontology = {
+      entities: [{ id: "claim", properties: [{ id: "amount", type: "number" }] }],
+    };
+    original.root.children = [triage];
+
+    expect(removeTreeNode(original, "support.triage")).toEqual({
+      ok: false,
+      reason: "entity-referenced",
+    });
+  });
+
+  it("refuses deleting the only field an ancestor action maps", () => {
+    const original = structureDefinition();
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    original.root.children = [child];
+    original.root.ontology = {
+      entities: [{ id: "policy", properties: [{ id: "id", type: "id", primaryKey: true }] }],
+      actions: [
+        {
+          id: "reprice",
+          parameters: [
+            { id: "id", type: "id" },
+            { id: "premium", type: "number" },
+          ],
+          effects: [{ entity: "policy", kind: "update" }],
+        },
+      ],
+    };
+    child.ontology = {
+      entities: [{ id: "policy", properties: [{ id: "premium", type: "number" }] }],
+    };
+
+    expect(removeTreeNode(original, child.id)).toEqual({
+      ok: false,
+      reason: "property-in-use",
+    });
+  });
+
+  it("allows deleting a child when an ancestor parameter is only rationale", () => {
+    const original = structureDefinition();
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    original.root.children = [child];
+    original.root.ontology = {
+      entities: [{ id: "policy", properties: [{ id: "id", type: "id", primaryKey: true }] }],
+      actions: [
+        {
+          id: "review",
+          parameters: [
+            { id: "id", type: "id" },
+            { id: "rationale", type: "string" },
+          ],
+          effects: [{ entity: "policy", kind: "update" }],
+        },
+      ],
+    };
+
+    expect(removeTreeNode(original, child.id).ok).toBe(true);
+  });
+
+  it("does not invent a new collision when an existing duplicate becomes a leaf", () => {
+    const original = structureDefinition();
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    original.root.children = [child];
+    original.root.ontology = {
+      actions: [
+        { id: "notify", effects: [{ kind: "call", tool: "message" }] },
+        { id: "notify", effects: [{ kind: "call", tool: "email" }] },
+      ],
+    };
+
+    expect(removeTreeNode(original, child.id).ok).toBe(true);
+  });
+
+  it("refuses revealing an invalid ancestor action when its valid shadow is deleted", () => {
+    const original = structureDefinition();
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    original.root.children = [child];
+    original.root.ontology = {
+      entities: [{ id: "claim", properties: [{ id: "id", type: "id", primaryKey: true }] }],
+      actions: [{ id: "decide", effects: [{ entity: "claim", kind: "update" }] }],
+    };
+    child.ontology = {
+      actions: [
+        {
+          id: "decide",
+          parameters: [{ id: "id", type: "id" }],
+          effects: [{ entity: "claim", kind: "update" }],
+        },
+      ],
+    };
+
+    expect(removeTreeNode(original, child.id)).toEqual({
+      ok: false,
+      reason: "property-in-use",
+    });
+  });
+
+  it("keeps MCP governance when deleting its last declaring subtree", () => {
+    const original = structureDefinition();
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    original.root.ontology = { allowedTools: ["read"] };
+    child.ontology = { mcpServers: ["github"] };
+
+    const result = removeTreeNode(original, child.id);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.definition.root.ontology).toEqual({
+      allowedTools: ["read"],
+      mcpServers: [],
+    });
   });
 });
 
@@ -291,9 +757,91 @@ describe("removeNodeOntologyEntry", () => {
   });
 });
 
-describe("setNodeGuidance", () => {
+describe("enableNodeMcpGovernance", () => {
+  it("adds an empty marker once without disturbing other ontology fields", () => {
+    const result = enableNodeMcpGovernance(definition(), "support");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.definition.root.ontology).toEqual({
+      entities: [{ id: "claim" }],
+      mcpServers: [],
+    });
+    expect(result.ok && enableNodeMcpGovernance(result.definition, "support")).toMatchObject({
+      ok: false,
+      reason: "duplicate-entry",
+    });
+  });
+});
+
+describe("disableTreeMcpGovernance", () => {
+  it("removes every empty marker from an inherited tree and preserves other ontology", () => {
+    const original = definition();
+    original.root.ontology = {
+      entities: [{ id: "claim" }],
+      mcpServers: [],
+    };
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    child.ontology = { allowedTools: ["read"], mcpServers: [] };
+    const snapshot = structuredClone(original);
+
+    const result = disableTreeMcpGovernance(original);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.definition.root.ontology).toEqual({
+      entities: [{ id: "claim" }],
+    });
+    expect(result.ok && result.definition.root.children?.[0]?.ontology).toEqual({
+      allowedTools: ["read"],
+    });
+    expect(original).toEqual(snapshot);
+  });
+
+  it("refuses explicit trees, active attachments, malformed markers, and absent markers", () => {
+    const explicit = definition();
+    explicit.capabilityGrants = "explicit";
+    explicit.root.ontology = { mcpServers: [] };
+
+    const unknownMode = definition();
+    unknownMode.capabilityGrants = "unknown";
+    unknownMode.root.ontology = { mcpServers: [] };
+
+    const attached = definition();
+    attached.root.ontology = { mcpServers: [] };
+    const attachedChild = attached.root.children?.[0];
+    if (!attachedChild) {
+      throw new Error("fixture failed");
+    }
+    attachedChild.ontology = { mcpServers: ["github"] };
+
+    const malformed = definition();
+    malformed.root.ontology = { mcpServers: "github" };
+
+    for (const candidate of [explicit, unknownMode, attached, malformed, definition()]) {
+      expect(disableTreeMcpGovernance(candidate)).toEqual({
+        ok: false,
+        reason: "entry-not-found",
+      });
+    }
+  });
+});
+
+describe("setNodeBehavior", () => {
+  const behavior = (guidance: string) => ({
+    description: "",
+    guidance,
+    contextHints: [],
+    expectedOutput: "",
+    audit: false,
+  });
+
   it("sets the role prompt on a node that has no ontology yet", () => {
-    const result = setNodeGuidance(definition(), "support.triage", "  Confirm identity first.  ");
+    const result = setNodeBehavior(
+      definition(),
+      "support.triage",
+      behavior("  Confirm identity first.  "),
+    );
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
@@ -306,17 +854,19 @@ describe("setNodeGuidance", () => {
   // `guidance` is optional and an empty one would render an empty instruction
   // line, so blank means "remove", not "set to empty".
   it("clears the key when the prompt is blank", () => {
-    const set = setNodeGuidance(definition(), "support.triage", "something");
+    const set = setNodeBehavior(definition(), "support.triage", behavior("something"));
     if (!set.ok) {
       throw new Error("seed failed");
     }
-    const cleared = setNodeGuidance(set.definition, "support.triage", "   ");
+    const cleared = setNodeBehavior(set.definition, "support.triage", behavior("   "));
     expect(cleared.ok).toBe(true);
     if (!cleared.ok) {
       return;
     }
-    const ontology = cleared.definition.root.children?.[0]?.ontology as Record<string, unknown>;
-    expect("guidance" in ontology).toBe(false);
+    const ontology = cleared.definition.root.children?.[0]?.ontology as
+      | Record<string, unknown>
+      | undefined;
+    expect(ontology?.guidance).toBeUndefined();
   });
 
   it("leaves the node's other bindings untouched", () => {
@@ -324,7 +874,7 @@ describe("setNodeGuidance", () => {
     if (!seeded.ok) {
       throw new Error("seed failed");
     }
-    const result = setNodeGuidance(seeded.definition, "support.triage", "Be careful.");
+    const result = setNodeBehavior(seeded.definition, "support.triage", behavior("Be careful."));
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
@@ -337,14 +887,66 @@ describe("setNodeGuidance", () => {
     expect(ontology.guidance).toBe("Be careful.");
   });
 
+  it("sets the remaining step behavior without raw JSON", () => {
+    const result = setNodeBehavior(definition(), "support.triage", {
+      description: " Verify the request. ",
+      guidance: "Respond concisely.",
+      contextHints: [" Customer is waiting. ", ""],
+      expectedOutput: " A decision. ",
+      audit: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const node = result.definition.root.children?.[0];
+    expect(node?.description).toBe("Verify the request.");
+    expect(node?.ontology).toMatchObject({
+      guidance: "Respond concisely.",
+      contextHints: ["Customer is waiting."],
+      expectedOutput: "A decision.",
+      audit: true,
+    });
+  });
+
+  it("updates an optional title while preserving it when title is omitted", () => {
+    const renamed = setNodeBehavior(definition(), "support.triage", {
+      ...behavior("Be careful."),
+      title: " Reviewed triage ",
+    });
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) {
+      return;
+    }
+    expect(renamed.definition.root.children?.[0]?.title).toBe("Reviewed triage");
+
+    const withoutTitle = setNodeBehavior(renamed.definition, "support.triage", behavior("Updated"));
+    expect(withoutTitle.ok).toBe(true);
+    expect(withoutTitle.ok && withoutTitle.definition.root.children?.[0]?.title).toBe(
+      "Reviewed triage",
+    );
+  });
+
+  it("refuses an explicitly blank title without mutating the input", () => {
+    const original = definition();
+    const snapshot = structuredClone(original);
+    expect(
+      setNodeBehavior(original, "support.triage", {
+        ...behavior("Be careful."),
+        title: "   ",
+      }),
+    ).toEqual({ ok: false, reason: "title-empty" });
+    expect(original).toEqual(snapshot);
+  });
+
   it("reports a missing node and does not mutate the input", () => {
     const original = definition();
     const snapshot = structuredClone(original);
-    expect(setNodeGuidance(original, "nope", "text")).toMatchObject({
+    expect(setNodeBehavior(original, "nope", behavior("text"))).toMatchObject({
       ok: false,
       reason: "node-not-found",
     });
-    setNodeGuidance(original, "support.triage", "text");
+    setNodeBehavior(original, "support.triage", behavior("text"));
     expect(original).toEqual(snapshot);
   });
 });
@@ -449,6 +1051,55 @@ describe("ontology editing", () => {
     expect(plain.ok).toBe(true);
   });
 
+  it("edits the exact duplicate entity record selected by the UI", () => {
+    const imported = definition();
+    const triage = imported.root.children?.[0];
+    if (!triage) {
+      throw new Error("fixture failed");
+    }
+    triage.ontology = {
+      entities: [
+        { id: "policy", properties: [{ id: "number", type: "string" }] },
+        { id: "policy", properties: [{ id: "premium", type: "number" }] },
+      ],
+    };
+
+    const added = addNodeOntologyProperty(
+      imported,
+      "support.triage",
+      "policy",
+      { id: "active", type: "boolean" },
+      1,
+    );
+    expect(added.ok).toBe(true);
+    if (!added.ok) {
+      return;
+    }
+    expect(entitiesOf(added.definition)).toEqual([
+      { id: "policy", properties: [{ id: "number", type: "string" }] },
+      {
+        id: "policy",
+        properties: [
+          { id: "premium", type: "number" },
+          { id: "active", type: "boolean" },
+        ],
+      },
+    ]);
+
+    const removed = removeNodeOntologyProperty(
+      added.definition,
+      "support.triage",
+      "policy",
+      "premium",
+      { entityIndex: 1, propertyIndex: 0 },
+    );
+    expect(removed.ok).toBe(true);
+    expect(removed.ok && entitiesOf(removed.definition)[1]).toEqual({
+      id: "policy",
+      properties: [{ id: "active", type: "boolean" }],
+    });
+  });
+
   it("drops the properties key when the last property goes", () => {
     const added = addNodeOntologyProperty(withEntities(), "support.triage", "policy", {
       id: "number",
@@ -469,6 +1120,16 @@ describe("ontology editing", () => {
     }
     const claim = entitiesOf(removed.definition).find((entity) => entity.id === "policy");
     expect(claim && "properties" in claim).toBe(false);
+  });
+
+  it("refuses a boolean identity field that no action can address", () => {
+    expect(
+      addNodeOntologyProperty(withEntities(), "support.triage", "policy", {
+        id: "enabled",
+        type: "boolean",
+        primaryKey: true,
+      }),
+    ).toEqual({ ok: false, reason: "identity-type-invalid" });
   });
 
   it("refuses a link whose endpoint the step does not declare", () => {
@@ -627,6 +1288,48 @@ describe("ontology editing", () => {
     ).toMatchObject({ ok: false, reason: "primary-key-taken" });
   });
 
+  it("refuses a field type that conflicts with another branch's declaration", () => {
+    const seeded = addNodeOntologyEntity(definition(), "support", { id: "policy" });
+    if (!seeded.ok) {
+      throw new Error("seed failed");
+    }
+    const sibling = insertChildNode(seeded.definition, "support", {
+      id: "support.audit",
+      title: "Audit",
+    });
+    if (!sibling.ok) {
+      throw new Error("seed failed");
+    }
+    const siblingType = addNodeOntologyEntity(sibling.definition, "support.audit", {
+      id: "policy",
+    });
+    if (!siblingType.ok) {
+      throw new Error("seed failed");
+    }
+    const siblingField = addNodeOntologyProperty(
+      siblingType.definition,
+      "support.audit",
+      "policy",
+      { id: "premium", type: "number" },
+    );
+    if (!siblingField.ok) {
+      throw new Error("seed failed");
+    }
+    const localType = addNodeOntologyEntity(siblingField.definition, "support.triage", {
+      id: "policy",
+    });
+    if (!localType.ok) {
+      throw new Error("seed failed");
+    }
+
+    expect(
+      addNodeOntologyProperty(localType.definition, "support.triage", "policy", {
+        id: "premium",
+        type: "string",
+      }),
+    ).toEqual({ ok: false, reason: "property-type-conflict" });
+  });
+
   // Import validates action effects and functions tree-wide, but the runtime
   // resolves them per path — so a sibling declaration is not a substitute.
   it("refuses removing a type an action effect or function still names", () => {
@@ -714,6 +1417,36 @@ describe("ontology editing", () => {
     expect(
       removeNodeOntologyProperty(other.definition, "support.triage", "policy", "insurer").ok,
     ).toBe(true);
+  });
+
+  it("does not let an existing broken branch hide a newly broken function branch", () => {
+    const original = definition();
+    original.root.ontology = {
+      entities: [{ id: "claim" }],
+      functions: [{ id: "total", entity: "claim", expression: "$amount", returns: "number" }],
+    };
+    original.root.children = [
+      {
+        id: "support.a",
+        title: "A",
+        ontology: {
+          entities: [{ id: "claim", properties: [{ id: "amount", type: "number" }] }],
+        },
+      },
+      { id: "support.b", title: "B" },
+      {
+        id: "support.c",
+        title: "C",
+        ontology: {
+          entities: [{ id: "claim", properties: [{ id: "amount", type: "number" }] }],
+        },
+      },
+    ];
+
+    expect(removeNodeOntologyProperty(original, "support.a", "claim", "amount")).toEqual({
+      ok: false,
+      reason: "property-in-use",
+    });
   });
 
   // Runtime scope maps links by id, so a child reusing an ancestor's id would
@@ -830,6 +1563,43 @@ describe("ontology editing", () => {
     };
     expect(
       removeNodeOntologyProperty(withAction, "support.triage", "claimant", "email"),
+    ).toMatchObject({ ok: false, reason: "property-in-use" });
+  });
+
+  it("blocks a field mapping lost on one leaf even when another leaf never mapped it", () => {
+    const original: EditableTreeDefinition = {
+      ...definition(),
+      root: {
+        id: "support",
+        title: "Support",
+        ontology: {
+          entities: [{ id: "policy", properties: [{ id: "id", type: "id", primaryKey: true }] }],
+          actions: [
+            {
+              id: "annotate",
+              parameters: [
+                { id: "id", type: "id" },
+                { id: "note", type: "string" },
+              ],
+              effects: [{ entity: "policy", kind: "update" }],
+            },
+          ],
+        },
+        children: [
+          {
+            id: "support.annotate",
+            title: "Annotate",
+            ontology: {
+              entities: [{ id: "policy", properties: [{ id: "note", type: "string" }] }],
+            },
+          },
+          { id: "support.review", title: "Review" },
+        ],
+      },
+    };
+
+    expect(
+      removeNodeOntologyProperty(original, "support.annotate", "policy", "note"),
     ).toMatchObject({ ok: false, reason: "property-in-use" });
   });
 
@@ -1223,6 +1993,49 @@ describe("addNodeOntologyAction", () => {
       reason: "entry-not-found",
     });
   });
+
+  it("refuses removing a valid action that would reveal an invalid ancestor shadow", () => {
+    const original = verbDefinition();
+    original.root.ontology = {
+      ...nodeOntology(original, "claims"),
+      actions: [{ id: "approve", effects: [{ entity: "claim", kind: "update" }] }],
+    };
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    child.ontology = {
+      actions: [
+        {
+          id: "approve",
+          parameters: [{ id: "claim-id", type: "string" }],
+          effects: [{ entity: "claim", kind: "update" }],
+        },
+      ],
+    };
+
+    expect(removeNodeOntologyAction(original, child.id, "approve")).toEqual({
+      ok: false,
+      reason: "property-in-use",
+    });
+  });
+
+  it("removes an earlier duplicate without treating the unchanged winner as new breakage", () => {
+    const original = verbDefinition();
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    const winner = { id: "approve", effects: [{ entity: "claim", kind: "update" }] };
+    child.ontology = {
+      actions: [{ id: "approve", effects: [{ kind: "call", tool: "message" }] }, winner],
+    };
+
+    const removed = removeNodeOntologyAction(original, child.id, "approve", 0);
+
+    expect(removed.ok).toBe(true);
+    expect(removed.ok && nodeOntology(removed.definition, child.id)?.actions).toEqual([winner]);
+  });
 });
 
 describe("action effects", () => {
@@ -1458,6 +2271,40 @@ describe("addNodeOntologyFunction", () => {
       reason: "entry-not-found",
     });
   });
+
+  it("refuses removing a valid function that would reveal an invalid ancestor shadow", () => {
+    const original = verbDefinition();
+    original.root.ontology = {
+      ...nodeOntology(original, "claims"),
+      functions: [
+        {
+          id: "doubled",
+          entity: "claim",
+          expression: "$missing * 2",
+          returns: "number",
+        },
+      ],
+    };
+    const child = original.root.children?.[0];
+    if (!child) {
+      throw new Error("fixture failed");
+    }
+    child.ontology = {
+      functions: [
+        {
+          id: "doubled",
+          entity: "claim",
+          expression: "$amount * 2",
+          returns: "number",
+        },
+      ],
+    };
+
+    expect(removeNodeOntologyFunction(original, child.id, "doubled")).toEqual({
+      ok: false,
+      reason: "property-in-use",
+    });
+  });
 });
 
 describe("removeNodeOntologyEntity with the verbs declared", () => {
@@ -1662,11 +2509,11 @@ describe("effects an action could never execute", () => {
   }
 
   function withEffect(
-    definition: EditableTreeDefinition,
+    tree: EditableTreeDefinition,
     entity: string,
     kind: OntologyEffectKindName,
   ): EditableTreeDefinition {
-    const result = addNodeOntologyActionEffect(definition, "claims.decide", "approve", {
+    const result = addNodeOntologyActionEffect(tree, "claims.decide", "approve", {
       entity,
       kind,
     });
@@ -1904,7 +2751,7 @@ describe("create effects and tree-wide required fields", () => {
     // collectTreeRequiredProperties is tree-wide, so the requirement applies to
     // every create — and no parameter here can supply a property this branch
     // never declares, so planEffect refuses every call.
-    const definition: EditableTreeDefinition = {
+    const tree: EditableTreeDefinition = {
       schema: "clawworks.workflow-tree",
       schemaVersion: 1,
       id: "acme.claims",
@@ -1932,7 +2779,7 @@ describe("create effects and tree-wide required fields", () => {
         ],
       },
     };
-    const withAction = addNodeOntologyAction(definition, "claims.open", { id: "open-claim" });
+    const withAction = addNodeOntologyAction(tree, "claims.open", { id: "open-claim" });
     expect(withAction.ok).toBe(true);
     if (!withAction.ok) {
       return;
@@ -2002,6 +2849,72 @@ describe("authoring outward and graph effects", () => {
     expect(result.ok && effectsOf(result.definition)).toEqual([
       { kind: "link", relationship: "claim-has-note" },
     ]);
+  });
+
+  it("validates an imported ancestor action only where that declaration is effective", () => {
+    const tree = definition();
+    tree.root.ontology = {
+      actions: [
+        {
+          id: "decide",
+          parameters: [{ id: "claim-id", type: "id" }],
+        },
+      ],
+    };
+    tree.root.children = [
+      {
+        id: "support.shadowed",
+        title: "Shadowed",
+        ontology: {
+          actions: [{ id: "decide", effects: [{ kind: "call", tool: "message" }] }],
+        },
+      },
+      {
+        id: "support.effective",
+        title: "Effective",
+        ontology: {
+          entities: [
+            {
+              id: "claim",
+              properties: [{ id: "claim-id", type: "id", primaryKey: true }],
+            },
+          ],
+        },
+      },
+    ];
+
+    expect(
+      addNodeOntologyActionEffect(tree, "support", "decide", { entity: "claim", kind: "update" }, 0)
+        .ok,
+    ).toBe(true);
+  });
+
+  it("allows one relationship effect for each explicit endpoint pair", () => {
+    const first = addNodeOntologyActionEffect(actionDefinition(), "claims.decide", "settle", {
+      kind: "link",
+      relationship: "claim-has-note",
+      from: "claim-id",
+      to: "note-id",
+    });
+    if (!first.ok) {
+      throw new Error("fixture failed");
+    }
+    const second = addNodeOntologyActionEffect(first.definition, "claims.decide", "settle", {
+      kind: "link",
+      relationship: "claim-has-note",
+      from: "parent-claim-id",
+      to: "child-note-id",
+    });
+    expect(second.ok).toBe(true);
+    expect(
+      second.ok &&
+        addNodeOntologyActionEffect(second.definition, "claims.decide", "settle", {
+          kind: "link",
+          relationship: "claim-has-note",
+          from: "claim-id",
+          to: "note-id",
+        }),
+    ).toMatchObject({ ok: false, reason: "duplicate-entry" });
   });
 
   it("refuses a link type declared only on a sibling branch", () => {
@@ -2102,5 +3015,615 @@ describe("authoring outward and graph effects", () => {
     expect(removed.ok && effectsOf(removed.definition)).toEqual([
       { kind: "unlink", relationship: "claim-has-note" },
     ]);
+  });
+});
+
+function staticMetadataDefinition(): EditableTreeDefinition {
+  const tree = definition();
+  const node = tree.root.children?.[0];
+  if (!node) {
+    throw new Error("fixture failed");
+  }
+  node.ontology = {
+    futureBinding: "keep",
+    entities: [
+      {
+        id: "claim",
+        title: "Old claim",
+        description: "Old entity",
+        futureEntity: "keep",
+        properties: [
+          {
+            id: "claim-id",
+            type: "id",
+            primaryKey: true,
+            description: "Old property",
+            futureProperty: "keep",
+          },
+        ],
+      },
+      { id: "note" },
+    ],
+    relationships: [
+      {
+        id: "claim-note",
+        from: "claim",
+        to: "note",
+        cardinality: "one-to-one",
+        futureRelationship: "keep",
+      },
+    ],
+    actions: [
+      {
+        id: "settle",
+        title: "Old action",
+        tools: ["old-tool"],
+        preconditions: ["Old precondition"],
+        futureAction: "keep",
+        parameters: [{ id: "reason", type: "string", futureParameter: "keep" }],
+        effects: [
+          { entity: "claim", kind: "update", futureObjectEffect: "keep" },
+          { kind: "link", relationship: "claim-note", futureLinkEffect: "keep" },
+        ],
+      },
+      {
+        id: "notify",
+        effects: [{ kind: "call", tool: "mail__send", futureCallEffect: "keep" }],
+      },
+    ],
+    functions: [
+      {
+        id: "claim-key",
+        entity: "claim",
+        expression: "$claim-id",
+        returns: "id",
+        futureFunction: "keep",
+      },
+    ],
+    constraints: [{ id: "review", description: "Old constraint", futureConstraint: "keep" }],
+  };
+  return tree;
+}
+
+function valueAtPath(value: unknown, path: readonly (string | number)[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (typeof current !== "object" || current === null) {
+      return undefined;
+    }
+    current = (current as Record<string | number, unknown>)[segment];
+  }
+  return current;
+}
+
+const metadataUpdateCases: Array<{
+  name: string;
+  update: NodeOntologyMetadataUpdate;
+  path: readonly (string | number)[];
+  expected: Record<string, unknown>;
+}> = [
+  {
+    name: "entity title and description",
+    update: {
+      kind: "entity",
+      target: { index: 0, id: "claim" },
+      title: " Updated claim ",
+      description: " Entity details ",
+    },
+    path: ["entities", 0],
+    expected: {
+      id: "claim",
+      title: "Updated claim",
+      description: "Entity details",
+      futureEntity: "keep",
+    },
+  },
+  {
+    name: "property required and description",
+    update: {
+      kind: "property",
+      entity: { index: 0, id: "claim" },
+      target: { index: 0, id: "claim-id", type: "id", primaryKey: true },
+      required: true,
+      description: " Stable identifier ",
+    },
+    path: ["entities", 0, "properties", 0],
+    expected: {
+      id: "claim-id",
+      type: "id",
+      primaryKey: true,
+      required: true,
+      description: "Stable identifier",
+      futureProperty: "keep",
+    },
+  },
+  {
+    name: "relationship inverse and description",
+    update: {
+      kind: "relationship",
+      target: {
+        index: 0,
+        id: "claim-note",
+        from: "claim",
+        to: "note",
+        cardinality: "one-to-one",
+      },
+      inverse: " note-for-claim ",
+      description: " Claim annotation ",
+    },
+    path: ["relationships", 0],
+    expected: {
+      id: "claim-note",
+      from: "claim",
+      to: "note",
+      cardinality: "one-to-one",
+      inverse: "note-for-claim",
+      description: "Claim annotation",
+      futureRelationship: "keep",
+    },
+  },
+  {
+    name: "action title, description, tools, and preconditions",
+    update: {
+      kind: "action",
+      target: { index: 0, id: "settle" },
+      title: " Settle claim ",
+      description: " Local settlement ",
+      tools: [],
+      preconditions: [" Identity verified "],
+    },
+    path: ["actions", 0],
+    expected: {
+      id: "settle",
+      title: "Settle claim",
+      description: "Local settlement",
+      tools: [],
+      preconditions: ["Identity verified"],
+      futureAction: "keep",
+    },
+  },
+  {
+    name: "object effect description",
+    update: {
+      kind: "object-effect",
+      action: { index: 0, id: "settle" },
+      target: { index: 0, kind: "update", entity: "claim" },
+      description: " Apply settlement ",
+    },
+    path: ["actions", 0, "effects", 0],
+    expected: {
+      entity: "claim",
+      kind: "update",
+      description: "Apply settlement",
+      futureObjectEffect: "keep",
+    },
+  },
+  {
+    name: "call effect description",
+    update: {
+      kind: "call-effect",
+      action: { index: 1, id: "notify" },
+      target: { index: 0, kind: "call", tool: "mail__send" },
+      description: " Notify owner ",
+    },
+    path: ["actions", 1, "effects", 0],
+    expected: {
+      kind: "call",
+      tool: "mail__send",
+      description: "Notify owner",
+      futureCallEffect: "keep",
+    },
+  },
+  {
+    name: "link effect description and endpoint parameters",
+    update: {
+      kind: "link-effect",
+      action: { index: 0, id: "settle" },
+      target: { index: 1, kind: "link", relationship: "claim-note" },
+      from: " claim-id ",
+      to: " note-id ",
+      description: " Attach note ",
+    },
+    path: ["actions", 0, "effects", 1],
+    expected: {
+      kind: "link",
+      relationship: "claim-note",
+      from: "claim-id",
+      to: "note-id",
+      description: "Attach note",
+      futureLinkEffect: "keep",
+    },
+  },
+  {
+    name: "parameter required and description",
+    update: {
+      kind: "parameter",
+      action: { index: 0, id: "settle" },
+      target: { index: 0, id: "reason", type: "string" },
+      required: true,
+      description: " Settlement reason ",
+    },
+    path: ["actions", 0, "parameters", 0],
+    expected: {
+      id: "reason",
+      type: "string",
+      required: true,
+      description: "Settlement reason",
+      futureParameter: "keep",
+    },
+  },
+  {
+    name: "function title and description",
+    update: {
+      kind: "function",
+      target: {
+        index: 0,
+        id: "claim-key",
+        entity: "claim",
+        expression: "$claim-id",
+        returns: "id",
+      },
+      title: " Claim key ",
+      description: " Reads identity ",
+    },
+    path: ["functions", 0],
+    expected: {
+      id: "claim-key",
+      entity: "claim",
+      expression: "$claim-id",
+      returns: "id",
+      title: "Claim key",
+      description: "Reads identity",
+      futureFunction: "keep",
+    },
+  },
+  {
+    name: "constraint description",
+    update: {
+      kind: "constraint",
+      target: { index: 0, id: "review" },
+      description: " Supervisor review required ",
+    },
+    path: ["constraints", 0],
+    expected: {
+      id: "review",
+      description: "Supervisor review required",
+      futureConstraint: "keep",
+    },
+  },
+];
+
+describe("updateNodeOntologyMetadata", () => {
+  it.each(metadataUpdateCases)(
+    "updates $name without changing identity or unknown fields",
+    (test) => {
+      const original = staticMetadataDefinition();
+      const snapshot = structuredClone(original);
+      const result = updateNodeOntologyMetadata(original, "support.triage", test.update);
+      expect(result.ok).toBe(true);
+      if (!result.ok) {
+        return;
+      }
+      expect(
+        valueAtPath(nodeOntology(result.definition, "support.triage"), test.path),
+      ).toMatchObject(test.expected);
+      expect(nodeOntology(result.definition, "support.triage")?.futureBinding).toBe("keep");
+      expect(original).toEqual(snapshot);
+    },
+  );
+
+  it.each(metadataUpdateCases)("refuses a stale array position for $name", (test) => {
+    const stale = {
+      ...test.update,
+      target: { ...test.update.target, index: 99 },
+    } as NodeOntologyMetadataUpdate;
+    expect(updateNodeOntologyMetadata(staticMetadataDefinition(), "support.triage", stale)).toEqual(
+      { ok: false, reason: "entry-not-found" },
+    );
+  });
+
+  it("checks identity as well as position, including nested action owners", () => {
+    expect(
+      updateNodeOntologyMetadata(staticMetadataDefinition(), "support.triage", {
+        kind: "entity",
+        target: { index: 1, id: "claim" },
+      }),
+    ).toEqual({ ok: false, reason: "entry-not-found" });
+    expect(
+      updateNodeOntologyMetadata(staticMetadataDefinition(), "support.triage", {
+        kind: "parameter",
+        action: { index: 1, id: "settle" },
+        target: { index: 0, id: "reason", type: "string" },
+        required: true,
+      }),
+    ).toEqual({ ok: false, reason: "entry-not-found" });
+  });
+
+  it.each([
+    {
+      name: "blank selected tool",
+      update: {
+        kind: "action",
+        target: { index: 0, id: "settle" },
+        tools: ["read", "   "],
+      } satisfies NodeOntologyMetadataUpdate,
+    },
+    {
+      name: "invalid link endpoint id",
+      update: {
+        kind: "link-effect",
+        action: { index: 0, id: "settle" },
+        target: { index: 1, kind: "link", relationship: "claim-note" },
+        from: "Not Valid",
+      } satisfies NodeOntologyMetadataUpdate,
+    },
+  ])("refuses $name", ({ update }) => {
+    expect(
+      updateNodeOntologyMetadata(staticMetadataDefinition(), "support.triage", update),
+    ).toEqual({ ok: false, reason: "invalid-id" });
+  });
+
+  it("removes blank optional metadata while preserving the tools undefined/empty distinction", () => {
+    const cleared = updateNodeOntologyMetadata(staticMetadataDefinition(), "support.triage", {
+      kind: "action",
+      target: { index: 0, id: "settle" },
+      title: " ",
+      description: " ",
+      tools: undefined,
+      preconditions: [],
+    });
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) {
+      return;
+    }
+    const action = valueAtPath(nodeOntology(cleared.definition, "support.triage"), ["actions", 0]);
+    expect(action).not.toHaveProperty("title");
+    expect(action).not.toHaveProperty("description");
+    expect(action).not.toHaveProperty("tools");
+    expect(action).not.toHaveProperty("preconditions");
+  });
+});
+
+describe("ontology metadata adders", () => {
+  it("preserves every newly exposed optional field", () => {
+    let current = verbDefinition();
+    const entity = addNodeOntologyEntity(current, "claims.decide", {
+      id: "supplement",
+      title: " Supplement ",
+      description: " Supporting material ",
+    });
+    expect(entity.ok).toBe(true);
+    if (!entity.ok) {
+      return;
+    }
+    current = entity.definition;
+    const property = addNodeOntologyProperty(current, "claims", "claim", {
+      id: "status",
+      type: "string",
+      required: true,
+      description: " Current status ",
+    });
+    expect(property.ok).toBe(true);
+    if (!property.ok) {
+      return;
+    }
+    current = property.definition;
+    const relationship = addNodeOntologyRelationship(current, "claims", {
+      id: "claim-note",
+      from: "claim",
+      to: "note",
+      inverse: " note-for-claim ",
+      description: " Attached note ",
+    });
+    expect(relationship.ok).toBe(true);
+    if (!relationship.ok) {
+      return;
+    }
+    current = relationship.definition;
+    const action = addNodeOntologyAction(current, "claims.decide", {
+      id: "settle",
+      title: " Settle ",
+      description: " Settle the claim ",
+      tools: [],
+      preconditions: [" Identity verified "],
+    });
+    expect(action.ok).toBe(true);
+    if (!action.ok) {
+      return;
+    }
+    current = action.definition;
+    const parameter = addNodeOntologyActionParameter(current, "claims.decide", "settle", {
+      id: "amount",
+      type: "number",
+      required: true,
+      description: " Settlement amount ",
+    });
+    expect(parameter.ok).toBe(true);
+    if (!parameter.ok) {
+      return;
+    }
+    current = parameter.definition;
+    const effect = addNodeOntologyActionEffect(current, "claims.decide", "settle", {
+      entity: "claim",
+      kind: "update",
+      description: " Apply settlement ",
+    });
+    expect(effect.ok).toBe(true);
+    if (!effect.ok) {
+      return;
+    }
+    current = effect.definition;
+    const fn = addNodeOntologyFunction(current, "claims.decide", {
+      id: "doubled",
+      title: " Double amount ",
+      description: " Twice the claim amount ",
+      entity: "claim",
+      expression: "$amount * 2",
+      returns: "number",
+    });
+    expect(fn.ok).toBe(true);
+    if (!fn.ok) {
+      return;
+    }
+
+    expect(nodeOntology(fn.definition, "claims.decide")).toMatchObject({
+      entities: [{ id: "supplement", title: "Supplement", description: "Supporting material" }],
+      actions: [
+        {
+          id: "settle",
+          title: "Settle",
+          description: "Settle the claim",
+          tools: [],
+          preconditions: ["Identity verified"],
+          parameters: [
+            {
+              id: "amount",
+              type: "number",
+              required: true,
+              description: "Settlement amount",
+            },
+          ],
+          effects: [{ entity: "claim", kind: "update", description: "Apply settlement" }],
+        },
+      ],
+      functions: [
+        {
+          id: "doubled",
+          title: "Double amount",
+          description: "Twice the claim amount",
+          entity: "claim",
+        },
+      ],
+    });
+    expect(
+      valueAtPath(nodeOntology(fn.definition, "claims"), ["entities", 0, "properties", 2]),
+    ).toEqual({
+      id: "status",
+      type: "string",
+      required: true,
+      description: "Current status",
+    });
+    expect(nodeOntology(fn.definition, "claims")?.relationships).toEqual([
+      {
+        id: "claim-note",
+        from: "claim",
+        to: "note",
+        inverse: "note-for-claim",
+        description: "Attached note",
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      "blank action tool",
+      () =>
+        addNodeOntologyAction(verbDefinition(), "claims.decide", {
+          id: "settle",
+          tools: ["read", " "],
+        }),
+    ],
+    [
+      "blank precondition",
+      () =>
+        addNodeOntologyAction(verbDefinition(), "claims.decide", {
+          id: "settle",
+          preconditions: [" "],
+        }),
+    ],
+  ] as const)("refuses a %s", (_name, add) => {
+    expect(add()).toEqual({ ok: false, reason: "invalid-id" });
+  });
+
+  it("preserves graph effect endpoints and rejects malformed ones", () => {
+    const relationship = addNodeOntologyRelationship(verbDefinition(), "claims", {
+      id: "claim-note",
+      from: "claim",
+      to: "note",
+    });
+    if (!relationship.ok) {
+      throw new Error("fixture failed");
+    }
+    const action = addNodeOntologyAction(relationship.definition, "claims.decide", {
+      id: "attach-note",
+    });
+    if (!action.ok) {
+      throw new Error("fixture failed");
+    }
+    const result = addNodeOntologyActionEffect(action.definition, "claims.decide", "attach-note", {
+      kind: "link",
+      relationship: "claim-note",
+      from: " claim-id ",
+      to: " note-id ",
+      description: " Attach the note ",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && nodeOntology(result.definition, "claims.decide")?.actions).toEqual([
+      {
+        id: "attach-note",
+        effects: [
+          {
+            kind: "link",
+            relationship: "claim-note",
+            from: "claim-id",
+            to: "note-id",
+            description: "Attach the note",
+          },
+        ],
+      },
+    ]);
+    expect(
+      addNodeOntologyActionEffect(action.definition, "claims.decide", "attach-note", {
+        kind: "link",
+        relationship: "claim-note",
+        from: "Bad ID",
+      }),
+    ).toEqual({ ok: false, reason: "invalid-id" });
+  });
+});
+
+describe("ontology constraints", () => {
+  it("adds, updates, and removes one exact constraint without disturbing bindings", () => {
+    const added = addNodeOntologyConstraint(definition(), "support.triage", {
+      id: " Supervisor-Review ",
+      description: " Review before sending ",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) {
+      return;
+    }
+    const updated = updateNodeOntologyMetadata(added.definition, "support.triage", {
+      kind: "constraint",
+      target: { index: 0, id: "supervisor-review" },
+      description: " Supervisor approval required ",
+    });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) {
+      return;
+    }
+    const removed = removeNodeOntologyConstraint(updated.definition, "support.triage", {
+      index: 0,
+      id: "supervisor-review",
+    });
+    expect(removed.ok).toBe(true);
+    expect(removed.ok && nodeOntology(removed.definition, "support.triage")?.constraints).toBe(
+      undefined,
+    );
+    expect(
+      removeNodeOntologyConstraint(updated.definition, "support.triage", {
+        index: 0,
+        id: "stale-id",
+      }),
+    ).toEqual({ ok: false, reason: "entry-not-found" });
+  });
+
+  it.each([
+    { id: "Bad ID", description: "valid" },
+    { id: "valid", description: "   " },
+  ])("refuses an invalid constraint %#", (constraint) => {
+    expect(addNodeOntologyConstraint(definition(), "support.triage", constraint)).toEqual({
+      ok: false,
+      reason: "invalid-id",
+    });
   });
 });

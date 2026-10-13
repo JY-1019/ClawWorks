@@ -163,6 +163,7 @@ export type GatewayRequestOptions = {
   respond: RespondFn;
   context: GatewayRequestContext;
   methodRegistry?: GatewayMethodRegistryView;
+  signal?: AbortSignal;
 };
 
 /** Normalized method invocation options passed to registered handlers. */
@@ -173,6 +174,7 @@ export type GatewayRequestHandlerOptions = {
   isWebchatConnect: (params: ConnectParams | null | undefined) => boolean;
   respond: RespondFn;
   context: GatewayRequestContext;
+  signal?: AbortSignal;
 };
 
 /** Single gateway method implementation. */

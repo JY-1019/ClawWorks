@@ -58,6 +58,7 @@ describe("native hook relay CLI", () => {
         relayId: "relay-1",
         generation: "generation-1",
         event: "pre_tool_use",
+        deadlineAtMs: expect.any(Number),
         rawPayload: {
           hook_event_name: "PreToolUse",
           tool_name: "Bash",

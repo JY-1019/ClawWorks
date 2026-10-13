@@ -5,6 +5,8 @@ import {
   invokeNativeHookRelay,
   nativeHookRelayTesting,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { initializeGlobalHookRunner } from "openclaw/plugin-sdk/hook-runtime";
+import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { describe, expect, it, vi } from "vitest";
 import * as approvalBridge from "./approval-bridge.js";
 import {
@@ -30,9 +32,7 @@ const DISABLED_CODEX_WEB_SEARCH_THREAD_CONFIG_FINGERPRINT = JSON.stringify({
   web_search: "disabled",
 });
 
-function writeCodexAppServerBinding(
-  ...args: Parameters<typeof writeRawCodexAppServerBinding>
-) {
+function writeCodexAppServerBinding(...args: Parameters<typeof writeRawCodexAppServerBinding>) {
   const [sessionFile, binding, lookup] = args;
   return writeRawCodexAppServerBinding(
     sessionFile,
@@ -293,7 +293,7 @@ describe("runCodexAppServerAttempt native hook relay", () => {
       ?.config;
     expect(startConfig?.["features.hooks"]).toBe(true);
     expect(Array.isArray(startConfig?.["hooks.PreToolUse"])).toBe(true);
-    expect(startConfig?.["hooks.PostToolUse"]).toEqual([]);
+    expect(Array.isArray(startConfig?.["hooks.PostToolUse"])).toBe(true);
     expect(startConfig?.["hooks.Stop"]).toEqual([]);
     expect(startConfig).not.toHaveProperty("hooks.PermissionRequest");
     const relayId = extractRelayIdFromThreadRequest(startRequest?.params);
@@ -447,7 +447,7 @@ describe("runCodexAppServerAttempt native hook relay", () => {
     const resumedRegistration =
       nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId);
     expect(resumedRegistration?.runId).toBe("run-2");
-    expect(resumedRegistration?.allowedEvents).toEqual(["pre_tool_use"]);
+    expect(resumedRegistration?.allowedEvents).toEqual(["pre_tool_use", "post_tool_use"]);
 
     testing.flushPendingCodexNativeHookRelayUnregistersForTests();
     expect(nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId)?.runId).toBe(
@@ -716,6 +716,67 @@ describe("runCodexAppServerAttempt native hook relay", () => {
     expect(startConfig?.["hooks.PostToolUse"]).toEqual([]);
     expect(startConfig?.["hooks.PermissionRequest"]).toEqual([]);
     expect(startConfig?.["hooks.Stop"]).toEqual([]);
+  });
+
+  it("refuses managed approval turns with another runnable PreToolUse hook", async () => {
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([{ hookName: "before_tool_call", handler: vi.fn() }]),
+    );
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const harness = createStartedThreadHarness(async (method, requestParams) => {
+      if (method !== "hooks/list") {
+        return undefined;
+      }
+      const cwd = (requestParams as { cwds: string[] }).cwds[0];
+      return {
+        data: [
+          {
+            cwd,
+            hooks: [
+              {
+                key: "/workspace/.codex/config.toml:pre_tool_use:0:0",
+                eventName: "preToolUse",
+                handlerType: "command",
+                enabled: true,
+                isManaged: false,
+                trustStatus: "trusted",
+              },
+            ],
+            warnings: [],
+            errors: [],
+          },
+        ],
+      };
+    });
+
+    await expect(
+      runCodexAppServerAttempt(createParams(sessionFile, workspaceDir), {
+        nativeHookRelay: { enabled: true },
+      }),
+    ).rejects.toThrow("managed approvals require an isolated PreToolUse hook");
+    expect(harness.requests.some((request) => request.method === "turn/start")).toBe(false);
+  });
+
+  it("refuses to wake ambient hooks when the base Codex hooks feature is disabled", async () => {
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([{ hookName: "before_tool_call", handler: vi.fn() }]),
+    );
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const harness = createStartedThreadHarness(async (method) =>
+      method === "config/read"
+        ? { config: { features: { codex_hooks: false } }, origins: {}, layers: null }
+        : undefined,
+    );
+
+    await expect(
+      runCodexAppServerAttempt(createParams(sessionFile, workspaceDir), {
+        nativeHookRelay: { enabled: true },
+      }),
+    ).rejects.toThrow("cannot safely override a globally disabled hooks feature");
+    expect(harness.requests.some((request) => request.method === "hooks/list")).toBe(false);
+    expect(harness.requests.some((request) => request.method === "turn/start")).toBe(false);
   });
 
   it("cleans up native hook relay state when turn/start fails", async () => {

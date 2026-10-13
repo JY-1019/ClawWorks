@@ -4,15 +4,17 @@
  * the calling surface (CLI today, gateway later).
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { BUILTIN_WORKFLOW_TREES } from "./builtin-trees.js";
 import { reloadPersistedBundleFoundations } from "./knowledge-bundle-loader.js";
+import { hashWorkflowTree } from "./plan.js";
 import { validateWorkflowTreeDefinition, type WorkflowTreeValidationIssue } from "./schema.js";
 import {
-  getWorkflowTreeRegistryEntry,
   getWorkflowTreeRegistrySnapshot,
   invalidateWorkflowTreeRegistry,
 } from "./tree-registry.js";
 import {
   deleteEnterpriseWorkflowTree,
+  deleteEnterpriseWorkflowTreeIfUnchanged,
   upsertEnterpriseWorkflowTree,
   type EnterpriseTreeStoreOptions,
   type WorkflowTreeSourceFormat,
@@ -69,21 +71,82 @@ export function parseWorkflowTreeContent(
 
 /** Validate + persist one tree definition, refreshing the runtime registry. */
 export function importWorkflowTreeContent(
-  params: { content: string; format: WorkflowTreeSourceFormat },
+  params: {
+    content: string;
+    format: WorkflowTreeSourceFormat;
+    createOnly?: boolean;
+    expectedHash?: string;
+  },
   options: EnterpriseTreeStoreOptions = {},
 ): WorkflowTreeImportResult {
   const parsed = parseWorkflowTreeContent(params.content, params.format);
   if (!parsed.ok) {
     return parsed;
   }
-  const existing = getWorkflowTreeRegistryEntry(parsed.tree.id, options);
-  upsertEnterpriseWorkflowTree({ tree: parsed.tree, sourceFormat: params.format }, options);
-  invalidateWorkflowTreeRegistry();
-  // The upsert pruned any bundled foundations this tree no longer references;
-  // reconcile the live registry from the canonical store so a running gateway
-  // stops serving them immediately, not only after a restart.
-  reloadPersistedBundleFoundations(options);
-  return { ok: true, tree: parsed.tree, replaced: existing?.source ?? null };
+  const snapshot = getWorkflowTreeRegistrySnapshot(options);
+  const existing = snapshot.entries.find((entry) => entry.tree.id === parsed.tree.id);
+  if (params.createOnly && BUILTIN_WORKFLOW_TREES.some((tree) => tree.id === parsed.tree.id)) {
+    return {
+      ok: false,
+      issues: [{ path: "id", message: `workflow tree "${parsed.tree.id}" already exists` }],
+    };
+  }
+  if (
+    params.expectedHash !== undefined &&
+    existing?.source === "builtin" &&
+    hashWorkflowTree(existing.tree) !== params.expectedHash
+  ) {
+    return {
+      ok: false,
+      issues: [
+        {
+          path: "id",
+          message: `workflow tree "${parsed.tree.id}" changed since it was loaded; discard this edit, reload the tree, and reapply your change`,
+        },
+      ],
+    };
+  }
+  const precondition = params.createOnly
+    ? ({ kind: "create-only" } as const)
+    : params.expectedHash !== undefined
+      ? ({
+          kind: "expected-hash",
+          hash: params.expectedHash,
+          expectedSource: existing?.source ?? "imported",
+        } as const)
+      : undefined;
+  const write = upsertEnterpriseWorkflowTree(
+    {
+      tree: parsed.tree,
+      sourceFormat: params.format,
+      ...(precondition ? { precondition } : {}),
+    },
+    options,
+  );
+  if (!write.upserted) {
+    // The write lock observed a newer external state than the process snapshot.
+    // Refresh both registries so the instructed reload does not repeat the conflict.
+    refreshAfterTreeStoreChange(options);
+    return {
+      ok: false,
+      issues: [
+        {
+          path: "id",
+          message:
+            write.reason === "already-exists"
+              ? `workflow tree "${parsed.tree.id}" already exists`
+              : `workflow tree "${parsed.tree.id}" changed since it was loaded; discard this edit, reload the tree, and reapply your change`,
+        },
+      ],
+    };
+  }
+  refreshAfterTreeStoreChange(options);
+  const replaced = write.replacedImported
+    ? "imported"
+    : existing?.source === "builtin"
+      ? "builtin"
+      : null;
+  return { ok: true, tree: parsed.tree, replaced };
 }
 
 /** Serialize one registered tree (builtin or imported) for export. */
@@ -113,6 +176,34 @@ export function exportWorkflowTree(
   };
 }
 
+/** Remove only while the imported row still matches the state the operator saw. */
+export function removeImportedWorkflowTreeIfUnchanged(
+  params:
+    | { treeId: string; expectedHash: string }
+    | { treeId: string; expectedInvalidFingerprint: string },
+  options: EnterpriseTreeStoreOptions = {},
+): ReturnType<typeof deleteEnterpriseWorkflowTreeIfUnchanged> {
+  let result: ReturnType<typeof deleteEnterpriseWorkflowTreeIfUnchanged>;
+  try {
+    result = deleteEnterpriseWorkflowTreeIfUnchanged(params, options);
+  } catch {
+    invalidateWorkflowTreeRegistry();
+    return { removed: false, reason: "tree-unavailable" };
+  }
+  // A failed guard can itself reveal a newer cross-process row. Refresh so the
+  // caller's next list/get observes the state named by the structured result.
+  refreshAfterTreeStoreChange(options);
+  return result;
+}
+
+function refreshAfterTreeStoreChange(options: EnterpriseTreeStoreOptions): void {
+  invalidateWorkflowTreeRegistry();
+  // Tree writes can change which persisted foundations are reachable, or delete
+  // their rows entirely. Reconcile the live registry immediately so an active
+  // run's next knowledge_search reflects the current definition.
+  reloadPersistedBundleFoundations(options);
+}
+
 /** Remove one imported tree; built-ins reappear when their override is removed. */
 export function removeImportedWorkflowTree(
   treeId: string,
@@ -120,13 +211,7 @@ export function removeImportedWorkflowTree(
 ): boolean {
   const removed = deleteEnterpriseWorkflowTree(treeId, options);
   if (removed) {
-    invalidateWorkflowTreeRegistry();
-    // The delete dropped this tree's bundled-foundation rows; reconcile the live
-    // bundle registry from the remaining rows so a running gateway stops serving
-    // a removed tree's foundations (keeping ones another tree still carries). This
-    // reconciles immediately, so an already-active run's next knowledge_search
-    // reflects the change (known limitation; see docs/cli/enterprise.md).
-    reloadPersistedBundleFoundations(options);
+    refreshAfterTreeStoreChange(options);
   }
   return removed;
 }

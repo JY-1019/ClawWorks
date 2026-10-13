@@ -682,6 +682,7 @@ async function requestPluginApprovalOutcome(params: {
       severity: "warning",
       toolName: "codex_mcp_tool_approval",
       allowedDecisions: params.allowedDecisions,
+      signal: params.signal,
     });
 
     const approvalId = requestResult?.id;

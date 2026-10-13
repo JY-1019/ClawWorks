@@ -19,9 +19,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 
 function assertSyncTransactionResult(value: unknown): void {
   if (isPromiseLike(value)) {
-    throw new Error(
-      "SQLite write transactions must be synchronous; Promise returns are not supported.",
-    );
+    throw new Error("SQLite transactions must be synchronous; Promise returns are not supported.");
   }
 }
 
@@ -30,7 +28,7 @@ function isRetryableCommitError(error: unknown): boolean {
   return typeof code === "string" && RETRYABLE_COMMIT_ERROR_CODES.has(code);
 }
 
-function commitImmediateTransaction(db: DatabaseSync): void {
+function commitTransaction(db: DatabaseSync): void {
   for (const attempt of Array.from({ length: MAX_COMMIT_ATTEMPTS }, (_, index) => index + 1)) {
     try {
       db.exec("COMMIT");
@@ -69,7 +67,11 @@ function setTransactionDepth(db: DatabaseSync, depth: number): void {
   transactionDepthByDatabase.set(db, depth);
 }
 
-export function runSqliteImmediateTransactionSync<T>(db: DatabaseSync, operation: () => T): T {
+function runSqliteTransactionSync<T>(
+  db: DatabaseSync,
+  beginStatement: "BEGIN" | "BEGIN IMMEDIATE",
+  operation: () => T,
+): T {
   const depth = getTransactionDepth(db);
   if (depth > 0) {
     const savepointName = nextSavepointName();
@@ -92,7 +94,7 @@ export function runSqliteImmediateTransactionSync<T>(db: DatabaseSync, operation
     }
   }
 
-  db.exec("BEGIN IMMEDIATE");
+  db.exec(beginStatement);
   setTransactionDepth(db, 1);
   let transactionStillActive = true;
   let result: T;
@@ -114,7 +116,7 @@ export function runSqliteImmediateTransactionSync<T>(db: DatabaseSync, operation
   }
 
   try {
-    commitImmediateTransaction(db);
+    commitTransaction(db);
     transactionStillActive = false;
     return result;
   } catch (error) {
@@ -130,4 +132,13 @@ export function runSqliteImmediateTransactionSync<T>(db: DatabaseSync, operation
       setTransactionDepth(db, 0);
     }
   }
+}
+
+/** Run against one stable SQLite read snapshot without excluding WAL writers. */
+export function runSqliteReadTransactionSync<T>(db: DatabaseSync, operation: () => T): T {
+  return runSqliteTransactionSync(db, "BEGIN", operation);
+}
+
+export function runSqliteImmediateTransactionSync<T>(db: DatabaseSync, operation: () => T): T {
+  return runSqliteTransactionSync(db, "BEGIN IMMEDIATE", operation);
 }

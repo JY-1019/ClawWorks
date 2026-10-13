@@ -14,6 +14,7 @@ import type { AppViewState } from "./app-view-state.ts";
 import { persistChatComposerState, restoreChatComposerState } from "./chat/composer-persistence.ts";
 import {
   renderEnterpriseModeSelect,
+  renderEnterpriseResumeControl,
   renderEnterpriseStepProgress,
 } from "./chat/enterprise-controls.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
@@ -29,6 +30,10 @@ import { refreshSlashCommands } from "./chat/slash-commands.ts";
 import { resolveControlUiAuthToken } from "./control-ui-auth.ts";
 import { loadChatHistory } from "./controllers/chat.ts";
 import type { ChatState } from "./controllers/chat.ts";
+import {
+  enterpriseRunMatchesTranscript,
+  requestEnterpriseChatRunResume,
+} from "./controllers/enterprise-chat.ts";
 import {
   createSessionAndRefresh,
   loadSessions,
@@ -405,6 +410,12 @@ export function renderChatControls(state: AppViewState) {
   const settingsOpen = state.chatMobileControlsOpen;
   const settingsLabel = t("chat.settings");
   const settingsTitle = t("chat.settings");
+  const enterpriseChatRun = enterpriseRunMatchesTranscript(
+    state.enterpriseChatRun,
+    state.currentSessionId,
+  )
+    ? state.enterpriseChatRun
+    : null;
 
   return html`
     <div
@@ -429,7 +440,16 @@ export function renderChatControls(state: AppViewState) {
       error: state.enterpriseChatModeError,
       onSelect: (mode) => void state.setEnterpriseChatMode(mode),
     })}
-    ${renderEnterpriseStepProgress(state.enterpriseChatStep)} ${renderChatQuotaPill(state)}
+    ${renderEnterpriseStepProgress(state.enterpriseChatStep)}
+    ${renderEnterpriseResumeControl({
+      run: enterpriseChatRun,
+      busy: state.enterpriseChatResumeBusy,
+      disabled:
+        !state.connected || state.onboarding || !hasOperatorAdminAccess(state.hello?.auth ?? null),
+      error: state.enterpriseChatResumeError,
+      onResume: (executionId) => void requestEnterpriseChatRunResume(state, executionId),
+    })}
+    ${renderChatQuotaPill(state)}
     <div class="chat-settings-popover-wrapper">
       <button
         class="chat-settings-chip ${settingsOpen ? "chat-settings-chip--open" : ""}"

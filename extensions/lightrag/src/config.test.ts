@@ -81,3 +81,17 @@ describe("parseLightRagFoundations", () => {
     expect(result).toEqual([{ id: "kb", serverUrl: "http://kb", kind: "remote", mode: "mix" }]);
   });
 });
+
+describe("duplicate foundation ids", () => {
+  it("keeps the first entry so a repeated id does not silently re-point the store", () => {
+    const parsed = parseLightRagFoundations({
+      foundations: [
+        { id: "acme.kb", serverUrl: "http://hr:9621", description: "HR handbook" },
+        { id: "acme.kb", serverUrl: "http://legal:9621", description: "Legal contracts" },
+        { id: "acme.other", serverUrl: "http://other:9621" },
+      ],
+    });
+    expect(parsed.map((foundation) => foundation.id)).toEqual(["acme.kb", "acme.other"]);
+    expect(parsed[0]?.serverUrl).toBe("http://hr:9621");
+  });
+});

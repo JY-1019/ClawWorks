@@ -46,7 +46,7 @@ type RunProcessParentSignalState = {
   signal: NodeJS.Signals | null;
 };
 
-type TranslationMemoryEntry = {
+export type TranslationMemoryEntry = {
   cache_key: string;
   model: string;
   provider: string;
@@ -583,6 +583,44 @@ function buildTranslationMemoryByTextHash(
     byTextHash.set(entry.text_hash, entry);
   }
   return byTextHash;
+}
+
+export function buildLatestTranslationSourceHashesBySegment(
+  entries: Map<string, TranslationMemoryEntry>,
+  locale: string,
+): Map<string, string> {
+  const latestBySegment = new Map<string, TranslationMemoryEntry>();
+  for (const entry of entries.values()) {
+    if (entry.tgt_lang !== locale || !entry.segment_id || !entry.text_hash) {
+      continue;
+    }
+    const previous = latestBySegment.get(entry.segment_id);
+    if (
+      !previous ||
+      entry.updated_at > previous.updated_at ||
+      (entry.updated_at === previous.updated_at && entry.cache_key > previous.cache_key)
+    ) {
+      latestBySegment.set(entry.segment_id, entry);
+    }
+  }
+  return new Map(
+    [...latestBySegment].map(([segmentId, entry]) => [segmentId, entry.text_hash] as const),
+  );
+}
+
+export function isStaleTranslationSource(
+  latestSourceHash: string | undefined,
+  currentSourceHash: string,
+): boolean {
+  return latestSourceHash !== undefined && latestSourceHash !== currentSourceHash;
+}
+
+export function shouldReuseExistingLocaleText(params: {
+  force: boolean;
+  sourceChanged: boolean;
+  wasFallback: boolean;
+}): boolean {
+  return !params.force && !params.sourceChanged && !params.wasFallback;
 }
 
 function buildGlossaryPrompt(glossary: readonly GlossaryEntry[]): string {
@@ -1535,11 +1573,13 @@ async function syncLocale(
   const glossary = await loadGlossary(glossaryFilePath);
   const tm = await loadTranslationMemory(tmPath(entry));
   const tmByTextHash = buildTranslationMemoryByTextHash(tm, entry.locale);
+  const latestTmSourceHashBySegment = buildLatestTranslationSourceHashesBySegment(tm, entry.locale);
   const allowTranslate = hasTranslationProvider();
 
   const nextFlat = new Map<string, string>();
   const pending: TranslationBatchItem[] = [];
   const fallbackKeys: string[] = [];
+  const sourceChangedKeys = new Set<string>();
 
   for (const [key, text] of sourceFlat.entries()) {
     const textHash = hashText(text);
@@ -1548,6 +1588,13 @@ async function syncLocale(
     const cachedByText = tmByTextHash.get(textHash);
     const existing = existingFlat.get(key);
     const shouldRefreshFallback = previousFallbackKeys.has(key);
+    const latestSourceHash = latestTmSourceHashBySegment.get(key);
+    // A generated locale string is stale when its translation memory only knows
+    // older English text. Reusing it can hide newly documented destructive effects.
+    const sourceChanged = isStaleTranslationSource(latestSourceHash, textHash);
+    if (sourceChanged) {
+      sourceChangedKeys.add(key);
+    }
 
     if (cached && !(allowTranslate && shouldRefreshFallback)) {
       nextFlat.set(key, cached.translated);
@@ -1557,7 +1604,7 @@ async function syncLocale(
       continue;
     }
 
-    if (cachedByText && (shouldRefreshFallback || existing === undefined)) {
+    if (cachedByText && (sourceChanged || shouldRefreshFallback || existing === undefined)) {
       nextFlat.set(key, cachedByText.translated);
       tm.set(segmentCacheKey, {
         ...cachedByText,
@@ -1568,7 +1615,14 @@ async function syncLocale(
       continue;
     }
 
-    if (existing !== undefined && !(allowTranslate && shouldRefreshFallback)) {
+    if (
+      existing !== undefined &&
+      shouldReuseExistingLocaleText({
+        force: options.force,
+        sourceChanged,
+        wasFallback: shouldRefreshFallback,
+      })
+    ) {
       nextFlat.set(key, existing);
       if (shouldRefreshFallback) {
         fallbackKeys.push(key);
@@ -1663,7 +1717,14 @@ async function syncLocale(
       continue;
     }
     const existing = existingFlat.get(item.key);
-    if (existing !== undefined && !options.force) {
+    if (
+      existing !== undefined &&
+      shouldReuseExistingLocaleText({
+        force: options.force,
+        sourceChanged: sourceChangedKeys.has(item.key),
+        wasFallback: previousFallbackKeys.has(item.key),
+      })
+    ) {
       nextFlat.set(item.key, existing);
       if (previousFallbackKeys.has(item.key)) {
         fallbackKeys.push(item.key);

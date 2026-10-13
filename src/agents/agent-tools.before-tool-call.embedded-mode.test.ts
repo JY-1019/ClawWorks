@@ -18,7 +18,12 @@ import {
   setActivePluginRegistry,
 } from "../plugins/runtime.js";
 import { PluginApprovalResolutions } from "../plugins/types.js";
-import { runBeforeToolCallHook } from "./agent-tools.before-tool-call.js";
+import {
+  cancelDeferredPluginToolApproval,
+  finalizeDeferredPluginToolApprovalResolution,
+  requestDeferredPluginToolApproval,
+  runBeforeToolCallHook,
+} from "./agent-tools.before-tool-call.js";
 import { callGatewayTool } from "./tools/gateway.js";
 
 vi.mock("../plugins/hook-runner-global.js", async () => {
@@ -32,6 +37,7 @@ vi.mock("../plugins/hook-runner-global.js", async () => {
 });
 vi.mock("./tools/gateway.js", () => ({
   callGatewayTool: vi.fn(),
+  cancelPluginApprovalForRunAbort: vi.fn(),
 }));
 
 const mockGetGlobalHookRunner = vi.mocked(getGlobalHookRunner);
@@ -175,6 +181,49 @@ describe("runBeforeToolCallHook — embedded mode approvals", () => {
     expect(mockCallGatewayTool).not.toHaveBeenCalled();
   });
 
+  it("keeps provider approval metadata separate from executable params", async () => {
+    const policyEvents: unknown[] = [];
+    const registry = createEmptyPluginRegistry();
+    registry.trustedToolPolicies = [
+      {
+        pluginId: "trusted-policy",
+        source: "test",
+        policy: {
+          id: "inspect-approval",
+          description: "Inspect provider approval metadata",
+          evaluate: (event) => {
+            policyEvents.push(event);
+            return undefined;
+          },
+        },
+      },
+    ];
+    setActivePluginRegistry(registry);
+    runBeforeToolCallMock.mockResolvedValue(undefined);
+    const approval = {
+      provider: "codex",
+      method: "item/commandExecution/requestApproval",
+      request: { networkApprovalContext: { host: "example.test", protocol: "https" } },
+    };
+
+    await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "curl https://example.test" },
+      approval,
+    });
+
+    expect(policyEvents[0]).toMatchObject({
+      toolName: "exec",
+      params: { command: "curl https://example.test" },
+      approval,
+    });
+    expect(runBeforeToolCallMock.mock.calls[0]?.[0]).toMatchObject({
+      toolName: "exec",
+      params: { command: "curl https://example.test" },
+      approval,
+    });
+  });
+
   it("defers approval-required tools without opening an approval request", async () => {
     runBeforeToolCallMock.mockResolvedValue({
       requireApproval: {
@@ -204,6 +253,155 @@ describe("runBeforeToolCallHook — embedded mode approvals", () => {
       },
     });
     expect(mockCallGatewayTool).not.toHaveBeenCalled();
+  });
+
+  it("keeps cancellation terminal when a deferred approval resolves late", async () => {
+    const onResolution = vi.fn();
+    runBeforeToolCallMock.mockResolvedValue({
+      requireApproval: {
+        title: "Needs approval",
+        description: "Review before running",
+        onResolution,
+      },
+    });
+    const deferred = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      approvalMode: "defer",
+    });
+    if (deferred.blocked || !deferred.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    let resolveWait: ((value: { id: string; decision: string }) => void) | undefined;
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "approval-late", status: "accepted" })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveWait = resolve;
+          }),
+      );
+    const finalizeApprovedParams = vi.fn();
+    deferred.deferredApproval.finalizeApprovedParams = finalizeApprovedParams;
+    const pending = requestDeferredPluginToolApproval({
+      deferredApproval: deferred.deferredApproval,
+    });
+    await vi.waitFor(() => expect(mockCallGatewayTool).toHaveBeenCalledTimes(2));
+
+    cancelDeferredPluginToolApproval(deferred.deferredApproval);
+    resolveWait?.({ id: "approval-late", decision: PluginApprovalResolutions.ALLOW_ONCE });
+
+    await expect(pending).resolves.toMatchObject({
+      blocked: true,
+      reason: "Plugin approval was cancelled before the tool call could be released.",
+    });
+    expect(finalizeApprovedParams).not.toHaveBeenCalled();
+    expect(onResolution).toHaveBeenCalledTimes(1);
+    expect(onResolution).toHaveBeenCalledWith(PluginApprovalResolutions.CANCELLED);
+  });
+
+  it("cancels an in-flight request before external settlement", async () => {
+    const onResolution = vi.fn();
+    runBeforeToolCallMock.mockResolvedValue({
+      requireApproval: {
+        title: "Needs approval",
+        description: "Review before running",
+        onResolution,
+      },
+    });
+    const deferred = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      approvalMode: "defer",
+    });
+    if (deferred.blocked || !deferred.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+    let resolveWait: ((value: { id: string; decision: string }) => void) | undefined;
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "approval-external", status: "accepted" })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveWait = resolve;
+          }),
+      );
+    const finalizeApprovedParams = vi.fn();
+    deferred.deferredApproval.finalizeApprovedParams = finalizeApprovedParams;
+    const pending = requestDeferredPluginToolApproval({
+      deferredApproval: deferred.deferredApproval,
+    });
+    await vi.waitFor(() => expect(mockCallGatewayTool).toHaveBeenCalledTimes(2));
+
+    expect(
+      finalizeDeferredPluginToolApprovalResolution({
+        deferredApproval: deferred.deferredApproval,
+        resolution: PluginApprovalResolutions.DENY,
+      }),
+    ).toContain("cancelled");
+    resolveWait?.({ id: "approval-external", decision: PluginApprovalResolutions.ALLOW_ONCE });
+
+    await expect(pending).resolves.toMatchObject({
+      blocked: true,
+      reason: "Plugin approval was cancelled before the tool call could be released.",
+    });
+    expect(finalizeApprovedParams).not.toHaveBeenCalled();
+    expect(onResolution).toHaveBeenCalledTimes(1);
+    expect(onResolution).toHaveBeenCalledWith(PluginApprovalResolutions.CANCELLED);
+  });
+
+  it("keeps enclosing approval decisions within the deferred gate", async () => {
+    const onResolution = vi.fn();
+    runBeforeToolCallMock.mockResolvedValue({
+      requireApproval: {
+        title: "Needs approval",
+        description: "Review before running",
+        allowedDecisions: ["allow-once", "deny"],
+        onResolution,
+      },
+    });
+    const deferred = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "ls" },
+      approvalMode: "defer",
+    });
+    if (deferred.blocked || !deferred.deferredApproval) {
+      throw new Error("expected deferred approval");
+    }
+
+    expect(
+      finalizeDeferredPluginToolApprovalResolution({
+        deferredApproval: deferred.deferredApproval,
+        resolution: PluginApprovalResolutions.ALLOW_ALWAYS,
+      }),
+    ).toBeUndefined();
+    expect(onResolution).toHaveBeenCalledWith(PluginApprovalResolutions.ALLOW_ONCE);
+
+    const denyOnlyResolution = vi.fn();
+    runBeforeToolCallMock.mockResolvedValue({
+      requireApproval: {
+        title: "Cannot approve",
+        description: "This gate only permits denial",
+        allowedDecisions: ["deny"],
+        onResolution: denyOnlyResolution,
+      },
+    });
+    const denyOnly = await runBeforeToolCallHook({
+      toolName: "exec",
+      params: { command: "rm protected" },
+      approvalMode: "defer",
+    });
+    if (denyOnly.blocked || !denyOnly.deferredApproval) {
+      throw new Error("expected deny-only deferred approval");
+    }
+
+    expect(
+      finalizeDeferredPluginToolApprovalResolution({
+        deferredApproval: denyOnly.deferredApproval,
+        resolution: PluginApprovalResolutions.ALLOW_ONCE,
+      }),
+    ).toContain("does not permit");
+    expect(denyOnlyResolution).toHaveBeenCalledWith(PluginApprovalResolutions.CANCELLED);
   });
 
   it("sends approval to gateway when NOT in embedded mode", async () => {

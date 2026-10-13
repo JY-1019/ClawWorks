@@ -107,6 +107,7 @@ export type AppViewState = {
   allowExternalEmbedUrls: boolean;
   chatMessageMaxWidth?: string | null;
   sessionKey: string;
+  currentSessionId: string | null;
   chatSessionMessageSubscriptionKey?: string | null;
   chatSessionMessageSubscriptionRequestedKey?: string | null;
   chatLoading: boolean;
@@ -293,6 +294,8 @@ export type AppViewState = {
   enterpriseLoading: boolean;
   enterpriseRuns: EnterpriseRunSummary[];
   enterpriseTrees: EnterpriseTreeSummary[];
+  enterpriseHistoryOnlyTreeIds: string[];
+  enterpriseListErrors: import("./controllers/enterprise.js").EnterpriseListErrors;
   enterpriseImportErrors: EnterpriseTreesListResult["importErrors"];
   enterpriseStoreError: string | null;
   enterpriseSelectedExecutionId: string | null;
@@ -301,6 +304,8 @@ export type AppViewState = {
   enterpriseChatMode: EnterpriseMode | null;
   enterpriseChatModeBusy: boolean;
   enterpriseChatModeError: string | null;
+  enterpriseChatResumeBusy: boolean;
+  enterpriseChatResumeError: string | null;
   enterpriseChatRun: EnterpriseRunDetail | null;
   enterpriseChatRunTree: EnterpriseTreeDetail | null;
   enterpriseChatStep: EnterpriseChatStep | null;
@@ -314,21 +319,30 @@ export type AppViewState = {
   enterpriseNodeObjectsEntity: string | null;
   enterpriseNodeObjects: EnterpriseOntologyObject[];
   enterpriseNodeObjectsLoading: boolean;
+  enterpriseNodeObjectsError: string | null;
   enterpriseTreeEditing: boolean;
+  enterpriseVisualEditOriginal: EnterpriseTreeDetail | null;
+  enterpriseTreeDraft: import("./controllers/enterprise.js").EnterpriseTreeDraft | null;
   enterpriseTreeEditTreeId: string | null;
   enterpriseTreeEditRevision: number | null;
+  enterpriseTreeEditGuard: import("./controllers/enterprise.js").EnterpriseTreeImportGuard;
   enterpriseTreeEditContent: string;
   enterpriseTreeEditFormat: import("./controllers/enterprise.js").EnterpriseTreeEditFormat;
   enterpriseTreeSaving: boolean;
   enterpriseTreeSaveIssues: EnterpriseTreeImportIssue[] | null;
+  /** Authoring checks computed from the authoritative selected work-map. */
+  enterpriseTreeWarnings: EnterpriseTreeImportIssue[] | null;
   enterpriseTreeSaveError: string | null;
   enterpriseTreeConfirm: import("./controllers/enterprise.js").EnterpriseTreeConfirm | null;
+  enterpriseBundleDraft: import("./controllers/enterprise.js").EnterpriseBundleDraft | null;
+  enterpriseBundleStatus: import("./controllers/enterprise.js").EnterpriseBundleStatus | null;
   enterpriseTreeVersions: EnterpriseTreeVersionSummary[];
   enterpriseTreeVersionsLoading: boolean;
+  enterpriseTreeVersionsError: string | null;
   enterpriseNodeDraft: import("./controllers/enterprise.js").EnterpriseNodeDraft | null;
   enterpriseBindingPicker: import("./controllers/enterprise.js").EnterpriseBindingPicker | null;
   enterpriseBindingDetail: import("./controllers/enterprise.js").EnterpriseBindingDetail | null;
-  enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null;
+  enterpriseGuidanceDraft: import("./controllers/enterprise.js").EnterpriseGuidanceDraft | null;
   enterpriseOntologyDraft: import("./controllers/enterprise.js").EnterpriseOntologyDraft | null;
   enterpriseMcpDraft: import("./controllers/enterprise.js").EnterpriseMcpDraft | null;
   enterpriseCatalogPhase: import("./controllers/enterprise.js").EnterpriseCatalogPhase;

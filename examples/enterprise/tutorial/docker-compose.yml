@@ -9,7 +9,7 @@
 #   - acme-tracker  the MCP server the lookup step attaches
 #
 # Nothing here talks to the gateway. ClawWorks reaches both over localhost, so
-# the gateway can stay wherever it already runs.
+# run the gateway on the same host as Docker for these loopback URLs.
 name: clawworks-tutorial
 
 services:

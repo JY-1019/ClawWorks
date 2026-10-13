@@ -1002,7 +1002,7 @@ function removeUndefinedJsonFields(value: Record<string, JsonValue | undefined>)
   );
 }
 
-function stableStringifyJson(value: JsonValue): string {
+export function stableStringifyJson(value: JsonValue): string {
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableStringifyJson(item)).join(",")}]`;
   }

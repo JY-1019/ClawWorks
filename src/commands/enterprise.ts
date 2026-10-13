@@ -8,7 +8,6 @@ import { theme } from "../../packages/terminal-core/src/theme.js";
 import { stripAnsi } from "../agents/utils/ansi.js";
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { resolveEnterpriseMcpServers } from "../enterprise/active-runs.js";
 import { exportWorkflowBundle, importWorkflowBundle } from "../enterprise/bundle-io.js";
 import { loadPersistedBundleFoundations } from "../enterprise/knowledge-bundle-loader.js";
 import type { WorkflowTreeValidationIssue } from "../enterprise/schema.js";
@@ -231,7 +230,9 @@ export function enterpriseTreesRemoveCommand(treeId: string, runtime: RuntimeEnv
     runtime.exit(1);
     return;
   }
-  runtime.log(`Removed imported workflow tree ${treeId}.`);
+  runtime.log(
+    `Removed imported workflow tree ${treeId} and permanently deleted its live ontology objects, links, and bundled knowledge. Definition history cannot restore that data.`,
+  );
   runtime.log(theme.muted(GATEWAY_RELOAD_HINT));
 }
 
@@ -363,6 +364,21 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
       `Warning: these referenced knowledge foundations were not included and must be configured separately: ${result.missingFoundations.join(", ")}`,
     );
   }
+  if (result.replacedFoundations.length > 0) {
+    runtime.error(
+      `Warning: this import replaced stored rows for these owned knowledge foundations, which have no revision history: ${result.replacedFoundations.join(", ")}`,
+    );
+  }
+  if (result.removedFoundations.length > 0) {
+    runtime.error(
+      `Warning: this import deleted these owned knowledge foundations, which have no revision history: ${result.removedFoundations.join(", ")}`,
+    );
+  }
+  if (result.shadowedFoundations.length > 0) {
+    runtime.error(
+      `Warning: global/plugin foundations take precedence at runtime, so these imported bundle rows will not be queried while the same ids are registered: ${result.shadowedFoundations.join(", ")}`,
+    );
+  }
   // Surface referenced tool names: a bundle carries tree scope and knowledge,
   // never tool implementations, so the operator must confirm the target
   // deployment provides these.
@@ -375,24 +391,18 @@ export function enterpriseBundleImportCommand(filePath: string, runtime: Runtime
     runtime.log(theme.muted(`Required skills: ${result.requiredSkills.join(", ")}`));
   }
   // MCP servers are the same kind of named dependency, and the most silent one:
-  // an attachment naming a server this deployment never registered is inert, and
+  // an attachment naming a server this deployment has not enabled is inert, and
   // nothing else on import would say so. Only the names this deployment is
   // MISSING are a warning, though — listing the satisfied ones as a problem makes
   // a clean import read as a broken one.
   if (result.requiredMcpServers.length > 0) {
-    // ENABLED entries only, the same set every MCP projection emits: a name that
-    // is registered but turned off leaves the attachment just as inert as a
-    // missing one, so reporting it as satisfied would be the opposite of true.
-    const registered = new Set(
-      resolveEnterpriseMcpServers(getRuntimeConfigSnapshot() ?? undefined),
-    );
-    const missing = result.requiredMcpServers.filter((name) => !registered.has(name));
-    if (missing.length > 0) {
+    if (result.missingMcpServers.length > 0) {
       runtime.error(
-        `Warning: these MCP servers must be registered under mcp.servers before the imported steps can call them: ${missing.join(", ")}`,
+        `Warning: these MCP servers must be enabled under mcp.servers before the imported steps can call them: ${result.missingMcpServers.join(", ")}`,
       );
     }
-    const satisfied = result.requiredMcpServers.filter((name) => registered.has(name));
+    const missing = new Set(result.missingMcpServers);
+    const satisfied = result.requiredMcpServers.filter((name) => !missing.has(name));
     if (satisfied.length > 0) {
       runtime.log(theme.muted(`Required MCP servers: ${satisfied.join(", ")}`));
     }

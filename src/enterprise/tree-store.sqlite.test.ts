@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,9 +10,17 @@ import {
   runOpenClawStateWriteTransaction,
 } from "../state/openclaw-state-db.js";
 import {
+  fingerprintBundledKnowledgeForTree,
+  listBundledKnowledgeFoundations,
+} from "./enterprise-knowledge-store.sqlite.js";
+import { getOntologyObject, upsertOntologyObject } from "./object-store.sqlite.js";
+import { hashWorkflowTree } from "./plan.js";
+import {
   deleteEnterpriseWorkflowTree,
+  deleteEnterpriseWorkflowTreeIfUnchanged,
   getEnterpriseWorkflowTree,
   getEnterpriseWorkflowTreeVersion,
+  listEnterpriseWorkflowTreeHistoryIds,
   listEnterpriseWorkflowTrees,
   listEnterpriseWorkflowTreeVersions,
   upsertEnterpriseWorkflowTree,
@@ -42,6 +51,7 @@ describe("enterprise workflow tree store", () => {
     const missing = { stateDatabasePath: path.join(tempDir, "missing.sqlite") };
     expect(getEnterpriseWorkflowTree("acme.a", missing)).toBeNull();
     expect(listEnterpriseWorkflowTrees(missing)).toEqual({ records: [], rowErrors: [] });
+    expect(listEnterpriseWorkflowTreeHistoryIds(missing)).toEqual([]);
     expect(deleteEnterpriseWorkflowTree("acme.a", missing)).toBe(false);
   });
 
@@ -91,6 +101,16 @@ describe("enterprise workflow tree store", () => {
     expect(read.rowErrors).toEqual([]);
   });
 
+  it("keeps removed tree ids discoverable through append-only history", () => {
+    upsertEnterpriseWorkflowTree(
+      { tree: makeTree("acme.history-only"), sourceFormat: "json", now: 250 },
+      storeOptions,
+    );
+    expect(deleteEnterpriseWorkflowTree("acme.history-only", storeOptions)).toBe(true);
+
+    expect(listEnterpriseWorkflowTreeHistoryIds(storeOptions)).toContain("acme.history-only");
+  });
+
   it("captures per-row errors without dropping healthy imports", () => {
     upsertEnterpriseWorkflowTree(
       { tree: makeTree("acme.healthy"), sourceFormat: "yaml" },
@@ -111,6 +131,10 @@ describe("enterprise workflow tree store", () => {
     expect(read.records.some((entry) => entry.tree.id === "acme.healthy")).toBe(true);
     expect(read.rowErrors).toHaveLength(1);
     expect(read.rowErrors[0].treeId).toBe("acme.rotten");
+    expect(read.rowErrors[0].fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(listEnterpriseWorkflowTrees(storeOptions).rowErrors[0].fingerprint).toBe(
+      read.rowErrors[0].fingerprint,
+    );
 
     deleteEnterpriseWorkflowTree("acme.healthy", storeOptions);
     deleteEnterpriseWorkflowTree("acme.rotten", storeOptions);
@@ -129,6 +153,28 @@ describe("enterprise workflow tree store", () => {
     expect(record?.tree.version).toBe("2.0.0");
     expect(record?.importedAt).toBe(300);
     expect(record?.updatedAt).toBe(400);
+  });
+
+  it("rejects an imported row when the guarded source was a built-in", () => {
+    const tree = makeTree("acme.source-race");
+    upsertEnterpriseWorkflowTree({ tree, sourceFormat: "json" }, storeOptions);
+
+    const result = upsertEnterpriseWorkflowTree(
+      {
+        tree: makeTree(tree.id, "2.0.0"),
+        sourceFormat: "json",
+        precondition: {
+          kind: "expected-hash",
+          hash: hashWorkflowTree(tree),
+          expectedSource: "builtin",
+        },
+      },
+      storeOptions,
+    );
+
+    expect(result).toEqual({ upserted: false, reason: "tree-changed" });
+    expect(getEnterpriseWorkflowTree(tree.id, storeOptions)?.tree.version).toBe("1.0.0");
+    deleteEnterpriseWorkflowTree(tree.id, storeOptions);
   });
 
   it("treats tree_id/definition id mismatches as row errors", () => {
@@ -168,6 +214,142 @@ describe("enterprise workflow tree store", () => {
     expect(deleteEnterpriseWorkflowTree("acme.d", storeOptions)).toBe(true);
     expect(deleteEnterpriseWorkflowTree("acme.d", storeOptions)).toBe(false);
     expect(getEnterpriseWorkflowTree("acme.d", storeOptions)).toBeNull();
+  });
+
+  it("checks the removal hash after waiting for a concurrent writer", async () => {
+    const treeId = "acme.concurrent-remove";
+    const first = makeTree(treeId, "1.0.0");
+    const replacement = makeTree(treeId, "2.0.0");
+    upsertEnterpriseWorkflowTree({ tree: first, sourceFormat: "json" }, storeOptions);
+    runOpenClawStateWriteTransaction(
+      (database) =>
+        upsertOntologyObject(database, {
+          treeId,
+          entity: "case",
+          objectId: "C-1",
+          properties: { id: "C-1" },
+        }),
+      { path: storeOptions.stateDatabasePath },
+    );
+
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        `
+          const { DatabaseSync } = require("node:sqlite");
+          const db = new DatabaseSync(process.argv[1]);
+          db.exec("BEGIN IMMEDIATE;");
+          db.prepare(
+            "UPDATE enterprise_workflow_trees SET version = ?, name = ?, definition_json = ?, updated_at = ? WHERE tree_id = ?",
+          ).run(process.argv[3], process.argv[4], process.argv[5], Date.now(), process.argv[2]);
+          process.stdout.write("locked\\n");
+          setTimeout(() => {
+            db.exec("COMMIT;");
+            db.close();
+          }, 250);
+        `,
+        storeOptions.stateDatabasePath,
+        treeId,
+        replacement.version,
+        replacement.name,
+        JSON.stringify(replacement),
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const childExit = new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`contention child exited with code ${code}`));
+        }
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      let locked = false;
+      child.stdout.once("data", () => {
+        locked = true;
+        resolve();
+      });
+      child.once("error", reject);
+      child.once("exit", (code) => {
+        if (!locked) {
+          reject(new Error(`contention child exited before locking with code ${code}`));
+        }
+      });
+    });
+
+    let result: ReturnType<typeof deleteEnterpriseWorkflowTreeIfUnchanged>;
+    try {
+      result = deleteEnterpriseWorkflowTreeIfUnchanged(
+        { treeId, expectedHash: hashWorkflowTree(first) },
+        storeOptions,
+      );
+    } finally {
+      await childExit;
+    }
+
+    expect(result).toEqual({ removed: false, reason: "tree-changed" });
+    expect(getEnterpriseWorkflowTree(treeId, storeOptions)?.tree.version).toBe("2.0.0");
+    expect(
+      getOntologyObject({ treeId, entity: "case", objectId: "C-1" }, storeOptions),
+    ).not.toBeNull();
+    deleteEnterpriseWorkflowTree(treeId, storeOptions);
+  });
+
+  it("rejects a bundle write when owned knowledge changed under the write lock", () => {
+    const treeId = "acme.bundle-cas";
+    const tree = makeTree(treeId);
+    const foundation = (text: string) => ({
+      id: "acme.kb",
+      descriptor: { kind: "local" as const, displayName: "Acme KB" },
+      snippets: [{ foundationId: "acme.kb", text }],
+    });
+    upsertEnterpriseWorkflowTree(
+      {
+        tree,
+        sourceFormat: "json",
+        now: 100,
+        bundledFoundations: [foundation("previewed")],
+      },
+      storeOptions,
+    );
+    const knowledgeFingerprint = fingerprintBundledKnowledgeForTree(treeId, storeOptions);
+    upsertEnterpriseWorkflowTree(
+      {
+        tree,
+        sourceFormat: "json",
+        now: 200,
+        bundledFoundations: [foundation("winner")],
+      },
+      storeOptions,
+    );
+
+    const stale = upsertEnterpriseWorkflowTree(
+      {
+        tree,
+        sourceFormat: "json",
+        now: 300,
+        bundledFoundations: [foundation("stale")],
+        precondition: {
+          kind: "expected-bundle-state",
+          treeId,
+          expectedSource: "imported",
+          treeHash: hashWorkflowTree(tree),
+          knowledgeFingerprint,
+        },
+      },
+      storeOptions,
+    );
+
+    expect(stale).toEqual({ upserted: false, reason: "tree-changed" });
+    const stored = listBundledKnowledgeFoundations(storeOptions).records.find(
+      (record) => record.treeId === treeId,
+    );
+    expect(stored?.foundation.snippets[0]?.text).toBe("winner");
+    deleteEnterpriseWorkflowTree(treeId, storeOptions);
   });
 });
 

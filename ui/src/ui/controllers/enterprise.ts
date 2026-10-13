@@ -1,5 +1,8 @@
 // Control UI controller manages the enterprise inspection gateway state.
 import type {
+  EnterpriseBundlesExportResult,
+  EnterpriseBundlesImportResult,
+  EnterpriseBundlesPreviewResult,
   EnterpriseKnowledgeFoundationsListResult,
   EnterpriseKnowledgeFoundationSummary,
   EnterpriseObjectsListResult,
@@ -23,6 +26,7 @@ import type {
   ToolsCatalogResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
+import { enterpriseResumeRefusalMessage } from "../enterprise-resume.ts";
 import { GatewayNotConnectedError, GatewayRequestError } from "../gateway.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
@@ -31,31 +35,41 @@ import {
   addNodeOntologyAction,
   addNodeOntologyActionEffect,
   addNodeOntologyActionParameter,
+  addNodeOntologyConstraint,
   addNodeOntologyEntry,
   addNodeOntologyEntity,
   addNodeOntologyFunction,
   addNodeOntologyProperty,
   addNodeOntologyRelationship,
+  disableTreeMcpGovernance,
+  enableNodeMcpGovernance,
   removeNodeOntologyAction,
   removeNodeOntologyActionEffect,
   removeNodeOntologyActionParameter,
+  removeNodeOntologyConstraint,
   removeNodeOntologyEntity,
   removeNodeOntologyEntry,
   removeNodeOntologyFunction,
   removeNodeOntologyProperty,
   removeNodeOntologyRelationship,
-  setNodeGuidance,
+  removeTreeNode,
+  setTreeSettings,
+  setNodeBehavior,
+  moveTreeNode,
+  updateNodeOntologyMetadata,
   ONTOLOGY_EDIT_REASONS,
   type OntologyCardinalityName,
   type OntologyEditReason,
   type OntologyEffectKindName,
   type OntologyValueTypeName,
+  type TreeStructureEditReason,
   isValidEnterpriseId,
   isValidSkillName,
   type EditableTreeDefinition,
   insertChildNode,
   newNodeIdIssue,
   type NodeOntologyListField,
+  type NodeOntologyMetadataUpdate,
 } from "../views/enterprise-tree-edit.ts";
 import { parseMcpServerImport, type McpServerImportError } from "./mcp-server-import.ts";
 import {
@@ -63,10 +77,76 @@ import {
   isMissingOperatorReadScopeError,
 } from "./scope-errors.ts";
 
+export type EnterpriseTreeRemoveGuard =
+  | { expectedHash: string }
+  | { expectedInvalidFingerprint: string };
+
 /** The pending confirmation the Save/Remove modal is asking the operator about. */
-export type EnterpriseTreeConfirm = { kind: "save" } | { kind: "remove"; treeId: string };
+export type EnterpriseTreeConfirm =
+  | { kind: "save" }
+  | { kind: "remove"; treeId: string; guard: EnterpriseTreeRemoveGuard };
 
 export type EnterpriseTreeEditFormat = "yaml" | "json";
+
+export type EnterpriseTreeImportGuard = { createOnly: true } | { expectedHash: string } | null;
+
+type EnterpriseBundlePreviewSuccess = Extract<EnterpriseBundlesPreviewResult, { ok: true }>;
+
+/** Exact local bytes and the server review that must be confirmed together. */
+export type EnterpriseBundleDraft = {
+  fileName: string;
+  content: string;
+  format: EnterpriseTreeEditFormat;
+  preview: EnterpriseBundlePreviewSuccess;
+};
+
+export type EnterpriseBundleStatus = {
+  kind: "error" | "warning" | "success";
+  message: string;
+};
+
+export type EnterpriseGuidanceDraft = {
+  treeId: string;
+  nodeId: string;
+  expectedHash: string | null;
+  title: string;
+  parentId: string | null;
+  position: number;
+  description: string;
+  text: string;
+  contextHints: string[];
+  expectedOutput: string;
+  audit: boolean;
+  error: "title-empty" | "move-refused" | null;
+};
+
+export type EnterpriseTreeDraftError =
+  | "id-empty"
+  | "id-pattern"
+  | "id-duplicate"
+  | "version-empty"
+  | "name-empty"
+  | "triggers-empty"
+  | "priority-invalid"
+  | "root-id-empty"
+  | "root-id-pattern"
+  | "root-title-empty";
+
+export type EnterpriseTreeTrigger = "user" | "system" | "subagent";
+
+export type EnterpriseTreeDraft = {
+  mode: "create" | "settings";
+  expectedHash: string | null;
+  id: string;
+  version: string;
+  name: string;
+  description: string;
+  triggers: EnterpriseTreeTrigger[];
+  priority: string;
+  rootId: string;
+  rootTitle: string;
+  error: EnterpriseTreeDraftError | null;
+};
 
 /** Why a node-add draft was rejected; the view maps each to an i18n message. */
 export type EnterpriseNodeDraftError =
@@ -74,21 +154,21 @@ export type EnterpriseNodeDraftError =
   | "id-pattern"
   | "id-duplicate"
   | "title-empty"
-  | "parent-missing"
-  | "export-failed";
+  | "parent-missing";
 
 /**
  * An in-progress "add child node" form. Bound to `treeId` so a draft can never be
  * applied to a different tree that happens to share the parent node id (e.g. a
  * root named `root`); `parentId` is the node the child is added under. null when
- * no form is open. On submit the tree is re-exported, spliced, and loaded into the
- * raw editor for review + Save, so node creation reuses enterprise.trees.import.
+ * no form is open. On submit the tree is re-exported, spliced, and saved through
+ * the same whole-tree import path as the other visual editors.
  */
 export type EnterpriseNodeDraft = {
   treeId: string;
   parentId: string;
   id: string;
   title: string;
+  description: string;
   error: EnterpriseNodeDraftError | null;
 };
 
@@ -211,6 +291,8 @@ export type EnterpriseMcpDraft = {
    * refuses unless the entry is byte-identical to what was opened.
    */
   editingSnapshot: string | null;
+  /** Config revision that supplied an edited entry, including its redacted values. */
+  editingConfigHash: string | null;
   /**
    * Which half of the form submits. Typing the fields is the path for a server
    * an operator knows; `json` takes the snippet vendors actually publish, which
@@ -341,6 +423,7 @@ function emptyMcpDraft(): EnterpriseMcpDraft {
   return {
     editing: null,
     editingSnapshot: null,
+    editingConfigHash: null,
     mode: "fields",
     name: "",
     transport: "stdio",
@@ -357,6 +440,11 @@ function emptyMcpDraft(): EnterpriseMcpDraft {
 }
 
 export function beginEnterpriseMcpDraft(state: EnterpriseState) {
+  // The form owns unsaved credentials and launch settings. A second open action
+  // must not replace that draft before the operator explicitly cancels it.
+  if (state.enterpriseMcpDraft || state.enterpriseMcpRemoveConfirm) {
+    return;
+  }
   state.enterpriseMcpDraft = emptyMcpDraft();
 }
 
@@ -371,8 +459,13 @@ export function beginEnterpriseMcpDraft(state: EnterpriseState) {
  */
 export function beginEnterpriseMcpEdit(
   state: EnterpriseState,
-  params: { name: string; server: Record<string, unknown> },
+  params: { name: string; server: Record<string, unknown>; configHash?: string | null },
 ) {
+  // Lit updates after the click handler returns, so another still-visible row
+  // can be activated before its controls disable. Keep the draft at this boundary.
+  if (state.enterpriseMcpDraft || state.enterpriseMcpRemoveConfirm) {
+    return;
+  }
   const { server } = params;
   // Trimmed, matching resolveStdioMcpServerLaunchConfig: the embedded resolver
   // ignores a blank command and treats such an entry as HTTP, so seeding stdio
@@ -405,6 +498,7 @@ export function beginEnterpriseMcpEdit(
     // Serialized identity, so a refresh that repoints this name is caught even
     // though the name itself did not move.
     editingSnapshot: JSON.stringify(server),
+    editingConfigHash: params.configHash ?? null,
     name: params.name,
     // A command wins however the entry is labelled, matching
     // resolveMcpTransportConfig. Otherwise the transport this entry ALREADY
@@ -498,6 +592,8 @@ export function submitEnterpriseMcpDraft(
     existingNames: readonly string[];
     /** The registered entry being edited, so config this form does not render survives. */
     existingServer?: Record<string, unknown>;
+    /** Current config revision, used to detect changes hidden by redaction. */
+    currentConfigHash?: string | null;
     apply: (name: string, server: Record<string, unknown>) => void;
   },
 ) {
@@ -511,7 +607,14 @@ export function submitEnterpriseMcpDraft(
   // Checked before the mode dispatch: a paste can carry a redaction sentinel
   // too, so a JSON-mode edit against a changed entry combines the latest secret
   // with a stale URL exactly as the typed half would.
-  if (draft.editing && JSON.stringify(params.existingServer ?? null) !== draft.editingSnapshot) {
+  const configChanged =
+    draft.editingConfigHash !== null &&
+    params.currentConfigHash !== undefined &&
+    params.currentConfigHash !== draft.editingConfigHash;
+  if (
+    draft.editing &&
+    (configChanged || JSON.stringify(params.existingServer ?? null) !== draft.editingSnapshot)
+  ) {
     fail("entry-changed");
     return;
   }
@@ -539,12 +642,6 @@ export function submitEnterpriseMcpDraft(
   // write nothing and close as if it had worked.
   if (UNWRITABLE_SERVER_NAMES.has(name)) {
     fail("name-unsupported");
-    return;
-  }
-  // The registered entry changed under the form. Its stored header would be
-  // restored from the latest config while this draft supplies the old URL.
-  if (draft.editing && JSON.stringify(params.existingServer ?? null) !== draft.editingSnapshot) {
-    fail("entry-changed");
     return;
   }
   const entry = buildMcpServerEntry(draft, params.existingServer);
@@ -775,9 +872,16 @@ export type EnterpriseCatalogPhase = "unloaded" | "loading" | "ready";
  * a failed skill probe must not put an error banner on the Tools tab.
  */
 export type EnterpriseCatalogErrors = {
-  tools: string | null;
-  skills: string | null;
-  foundations: string | null;
+  /** undefined while unresolved, null after success, otherwise the failure. */
+  tools: string | null | undefined;
+  skills: string | null | undefined;
+  foundations: string | null | undefined;
+};
+
+export type EnterpriseListErrors = {
+  /** undefined while unresolved, null after success, otherwise the failure. */
+  runs: string | null | undefined;
+  trees: string | null | undefined;
 };
 
 export type EnterpriseState = {
@@ -786,6 +890,8 @@ export type EnterpriseState = {
   enterpriseLoading: boolean;
   enterpriseRuns: EnterpriseRunSummary[];
   enterpriseTrees: EnterpriseTreeSummary[];
+  enterpriseHistoryOnlyTreeIds: string[];
+  enterpriseListErrors: EnterpriseListErrors;
   enterpriseImportErrors: EnterpriseTreesListResult["importErrors"];
   enterpriseStoreError: string | null;
   enterpriseSelectedExecutionId: string | null;
@@ -808,21 +914,29 @@ export type EnterpriseState = {
   enterpriseNodeObjectsEntity: string | null;
   enterpriseNodeObjects: EnterpriseOntologyObject[];
   enterpriseNodeObjectsLoading: boolean;
+  enterpriseNodeObjectsError: string | null;
   enterpriseTreeEditing: boolean;
+  enterpriseVisualEditOriginal?: EnterpriseTreeDetail | null;
+  enterpriseTreeDraft: EnterpriseTreeDraft | null;
   // The id being edited, or null for a brand-new tree — distinguishes create
   // from edit so format switches reseed from the right source.
   enterpriseTreeEditTreeId: string | null;
   // The historical revision being edited, or null when editing the current
   // definition or a new tree — so format switches reseed from history.get.
   enterpriseTreeEditRevision: number | null;
+  enterpriseTreeEditGuard: EnterpriseTreeImportGuard;
   enterpriseTreeEditContent: string;
   enterpriseTreeEditFormat: EnterpriseTreeEditFormat;
   enterpriseTreeSaving: boolean;
   enterpriseTreeSaveIssues: EnterpriseTreeImportIssue[] | null;
+  enterpriseTreeWarnings: EnterpriseTreeImportIssue[] | null;
   enterpriseTreeSaveError: string | null;
   enterpriseTreeConfirm: EnterpriseTreeConfirm | null;
+  enterpriseBundleDraft: EnterpriseBundleDraft | null;
+  enterpriseBundleStatus: EnterpriseBundleStatus | null;
   enterpriseTreeVersions: EnterpriseTreeVersionSummary[];
   enterpriseTreeVersionsLoading: boolean;
+  enterpriseTreeVersionsError: string | null;
   // P5 dynamic node creation: the open "add child node" form, or null. Splices a
   // child into the tree definition and reuses the editor's import-to-save flow.
   enterpriseNodeDraft: EnterpriseNodeDraft | null;
@@ -830,13 +944,13 @@ export type EnterpriseState = {
   /** The binding chip whose detail card is open, or null. Pure view state. */
   enterpriseBindingDetail: EnterpriseBindingDetail | null;
   /**
-   * Unsaved role-prompt edit for one step. Held outside the tree detail because
+   * Unsaved behavior edit for one step. Held outside the tree detail because
    * that is a fetched snapshot the reload replaces; a draft has to survive it.
    * Carries its treeId: node ids are only unique WITHIN a tree (roots collide
    * constantly), so without it a draft from tree A would show under — and save
    * into — the same-named step of tree B.
    */
-  enterpriseGuidanceDraft: { treeId: string; nodeId: string; text: string } | null;
+  enterpriseGuidanceDraft: EnterpriseGuidanceDraft | null;
   /**
    * The one open ontology form. A single slot rather than one per kind: only one
    * can be filled in at a time, and a slot per kind would leave half-typed forms
@@ -844,6 +958,7 @@ export type EnterpriseState = {
    */
   enterpriseOntologyDraft: EnterpriseOntologyDraft | null;
   enterpriseMcpDraft: EnterpriseMcpDraft | null;
+  enterpriseMcpRemoveConfirm: string | null;
   // Catalogs of what a step can be bound TO: every tool the gateway exposes,
   // every installed skill, and every registered knowledge foundation. Read-only
   // reference data, loaded independently of the run/tree state.
@@ -869,35 +984,79 @@ export type EnterpriseState = {
 let listRequestSeq = 0;
 
 /** Load the recent-run list and the workflow-tree registry for the tab. */
-export async function loadEnterprise(state: EnterpriseState) {
+export async function loadEnterprise(
+  state: EnterpriseState,
+  waitFor: "all" | "runs" | "trees" = "all",
+) {
   if (!state.client || !state.connected) {
     return;
   }
+  const client = state.client;
   const requestSeq = ++listRequestSeq;
   state.enterpriseLoading = true;
   state.enterpriseError = null;
-  try {
-    const [runs, trees] = await Promise.all([
-      state.client.request<EnterpriseRunsListResult>("enterprise.runs.list", {}),
-      state.client.request<EnterpriseTreesListResult>("enterprise.trees.list", {}),
-    ]);
-    if (requestSeq !== listRequestSeq) {
-      return;
-    }
-    state.enterpriseRuns = runs.runs;
-    state.enterpriseTrees = trees.trees;
-    state.enterpriseImportErrors = trees.importErrors;
-    state.enterpriseStoreError = trees.storeError ?? null;
-  } catch (err) {
-    if (requestSeq !== listRequestSeq) {
-      return;
-    }
-    applyError(state, err);
-  } finally {
-    if (requestSeq === listRequestSeq) {
+  state.enterpriseListErrors = { runs: undefined, trees: undefined };
+  let pending = 2;
+  const finish = () => {
+    pending--;
+    if (requestSeq === listRequestSeq && pending === 0) {
       state.enterpriseLoading = false;
     }
-  }
+  };
+  const runs = Promise.resolve()
+    .then(() => client.request<EnterpriseRunsListResult>("enterprise.runs.list", {}))
+    .then(
+      (result) => {
+        if (requestSeq === listRequestSeq) {
+          state.enterpriseRuns = result.runs;
+          state.enterpriseListErrors = { ...state.enterpriseListErrors, runs: null };
+        }
+      },
+      (error: unknown) => {
+        if (requestSeq !== listRequestSeq) {
+          return;
+        }
+        if (isMissingOperatorReadScopeError(error)) {
+          applyError(state, error);
+          return;
+        }
+        state.enterpriseListErrors = { ...state.enterpriseListErrors, runs: String(error) };
+      },
+    )
+    .finally(finish);
+  const trees = Promise.resolve()
+    .then(() => client.request<EnterpriseTreesListResult>("enterprise.trees.list", {}))
+    .then(
+      (result) => {
+        if (requestSeq !== listRequestSeq) {
+          return;
+        }
+        state.enterpriseTrees = result.trees;
+        state.enterpriseHistoryOnlyTreeIds = result.historyOnlyTreeIds ?? [];
+        state.enterpriseListErrors = { ...state.enterpriseListErrors, trees: null };
+        state.enterpriseImportErrors = result.importErrors;
+        state.enterpriseStoreError = result.storeError ?? null;
+      },
+      (error: unknown) => {
+        if (requestSeq !== listRequestSeq) {
+          return;
+        }
+        if (isMissingOperatorReadScopeError(error)) {
+          applyError(state, error);
+          return;
+        }
+        state.enterpriseListErrors = { ...state.enterpriseListErrors, trees: String(error) };
+        // These rows describe the last successful registry snapshot. They are
+        // not safe mutation targets after a failed refresh.
+        state.enterpriseImportErrors = [];
+        state.enterpriseHistoryOnlyTreeIds = [];
+        state.enterpriseStoreError = null;
+      },
+    )
+    .finally(finish);
+  // Keep the returned promise useful to refresh/save callers, while each panel
+  // publishes as soon as ITS request settles instead of waiting for its sibling.
+  await (waitFor === "runs" ? runs : waitFor === "trees" ? trees : Promise.all([runs, trees]));
 }
 
 // Separate token: the catalogs race independently from the run/tree loads.
@@ -927,40 +1086,104 @@ export async function loadEnterpriseCatalogs(state: EnterpriseState) {
   const client = state.client;
   const requestSeq = ++catalogRequestSeq;
   state.enterpriseCatalogPhase = "loading";
-  const [tools, skills, foundations] = await Promise.allSettled([
-    client.request<ToolsCatalogResult>("tools.catalog", { includePlugins: true }),
-    client.request<SkillStatusReport | undefined>("skills.status", {}),
-    client.request<EnterpriseKnowledgeFoundationsListResult>(
-      "enterprise.knowledge.foundations.list",
-      {},
-    ),
-  ]);
-  // A newer load (tab switch, Refresh) supersedes this one; dropping the whole
-  // result keeps the three catalogs from mixing two generations.
-  if (requestSeq !== catalogRequestSeq) {
-    return;
-  }
-  state.enterpriseToolGroups = tools.status === "fulfilled" ? tools.value.groups : [];
-  state.enterpriseSkills = skills.status === "fulfilled" ? (skills.value?.skills ?? []) : [];
-  // Both handlers resolve the default agent when none is sent, and both report
-  // which one they answered for; keep it so the surfaces can say whose catalog
-  // this is instead of implying every agent sees the same tools and skills.
-  state.enterpriseCatalogAgentId =
-    (tools.status === "fulfilled" ? tools.value.agentId : null) ??
-    (skills.status === "fulfilled" ? (skills.value?.agentId ?? null) : null);
-  state.enterpriseFoundations =
-    foundations.status === "fulfilled" ? foundations.value.foundations : [];
   state.enterpriseCatalogErrors = {
-    tools:
-      tools.status === "rejected" ? catalogErrorMessage(tools.reason, "the tool catalog") : null,
-    skills:
-      skills.status === "rejected" ? catalogErrorMessage(skills.reason, "installed skills") : null,
-    foundations:
-      foundations.status === "rejected"
-        ? catalogErrorMessage(foundations.reason, "knowledge foundations")
-        : null,
+    tools: undefined,
+    skills: undefined,
+    foundations: undefined,
   };
-  state.enterpriseCatalogPhase = "ready";
+  state.enterpriseCatalogAgentId = null;
+  let pending = 3;
+  let toolsAgentId: string | null = null;
+  let skillsAgentId: string | null = null;
+  const updateAgentId = () => {
+    if (requestSeq === catalogRequestSeq) {
+      state.enterpriseCatalogAgentId = toolsAgentId ?? skillsAgentId;
+    }
+  };
+  const finish = () => {
+    pending--;
+    if (requestSeq === catalogRequestSeq && pending === 0) {
+      state.enterpriseCatalogPhase = "ready";
+    }
+  };
+  const tools = Promise.resolve()
+    .then(() => client.request<ToolsCatalogResult>("tools.catalog", { includePlugins: true }))
+    .then(
+      (result) => {
+        if (requestSeq !== catalogRequestSeq) {
+          return;
+        }
+        state.enterpriseToolGroups = result.groups;
+        state.enterpriseCatalogErrors = { ...state.enterpriseCatalogErrors, tools: null };
+        toolsAgentId = result.agentId ?? null;
+        updateAgentId();
+      },
+      (error: unknown) => {
+        if (requestSeq !== catalogRequestSeq) {
+          return;
+        }
+        state.enterpriseToolGroups = [];
+        state.enterpriseCatalogErrors = {
+          ...state.enterpriseCatalogErrors,
+          tools: catalogErrorMessage(error, "the tool catalog"),
+        };
+      },
+    )
+    .finally(finish);
+  const skills = Promise.resolve()
+    .then(() => client.request<SkillStatusReport | undefined>("skills.status", {}))
+    .then(
+      (result) => {
+        if (requestSeq !== catalogRequestSeq) {
+          return;
+        }
+        state.enterpriseSkills = result?.skills ?? [];
+        state.enterpriseCatalogErrors = { ...state.enterpriseCatalogErrors, skills: null };
+        skillsAgentId = result?.agentId ?? null;
+        updateAgentId();
+      },
+      (error: unknown) => {
+        if (requestSeq !== catalogRequestSeq) {
+          return;
+        }
+        state.enterpriseSkills = [];
+        state.enterpriseCatalogErrors = {
+          ...state.enterpriseCatalogErrors,
+          skills: catalogErrorMessage(error, "installed skills"),
+        };
+      },
+    )
+    .finally(finish);
+  const foundations = Promise.resolve()
+    .then(() =>
+      client.request<EnterpriseKnowledgeFoundationsListResult>(
+        "enterprise.knowledge.foundations.list",
+        {},
+      ),
+    )
+    .then(
+      (result) => {
+        if (requestSeq === catalogRequestSeq) {
+          state.enterpriseFoundations = result.foundations;
+          state.enterpriseCatalogErrors = {
+            ...state.enterpriseCatalogErrors,
+            foundations: null,
+          };
+        }
+      },
+      (error: unknown) => {
+        if (requestSeq !== catalogRequestSeq) {
+          return;
+        }
+        state.enterpriseFoundations = [];
+        state.enterpriseCatalogErrors = {
+          ...state.enterpriseCatalogErrors,
+          foundations: catalogErrorMessage(error, "knowledge foundations"),
+        };
+      },
+    )
+    .finally(finish);
+  await Promise.all([tools, skills, foundations]);
 }
 
 // Monotonic token so only the latest detail request wins. The selected id alone
@@ -968,28 +1191,6 @@ export async function loadEnterpriseCatalogs(state: EnterpriseState) {
 // Refresh while a detail load is pending), and gateway responses can resolve out
 // of order, so a bare id check would let an older response overwrite a newer one.
 let detailRequestSeq = 0;
-
-/** Fetch one execution's plan + governance trace for the inspector panel. */
-/**
- * Static `t()` calls per reason, not one interpolated key: the extractor reads
- * literals, so a computed key ships an untranslated string to every locale.
- */
-function resumeRefusalMessage(reason: EnterpriseRunsResumeResult["reason"]): string {
-  switch (reason) {
-    case "still-running":
-      return t("enterprise.resumeRefusedRunning");
-    case "no-session":
-      return t("enterprise.resumeRefusedNoSession");
-    case "no-steps-completed":
-      return t("enterprise.resumeRefusedNoSteps");
-    case "route-complete":
-      return t("enterprise.resumeRefusedRouteComplete");
-    case "transcript-rotated":
-      return t("enterprise.resumeRefusedRotated");
-    default:
-      return t("enterprise.resumeRefusedNotFound");
-  }
-}
 
 /**
  * Ask for an ended execution to be continued by the next run in its session.
@@ -1001,14 +1202,23 @@ function resumeRefusalMessage(reason: EnterpriseRunsResumeResult["reason"]): str
  * routes the same way".
  */
 export async function requestEnterpriseRunResume(state: EnterpriseState, executionId: string) {
-  if (!state.client || !state.connected || state.enterpriseResuming) {
-    return;
+  const run = state.enterpriseDetail;
+  if (
+    !state.client ||
+    !state.connected ||
+    state.enterpriseResuming ||
+    state.enterpriseSelectedExecutionId !== executionId ||
+    run?.executionId !== executionId ||
+    !run.sessionId
+  ) {
+    return null;
   }
   state.enterpriseResuming = true;
   state.enterpriseError = null;
   try {
     const res = await state.client.request<EnterpriseRunsResumeResult>("enterprise.runs.resume", {
       executionId,
+      sessionId: run.sessionId,
     });
     if (res.ok) {
       // Re-read rather than remember: the marker is one-shot and server-owned, so
@@ -1021,13 +1231,19 @@ export async function requestEnterpriseRunResume(state: EnterpriseState, executi
       if (state.enterpriseSelectedExecutionId === executionId) {
         await loadEnterpriseRunDetail(state, executionId);
       }
-      return;
+      return res;
     }
     // Every refusal is a state of the run, not a fault, so it reads as a reason
     // rather than a failure.
-    state.enterpriseError = resumeRefusalMessage(res.reason);
+    if (state.enterpriseSelectedExecutionId === executionId) {
+      state.enterpriseError = enterpriseResumeRefusalMessage(res.reason ?? "not-found");
+    }
+    return res;
   } catch (err) {
-    applyError(state, err);
+    if (state.enterpriseSelectedExecutionId === executionId) {
+      applyError(state, err);
+    }
+    return null;
   } finally {
     state.enterpriseResuming = false;
   }
@@ -1108,7 +1324,8 @@ async function loadEnterpriseRunTree(
     // override silently reveals a different built-in — both would pass a version
     // check while the nodes on screen are branches the run never governed. The
     // plan's own step list always renders; only the tree picture is withheld.
-    state.enterpriseRunTree = live && live.hash === run.treeHash ? live : null;
+    const trustworthy = !res.importError && !res.storeError;
+    state.enterpriseRunTree = trustworthy && live && live.hash === run.treeHash ? live : null;
   } catch {
     if (runSeq === detailRequestSeq) {
       state.enterpriseRunTree = null;
@@ -1124,6 +1341,11 @@ export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: s
   if (!state.client || !state.connected) {
     return;
   }
+  // Sidebar refreshes must not replace the visual draft with the saved tree.
+  // Its original hash remains the save guard until Save or Cancel ends editing.
+  if (state.enterpriseVisualEditOriginal?.id === treeId) {
+    return;
+  }
   // A save that imports a NEW tree opens it through this same path, so a node id
   // shared with the prior tree (e.g. "root") must not carry that selection across.
   const previousTreeId = state.enterpriseSelectedTreeId;
@@ -1133,6 +1355,7 @@ export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: s
   state.enterpriseTreeDetail = null;
   state.enterpriseTreeLoading = true;
   state.enterpriseTreeIssue = null;
+  state.enterpriseTreeWarnings = null;
   // Clear any prior banner (e.g. a transient runs.get failure); a successful
   // tree load must not render beneath a stale global error.
   state.enterpriseError = null;
@@ -1158,12 +1381,13 @@ export async function loadEnterpriseTreeDetail(state: EnterpriseState, treeId: s
     // A fallback (storeError/importError) or a missing tree means the ontology on
     // screen may not match the selection, so drop it rather than load rows.
     const authoritative = !res.storeError && !res.importError;
+    state.enterpriseTreeWarnings = authoritative ? (res.warnings ?? null) : null;
     if (!treeChanged && authoritative && res.tree) {
       // Same-tree reload (Refresh / re-save): keep the node selection but re-point
       // its instance rows at the freshly loaded ontology so they cannot go stale.
       reconcileNodeSelectionAfterReload(state, res.tree);
     } else {
-      clearEnterpriseNodeSelection(state);
+      dropEnterpriseNodeSelection(state);
     }
   } catch (err) {
     if (requestSeq !== treeRequestSeq) {
@@ -1200,23 +1424,67 @@ let editSeedSeq = 0;
  * it. Only an actual write takes a number here, so a superseded writer stays
  * silent while the current one still releases.
  */
-let treeSaveSeq = 0;
+let treeWriteSeq = 0;
+let treeExportSeq = 0;
+// Navigation may cancel a still-preparing visual edit. Once an existing tree's
+// write is on the wire, only THAT tree is held until the request settles and a
+// fresh reload starts; another tree remains navigable.
+const treeWritesInFlight = new WeakMap<EnterpriseState, { treeId: string }>();
+
+function holdTreeWriteNavigation(state: EnterpriseState, treeId: string | null): () => void {
+  if (!treeId) {
+    return () => {};
+  }
+  const write = { treeId };
+  treeWritesInFlight.set(state, write);
+  return () => {
+    if (treeWritesInFlight.get(state) === write) {
+      treeWritesInFlight.delete(state);
+    }
+  };
+}
+
+function clearTreeEditingState(state: EnterpriseState) {
+  if (state.enterpriseVisualEditOriginal?.id === state.enterpriseTreeDetail?.id) {
+    state.enterpriseTreeDetail = state.enterpriseVisualEditOriginal ?? state.enterpriseTreeDetail;
+  }
+  state.enterpriseVisualEditOriginal = null;
+  state.enterpriseTreeEditing = false;
+  state.enterpriseTreeDraft = null;
+  state.enterpriseTreeEditTreeId = null;
+  state.enterpriseTreeEditRevision = null;
+  state.enterpriseTreeEditGuard = null;
+  state.enterpriseTreeEditContent = "";
+  state.enterpriseTreeSaveIssues = null;
+  state.enterpriseTreeSaveError = null;
+  state.enterpriseTreeConfirm = null;
+  // A bundle may inline private knowledge. Never leave its source bytes in UI
+  // state after cancel, navigation, disconnect, permission loss, or apply.
+  state.enterpriseBundleDraft = null;
+  state.enterpriseBundleStatus = null;
+  clearEnterpriseNodeDrafts(state);
+}
 
 /** Discard any in-progress edit + confirmation without touching the selection. */
 function resetTreeEditing(state: EnterpriseState) {
   // Invalidate any in-flight seed so it cannot re-enter edit mode after this.
   editSeedSeq++;
-  state.enterpriseTreeEditing = false;
-  state.enterpriseTreeEditTreeId = null;
-  state.enterpriseTreeEditRevision = null;
-  state.enterpriseTreeEditContent = "";
-  state.enterpriseTreeSaveIssues = null;
-  state.enterpriseTreeSaveError = null;
-  state.enterpriseTreeConfirm = null;
+  clearTreeEditingState(state);
 }
 
 /** Select a tree for the visualizer/editor: cancel edits, load detail + history. */
 export function selectEnterpriseTree(state: EnterpriseState, treeId: string) {
+  const sameTree = state.enterpriseSelectedTreeId === treeId;
+  if (treeWritesInFlight.get(state)?.treeId === treeId) {
+    return;
+  }
+  if (sameTree && state.enterpriseTreeDetail?.id === treeId) {
+    // An explicit row click is also a cancel intent. Always advance the seed
+    // token, even before a slow file/export/history read has opened a draft.
+    resetTreeEditing(state);
+    clearEnterpriseNodeSelection(state);
+    return;
+  }
   // Switching trees abandons an unsaved edit of the previous one.
   resetTreeEditing(state);
   // A node selection belongs to the tree it was made in; a different tree's node
@@ -1238,11 +1506,10 @@ function clearEnterpriseNodeObjects(state: EnterpriseState) {
   state.enterpriseNodeObjectsEntity = null;
   state.enterpriseNodeObjects = [];
   state.enterpriseNodeObjectsLoading = false;
+  state.enterpriseNodeObjectsError = null;
 }
 
-function clearEnterpriseNodeSelection(state: EnterpriseState) {
-  clearEnterpriseNodeObjects(state);
-  state.enterpriseSelectedNodeId = null;
+function clearEnterpriseNodeDrafts(state: EnterpriseState) {
   // A node-add draft belongs to the selected node in its tree; a tree switch,
   // pruned node, or scope loss (every caller of this) invalidates it, so drop it
   // rather than let a stale form reappear under a same-named node elsewhere.
@@ -1251,11 +1518,58 @@ function clearEnterpriseNodeSelection(state: EnterpriseState) {
   state.enterpriseBindingPicker = null;
   // The detail card names a specific entry on a specific step; the step is gone.
   state.enterpriseBindingDetail = null;
-  // ...and for the role prompt. Unsaved text must not survive a tree switch, a
+  // ...and for step behavior. Unsaved text must not survive a tree switch, a
   // pruned node, or scope loss and then reappear under a same-named node
   // elsewhere — or be silently overwritten by editing a different node.
   state.enterpriseGuidanceDraft = null;
   state.enterpriseOntologyDraft = null;
+}
+
+function hasPendingEnterpriseNodeEdit(state: EnterpriseState): boolean {
+  return Boolean(
+    state.enterpriseNodeDraft ||
+    state.enterpriseBindingPicker ||
+    state.enterpriseGuidanceDraft ||
+    state.enterpriseOntologyDraft,
+  );
+}
+
+/** Reconcile write-only forms with a new gateway/authentication boundary. */
+export function reconcileEnterpriseEditAccess(state: EnterpriseState, canEdit: boolean) {
+  // MCP forms can hold plaintext credentials and are tied to the config revision
+  // and gateway identity that opened them. Every hello/access reconciliation
+  // invalidates that boundary, even when the new connection is also an admin.
+  state.enterpriseMcpDraft = null;
+  state.enterpriseMcpRemoveConfirm = null;
+  state.enterpriseBundleDraft = null;
+  state.enterpriseBundleStatus = null;
+  if (canEdit) {
+    return;
+  }
+  // Once import is on the wire it cannot be recalled. Hide write-only forms but
+  // keep the intent alive so its late result still refreshes or reports failure.
+  if (treeWritesInFlight.has(state)) {
+    clearTreeEditingState(state);
+  } else {
+    // Also invalidate an export/file read that has not opened a form yet. Its
+    // late result must not recreate a write-only editor after access was lost.
+    resetTreeEditing(state);
+  }
+}
+
+function clearEnterpriseNodeSelection(state: EnterpriseState) {
+  // Selection owns every visual draft. Invalidate an export already in flight
+  // before dropping the draft, or its late result can still replace the tree.
+  editSeedSeq++;
+  dropEnterpriseNodeSelection(state);
+}
+
+function dropEnterpriseNodeSelection(state: EnterpriseState) {
+  // Async detail reconciliation is housekeeping, not a newer editor intent. It
+  // may discard a node that vanished without cancelling a seed started meanwhile.
+  clearEnterpriseNodeObjects(state);
+  state.enterpriseSelectedNodeId = null;
+  clearEnterpriseNodeDrafts(state);
 }
 
 /**
@@ -1280,7 +1594,7 @@ function reconcileNodeSelectionAfterReload(state: EnterpriseState, tree: Enterpr
     return;
   }
   if (!tree.nodes.some((node) => node.id === nodeId)) {
-    clearEnterpriseNodeSelection(state);
+    dropEnterpriseNodeSelection(state);
     return;
   }
   const entities = nodeObjectEntityIds(tree, nodeId);
@@ -1300,11 +1614,20 @@ function reconcileNodeSelectionAfterReload(state: EnterpriseState, tree: Enterpr
  * auto-loads the first object type in its scope so the panel shows live data at
  * once; the entity list and this default derive from the same helper the view
  * renders chips from, so the highlighted chip always matches the loaded rows.
+ * Returns whether the graph may commit its optimistic local selection.
  */
-export function selectEnterpriseNode(state: EnterpriseState, nodeId: string | null) {
+export function selectEnterpriseNode(state: EnterpriseState, nodeId: string | null): boolean {
+  // The graph may outlive a dismissed write modal. Keep selection fixed while a
+  // whole-tree request is unsettled so navigation cannot hide its failure banner.
+  if (treeWritesInFlight.get(state)?.treeId === state.enterpriseSelectedTreeId) {
+    return false;
+  }
+  if (nodeId === state.enterpriseSelectedNodeId) {
+    return true;
+  }
   if (!nodeId) {
     clearEnterpriseNodeSelection(state);
-    return;
+    return true;
   }
   clearEnterpriseNodeSelection(state);
   state.enterpriseSelectedNodeId = nodeId;
@@ -1313,6 +1636,7 @@ export function selectEnterpriseNode(state: EnterpriseState, nodeId: string | nu
   if (defaultEntity) {
     void loadEnterpriseNodeObjects(state, nodeId, defaultEntity);
   }
+  return true;
 }
 
 /** Switch which entity type's instances the node inspector shows. */
@@ -1334,6 +1658,7 @@ async function loadEnterpriseNodeObjects(state: EnterpriseState, nodeId: string,
   state.enterpriseNodeObjectsEntity = entity;
   state.enterpriseNodeObjects = [];
   state.enterpriseNodeObjectsLoading = true;
+  state.enterpriseNodeObjectsError = null;
   try {
     const res = await state.client.request<EnterpriseObjectsListResult>("enterprise.objects.list", {
       treeId,
@@ -1351,9 +1676,7 @@ async function loadEnterpriseNodeObjects(state: EnterpriseState, nodeId: string,
     if (isMissingOperatorReadScopeError(err)) {
       applyError(state, err);
     } else {
-      // Instance load failures are non-fatal to the inspector: leave the type
-      // graph up and just show no rows rather than tearing down the panel.
-      state.enterpriseNodeObjects = [];
+      state.enterpriseNodeObjectsError = String(err);
     }
   } finally {
     if (requestSeq === nodeObjectsRequestSeq) {
@@ -1373,6 +1696,7 @@ export async function loadEnterpriseTreeVersions(state: EnterpriseState, treeId:
   // new tree with an old revision number.
   state.enterpriseTreeVersions = [];
   state.enterpriseTreeVersionsLoading = true;
+  state.enterpriseTreeVersionsError = null;
   try {
     const res = await state.client.request<EnterpriseTreesHistoryListResult>(
       "enterprise.trees.history.list",
@@ -1392,8 +1716,7 @@ export async function loadEnterpriseTreeVersions(state: EnterpriseState, treeId:
       applyError(state, err);
       return;
     }
-    // Otherwise history is auxiliary; a load failure just empties the panel.
-    state.enterpriseTreeVersions = [];
+    state.enterpriseTreeVersionsError = String(err);
   } finally {
     if (requestSeq === versionsRequestSeq) {
       state.enterpriseTreeVersionsLoading = false;
@@ -1472,9 +1795,10 @@ function applyEditorSeed(
   format: EnterpriseTreeEditFormat,
   treeId: string | null,
   revision: number | null,
+  guard: EnterpriseTreeImportGuard,
   result: SeedResult,
 ) {
-  if (seedSeq !== editSeedSeq) {
+  if (seedSeq !== editSeedSeq || !state.client || !state.connected) {
     return;
   }
   if (!result.ok) {
@@ -1484,9 +1808,14 @@ function applyEditorSeed(
     }
     return;
   }
+  if (state.enterpriseVisualEditOriginal) {
+    state.enterpriseTreeDetail = state.enterpriseVisualEditOriginal;
+    state.enterpriseVisualEditOriginal = null;
+  }
   state.enterpriseTreeEditFormat = format;
   state.enterpriseTreeEditTreeId = treeId;
   state.enterpriseTreeEditRevision = revision;
+  state.enterpriseTreeEditGuard = guard;
   state.enterpriseTreeSaveIssues = null;
   state.enterpriseTreeSaveError = null;
   state.enterpriseTreeEditContent = result.content;
@@ -1494,27 +1823,392 @@ function applyEditorSeed(
 }
 
 /** Enter edit mode for the selected tree, seeding the editor from its export. */
-export async function beginEditEnterpriseTree(state: EnterpriseState) {
+export async function beginEditEnterpriseTree(state: EnterpriseState, visual = false) {
   const treeId = state.enterpriseSelectedTreeId;
-  if (!treeId) {
+  const tree = state.enterpriseTreeDetail;
+  if (!treeId || tree?.id !== treeId || !tree.hash) {
     return;
   }
-  const format = state.enterpriseTreeEditFormat;
+  const format = visual ? "json" : state.enterpriseTreeEditFormat;
+  resetTreeEditing(state);
   const seedSeq = ++editSeedSeq;
   const result = await fetchExportContent(state, treeId, format);
-  applyEditorSeed(state, seedSeq, format, treeId, null, result);
+  applyEditorSeed(state, seedSeq, format, treeId, null, { expectedHash: tree.hash }, result);
+  if (visual && result.ok && seedSeq === editSeedSeq && state.enterpriseTreeEditing) {
+    state.enterpriseVisualEditOriginal = tree;
+  }
 }
 
-/** Open the editor on a blank template to import a brand-new tree. */
+/** Open the guided form for a brand-new work-map. */
 export function beginNewEnterpriseTree(state: EnterpriseState) {
-  // Supersede any in-flight seed so it cannot overwrite the new-tree template.
+  resetTreeEditing(state);
+  clearEnterpriseNodeSelection(state);
+  state.enterpriseTreeDraft = {
+    mode: "create",
+    expectedHash: null,
+    id: "",
+    version: "1.0.0",
+    name: "",
+    description: "",
+    triggers: ["user"],
+    priority: "",
+    rootId: "",
+    rootTitle: "",
+    error: null,
+  };
+}
+
+/** Open the guided settings form for the selected work-map. */
+export function beginEditEnterpriseTreeSettings(state: EnterpriseState) {
+  const tree = state.enterpriseTreeDetail;
+  if (!tree?.hash) {
+    return;
+  }
+  resetTreeEditing(state);
+  const triggers = (tree.match?.triggers ?? ["user"]).filter(
+    (trigger): trigger is EnterpriseTreeTrigger =>
+      trigger === "user" || trigger === "system" || trigger === "subagent",
+  );
+  state.enterpriseTreeDraft = {
+    mode: "settings",
+    expectedHash: tree.hash,
+    id: tree.id,
+    version: tree.version,
+    name: tree.name,
+    description: tree.description ?? "",
+    triggers: triggers.length > 0 ? triggers : ["user"],
+    priority: tree.match?.priority === undefined ? "" : String(tree.match.priority),
+    rootId: "",
+    rootTitle: "",
+    error: null,
+  };
+}
+
+export function editEnterpriseTreeDraft(
+  state: EnterpriseState,
+  patch: Partial<Omit<EnterpriseTreeDraft, "error">>,
+) {
+  if (!state.enterpriseTreeDraft || state.enterpriseTreeSaving) {
+    return;
+  }
+  state.enterpriseTreeDraft = { ...state.enterpriseTreeDraft, ...patch, error: null };
+}
+
+export function cancelEnterpriseTreeDraft(state: EnterpriseState) {
+  // Cancel the export/edit stage. An import already on the wire cannot be recalled;
+  // closing then only dismisses the form while its result still reconciles.
+  if (!treeWritesInFlight.has(state)) {
+    editSeedSeq++;
+  }
+  state.enterpriseTreeDraft = null;
+}
+
+/** Validate the guided fields, then reuse the existing reviewed import flow. */
+export async function submitEnterpriseTreeDraft(state: EnterpriseState) {
+  const draft = state.enterpriseTreeDraft;
+  if (!draft || state.enterpriseTreeSaving) {
+    return;
+  }
+  const id = draft.id.trim();
+  const version = draft.version.trim();
+  const name = draft.name.trim();
+  const description = draft.description.trim();
+  const priorityText = draft.priority.trim();
+  const priority = priorityText ? Number(priorityText) : undefined;
+  const rootId = draft.rootId.trim();
+  const rootTitle = draft.rootTitle.trim();
+  const fail = (error: EnterpriseTreeDraftError) => {
+    state.enterpriseTreeDraft = { ...draft, error };
+  };
+  if (draft.mode === "create") {
+    const idIssue = newNodeIdIssue(id, new Set(state.enterpriseTrees.map((tree) => tree.id)));
+    if (idIssue) {
+      fail(
+        idIssue === "empty" ? "id-empty" : idIssue === "pattern" ? "id-pattern" : "id-duplicate",
+      );
+      return;
+    }
+  }
+  if (!version) {
+    fail("version-empty");
+    return;
+  }
+  if (!name) {
+    fail("name-empty");
+    return;
+  }
+  if (draft.triggers.length === 0) {
+    fail("triggers-empty");
+    return;
+  }
+  if (priority !== undefined && !Number.isSafeInteger(priority)) {
+    fail("priority-invalid");
+    return;
+  }
+  if (draft.mode === "settings") {
+    await applyEnterpriseTreeEdit(
+      state,
+      (definition) =>
+        setTreeSettings(definition, {
+          version,
+          name,
+          description,
+          triggers: draft.triggers,
+          priority,
+        }),
+      {
+        expectedHash: draft.expectedHash,
+        owner: "tree",
+        onSaved: () => {
+          if (state.enterpriseTreeDraft === draft) {
+            state.enterpriseTreeDraft = null;
+          }
+        },
+      },
+    );
+    return;
+  }
+  const rootIdIssue = newNodeIdIssue(rootId, new Set());
+  if (rootIdIssue) {
+    fail(rootIdIssue === "empty" ? "root-id-empty" : "root-id-pattern");
+    return;
+  }
+  if (!rootTitle) {
+    fail("root-title-empty");
+    return;
+  }
+  const definition = {
+    schema: "clawworks.workflow-tree",
+    schemaVersion: 1,
+    id,
+    version,
+    name,
+    ...(description ? { description } : {}),
+    match: {
+      triggers: draft.triggers,
+      ...(priority !== undefined ? { priority } : {}),
+    },
+    root: { id: rootId, title: rootTitle },
+  };
   editSeedSeq++;
-  state.enterpriseTreeSaveIssues = null;
-  state.enterpriseTreeSaveError = null;
+  state.enterpriseTreeDraft = null;
   state.enterpriseTreeEditTreeId = null;
   state.enterpriseTreeEditRevision = null;
-  state.enterpriseTreeEditContent = treeTemplate(state.enterpriseTreeEditFormat);
+  state.enterpriseTreeEditGuard = { createOnly: true };
+  state.enterpriseTreeEditFormat = "json";
+  state.enterpriseTreeEditContent = `${JSON.stringify(definition, null, 2)}\n`;
   state.enterpriseTreeEditing = true;
+}
+
+function formatBundleIssues(issues: readonly EnterpriseTreeImportIssue[]): string {
+  return issues.map((issue) => `${issue.path ? `${issue.path}: ` : ""}${issue.message}`).join("; ");
+}
+
+/** Read a bundle and ask the gateway for a complete, non-mutating review. */
+export async function previewEnterpriseBundleFile(
+  state: EnterpriseState,
+  file: Pick<File, "name" | "text">,
+) {
+  if (!state.client || !state.connected || state.enterpriseTreeSaving) {
+    return;
+  }
+  resetTreeEditing(state);
+  clearEnterpriseNodeSelection(state);
+  const previewIntent = editSeedSeq;
+  const client = state.client;
+  state.enterpriseBundleStatus = null;
+  try {
+    const content = await file.text();
+    const format: EnterpriseTreeEditFormat = file.name.toLowerCase().endsWith(".json")
+      ? "json"
+      : "yaml";
+    if (
+      previewIntent !== editSeedSeq ||
+      state.client !== client ||
+      !state.connected ||
+      state.enterpriseTreeSaving
+    ) {
+      return;
+    }
+    const preview = await client.request<EnterpriseBundlesPreviewResult>(
+      "enterprise.bundles.preview",
+      { content, format },
+    );
+    if (previewIntent !== editSeedSeq || state.client !== client || !state.connected) {
+      return;
+    }
+    if (!preview.ok) {
+      state.enterpriseBundleStatus = {
+        kind: "error",
+        message: t("enterprise.bundle.previewRejected", {
+          issues: formatBundleIssues(preview.issues),
+        }),
+      };
+      return;
+    }
+    state.enterpriseBundleDraft = { fileName: file.name, content, format, preview };
+  } catch (error) {
+    if (previewIntent === editSeedSeq && state.client === client && state.connected) {
+      state.enterpriseBundleStatus = { kind: "error", message: String(error) };
+    }
+  }
+}
+
+/** Close the review and discard its potentially sensitive inlined content. */
+export function cancelEnterpriseBundlePreview(state: EnterpriseState) {
+  if (state.enterpriseTreeSaving) {
+    return;
+  }
+  editSeedSeq++;
+  state.enterpriseBundleDraft = null;
+}
+
+/** Apply only the exact bytes and tree state that the open preview reviewed. */
+export async function applyEnterpriseBundle(state: EnterpriseState) {
+  const draft = state.enterpriseBundleDraft;
+  const tree = draft?.preview.trees[0];
+  if (!draft || !tree || !state.client || !state.connected || state.enterpriseTreeSaving) {
+    return;
+  }
+  const client = state.client;
+  const selectedAtWrite = state.enterpriseSelectedTreeId;
+  const applyIntent = ++editSeedSeq;
+  const writeToken = ++treeWriteSeq;
+  const ownsScreen = () =>
+    writeToken === treeWriteSeq &&
+    applyIntent === editSeedSeq &&
+    selectedAtWrite === state.enterpriseSelectedTreeId;
+  const releaseLock = () => {
+    if (writeToken === treeWriteSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+  };
+  state.enterpriseTreeSaving = true;
+  state.enterpriseBundleDraft = null;
+  state.enterpriseBundleStatus = null;
+  const releaseNavigation = holdTreeWriteNavigation(state, tree.id);
+  try {
+    const guard = tree.currentHash
+      ? { expectedHash: tree.currentHash }
+      : { createOnly: true as const };
+    const result = await client.request<EnterpriseBundlesImportResult>(
+      "enterprise.bundles.import",
+      {
+        content: draft.content,
+        format: draft.format,
+        reviewToken: draft.preview.reviewToken,
+        ...guard,
+      },
+    );
+    if (!result.ok) {
+      if (ownsScreen()) {
+        state.enterpriseBundleStatus = {
+          kind: "error",
+          message: t("enterprise.bundle.applyRejected", {
+            issues: formatBundleIssues(result.issues),
+          }),
+        };
+      }
+      return;
+    }
+    if (ownsScreen()) {
+      state.enterpriseBundleStatus = {
+        kind: "success",
+        message: t("enterprise.bundle.applied", { treeId: tree.id }),
+      };
+    }
+    const refresh = refreshAfterTreeWrite(state, tree.id, selectedAtWrite, applyIntent);
+    releaseLock();
+    releaseNavigation();
+    await refresh;
+  } catch (error) {
+    if (ownsScreen()) {
+      state.enterpriseBundleStatus = {
+        kind: "error",
+        message: t("enterprise.bundle.applyUnknown", { message: String(error) }),
+      };
+    }
+  } finally {
+    releaseLock();
+    releaseNavigation();
+  }
+}
+
+/** Export one reviewed work-map bundle and surface any portability gaps. */
+export async function exportEnterpriseBundle(
+  state: EnterpriseState,
+  treeId: string,
+  format: EnterpriseTreeEditFormat,
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const client = state.client;
+  const exportSeq = ++treeExportSeq;
+  const editIntent = editSeedSeq;
+  const ownsScreen = () =>
+    exportSeq === treeExportSeq &&
+    editIntent === editSeedSeq &&
+    state.client === client &&
+    state.connected &&
+    state.enterpriseSelectedTreeId === treeId;
+  try {
+    const result = await client.request<EnterpriseBundlesExportResult>(
+      "enterprise.bundles.export",
+      { treeId, format },
+    );
+    if (!ownsScreen()) {
+      return;
+    }
+    if (!result.ok) {
+      state.enterpriseBundleStatus = { kind: "error", message: result.reason };
+      return;
+    }
+    triggerDownload(`${treeId}.bundle.${format}`, result.content);
+    const gaps = [
+      ...result.skippedFoundations.map((item) => `${item.id} (${item.reason})`),
+      ...(result.impliedAllowAllKnowledge ? [t("enterprise.bundle.exportImplicitKnowledge")] : []),
+    ];
+    state.enterpriseBundleStatus = gaps.length
+      ? {
+          kind: "warning",
+          message: t("enterprise.bundle.exportWarning", { warnings: gaps.join(", ") }),
+        }
+      : {
+          kind: "success",
+          message: t("enterprise.bundle.exported", { treeId }),
+        };
+  } catch (error) {
+    if (ownsScreen()) {
+      state.enterpriseBundleStatus = { kind: "error", message: String(error) };
+    }
+  }
+}
+
+/** Load a local YAML/JSON definition into the existing reviewed import flow. */
+export async function importEnterpriseTreeFile(
+  state: EnterpriseState,
+  file: Pick<File, "name" | "text">,
+) {
+  resetTreeEditing(state);
+  clearEnterpriseNodeSelection(state);
+  const readIntent = editSeedSeq;
+  state.enterpriseError = null;
+  try {
+    const content = await file.text();
+    if (readIntent === editSeedSeq && state.client && state.connected) {
+      state.enterpriseTreeEditTreeId = null;
+      state.enterpriseTreeEditRevision = null;
+      state.enterpriseTreeEditGuard = { createOnly: true };
+      state.enterpriseTreeEditFormat = file.name.toLowerCase().endsWith(".json") ? "json" : "yaml";
+      state.enterpriseTreeEditContent = content;
+      state.enterpriseTreeEditing = true;
+    }
+  } catch (error) {
+    if (readIntent === editSeedSeq) {
+      state.enterpriseError = String(error);
+    }
+  }
 }
 
 export function setEnterpriseTreeEditContent(state: EnterpriseState, content: string) {
@@ -1536,30 +2230,49 @@ const NODE_ID_DRAFT_ERROR: Record<
 /** Open the "add child node" form under `parentId` (the selected node). */
 export function beginAddEnterpriseNode(state: EnterpriseState, parentId: string) {
   const treeId = state.enterpriseTreeDetail?.id;
-  if (!treeId) {
+  if (
+    !state.enterpriseVisualEditOriginal ||
+    !treeId ||
+    state.enterpriseTreeSaving ||
+    hasPendingEnterpriseNodeEdit(state)
+  ) {
     return;
   }
-  state.enterpriseNodeDraft = { treeId, parentId, id: "", title: "", error: null };
+  editSeedSeq++;
+  state.enterpriseNodeDraft = {
+    treeId,
+    parentId,
+    id: "",
+    title: "",
+    description: "",
+    error: null,
+  };
 }
 
 /** Update the open draft's fields; any prior error clears as the operator edits. */
 export function editEnterpriseNodeDraft(
   state: EnterpriseState,
-  patch: { id?: string; title?: string },
+  patch: { id?: string; title?: string; description?: string },
 ) {
   const draft = state.enterpriseNodeDraft;
-  if (!draft) {
+  if (!draft || state.enterpriseTreeSaving) {
     return;
   }
+  editSeedSeq++;
   state.enterpriseNodeDraft = {
     ...draft,
     ...(patch.id !== undefined ? { id: patch.id } : {}),
     ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.description !== undefined ? { description: patch.description } : {}),
     error: null,
   };
 }
 
 export function cancelAddEnterpriseNode(state: EnterpriseState) {
+  if (state.enterpriseTreeSaving) {
+    return;
+  }
+  editSeedSeq++;
   state.enterpriseNodeDraft = null;
 }
 
@@ -1572,11 +2285,8 @@ function failNodeDraft(
 }
 
 /**
- * Validate the draft, then splice a bare child into the tree's CANONICAL nested
- * definition (re-exported as JSON — the flat detail is lossy and JSON avoids
- * pulling a YAML parser into the UI) and load the result into the raw editor.
- * The operator reviews it and Saves through the existing confirm ->
- * enterprise.trees.import flow, so node creation adds no second write path.
+ * Validate the draft, then splice the child into the canonical nested definition
+ * and save through the shared export -> import path used by visual edits.
  */
 export async function submitAddEnterpriseNode(state: EnterpriseState) {
   const draft = state.enterpriseNodeDraft;
@@ -1588,6 +2298,7 @@ export async function submitAddEnterpriseNode(state: EnterpriseState) {
   }
   const id = draft.id.trim();
   const title = draft.title.trim();
+  const description = draft.description.trim();
   // Validate client-side against the import contract so the common mistakes show
   // in the form, not as a raw-editor issue after a whole-tree-replace attempt.
   const existingIds = new Set(tree.nodes.map((node) => node.id));
@@ -1604,43 +2315,37 @@ export async function submitAddEnterpriseNode(state: EnterpriseState) {
     failNodeDraft(state, draft, "parent-missing");
     return;
   }
-  // Claim the editor seed intent: a competing Edit/New/history load started while
-  // the export is in flight supersedes this add, and applyEditorSeed re-checks it.
-  const seedSeq = ++editSeedSeq;
-  const exported = await fetchExportContent(state, tree.id, "json");
-  // Every draft mutation (edit/cancel/reopen) REPLACES the object, so an identity
-  // check rejects a submit whose form changed during the export — its captured
-  // id/title/parent would be stale. The seed token catches a competing editor load.
-  if (seedSeq !== editSeedSeq || state.enterpriseNodeDraft !== draft) {
-    return;
-  }
-  if (!exported.ok) {
-    // A scope loss already cleared governed data + set the global banner.
-    if (!exported.scopeCleared) {
-      failNodeDraft(state, draft, "export-failed");
-    }
-    return;
-  }
-  const definition = parseTreeDefinition(exported.content);
-  if (!definition) {
-    failNodeDraft(state, draft, "export-failed");
-    return;
-  }
-  const spliced = insertChildNode(definition, draft.parentId, { id, title });
-  if (!spliced.ok) {
-    // Lost a race with a concurrent change to the definition since the detail load.
-    failNodeDraft(
-      state,
-      draft,
-      spliced.reason === "duplicate-id" ? "id-duplicate" : "parent-missing",
-    );
-    return;
-  }
-  state.enterpriseNodeDraft = null;
-  applyEditorSeed(state, seedSeq, "json", tree.id, null, {
-    ok: true,
-    content: `${JSON.stringify(spliced.definition, null, 2)}\n`,
-  });
+  await applyEnterpriseTreeEdit(
+    state,
+    (definition) => {
+      const spliced = insertChildNode(definition, draft.parentId, {
+        id,
+        title,
+        ...(description ? { description } : {}),
+      });
+      if (spliced.ok) {
+        return spliced;
+      }
+      return {
+        ok: false,
+        reason: spliced.reason === "duplicate-id" ? "duplicate-entry" : "node-not-found",
+      };
+    },
+    {
+      owner: "node",
+      onRefused: (reason) =>
+        failNodeDraft(
+          state,
+          draft,
+          reason === "duplicate-entry" ? "id-duplicate" : "parent-missing",
+        ),
+      onSaved: () => {
+        if (state.enterpriseNodeDraft === draft) {
+          state.enterpriseNodeDraft = null;
+        }
+      },
+    },
+  );
 }
 
 /** Open the step-binding form for `field` on `nodeId` in the selected tree. */
@@ -1650,9 +2355,15 @@ export function openEnterpriseBindingPicker(
   field: NodeOntologyListField,
 ) {
   const treeId = state.enterpriseTreeDetail?.id;
-  if (!treeId) {
+  if (
+    !state.enterpriseVisualEditOriginal ||
+    !treeId ||
+    state.enterpriseTreeSaving ||
+    hasPendingEnterpriseNodeEdit(state)
+  ) {
     return;
   }
+  editSeedSeq++;
   state.enterpriseBindingPicker = {
     treeId,
     nodeId,
@@ -1724,11 +2435,8 @@ export function cancelEnterpriseBindingPicker(state: EnterpriseState) {
 }
 
 /**
- * Apply the picked entries to the step and save.
- *
- * Splices every selection into ONE exported definition and imports once, so a
- * multi-entry add is a single revision rather than one per value — and a partial
- * failure cannot leave half the picks written.
+ * Apply the picked entries atomically to the local draft. A failed splice must
+ * not leave half the selections applied; Save owns the eventual import.
  */
 export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
   const picker = state.enterpriseBindingPicker;
@@ -1743,6 +2451,10 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
     // operator's detach or role-prompt save would vanish silently.
     state.enterpriseTreeSaving
   ) {
+    return;
+  }
+  if (!tree.hash) {
+    state.enterpriseBindingPicker = { ...picker, failure: { kind: "export-failed" } };
     return;
   }
   const custom = picker.custom.trim();
@@ -1775,113 +2487,30 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
     state.enterpriseBindingPicker = { ...picker, failure: { kind: "node-missing" } };
     return;
   }
-  let pending: EnterpriseBindingPicker = { ...picker, phase: "preparing", failure: null };
-  state.enterpriseBindingPicker = pending;
-  // Captured BEFORE the write: the dialog is dismissable while it runs, so the
-  // operator can navigate to another tree meanwhile. Reading the selection after
-  // the response would record THEIR choice and then undo it.
-  const selectedAtStart = state.enterpriseSelectedTreeId;
-  // Claim the edit intent, the same token the editor's save path takes. An Edit,
-  // history restore, or add-child seed already awaiting its own export would
-  // otherwise finish holding a definition from BEFORE this binding, and saving
-  // that whole-tree replacement later would silently drop it — re-widening a
-  // governance allowlist in the process.
-  const editIntent = ++editSeedSeq;
-  const settle = (next: EnterpriseBindingPicker | null) => {
-    // Only settle the picker this call started: a cancel or a newly opened picker
-    // during the await owns the slot now.
-    if (state.enterpriseBindingPicker === pending) {
-      state.enterpriseBindingPicker = next;
-    }
-  };
-  const exported = await fetchExportContent(state, tree.id, "json");
-  if (!exported.ok) {
-    settle(
-      exported.scopeCleared
-        ? null
-        : { ...pending, phase: "idle", failure: { kind: "export-failed" } },
-    );
+  if (!state.enterpriseVisualEditOriginal || !state.enterpriseTreeEditing) {
     return;
   }
-  const definition = parseTreeDefinition(exported.content);
+  const definition = parseTreeDefinition(state.enterpriseTreeEditContent);
   if (!definition) {
-    settle({ ...pending, phase: "idle", failure: { kind: "export-failed" } });
-    return;
-  }
-  // The export awaited. If this picker was dismissed (or replaced) meanwhile, or
-  // a newer edit claimed the intent, stop before writing: a later edit on the
-  // same tree would otherwise be overwritten by this whole-tree replace built
-  // from the older export.
-  if (state.enterpriseBindingPicker !== pending || editIntent !== editSeedSeq) {
+    state.enterpriseBindingPicker = { ...picker, failure: { kind: "export-failed" } };
     return;
   }
   let spliced: EditableTreeDefinition = definition;
   for (const value of values) {
     const result = addNodeOntologyEntry(spliced, picker.nodeId, picker.field, value);
     if (!result.ok) {
-      settle({
-        ...pending,
-        phase: "idle",
-        failure: {
-          kind: result.reason === "duplicate-entry" ? "entry-duplicate" : "node-missing",
-        },
-      });
+      state.enterpriseBindingPicker = {
+        ...picker,
+        failure: { kind: result.reason === "duplicate-entry" ? "entry-duplicate" : "node-missing" },
+      };
       return;
     }
     spliced = result.definition;
   }
-  // Past this point the server has the request, so closing cannot recall it.
-  const writing: EnterpriseBindingPicker = { ...pending, phase: "writing" };
-  state.enterpriseBindingPicker = writing;
-  pending = writing;
-  const imported = await importTreeDefinition(state, spliced);
-  if (imported.status !== "saved") {
-    // The export already succeeded and no editor opens, so "could not load the
-    // definition" would point at the wrong step; these say the write failed.
-    if (state.enterpriseBindingPicker === pending) {
-      settle({ ...pending, phase: "idle", failure: importFailure(imported) });
-      return;
-    }
-    // Closing during the write leaves nothing to settle into, and the dialog said
-    // the save would still land, so the failure has to reach the tree's banner.
-    // That banner is shared: it hangs beside the SELECTED tree and inside whatever
-    // draft the editor holds. An operator who moved on — another tree, or New Tree,
-    // which keeps this selection while replacing the draft — would read it as a
-    // failure of what is now in front of them, so a superseded write reports
-    // nowhere rather than blaming the wrong work-map.
-    if (state.enterpriseSelectedTreeId !== picker.treeId || editIntent !== editSeedSeq) {
-      return;
-    }
-    state.enterpriseTreeSaveError = importFailureText(imported);
-    return;
-  }
-  // Close as soon as the WRITE lands, before the reloads. Those are separate
-  // requests with no client-side timeout, so keeping the dialog disabled until
-  // they answer would let one slow list call hold the whole screen modal — with
-  // Cancel and Escape ignored — over a binding that is already saved. Closing
-  // here also lets the dialog hand focus back while its trigger still exists.
-  settle(null);
-  // An earlier export/seed failure left its banner beside the tree; the write
-  // that just succeeded makes it stale, and leaving it up reads as this add
-  // having failed.
-  state.enterpriseTreeSaveError = null;
-  state.enterpriseTreeSaveIssues = null;
-  await refreshAfterTreeWrite(state, imported.treeId, selectedAtStart);
+  stageEnterpriseTreeDefinition(state, spliced);
+  state.enterpriseBindingPicker = null;
 }
 
-/**
- * Detach one entry from a step's binding.
- *
- * Takes the same export→edit→import route as the capability toggle rather than
- * adding a third write path: one whole-tree replace, one revision the version
- * history can restore, and the same edit-intent guard so a concurrent editor
- * save cannot be silently dropped by this one.
- *
- * No dialog. The picker needs one because it collects a selection; a removal is
- * already a specific entry on a specific step, and the revision history is the
- * undo. Widening a governance scope IS what this does, though, so it reports
- * failures on the tree banner rather than failing quietly.
- */
 /**
  * An open ontology form, tagged by what it declares.
  *
@@ -1889,15 +2518,20 @@ export async function submitEnterpriseBindingPicker(state: EnterpriseState) {
  * repeat across trees, so a draft that named only the entity could be applied to
  * the wrong work-map entirely.
  */
-export type EnterpriseOntologyDraftBody =
-  | { kind: "entity"; nodeId: string; id: string; title: string }
+export type EnterpriseOntologyToolsMode = "all" | "selected" | "none";
+
+export type EnterpriseOntologyDraftBody = (
+  | { kind: "entity"; nodeId: string; id: string; title: string; description: string }
   | {
       kind: "property";
       nodeId: string;
       entityId: string;
+      entityIndex: number;
       id: string;
       type: OntologyValueTypeName;
       primaryKey: boolean;
+      required: boolean;
+      description: string;
     }
   | {
       kind: "relationship";
@@ -1906,38 +2540,64 @@ export type EnterpriseOntologyDraftBody =
       from: string;
       to: string;
       cardinality: OntologyCardinalityName;
+      inverse: string;
+      description: string;
     }
   // The two AIP verbs. An action is declared bare and then given its effects and
   // parameters, the way an object type is declared and then given properties:
   // each effect has to be checked against what the step can address, so they
   // cannot be collected in one form without guessing.
-  | { kind: "action"; nodeId: string; id: string; title: string }
+  | {
+      kind: "action";
+      nodeId: string;
+      id: string;
+      title: string;
+      description: string;
+      toolsMode: EnterpriseOntologyToolsMode;
+      tools: string[];
+      preconditions: string[];
+    }
   | {
       kind: "action-effect";
       nodeId: string;
       actionId: string;
+      actionIndex: number;
       entity: string;
       effectKind: OntologyEffectKindName;
+      description: string;
     }
   // The two effects that name something other than an object type: a TOOL the
   // action performs outside this workflow, and a RELATIONSHIP it relates two
   // objects over. Separate drafts rather than more fields on `action-effect`,
   // because each collects a different thing and the form has to ask for it.
-  | { kind: "action-call"; nodeId: string; actionId: string; tool: string }
+  | {
+      kind: "action-call";
+      nodeId: string;
+      actionId: string;
+      actionIndex: number;
+      tool: string;
+      description: string;
+    }
   | {
       kind: "action-link";
       nodeId: string;
       actionId: string;
+      actionIndex: number;
       relationship: string;
       linkKind: "link" | "unlink";
+      from: string;
+      to: string;
+      description: string;
     }
   | {
       kind: "action-parameter";
       nodeId: string;
       actionId: string;
+      actionIndex: number;
       id: string;
       type: OntologyValueTypeName;
       required: boolean;
+      description: string;
     }
   | {
       kind: "function";
@@ -1947,13 +2607,11 @@ export type EnterpriseOntologyDraftBody =
       entity: string;
       expression: string;
       returns: OntologyValueTypeName;
-    };
+      description: string;
+    }
+  | { kind: "constraint"; nodeId: string; id: string; description: string }
+) & { metadataUpdate?: NodeOntologyMetadataUpdate };
 
-/**
- * Spelled as an intersection over the body union, not `Omit<...>`: Omit on a
- * discriminated union collapses it to the keys every member shares, which would
- * lose `entityId`, `from`, and `to` from the callers' view.
- */
 /**
  * What an open ontology form can be refused for: every splicer reason, plus the
  * one the controller raises before any splicer runs (a required object type the
@@ -1961,10 +2619,16 @@ export type EnterpriseOntologyDraftBody =
  * `enterprise.ontologyEditor.error.<reason>` and a freeform string would put a
  * raw key on screen.
  */
-export type EnterpriseOntologyDraftError = OntologyEditReason | "endpoint-missing";
+export type EnterpriseOntologyDraftError =
+  | OntologyEditReason
+  | "endpoint-missing"
+  | "description-empty"
+  | "selection-empty";
 
+/** Preserve the discriminated body union; `Omit` would collapse its member fields. */
 export type EnterpriseOntologyDraft = EnterpriseOntologyDraftBody & {
   treeId: string;
+  expectedHash: string | null;
   error: EnterpriseOntologyDraftError | null;
 };
 
@@ -1973,11 +2637,22 @@ export function beginEnterpriseOntologyDraft(
   state: EnterpriseState,
   draft: EnterpriseOntologyDraftBody,
 ) {
-  const treeId = state.enterpriseTreeDetail?.id;
-  if (!treeId) {
+  const tree = state.enterpriseTreeDetail;
+  if (
+    !state.enterpriseVisualEditOriginal ||
+    !tree ||
+    state.enterpriseTreeSaving ||
+    hasPendingEnterpriseNodeEdit(state)
+  ) {
     return;
   }
-  state.enterpriseOntologyDraft = { ...draft, treeId, error: null };
+  editSeedSeq++;
+  state.enterpriseOntologyDraft = {
+    ...draft,
+    treeId: tree.id,
+    expectedHash: tree.hash ?? null,
+    error: null,
+  };
 }
 
 /** Patch the open form. Any prior error clears as the operator types. */
@@ -1994,6 +2669,10 @@ export function editEnterpriseOntologyDraft(
 
 export function cancelEnterpriseOntologyDraft(state: EnterpriseState) {
   state.enterpriseOntologyDraft = null;
+}
+
+function normalizedDraftList(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 /**
@@ -2041,22 +2720,125 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
     state.enterpriseOntologyDraft = { ...draft, error: "endpoint-missing" };
     return;
   }
+  if (
+    draft.kind === "action-link" &&
+    [draft.from, draft.to].some((parameterId) => parameterId && !isValidEnterpriseId(parameterId))
+  ) {
+    state.enterpriseOntologyDraft = { ...draft, error: "invalid-id" };
+    return;
+  }
+  if (draft.kind === "constraint" && !draft.description.trim()) {
+    state.enterpriseOntologyDraft = { ...draft, error: "description-empty" };
+    return;
+  }
+  const actionTools =
+    draft.kind === "action" && draft.toolsMode === "selected"
+      ? normalizedDraftList(draft.tools)
+      : [];
+  if (draft.kind === "action" && draft.toolsMode === "selected" && actionTools.length === 0) {
+    state.enterpriseOntologyDraft = { ...draft, error: "selection-empty" };
+    return;
+  }
   const saved = await applyEnterpriseTreeEdit(
     state,
     (definition) => {
+      const metadata = draft.metadataUpdate;
+      if (metadata) {
+        if (draft.kind === "entity" && metadata.kind === "entity") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            title: draft.title,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "property" && metadata.kind === "property") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            required: draft.required,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "relationship" && metadata.kind === "relationship") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            inverse: draft.inverse,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "action" && metadata.kind === "action") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            title: draft.title,
+            description: draft.description,
+            tools:
+              draft.toolsMode === "all" ? undefined : draft.toolsMode === "none" ? [] : actionTools,
+            preconditions: normalizedDraftList(draft.preconditions),
+          });
+        }
+        if (draft.kind === "action-effect" && metadata.kind === "object-effect") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "action-call" && metadata.kind === "call-effect") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "action-link" && metadata.kind === "link-effect") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            description: draft.description,
+            from: draft.from,
+            to: draft.to,
+          });
+        }
+        if (draft.kind === "action-parameter" && metadata.kind === "parameter") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            required: draft.required,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "function" && metadata.kind === "function") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            title: draft.title,
+            description: draft.description,
+          });
+        }
+        if (draft.kind === "constraint" && metadata.kind === "constraint") {
+          return updateNodeOntologyMetadata(definition, draft.nodeId, {
+            ...metadata,
+            description: draft.description,
+          });
+        }
+        return { ok: false as const, reason: "entry-not-found" as const };
+      }
       if (draft.kind === "entity") {
         const title = draft.title.trim();
         return addNodeOntologyEntity(definition, draft.nodeId, {
           id,
           ...(title ? { title } : {}),
+          ...(draft.description.trim() ? { description: draft.description } : {}),
         });
       }
       if (draft.kind === "property") {
-        return addNodeOntologyProperty(definition, draft.nodeId, draft.entityId, {
-          id,
-          type: draft.type,
-          ...(draft.primaryKey ? { primaryKey: true } : {}),
-        });
+        return addNodeOntologyProperty(
+          definition,
+          draft.nodeId,
+          draft.entityId,
+          {
+            id,
+            type: draft.type,
+            ...(draft.primaryKey ? { primaryKey: true } : {}),
+            ...(draft.required ? { required: true } : {}),
+            ...(draft.description.trim() ? { description: draft.description } : {}),
+          },
+          draft.entityIndex,
+        );
       }
       if (draft.kind === "relationship") {
         return addNodeOntologyRelationship(definition, draft.nodeId, {
@@ -2064,6 +2846,8 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
           from: draft.from,
           to: draft.to,
           cardinality: draft.cardinality,
+          ...(draft.inverse.trim() ? { inverse: draft.inverse } : {}),
+          ...(draft.description.trim() ? { description: draft.description } : {}),
         });
       }
       if (draft.kind === "action") {
@@ -2071,31 +2855,71 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
         return addNodeOntologyAction(definition, draft.nodeId, {
           id,
           ...(title ? { title } : {}),
+          ...(draft.description.trim() ? { description: draft.description } : {}),
+          tools:
+            draft.toolsMode === "all" ? undefined : draft.toolsMode === "none" ? [] : actionTools,
+          preconditions: normalizedDraftList(draft.preconditions),
         });
       }
       if (draft.kind === "action-effect") {
-        return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
-          entity: draft.entity,
-          kind: draft.effectKind,
-        });
+        return addNodeOntologyActionEffect(
+          definition,
+          draft.nodeId,
+          draft.actionId,
+          {
+            entity: draft.entity,
+            kind: draft.effectKind,
+            ...(draft.description.trim() ? { description: draft.description } : {}),
+          },
+          draft.actionIndex,
+        );
       }
       if (draft.kind === "action-call") {
-        return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
-          kind: "call",
-          tool: draft.tool.trim(),
-        });
+        return addNodeOntologyActionEffect(
+          definition,
+          draft.nodeId,
+          draft.actionId,
+          {
+            kind: "call",
+            tool: draft.tool.trim(),
+            ...(draft.description.trim() ? { description: draft.description } : {}),
+          },
+          draft.actionIndex,
+        );
       }
       if (draft.kind === "action-link") {
-        return addNodeOntologyActionEffect(definition, draft.nodeId, draft.actionId, {
-          kind: draft.linkKind,
-          relationship: draft.relationship,
-        });
+        return addNodeOntologyActionEffect(
+          definition,
+          draft.nodeId,
+          draft.actionId,
+          {
+            kind: draft.linkKind,
+            relationship: draft.relationship,
+            ...(draft.from.trim() ? { from: draft.from.trim() } : {}),
+            ...(draft.to.trim() ? { to: draft.to.trim() } : {}),
+            ...(draft.description.trim() ? { description: draft.description } : {}),
+          },
+          draft.actionIndex,
+        );
       }
       if (draft.kind === "action-parameter") {
-        return addNodeOntologyActionParameter(definition, draft.nodeId, draft.actionId, {
+        return addNodeOntologyActionParameter(
+          definition,
+          draft.nodeId,
+          draft.actionId,
+          {
+            id,
+            type: draft.type,
+            ...(draft.required ? { required: true } : {}),
+            ...(draft.description.trim() ? { description: draft.description } : {}),
+          },
+          draft.actionIndex,
+        );
+      }
+      if (draft.kind === "constraint") {
+        return addNodeOntologyConstraint(definition, draft.nodeId, {
           id,
-          type: draft.type,
-          ...(draft.required ? { required: true } : {}),
+          description: draft.description,
         });
       }
       const functionTitle = draft.title.trim();
@@ -2105,14 +2929,22 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
         entity: draft.entity,
         expression: draft.expression,
         returns: draft.returns,
+        ...(draft.description.trim() ? { description: draft.description } : {}),
       });
     },
-    // Refusals belong ON the form: the operator is mid-typing and the fix is the
-    // field in front of them, not a banner beside the tree.
-    (reason) => {
-      if (state.enterpriseOntologyDraft === draft) {
-        state.enterpriseOntologyDraft = { ...draft, error: reason ?? "invalid-id" };
-      }
+    {
+      owner: "ontology",
+      // Refusals belong on the form beside the field the operator can correct.
+      onRefused: (reason) => {
+        if (state.enterpriseOntologyDraft === draft) {
+          const draftError =
+            reason && (ONTOLOGY_EDIT_REASONS as readonly string[]).includes(reason)
+              ? (reason as OntologyEditReason)
+              : "invalid-id";
+          state.enterpriseOntologyDraft = { ...draft, error: draftError };
+        }
+      },
+      expectedHash: draft.expectedHash,
     },
   );
   // Closed only on success: a duplicate id or a vanished endpoint should leave
@@ -2122,13 +2954,49 @@ export async function submitEnterpriseOntologyDraft(state: EnterpriseState) {
   }
 }
 
-/** Start or update the role-prompt draft for one step. */
-export function editEnterpriseNodeGuidance(state: EnterpriseState, nodeId: string, text: string) {
-  const treeId = state.enterpriseTreeDetail?.id;
-  if (!treeId) {
+/** Start or update the behavior draft for one step. */
+export function editEnterpriseNodeGuidance(
+  state: EnterpriseState,
+  nodeId: string,
+  patch: Partial<Omit<EnterpriseGuidanceDraft, "treeId" | "nodeId" | "expectedHash">>,
+) {
+  const tree = state.enterpriseTreeDetail;
+  const node = tree?.nodes.find((candidate) => candidate.id === nodeId);
+  const open = state.enterpriseGuidanceDraft;
+  if (
+    !state.enterpriseVisualEditOriginal ||
+    state.enterpriseTreeSaving ||
+    !tree ||
+    !node ||
+    state.enterpriseNodeDraft ||
+    state.enterpriseBindingPicker ||
+    state.enterpriseOntologyDraft ||
+    (open && (open.treeId !== tree.id || open.nodeId !== nodeId))
+  ) {
     return;
   }
-  state.enterpriseGuidanceDraft = { treeId, nodeId, text };
+  editSeedSeq++;
+  const current =
+    state.enterpriseGuidanceDraft?.treeId === tree.id &&
+    state.enterpriseGuidanceDraft.nodeId === nodeId
+      ? state.enterpriseGuidanceDraft
+      : {
+          treeId: tree.id,
+          nodeId,
+          expectedHash: tree.hash ?? null,
+          title: node.title,
+          parentId: node.parentId,
+          position: tree.nodes
+            .filter((candidate) => candidate.parentId === node.parentId)
+            .findIndex((candidate) => candidate.id === node.id),
+          description: node.description ?? "",
+          text: node.ontology.guidance ?? "",
+          contextHints: [...(node.ontology.contextHints ?? [])],
+          expectedOutput: node.ontology.expectedOutput ?? "",
+          audit: node.ontology.audit ?? false,
+          error: null,
+        };
+  state.enterpriseGuidanceDraft = { ...current, ...patch, error: null };
 }
 
 /** Discard the draft, reverting the field to whatever the tree has saved. */
@@ -2137,7 +3005,7 @@ export function cancelEnterpriseNodeGuidance(state: EnterpriseState) {
 }
 
 /**
- * Save a step's role prompt.
+ * Save a step's operator-authored behavior.
  *
  * Same export→edit→import route as every other binding write, so it lands as one
  * revision the version history can restore. Blank clears the key rather than
@@ -2157,10 +3025,47 @@ export async function saveEnterpriseNodeGuidance(state: EnterpriseState, nodeId:
   ) {
     return;
   }
+  const title = draft.title.trim();
+  if (!title) {
+    state.enterpriseGuidanceDraft = { ...draft, error: "title-empty" };
+    return;
+  }
+  if (!Number.isSafeInteger(draft.position) || draft.position < 0) {
+    state.enterpriseGuidanceDraft = { ...draft, error: "move-refused" };
+    return;
+  }
   const treeId = tree.id;
-  const text = draft.text.trim();
-  const saved = await applyEnterpriseTreeEdit(state, (definition) =>
-    setNodeGuidance(definition, nodeId, text),
+  const saved = await applyEnterpriseTreeEdit(
+    state,
+    (definition) => {
+      const structured =
+        draft.parentId === null
+          ? { ok: true as const, definition }
+          : moveTreeNode(definition, nodeId, {
+              parentId: draft.parentId,
+              index: draft.position,
+            });
+      if (!structured.ok) {
+        return structured;
+      }
+      return setNodeBehavior(structured.definition, nodeId, {
+        title,
+        description: draft.description,
+        guidance: draft.text,
+        contextHints: draft.contextHints,
+        expectedOutput: draft.expectedOutput,
+        audit: draft.audit,
+      });
+    },
+    {
+      owner: "guidance",
+      expectedHash: draft.expectedHash,
+      onRefused: () => {
+        if (state.enterpriseGuidanceDraft === draft) {
+          state.enterpriseGuidanceDraft = { ...draft, error: "move-refused" };
+        }
+      },
+    },
   );
   if (!saved) {
     return;
@@ -2170,26 +3075,20 @@ export async function saveEnterpriseNodeGuidance(state: EnterpriseState, nodeId:
   // snapshot — and if that reload failed, the stale text would sit there inviting
   // an overwrite of a save that already landed. Guarded so a draft the operator
   // started elsewhere meanwhile is not discarded.
-  if (
-    state.enterpriseGuidanceDraft?.treeId === treeId &&
-    state.enterpriseGuidanceDraft.nodeId === nodeId &&
-    state.enterpriseGuidanceDraft.text.trim() === text
-  ) {
+  if (state.enterpriseGuidanceDraft === draft && draft.treeId === treeId) {
     state.enterpriseGuidanceDraft = null;
   }
 }
 
-/**
- * Run one edit against the tree's canonical definition and save the result.
- *
- * Every per-node write takes this path — detach, role prompt, ontology — so the
- * export→edit→import dance, the supersession rules, and the shared write lock
- * exist once instead of once per action. Each call lands as a single whole-tree
- * revision the version history can restore.
- *
- * Returns whether the write was saved, so a caller with follow-up state (a draft
- * to clear, say) can act only on success.
- */
+/** Remove a non-root step and its descendants through the shared guarded import. */
+export async function removeEnterpriseNode(state: EnterpriseState, nodeId: string) {
+  await applyEnterpriseTreeEdit(state, (definition) => removeTreeNode(definition, nodeId), {
+    onRefused: () => {
+      state.enterpriseTreeSaveError = t("enterprise.structureEditRefused");
+    },
+  });
+}
+
 /**
  * Refusals that mean this SCREEN is behind rather than the operator wrong: the
  * step or the entry vanished between the snapshot and the export. They reload
@@ -2206,109 +3105,108 @@ export const ONTOLOGY_EDIT_REASONS_REPORTED: readonly OntologyEditReason[] =
     (reason) => !(STALE_EDIT_REASONS as readonly OntologyEditReason[]).includes(reason),
   );
 
+type EnterpriseTreeEditReason = OntologyEditReason | TreeStructureEditReason | "title-empty";
+
+type ApplyEnterpriseTreeEditOptions = {
+  owner?: "tree" | "node" | "guidance" | "ontology";
+  onRefused?: (reason: EnterpriseTreeEditReason | undefined) => void;
+  onSaved?: () => void;
+  expectedHash?: string | null;
+};
+
+/**
+ * Apply every per-node edit to the local definition. The editor owns the single
+ * guarded import after the operator confirms Save.
+ */
 async function applyEnterpriseTreeEdit(
   state: EnterpriseState,
   edit: (
     definition: EditableTreeDefinition,
   ) =>
     | { ok: true; definition: EditableTreeDefinition }
-    | { ok: false; reason?: OntologyEditReason },
-  /**
-   * Where a REFUSED edit reports. Without one it falls back to the tree banner,
-   * which is right for a removal button but wrong for an open form.
-   */
-  onRefused?: (reason: OntologyEditReason | undefined) => void,
+    | { ok: false; reason?: EnterpriseTreeEditReason },
+  options: ApplyEnterpriseTreeEditOptions = {},
 ): Promise<boolean> {
   const tree = state.enterpriseTreeDetail;
-  if (!tree || state.enterpriseTreeSaving) {
+  const conflictingDraft =
+    (state.enterpriseTreeDraft && options.owner !== "tree") ||
+    (state.enterpriseNodeDraft && options.owner !== "node") ||
+    (state.enterpriseGuidanceDraft && options.owner !== "guidance") ||
+    (state.enterpriseOntologyDraft && options.owner !== "ontology") ||
+    state.enterpriseBindingPicker;
+  if (!tree || state.enterpriseTreeSaving || conflictingDraft) {
     return false;
   }
-  const treeId = tree.id;
+  if (!state.enterpriseVisualEditOriginal && options.owner !== "tree") {
+    return false;
+  }
+  if (!tree.hash) {
+    state.enterpriseTreeSaveError = t("enterprise.treeUnavailable");
+    return false;
+  }
   const editIntent = ++editSeedSeq;
-  const saveToken = ++treeSaveSeq;
-  state.enterpriseTreeSaving = true;
+  const exported = state.enterpriseVisualEditOriginal
+    ? { ok: true as const, content: state.enterpriseTreeEditContent }
+    : await fetchExportContent(state, tree.id, "json");
+  if (editIntent !== editSeedSeq || state.enterpriseSelectedTreeId !== tree.id) {
+    return false;
+  }
+  const definition = exported.ok ? parseTreeDefinition(exported.content) : null;
+  if (!definition) {
+    state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
+    return false;
+  }
+  const result = edit(definition);
+  if (!result.ok) {
+    if (options.onRefused) {
+      options.onRefused(result.reason);
+    } else {
+      state.enterpriseTreeSaveError = t("enterprise.structureEditRefused");
+    }
+    return false;
+  }
+  if (!state.enterpriseVisualEditOriginal) {
+    state.enterpriseTreeEditTreeId = tree.id;
+    state.enterpriseTreeEditGuard = { expectedHash: options.expectedHash ?? tree.hash };
+  }
+  stageEnterpriseTreeDefinition(state, result.definition);
+  options.onSaved?.();
+  return true;
+}
+
+/** Keep all visual changes local; only the confirmed Save sends a whole-tree write. */
+function stageEnterpriseTreeDefinition(state: EnterpriseState, definition: EditableTreeDefinition) {
+  state.enterpriseTreeEditContent = `${JSON.stringify(definition, null, 2)}\n`;
+  state.enterpriseTreeEditFormat = "json";
+  state.enterpriseTreeEditing = true;
   state.enterpriseTreeSaveError = null;
   state.enterpriseTreeSaveIssues = null;
-  // Released exactly once, and only while this write still owns the flag: a
-  // superseded writer must not unlock the newer one, and a non-writer intent
-  // must never strand it (which is why this is not keyed on editSeedSeq).
-  const releaseLock = () => {
-    if (saveToken === treeSaveSeq) {
-      state.enterpriseTreeSaving = false;
+  const original = state.enterpriseVisualEditOriginal;
+  if (!original) {
+    return;
+  }
+  const nodes: EnterpriseTreeDetail["nodes"] = [];
+  const visit = (node: EditableTreeDefinition["root"], parentId: string | null, depth: number) => {
+    nodes.push({
+      id: node.id,
+      title: node.title,
+      description: node.description,
+      parentId,
+      depth,
+      ontology: (node.ontology ?? {}) as EnterpriseTreeDetail["nodes"][number]["ontology"],
+    });
+    for (const child of node.children ?? []) {
+      visit(child, node.id, depth + 1);
     }
   };
-  try {
-    const exported = await fetchExportContent(state, treeId, "json");
-    // The export awaited, so the operator may have moved on. A failure belongs to
-    // the tree it was read for; writing it now would blame whatever is on screen.
-    const stillOnThisTree = () =>
-      editIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
-    if (!exported.ok) {
-      if (!exported.scopeCleared && stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
-      }
-      return false;
-    }
-    const definition = parseTreeDefinition(exported.content);
-    if (!definition) {
-      if (stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
-      }
-      return false;
-    }
-    // A newer edit claimed the intent while the export was in flight; writing this
-    // whole-tree replace now would undo it.
-    if (editIntent !== editSeedSeq) {
-      return false;
-    }
-    const result = edit(definition);
-    if (!result.ok) {
-      // Two different failures wear the same shape here. A missing node or entry
-      // means the screen is behind, so reload. Anything else is the edit itself
-      // being refused — a duplicate id, a key already taken, a type still linked
-      // — and reloading would make the button look dead.
-      // `entity-not-found` counts as stale ONLY for a caller with no form to
-      // report into: another editor can remove the object type between this
-      // screen's snapshot and the export, so a removal button is simply behind.
-      // For the ontology form it is a real refusal — an endpoint out of scope —
-      // and belongs next to the field the operator chose it in.
-      const stale =
-        (result.reason !== undefined &&
-          (STALE_EDIT_REASONS as readonly (OntologyEditReason | undefined)[]).includes(
-            result.reason,
-          )) ||
-        (result.reason === "entity-not-found" && !onRefused);
-      if (stale) {
-        await refreshAfterTreeWrite(state, treeId, treeId);
-        return false;
-      }
-      releaseLock();
-      if (onRefused) {
-        onRefused(result.reason);
-      } else if (stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t(`enterprise.ontologyEditor.error.${result.reason}`);
-      }
-      return false;
-    }
-    const imported = await importTreeDefinition(state, result.definition);
-    if (imported.status !== "saved") {
-      // The operator navigated while this was in flight; its failure belongs to
-      // the tree it was written against, not to whatever is on screen now.
-      if (editIntent !== editSeedSeq || state.enterpriseSelectedTreeId !== treeId) {
-        return false;
-      }
-      state.enterpriseTreeSaveError = importFailureText(imported);
-      return false;
-    }
-    // The write landed. Release before the reloads: those are separate requests
-    // with no client-side timeout, and holding the lock would leave every
-    // per-node control disabled over a save that already succeeded.
-    releaseLock();
-    // The write landed; whether the RELOAD did is a separate question, and only
-    // the refresh itself can answer it — the stale detail carries the same id.
-    return await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
-  } finally {
-    releaseLock();
+  visit(definition.root, null, 0);
+  state.enterpriseTreeDetail = {
+    ...original,
+    capabilityGrants: definition.capabilityGrants === "explicit" ? "explicit" : undefined,
+    nodes,
+  };
+  if (!nodes.some((node) => node.id === state.enterpriseSelectedNodeId)) {
+    clearEnterpriseNodeSelection(state);
   }
 }
 
@@ -2324,79 +3222,57 @@ export async function removeEnterpriseBinding(
   );
 }
 
-/** Declare an ontology object type on a step. */
-export async function addEnterpriseOntologyEntity(
-  state: EnterpriseState,
-  params: { nodeId: string; id: string; title?: string },
-) {
-  await applyEnterpriseTreeEdit(state, (definition) =>
-    addNodeOntologyEntity(definition, params.nodeId, {
-      id: params.id,
-      ...(params.title ? { title: params.title } : {}),
-    }),
-  );
+/** Opt the selected work-map into attachment-based MCP governance. */
+export async function enableEnterpriseMcpGovernance(state: EnterpriseState, nodeId: string) {
+  await applyEnterpriseTreeEdit(state, (definition) => enableNodeMcpGovernance(definition, nodeId));
+}
+
+/** Explicitly return an inherited work-map with no attachments to unrestricted MCP. */
+export async function disableEnterpriseMcpGovernance(state: EnterpriseState) {
+  await applyEnterpriseTreeEdit(state, disableTreeMcpGovernance);
 }
 
 export async function removeEnterpriseOntologyEntity(
   state: EnterpriseState,
-  params: { nodeId: string; entityId: string },
+  params: { nodeId: string; entityId: string; entityIndex?: number },
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
-    removeNodeOntologyEntity(definition, params.nodeId, params.entityId),
-  );
-}
-
-export async function addEnterpriseOntologyProperty(
-  state: EnterpriseState,
-  params: {
-    nodeId: string;
-    entityId: string;
-    id: string;
-    type: OntologyValueTypeName;
-    primaryKey?: boolean;
-  },
-) {
-  await applyEnterpriseTreeEdit(state, (definition) =>
-    addNodeOntologyProperty(definition, params.nodeId, params.entityId, {
-      id: params.id,
-      type: params.type,
-      ...(params.primaryKey ? { primaryKey: true } : {}),
-    }),
+    removeNodeOntologyEntity(
+      definition,
+      params.nodeId,
+      params.entityIndex === undefined
+        ? params.entityId
+        : { id: params.entityId, index: params.entityIndex },
+    ),
   );
 }
 
 export async function removeEnterpriseOntologyProperty(
   state: EnterpriseState,
-  params: { nodeId: string; entityId: string; propertyId: string },
-) {
-  await applyEnterpriseTreeEdit(state, (definition) =>
-    removeNodeOntologyProperty(definition, params.nodeId, params.entityId, params.propertyId),
-  );
-}
-
-export async function addEnterpriseOntologyRelationship(
-  state: EnterpriseState,
   params: {
     nodeId: string;
-    id: string;
-    from: string;
-    to: string;
-    cardinality?: OntologyCardinalityName;
+    entityId: string;
+    propertyId: string;
+    entityIndex?: number;
+    propertyIndex?: number;
   },
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
-    addNodeOntologyRelationship(definition, params.nodeId, {
-      id: params.id,
-      from: params.from,
-      to: params.to,
-      ...(params.cardinality ? { cardinality: params.cardinality } : {}),
-    }),
+    removeNodeOntologyProperty(
+      definition,
+      params.nodeId,
+      params.entityId,
+      params.propertyId,
+      params.entityIndex !== undefined && params.propertyIndex !== undefined
+        ? { entityIndex: params.entityIndex, propertyIndex: params.propertyIndex }
+        : undefined,
+    ),
   );
 }
 
 export async function removeEnterpriseOntologyRelationship(
   state: EnterpriseState,
-  params: { nodeId: string; link: { id: string; from: string; to: string } },
+  params: { nodeId: string; link: { id: string; from: string; to: string; index?: number } },
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
     removeNodeOntologyRelationship(definition, params.nodeId, params.link),
@@ -2405,16 +3281,21 @@ export async function removeEnterpriseOntologyRelationship(
 
 export async function removeEnterpriseOntologyAction(
   state: EnterpriseState,
-  params: { nodeId: string; actionId: string },
+  params: { nodeId: string; actionId: string; actionIndex?: number },
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
-    removeNodeOntologyAction(definition, params.nodeId, params.actionId),
+    removeNodeOntologyAction(definition, params.nodeId, params.actionId, params.actionIndex),
   );
 }
 
 export async function removeEnterpriseOntologyActionEffect(
   state: EnterpriseState,
-  params: { nodeId: string; actionId: string } & (
+  params: {
+    nodeId: string;
+    actionId: string;
+    actionIndex?: number;
+    effectIndex?: number;
+  } & (
     | { entity: string; kind: OntologyEffectKindName }
     | { kind: "call"; tool: string }
     | { kind: "link" | "unlink"; relationship: string }
@@ -2426,17 +3307,38 @@ export async function removeEnterpriseOntologyActionEffect(
       params.nodeId,
       params.actionId,
       "entity" in params
-        ? { entity: params.entity, kind: params.kind }
+        ? {
+            entity: params.entity,
+            kind: params.kind,
+            actionIndex: params.actionIndex,
+            effectIndex: params.effectIndex,
+          }
         : params.kind === "call"
-          ? { kind: "call", tool: params.tool }
-          : { kind: params.kind, relationship: params.relationship },
+          ? {
+              kind: "call",
+              tool: params.tool,
+              actionIndex: params.actionIndex,
+              effectIndex: params.effectIndex,
+            }
+          : {
+              kind: params.kind,
+              relationship: params.relationship,
+              actionIndex: params.actionIndex,
+              effectIndex: params.effectIndex,
+            },
     ),
   );
 }
 
 export async function removeEnterpriseOntologyActionParameter(
   state: EnterpriseState,
-  params: { nodeId: string; actionId: string; parameterId: string },
+  params: {
+    nodeId: string;
+    actionId: string;
+    parameterId: string;
+    actionIndex?: number;
+    parameterIndex?: number;
+  },
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
     removeNodeOntologyActionParameter(
@@ -2444,26 +3346,36 @@ export async function removeEnterpriseOntologyActionParameter(
       params.nodeId,
       params.actionId,
       params.parameterId,
+      params.actionIndex !== undefined && params.parameterIndex !== undefined
+        ? { actionIndex: params.actionIndex, parameterIndex: params.parameterIndex }
+        : undefined,
     ),
   );
 }
 
 export async function removeEnterpriseOntologyFunction(
   state: EnterpriseState,
-  params: { nodeId: string; functionId: string },
+  params: { nodeId: string; functionId: string; functionIndex?: number },
 ) {
   await applyEnterpriseTreeEdit(state, (definition) =>
-    removeNodeOntologyFunction(definition, params.nodeId, params.functionId),
+    removeNodeOntologyFunction(definition, params.nodeId, params.functionId, params.functionIndex),
+  );
+}
+
+export async function removeEnterpriseOntologyConstraint(
+  state: EnterpriseState,
+  params: { nodeId: string; target: { index: number; id: string } },
+) {
+  await applyEnterpriseTreeEdit(state, (definition) =>
+    removeNodeOntologyConstraint(definition, params.nodeId, params.target),
   );
 }
 
 /**
  * Turn the selected work-map's explicit capability grants on or off.
  *
- * The flag lives on the DEFINITION, so this takes the same export→edit→import
- * route the binding picker takes rather than adding a second write path: one
- * whole-tree replace, one revision, and the same edit-intent guard so a
- * concurrent editor save cannot be silently dropped by this one.
+ * Stage the flag in the same local definition as bindings and ontology edits;
+ * it takes effect only when the operator confirms the whole-tree save.
  *
  * Turning it on narrows every step at once — a step that lists no tools stops
  * reaching any — so the button says which direction it goes and the write lands
@@ -2471,70 +3383,20 @@ export async function removeEnterpriseOntologyFunction(
  */
 export async function toggleEnterpriseCapabilityGrants(state: EnterpriseState) {
   const tree = state.enterpriseTreeDetail;
-  if (!tree || state.enterpriseTreeSaving) {
+  if (!tree) {
     return;
   }
-  const treeId = tree.id;
   const next = tree.capabilityGrants === "explicit" ? undefined : "explicit";
-  const editIntent = ++editSeedSeq;
-  const saveToken = ++treeSaveSeq;
-  state.enterpriseTreeSaving = true;
-  state.enterpriseTreeSaveError = null;
-  state.enterpriseTreeSaveIssues = null;
-  try {
-    const exported = await fetchExportContent(state, treeId, "json");
-    // The export awaited, so the operator may have moved on. A failure belongs to
-    // the tree it was read for; writing it now would blame whatever is on screen.
-    const stillOnThisTree = () =>
-      editIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
-    if (!exported.ok) {
-      if (!exported.scopeCleared && stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
-      }
-      return;
-    }
-    const definition = parseTreeDefinition(exported.content);
-    if (!definition) {
-      if (stillOnThisTree()) {
-        state.enterpriseTreeSaveError = t("enterprise.entryDraft.exportFailed");
-      }
-      return;
-    }
-    // A newer edit claimed the intent while the export was in flight; writing this
-    // whole-tree replace now would undo it.
-    if (editIntent !== editSeedSeq) {
-      return;
-    }
+  await applyEnterpriseTreeEdit(state, (definition) => {
     // Removed rather than set to a second value: the schema accepts one, and
     // absence IS the inherited mode. Leaving a key behind would make "off" look
     // like a mode the definition declares.
     const { capabilityGrants: _dropped, ...rest } = definition;
-    const patched: EditableTreeDefinition = next ? { ...rest, capabilityGrants: next } : rest;
-    const imported = await importTreeDefinition(state, patched);
-    if (imported.status !== "saved") {
-      state.enterpriseTreeSaveError = importFailureText(imported);
-      return;
-    }
-    await refreshAfterTreeWrite(state, imported.treeId ?? treeId, treeId);
-  } finally {
-    // Same ownership check: a superseded call must not release a newer one's lock.
-    if (saveToken === treeSaveSeq) {
-      state.enterpriseTreeSaving = false;
-    }
-  }
-}
-
-/** Why the apply stopped, in the shape the dialog renders. */
-function importFailure(
-  outcome: Exclude<TreeImportOutcome, { status: "saved" }>,
-): EnterpriseBindingPickerFailure {
-  if (outcome.status === "rejected") {
-    return { kind: "import-rejected", issues: outcome.issues };
-  }
-  if (outcome.status === "refused") {
-    return { kind: "import-refused", message: outcome.message };
-  }
-  return { kind: outcome.status === "not-sent" ? "import-not-sent" : "import-failed" };
+    return {
+      ok: true,
+      definition: next ? { ...rest, capabilityGrants: next } : rest,
+    };
+  });
 }
 
 /**
@@ -2562,6 +3424,16 @@ function importFailureText(outcome: Exclude<TreeImportOutcome, { status: "saved"
     : t("enterprise.entryDraft.importRejected");
 }
 
+function removeFailureText(failure: TreeRequestFailure): string {
+  if (failure.status === "not-sent") {
+    return t("enterprise.removeNotSent");
+  }
+  if (failure.status === "refused") {
+    return t("enterprise.removeRefused", { message: failure.message });
+  }
+  return t("enterprise.removeUnconfirmed");
+}
+
 /**
  * What one import did. Three of these wrote nothing and can say so: `rejected` is
  * a validation refusal with the paths to fix, `refused` is a server error frame
@@ -2576,51 +3448,53 @@ type TreeImportOutcome =
   | { status: "not-sent" }
   | { status: "unknown" };
 
-/**
- * Write one edited definition through enterprise.trees.import and refresh what it
- * invalidates. Shared by the binding picker so a direct apply reuses the editor's
- * write path instead of adding a second one.
- */
-async function importTreeDefinition(
-  state: EnterpriseState,
-  definition: EditableTreeDefinition,
-): Promise<TreeImportOutcome> {
-  if (!state.client || !state.connected) {
+type TreeRequestFailure = Extract<
+  TreeImportOutcome,
+  { status: "refused" | "not-sent" | "unknown" }
+>;
+
+function classifyTreeRequestFailure(error: unknown): TreeRequestFailure {
+  if (error instanceof GatewayNotConnectedError) {
     return { status: "not-sent" };
   }
+  if (error instanceof GatewayRequestError) {
+    return { status: "refused", message: error.message };
+  }
+  return { status: "unknown" };
+}
+
+async function requestTreeImport(
+  client: GatewayBrowserClient,
+  params: {
+    content: string;
+    format: EnterpriseTreeEditFormat;
+    createOnly?: true;
+    expectedHash?: string;
+  },
+): Promise<TreeImportOutcome> {
   try {
-    const res = await state.client.request<EnterpriseTreesImportResult>("enterprise.trees.import", {
-      content: `${JSON.stringify(definition, null, 2)}\n`,
-      format: "json",
-    });
-    if (!res.ok) {
-      return { status: "rejected", issues: res.issues ?? [] };
-    }
-    const treeId = res.treeId ?? definition.id;
-    return { status: "saved", ...(typeof treeId === "string" && treeId ? { treeId } : {}) };
+    const res = await client.request<EnterpriseTreesImportResult>(
+      "enterprise.trees.import",
+      params,
+    );
+    return res.ok
+      ? { status: "saved", ...(res.treeId ? { treeId: res.treeId } : {}) }
+      : { status: "rejected", issues: res.issues ?? [] };
   } catch (error) {
-    // GatewayBrowserClient rejects before ws.send when the socket is not open,
-    // and answers an error frame with GatewayRequestError. Both mean the tree was
-    // not written. Anything else is a pending request flushed by a close AFTER
-    // the frame went out, which the server may still have applied.
-    if (error instanceof GatewayNotConnectedError) {
-      return { status: "not-sent" };
-    }
-    if (error instanceof GatewayRequestError) {
-      return { status: "refused", message: error.message };
-    }
-    return { status: "unknown" };
+    // A closed socket means the frame never left; an error frame is a definite
+    // refusal. Other request failures can happen after send, so their outcome is
+    // unknown and the UI must keep the draft for reconciliation.
+    return classifyTreeRequestFailure(error);
   }
 }
 
-/** Reload what a whole-tree replace invalidates. Runs after the write settles. */
 /**
  * Reload the registry and the written tree after a successful import.
  *
  * Returns whether the DETAIL on screen is authoritative afterwards. A caller
- * holding unsaved state may only discard it on `true`: a failed list reload, or
- * navigation mid-flight, leaves the pre-save snapshot in place, and clearing a
- * draft against that would make the saved change appear to vanish — and invite a
+ * holding unsaved state may only discard it on `true`: `false` means the whole
+ * post-write screen did not reconcile, even when one independent read succeeded.
+ * Keeping the draft avoids making a saved change appear to vanish and inviting a
  * retry from stale content.
  */
 async function refreshAfterTreeWrite(
@@ -2628,23 +3502,39 @@ async function refreshAfterTreeWrite(
   treeId: string | undefined,
   /** What was selected when the write STARTED; navigation since then wins. */
   selectedAtWrite: string | null,
+  editIntent = editSeedSeq,
 ): Promise<boolean> {
   // An import rebuilds the server's bundle knowledge registry, so the catalogs
   // this screen suggests from are stale until reloaded.
   void loadEnterpriseCatalogs(state);
+  const ownsScreen =
+    editIntent === editSeedSeq && state.enterpriseSelectedTreeId === selectedAtWrite;
+  const preservedScreenError = ownsScreen ? null : state.enterpriseError;
+  // Start the detail reload before callers release their mutation lock. This
+  // synchronously removes the stale pre-write hash, so a slow response cannot
+  // expose an edit/remove action that is guaranteed to lose its CAS check.
+  const detailReload = ownsScreen && treeId ? loadEnterpriseTreeDetail(state, treeId) : null;
+  // A new-tree detail load clears the prior node selection synchronously, which
+  // advances the edit token as housekeeping rather than a newer user intent.
+  const detailIntent = editSeedSeq;
   // Editing a BUILT-IN tree creates an imported override, so the registry list
   // still says `source: "builtin"` (and still shows any now-resolved import or
   // store error) until it is reloaded.
-  await loadEnterprise(state);
-  // A failed list reload set the banner; opening the saved tree would clear
-  // enterpriseError at request start and present stale lists as current.
-  if (state.enterpriseError || !treeId || state.enterpriseSelectedTreeId !== selectedAtWrite) {
-    return false;
+  const listReload = loadEnterprise(state, "trees");
+  // loadEnterprise clears the banner synchronously. A background reconcile for
+  // an older screen must not hide the newer screen's error while pending.
+  if (preservedScreenError && !state.enterpriseError) {
+    state.enterpriseError = preservedScreenError;
   }
-  await loadEnterpriseTreeDetail(state, treeId);
-  // The detail load awaited, so the operator can select another tree meanwhile.
-  // Its history request would win the sequence and overwrite the new selection.
-  if (state.enterpriseSelectedTreeId !== treeId) {
+  await Promise.all([listReload, ...(detailReload ? [detailReload] : [])]);
+  if (
+    state.enterpriseListErrors.trees ||
+    state.enterpriseError ||
+    !detailReload ||
+    !treeId ||
+    detailIntent !== editSeedSeq ||
+    state.enterpriseSelectedTreeId !== treeId
+  ) {
     return false;
   }
   // Only now is what the screen shows the post-write server copy.
@@ -2652,7 +3542,7 @@ async function refreshAfterTreeWrite(
   // snapshot with the right id does not pass for a fresh one.
   const reloaded = state.enterpriseTreeDetail?.id === treeId && !state.enterpriseTreeIssue;
   await loadEnterpriseTreeVersions(state, treeId);
-  return reloaded;
+  return reloaded && detailIntent === editSeedSeq && state.enterpriseSelectedTreeId === treeId;
 }
 
 function parseTreeDefinition(content: string): EditableTreeDefinition | null {
@@ -2708,12 +3598,13 @@ export async function setEnterpriseTreeEditFormat(
   // Do NOT change the format until the reseed lands: until then the editor holds
   // the previous-format text, and Save must keep sending the matching format.
   const revision = state.enterpriseTreeEditRevision;
+  const guard = state.enterpriseTreeEditGuard;
   const seedSeq = ++editSeedSeq;
   const result =
     revision === null
       ? await fetchExportContent(state, editTreeId, format)
       : await fetchHistoryContent(state, editTreeId, revision, format);
-  applyEditorSeed(state, seedSeq, format, editTreeId, revision, result);
+  applyEditorSeed(state, seedSeq, format, editTreeId, revision, guard, result);
 }
 
 export function cancelEditEnterpriseTree(state: EnterpriseState) {
@@ -2726,20 +3617,76 @@ export async function loadEnterpriseTreeVersion(
   treeId: string,
   revision: number,
 ) {
+  const tree = state.enterpriseTreeDetail;
+  const guard: EnterpriseTreeImportGuard =
+    tree?.id === treeId && tree.hash
+      ? { expectedHash: tree.hash }
+      : state.enterpriseSelectedTreeId === treeId &&
+          state.enterpriseHistoryOnlyTreeIds.includes(treeId)
+        ? { createOnly: true }
+        : null;
+  if (!guard) {
+    return;
+  }
   const format = state.enterpriseTreeEditFormat;
   const seedSeq = ++editSeedSeq;
   const result = await fetchHistoryContent(state, treeId, revision, format);
-  applyEditorSeed(state, seedSeq, format, treeId, revision, result);
+  applyEditorSeed(state, seedSeq, format, treeId, revision, guard, result);
 }
 
 /** Ask the confirmation modal before persisting the current edit. */
 export function requestSaveEnterpriseTree(state: EnterpriseState) {
+  if (
+    !state.enterpriseTreeEditing ||
+    state.enterpriseTreeSaving ||
+    hasPendingEnterpriseNodeEdit(state)
+  ) {
+    return;
+  }
   state.enterpriseTreeConfirm = { kind: "save" };
 }
 
 /** Ask the confirmation modal before removing an imported tree. */
-export function requestRemoveEnterpriseTree(state: EnterpriseState, treeId: string) {
-  state.enterpriseTreeConfirm = { kind: "remove", treeId };
+export async function requestRemoveEnterpriseTree(state: EnterpriseState, treeId: string) {
+  if (state.enterpriseTreeSaving) {
+    return;
+  }
+  const importError = state.enterpriseImportErrors.find((issue) => issue.treeId === treeId);
+  let invalidFingerprint = importError?.fingerprint;
+  if (importError && !invalidFingerprint && state.client && state.connected) {
+    try {
+      const detail = await state.client.request<EnterpriseTreesGetResult>("enterprise.trees.get", {
+        treeId,
+      });
+      if (detail.importError && detail.importErrorFingerprint) {
+        invalidFingerprint = detail.importErrorFingerprint;
+      }
+    } catch {
+      // Fall through to the typed refusal below. Never substitute an unguarded
+      // remove when an older gateway cannot supply this additive identity.
+    }
+  }
+  const guard: EnterpriseTreeRemoveGuard | null = importError
+    ? invalidFingerprint
+      ? { expectedInvalidFingerprint: invalidFingerprint }
+      : null
+    : state.enterpriseTreeDetail?.id === treeId &&
+        state.enterpriseTreeDetail.source === "imported" &&
+        state.enterpriseTreeDetail.hash
+      ? { expectedHash: state.enterpriseTreeDetail.hash }
+      : null;
+  if (guard) {
+    state.enterpriseTreeConfirm = { kind: "remove", treeId, guard };
+  } else {
+    const message = importError
+      ? t("enterprise.removeFingerprintUnavailable", { treeId })
+      : `no removable imported tree "${treeId}" is loaded`;
+    if (state.enterpriseSelectedTreeId === treeId) {
+      state.enterpriseTreeIssue = message;
+    } else {
+      state.enterpriseError = message;
+    }
+  }
 }
 
 export function cancelEnterpriseTreeConfirm(state: EnterpriseState) {
@@ -2749,14 +3696,14 @@ export function cancelEnterpriseTreeConfirm(state: EnterpriseState) {
 /** Resolve the open confirmation: persist the edit or remove the tree. */
 export async function confirmEnterpriseTreeAction(state: EnterpriseState) {
   const confirm = state.enterpriseTreeConfirm;
-  if (!confirm) {
+  if (!confirm || !state.client || !state.connected || state.enterpriseTreeSaving) {
     return;
   }
   state.enterpriseTreeConfirm = null;
   if (confirm.kind === "save") {
     await saveEnterpriseTree(state);
   } else {
-    await removeEnterpriseTree(state, confirm.treeId);
+    await removeEnterpriseTree(state, confirm.treeId, confirm.guard);
   }
 }
 
@@ -2764,6 +3711,7 @@ async function saveEnterpriseTree(state: EnterpriseState) {
   if (!state.client || !state.connected) {
     return;
   }
+  const client = state.client;
   // Invalidate any in-flight format/history reseed so a late applyEditorSeed
   // cannot swap the textarea content out from under the submitted draft; the
   // resulting token is the edit intent. The tree list / New Tree controls stay
@@ -2771,79 +3719,104 @@ async function saveEnterpriseTree(state: EnterpriseState) {
   // clobber that newer editor/selection with this older save's result.
   const editIntent = ++editSeedSeq;
   const superseded = () => editIntent !== editSeedSeq;
+  const writeToken = ++treeWriteSeq;
+  const releaseLock = () => {
+    if (writeToken === treeWriteSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+  };
   state.enterpriseTreeSaving = true;
   state.enterpriseTreeSaveIssues = null;
   state.enterpriseTreeSaveError = null;
+  const selectedAtWrite = state.enterpriseSelectedTreeId;
+  const releaseNavigation = holdTreeWriteNavigation(state, state.enterpriseTreeEditTreeId);
   try {
-    const res = await state.client.request<EnterpriseTreesImportResult>("enterprise.trees.import", {
+    const outcome = await requestTreeImport(client, {
       content: state.enterpriseTreeEditContent,
       format: state.enterpriseTreeEditFormat,
+      ...state.enterpriseTreeEditGuard,
     });
-    if (!res.ok) {
+    if (outcome.status === "rejected") {
       // Schema-invalid content: keep the editor open with the issues shown, but
       // only if the operator is still on the same draft.
       if (!superseded()) {
-        state.enterpriseTreeSaveIssues = res.issues ?? [];
+        state.enterpriseTreeSaveIssues = outcome.issues;
+      }
+      return;
+    }
+    if (outcome.status !== "saved") {
+      if (!superseded()) {
+        state.enterpriseTreeSaveError = importFailureText(outcome);
       }
       return;
     }
     if (superseded()) {
-      // The operator started a different selection/draft; the tree is still
-      // saved, so just refresh the registry list in the background.
-      await loadEnterprise(state);
-      void loadEnterpriseCatalogs(state);
+      // Screen ownership moved, but the shared tree/catalog registries still
+      // changed. Their background reconciliation preserves the newer UI state.
+      const refresh = refreshAfterTreeWrite(state, outcome.treeId, selectedAtWrite, editIntent);
+      releaseLock();
+      releaseNavigation();
+      await refresh;
       return;
     }
     // resetTreeEditing bumps editSeedSeq; capture a fresh intent to detect the
-    // operator moving on during the awaited registry reload below.
+    // operator moving on during the post-write reload below.
     resetTreeEditing(state);
     const openIntent = editSeedSeq;
-    // A new tree can change the registry list; reload it, then open the saved tree.
-    await loadEnterprise(state);
-    // An import rebuilds the server's bundle knowledge registry (a tree that drops
-    // its last reference to a bundled foundation prunes it), so the foundation
-    // catalog this screen suggests from is stale until reloaded. Fire-and-forget:
-    // it is reference data, and its own token drops a superseded response.
-    void loadEnterpriseCatalogs(state);
-    // A failed list reload set the banner; opening the saved tree would clear
-    // enterpriseError at request start and hide that failure with stale lists.
-    if (state.enterpriseError) {
-      return;
-    }
-    if (openIntent !== editSeedSeq) {
-      // A selection/draft started during the reload must win over the saved tree.
-      return;
-    }
-    if (res.treeId) {
-      await loadEnterpriseTreeDetail(state, res.treeId);
-      await loadEnterpriseTreeVersions(state, res.treeId);
-    }
-  } catch (err) {
-    if (!superseded()) {
-      state.enterpriseTreeSaveError = String(err);
-    }
+    // Starting the refresh clears the pre-save detail synchronously. Unlock only
+    // after that, so a second mutation can never capture its stale hash.
+    const refresh = refreshAfterTreeWrite(state, outcome.treeId, selectedAtWrite, openIntent);
+    releaseLock();
+    releaseNavigation();
+    await refresh;
   } finally {
-    state.enterpriseTreeSaving = false;
+    releaseLock();
+    releaseNavigation();
   }
 }
 
-async function removeEnterpriseTree(state: EnterpriseState, treeId: string) {
+async function removeEnterpriseTree(
+  state: EnterpriseState,
+  treeId: string,
+  guard: EnterpriseTreeRemoveGuard,
+) {
   if (!state.client || !state.connected) {
     return;
   }
+  const client = state.client;
+  const writeToken = ++treeWriteSeq;
+  const removeIntent = ++editSeedSeq;
+  const selectedAtWrite = state.enterpriseSelectedTreeId;
+  const ownsScreen = () => writeToken === treeWriteSeq && removeIntent === editSeedSeq;
+  const release = () => {
+    if (writeToken === treeWriteSeq) {
+      state.enterpriseTreeSaving = false;
+    }
+  };
+  state.enterpriseTreeSaving = true;
+  const releaseNavigation = holdTreeWriteNavigation(state, treeId);
   try {
-    const res = await state.client.request<EnterpriseTreesRemoveResult>("enterprise.trees.remove", {
+    const res = await client.request<EnterpriseTreesRemoveResult>("enterprise.trees.remove", {
       treeId,
+      ...guard,
     });
     // Recompute AFTER the await: removal can come from the import-error banner
     // for a different tree, and the operator may have selected another tree or
     // started a draft while this was in flight — only touch the editor/selection
     // when they still belong to the removed id, or newer work would be discarded.
-    const affectsCurrent = state.enterpriseSelectedTreeId === treeId;
+    const ownsAtSettlement = ownsScreen();
+    const affectsCurrent = ownsAtSettlement && state.enterpriseSelectedTreeId === treeId;
     if (!res.removed) {
-      // Nothing was deleted (built-in or already-gone id); report it without
-      // pretending it succeeded, on whichever surface triggered the removal.
-      const message = `no imported tree "${treeId}" to remove`;
+      const reason = "reason" in res ? res.reason : "not-found";
+      const message =
+        reason === "tree-changed"
+          ? `workflow tree "${treeId}" changed since it was loaded; reload before removing it`
+          : reason === "tree-unavailable"
+            ? `cannot verify workflow tree "${treeId}" is current; reload and try again`
+            : `no imported tree "${treeId}" to remove`;
+      if (!ownsAtSettlement) {
+        return;
+      }
       if (affectsCurrent) {
         state.enterpriseTreeIssue = message;
       } else {
@@ -2856,14 +3829,36 @@ async function removeEnterpriseTree(state: EnterpriseState, treeId: string) {
       state.enterpriseSelectedTreeId = null;
       state.enterpriseTreeDetail = null;
       state.enterpriseTreeIssue = null;
+      state.enterpriseTreeWarnings = null;
       state.enterpriseTreeVersions = [];
     }
-    await loadEnterprise(state);
-    // Removing a tree drops the bundle foundations it owned; reload so the
-    // catalog stops offering ids nothing can retrieve anymore.
-    void loadEnterpriseCatalogs(state);
-  } catch (err) {
-    state.enterpriseError = String(err);
+    // The mutation changed shared registry/catalog state even if the operator
+    // navigated away. No detail reload is needed for a tree that was removed.
+    const refresh = refreshAfterTreeWrite(state, undefined, selectedAtWrite, removeIntent);
+    release();
+    releaseNavigation();
+    await refresh;
+  } catch (error) {
+    if (!ownsScreen()) {
+      return;
+    }
+    const failure = classifyTreeRequestFailure(error);
+    const message = removeFailureText(failure);
+    if (state.enterpriseSelectedTreeId === treeId) {
+      state.enterpriseTreeIssue = message;
+      if (failure.status === "unknown") {
+        // The delete may have committed. Drop the stale snapshot/hash so the UI
+        // cannot immediately submit another mutation against an uncertain tree.
+        state.enterpriseTreeDetail = null;
+        state.enterpriseTreeWarnings = null;
+        state.enterpriseTreeVersions = [];
+      }
+    } else {
+      state.enterpriseError = message;
+    }
+  } finally {
+    release();
+    releaseNavigation();
   }
 }
 
@@ -2873,16 +3868,26 @@ export async function exportEnterpriseTree(
   treeId: string,
   format: EnterpriseTreeEditFormat,
 ) {
+  const exportSeq = ++treeExportSeq;
+  const editIntent = editSeedSeq;
+  const selectedAtStart = state.enterpriseSelectedTreeId;
+  const ownsStatus = () =>
+    exportSeq === treeExportSeq &&
+    editIntent === editSeedSeq &&
+    selectedAtStart === treeId &&
+    state.enterpriseSelectedTreeId === treeId;
   const result = await fetchExportContent(state, treeId, format);
   if (!result.ok) {
-    if (!result.scopeCleared) {
+    if (!result.scopeCleared && ownsStatus()) {
       state.enterpriseTreeSaveError = result.reason;
     }
     return;
   }
   // A prior failed export may have left an error banner; a successful retry
   // must clear it before the download.
-  state.enterpriseTreeSaveError = null;
+  if (ownsStatus()) {
+    state.enterpriseTreeSaveError = null;
+  }
   triggerDownload(`${treeId}.${format}`, result.content);
 }
 
@@ -2932,13 +3937,11 @@ function treeTemplate(format: EnterpriseTreeEditFormat): string {
  * Reload the list + registry and, when open, the selected run detail and tree.
  */
 export async function refreshEnterprise(state: EnterpriseState) {
-  await loadEnterprise(state);
-  // If the list/tree refresh failed, keep its error banner; a following detail
-  // reload would clear enterpriseError and hide the stale-list failure. (An auth
-  // failure also clears the selection, so the guards below would skip anyway.)
-  if (state.enterpriseError) {
-    return;
-  }
+  const editIntent = editSeedSeq;
+  const saveError = state.enterpriseTreeSaveError;
+  // Lists and inspectors are independent reads. Start the list refresh, but do
+  // not make an unrelated hung endpoint block the already-selected inspector.
+  const lists = loadEnterprise(state);
   const selectedRun = state.enterpriseSelectedExecutionId;
   if (selectedRun) {
     await loadEnterpriseRunDetail(state, selectedRun);
@@ -2951,7 +3954,27 @@ export async function refreshEnterprise(state: EnterpriseState) {
   const selectedTree = state.enterpriseSelectedTreeId;
   if (selectedTree) {
     await loadEnterpriseTreeDetail(state, selectedTree);
-    await loadEnterpriseTreeVersions(state, selectedTree);
+    // The detail request can lose a race to an explicit tree selection. Do not
+    // start a newer history request for the tree Refresh no longer owns: it would
+    // supersede the selected tree's history load and paint the wrong revisions.
+    if (state.enterpriseSelectedTreeId === selectedTree) {
+      await loadEnterpriseTreeVersions(state, selectedTree);
+    }
+  }
+  await lists;
+  const selectedTreeReloaded =
+    !selectedTree ||
+    (state.enterpriseTreeDetail?.id === selectedTree && !state.enterpriseTreeIssue);
+  if (
+    !state.enterpriseVisualEditOriginal &&
+    editIntent === editSeedSeq &&
+    state.enterpriseTreeSaveError === saveError &&
+    selectedTreeReloaded &&
+    state.enterpriseListErrors.trees === null &&
+    !state.enterpriseStoreError &&
+    !state.enterpriseError
+  ) {
+    state.enterpriseTreeSaveError = null;
   }
 }
 
@@ -2978,6 +4001,8 @@ function applyError(state: EnterpriseState, err: unknown) {
     // governed run/tree data on screen under the error banner.
     state.enterpriseRuns = [];
     state.enterpriseTrees = [];
+    state.enterpriseHistoryOnlyTreeIds = [];
+    state.enterpriseListErrors = { runs: null, trees: null };
     state.enterpriseImportErrors = [];
     state.enterpriseStoreError = null;
     state.enterpriseSelectedExecutionId = null;
@@ -2988,8 +4013,10 @@ function applyError(state: EnterpriseState, err: unknown) {
     state.enterpriseTreeDetail = null;
     state.enterpriseTreeLoading = false;
     state.enterpriseTreeIssue = null;
+    state.enterpriseTreeWarnings = null;
     state.enterpriseTreeVersions = [];
     state.enterpriseTreeVersionsLoading = false;
+    state.enterpriseTreeVersionsError = null;
     state.enterpriseCatalogPhase = "unloaded";
     state.enterpriseCatalogErrors = { tools: null, skills: null, foundations: null };
     state.enterpriseCatalogAgentId = null;

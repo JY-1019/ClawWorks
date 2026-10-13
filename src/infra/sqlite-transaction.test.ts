@@ -1,9 +1,16 @@
 // Covers synchronous SQLite transaction helpers.
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { requireNodeSqlite } from "./node-sqlite.js";
-import { runSqliteImmediateTransactionSync } from "./sqlite-transaction.js";
+import {
+  runSqliteImmediateTransactionSync,
+  runSqliteReadTransactionSync,
+} from "./sqlite-transaction.js";
 
 const openDatabases: Array<import("node:sqlite").DatabaseSync> = [];
+const tempDirs: string[] = [];
 
 function createDatabase(): import("node:sqlite").DatabaseSync {
   const { DatabaseSync } = requireNodeSqlite();
@@ -20,10 +27,45 @@ function readEntries(db: import("node:sqlite").DatabaseSync): string[] {
     .map((row) => (row as { id: string }).id);
 }
 
+function readEntriesByValue(db: import("node:sqlite").DatabaseSync): string[] {
+  return db
+    .prepare("SELECT value FROM entries ORDER BY value")
+    .all()
+    .map((row) => (row as { value: string }).value);
+}
+
 afterEach(() => {
   for (const db of openDatabases.splice(0)) {
     db.close();
   }
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("runSqliteReadTransactionSync", () => {
+  it("keeps one snapshot when another WAL connection commits between reads", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "openclaw-sqlite-read-"));
+    tempDirs.push(dir);
+    const pathname = path.join(dir, "state.sqlite");
+    const { DatabaseSync } = requireNodeSqlite();
+    const reader = new DatabaseSync(pathname);
+    const writer = new DatabaseSync(pathname);
+    openDatabases.push(reader, writer);
+    reader.exec("PRAGMA journal_mode=WAL; CREATE TABLE entries (value TEXT NOT NULL);");
+    writer.exec("PRAGMA journal_mode=WAL; INSERT INTO entries VALUES ('old');");
+
+    const values = runSqliteReadTransactionSync(reader, () => {
+      const before = readEntriesByValue(reader);
+      runSqliteImmediateTransactionSync(writer, () => {
+        writer.exec("DELETE FROM entries; INSERT INTO entries VALUES ('new');");
+      });
+      return [before, readEntriesByValue(reader)];
+    });
+
+    expect(values).toEqual([["old"], ["old"]]);
+    expect(readEntriesByValue(reader)).toEqual(["new"]);
+  });
 });
 
 describe("runSqliteImmediateTransactionSync", () => {

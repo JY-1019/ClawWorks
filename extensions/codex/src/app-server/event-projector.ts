@@ -27,6 +27,12 @@ import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
 import { asDateTimestampMs } from "openclaw/plugin-sdk/number-runtime";
 import { resolveCodexLocalRuntimeAttribution } from "./local-runtime-attribution.js";
 import {
+  CodexNativeToolResultTracker,
+  isCodexNativeHookRelayToolItem,
+  readCodexNativeToolItemStatus as itemStatus,
+  type CodexNativeToolResultRecord,
+} from "./native-hook-relay.js";
+import {
   readCodexNotificationThreadId,
   readCodexNotificationTurnId,
 } from "./notification-correlation.js";
@@ -66,7 +72,7 @@ export type CodexAppServerToolTelemetry = {
 
 export type CodexAppServerEventProjectorOptions = {
   nativePostToolUseRelayEnabled?: boolean;
-  onNativeToolResultRecorded?: () => void | Promise<void>;
+  onNativeToolResultRecorded?: (result: CodexNativeToolResultRecord) => void | Promise<void>;
   trajectoryRecorder?: CodexTrajectoryRecorder | null;
 };
 
@@ -171,6 +177,7 @@ export class CodexAppServerEventProjector {
     { chars: number; messages: number; truncated: boolean }
   >();
   private readonly toolResultOutputTextByItem = new Map<string, string>();
+  private readonly nativeToolResultTracker = new CodexNativeToolResultTracker();
   private readonly toolMetas = new Map<
     string,
     { toolName: string; meta?: string; asyncStarted?: boolean }
@@ -237,6 +244,13 @@ export class CodexAppServerEventProjector {
     if (ordinal !== undefined) {
       this.nativeToolOutcomeOrdinals.set(item.id, ordinal);
     }
+  }
+
+  recordLegacyMcpApprovalResult(
+    requestParams: JsonValue | undefined,
+    response: JsonValue | undefined,
+  ): void {
+    this.nativeToolResultTracker.recordLegacyMcpApprovalResult(requestParams, response);
   }
 
   async handleNotification(notification: CodexServerNotification): Promise<void> {
@@ -826,6 +840,9 @@ export class CodexAppServerEventProjector {
         "codex app-server turn failed";
       this.promptErrorSource = "prompt";
     }
+    for (const result of this.nativeToolResultTracker.flushDeferred()) {
+      await this.options.onNativeToolResultRecorded?.(result);
+    }
     const turnItems = turn.items ?? [];
     // The final snapshot is authoritative when item notifications were omitted.
     // Only its last relevant tool may change the terminal presentation.
@@ -854,6 +871,12 @@ export class CodexAppServerEventProjector {
         this.emitPlanUpdate({ explanation: undefined, steps: splitPlanText(item.text) });
       }
       this.recordToolMeta(item);
+      const status = itemStatus(item);
+      if (isCodexNativeHookRelayToolItem(item)) {
+        // A PostToolUse subprocess can fail after the tool already ran. The final
+        // turn snapshot is the last chance to settle even still-running items.
+        await this.recordNativeToolResult(item, status, true);
+      }
       await this.emitSnapshotOnlyNativeToolProgress(item);
       this.recordNativeToolTranscriptCall(item);
       this.recordNativeToolTranscriptResult(item);
@@ -1186,7 +1209,7 @@ export class CodexAppServerEventProjector {
     if (!shouldEmitTranscriptToolProgress(name, args)) {
       if (params.phase === "result") {
         this.emitAfterToolCallObservation(item);
-        await this.options.onNativeToolResultRecorded?.();
+        await this.recordNativeToolResult(item, status);
       }
       return;
     }
@@ -1210,8 +1233,24 @@ export class CodexAppServerEventProjector {
     });
     if (params.phase === "result") {
       this.emitAfterToolCallObservation(item);
-      await this.options.onNativeToolResultRecorded?.();
+      await this.recordNativeToolResult(item, status);
     }
+  }
+
+  private async recordNativeToolResult(
+    item: CodexThreadItem,
+    status: ReturnType<typeof itemStatus>,
+    allowPostToolUseFallback = false,
+  ): Promise<void> {
+    const result = this.nativeToolResultTracker.take(item, {
+      status,
+      nativePostToolUseRelayEnabled: this.options.nativePostToolUseRelayEnabled,
+      allowPostToolUseFallback,
+    });
+    if (!result) {
+      return;
+    }
+    await this.options.onNativeToolResultRecorded?.(result);
   }
 
   private clearTerminalPresentationForNativeItem(item: CodexThreadItem | undefined): void {
@@ -1394,7 +1433,7 @@ export class CodexAppServerEventProjector {
     ) {
       return false;
     }
-    if (this.options.nativePostToolUseRelayEnabled && isNativePostToolUseRelayItem(item)) {
+    if (this.options.nativePostToolUseRelayEnabled && isCodexNativeHookRelayToolItem(item)) {
       return false;
     }
     return true;
@@ -2234,20 +2273,6 @@ function itemTitle(item: CodexThreadItem): string {
   }
 }
 
-function itemStatus(item: CodexThreadItem): "completed" | "failed" | "running" | "blocked" {
-  const status = readItemString(item, "status");
-  if (status === "failed") {
-    return "failed";
-  }
-  if (status === "declined") {
-    return "blocked";
-  }
-  if (status === "inProgress" || status === "running") {
-    return "running";
-  }
-  return "completed";
-}
-
 function formatMissingToolResultError(params: { id: string; name: string }): string {
   return `${MISSING_TOOL_RESULT_ERROR} toolCallId=${params.id}; toolName=${params.name}`;
 }
@@ -2342,17 +2367,6 @@ function nativeToolActionFingerprint(item: CodexThreadItem): string | undefined 
     });
   }
   return undefined;
-}
-
-function isNativePostToolUseRelayItem(item: CodexThreadItem): boolean {
-  switch (item.type) {
-    case "commandExecution":
-    case "fileChange":
-    case "mcpToolCall":
-      return true;
-    default:
-      return false;
-  }
 }
 
 function shouldSuppressChannelProgressForItem(item: CodexThreadItem): boolean {

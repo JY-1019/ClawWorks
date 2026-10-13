@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { updateSessionStore } from "../../config/sessions.js";
 import {
   appendEnterpriseRunEvent,
   finalizeEnterpriseRun,
@@ -11,12 +12,18 @@ import { invalidateWorkflowTreeRegistry } from "../../enterprise/tree-registry.j
 import type { EnterpriseRunPlan } from "../../enterprise/types.js";
 import { closeOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../../test-utils/env.js";
+import { performGatewaySessionReset } from "../session-reset-service.js";
+import { loadSessionEntry } from "../session-utils.js";
 import { enterpriseHandlers } from "./enterprise.js";
 
 const tempDir = mkdtempSync(path.join(tmpdir(), "clawworks-gw-enterprise-"));
 const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
 
-type EnterpriseMethod = "enterprise.trees.list" | "enterprise.runs.list" | "enterprise.runs.get";
+type EnterpriseMethod =
+  | "enterprise.trees.list"
+  | "enterprise.runs.list"
+  | "enterprise.runs.get"
+  | "enterprise.runs.resume";
 
 function invoke(method: EnterpriseMethod, params: Record<string, unknown>) {
   const calls: Array<{ ok: boolean; payload?: unknown; error?: unknown }> = [];
@@ -65,12 +72,21 @@ function makePlan(runId: string, activeNodeId: string): EnterpriseRunPlan {
   };
 }
 
-beforeAll(() => {
+async function seedCurrentSession(sessionKey: string, sessionId: string) {
+  const { storePath, canonicalKey } = loadSessionEntry(sessionKey, { agentId: "main" });
+  await updateSessionStore(storePath, (store) => {
+    store[canonicalKey] = { sessionId, updatedAt: Date.now() };
+  });
+}
+
+beforeAll(async () => {
   // The handlers read the default shared state DB (no options), so point the
   // env-resolved default at an isolated temp store, then seed two executions
   // of the SAME runId (a fallback retry) to prove per-execution lookups.
   setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
   invalidateWorkflowTreeRegistry();
+  await seedCurrentSession("agent:main:resumable", "transcript-resumable");
+  await seedCurrentSession("agent:main:rotated", "transcript-before");
 
   const first = makePlan("run-gw-1", "support.triage");
   persistEnterpriseRunStart({
@@ -171,6 +187,7 @@ describe("enterprise gateway methods", () => {
       matchedBy: "planner",
       status: "completed",
       activeNodeId: "support.triage",
+      resumeRefusalReason: "no-session",
       // Both executions share the runId, so the sibling count is 2.
       executionCount: 2,
     });
@@ -211,9 +228,119 @@ describe("enterprise gateway methods", () => {
       runId: "run-gw-1",
       status: "running",
       activeNodeId: "support",
+      resumeRefusalReason: "still-running",
       executionCount: 2,
     });
     expect((run.events as unknown[]).length).toBe(1);
+  });
+
+  it("refuses a run after sessions.reset rotates its canonical transcript", async () => {
+    const plan = makePlan("run-gw-resumable", "support.triage");
+    plan.nodes.push({
+      nodeId: "support.resolve",
+      parentId: "support",
+      seq: 2,
+      title: "Resolve",
+      ontology: {},
+    });
+    persistEnterpriseRunStart({
+      executionId: "exec-gw-resumable",
+      plan,
+      sessionKey: "agent:main:resumable",
+      sessionId: "transcript-resumable",
+      agentId: "main",
+      now: 500,
+    });
+    appendEnterpriseRunEvent({
+      executionId: "exec-gw-resumable",
+      seq: 0,
+      nodeId: "support.triage",
+      kind: "node.completed",
+      payload: {},
+      createdAt: 501,
+    });
+    finalizeEnterpriseRun({ executionId: "exec-gw-resumable", status: "aborted", now: 502 });
+
+    const { payload } = invoke("enterprise.runs.get", { executionId: "exec-gw-resumable" });
+    const { run } = payload as { run: Record<string, unknown> };
+    expect(run.sessionId).toBe("transcript-resumable");
+    expect(run.resumable).toBe(true);
+    expect(run).not.toHaveProperty("resumeRefusalReason");
+
+    const reset = await performGatewaySessionReset({
+      key: "agent:main:resumable",
+      agentId: "main",
+      reason: "reset",
+      commandSource: "test",
+    });
+    expect(reset.ok).toBe(true);
+
+    // sessions.reset writes no newer enterprise row. The gateway must compare
+    // the old run token with the session owner's canonical transcript rather
+    // than trusting the caller to report that reset.
+    expect(
+      invoke("enterprise.runs.resume", {
+        executionId: "exec-gw-resumable",
+        sessionId: "transcript-resumable",
+      }).payload,
+    ).toEqual({ ok: false, reason: "transcript-rotated" });
+    const afterReset = invoke("enterprise.runs.get", {
+      executionId: "exec-gw-resumable",
+    }).payload as { run: Record<string, unknown> };
+    expect(afterReset.run.resumeRefusalReason).toBe("transcript-rotated");
+    expect(afterReset.run).not.toHaveProperty("resumeRequested");
+    expect(afterReset.run).not.toHaveProperty("resumable");
+  });
+
+  it("hides an armed resume after a newer transcript makes it impossible", () => {
+    const plan = makePlan("run-gw-rotated", "support.triage");
+    plan.nodes.push({
+      nodeId: "support.resolve",
+      parentId: "support",
+      seq: 2,
+      title: "Resolve",
+      ontology: {},
+    });
+    persistEnterpriseRunStart({
+      executionId: "exec-gw-rotated",
+      plan,
+      sessionKey: "agent:main:rotated",
+      sessionId: "transcript-before",
+      agentId: "main",
+      now: 600,
+    });
+    appendEnterpriseRunEvent({
+      executionId: "exec-gw-rotated",
+      seq: 0,
+      nodeId: "support.triage",
+      kind: "node.completed",
+      payload: {},
+      createdAt: 601,
+    });
+    finalizeEnterpriseRun({ executionId: "exec-gw-rotated", status: "aborted", now: 602 });
+    expect(
+      invoke("enterprise.runs.resume", {
+        executionId: "exec-gw-rotated",
+        sessionId: "transcript-before",
+      }).payload,
+    ).toEqual({ ok: true });
+
+    const newer = makePlan("run-gw-after-rotation", "support");
+    newer.createdAt = 700;
+    persistEnterpriseRunStart({
+      executionId: "exec-gw-after-rotation",
+      plan: newer,
+      sessionKey: "agent:main:rotated",
+      sessionId: "transcript-after",
+      agentId: "main",
+      now: 700,
+    });
+
+    const { payload } = invoke("enterprise.runs.get", { executionId: "exec-gw-rotated" });
+    const { run } = payload as { run: Record<string, unknown> };
+    expect(run.resumeRefusalReason).toBe("transcript-rotated");
+    expect(run).not.toHaveProperty("resumeRequested");
+    expect(run).not.toHaveProperty("resumable");
   });
 
   it("returns null run for an unknown execution id (not an error)", () => {
@@ -239,6 +366,15 @@ describe("enterprise gateway methods", () => {
     const missingExecutionId = invoke("enterprise.runs.get", {});
     expect(missingExecutionId.ok).toBe(false);
     expect(missingExecutionId.error).toBeDefined();
+
+    const legacyResumeWithoutSessionId = invoke("enterprise.runs.resume", {
+      executionId: "exec-gw-resumable",
+    });
+    expect(legacyResumeWithoutSessionId.ok).toBe(true);
+    expect(legacyResumeWithoutSessionId.payload).toEqual({
+      ok: false,
+      reason: "transcript-rotated",
+    });
 
     const badLimit = invoke("enterprise.runs.list", { limit: 0 });
     expect(badLimit.ok).toBe(false);

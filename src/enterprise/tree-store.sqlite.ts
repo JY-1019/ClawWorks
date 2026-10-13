@@ -3,6 +3,7 @@
  * state DB. The canonical runtime source is this table plus the built-in
  * trees; import/export files are exchange artifacts, never runtime state.
  */
+import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import {
   executeSqliteQuerySync,
@@ -10,6 +11,7 @@ import {
   getNodeSqliteKysely,
 } from "../infra/kysely-sync.js";
 import { normalizeSqliteNumber } from "../infra/sqlite-number.js";
+import { runSqliteReadTransactionSync } from "../infra/sqlite-transaction.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import {
   type OpenClawStateDatabase,
@@ -20,12 +22,14 @@ import {
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import {
   deleteBundledKnowledgeFoundationsForTree,
-  pruneBundledKnowledgeFoundationsForTree,
+  fingerprintBundledKnowledgeForTreeFromDatabase,
+  readBundledKnowledgeFoundationsFromDatabase,
   replaceBundledKnowledgeFoundationsForTree,
+  type BundledKnowledgeFoundationReadResult,
 } from "./enterprise-knowledge-store.sqlite.js";
 import { deleteOntologyObjectsForTree } from "./object-store.sqlite.js";
+import { hashWorkflowTree } from "./plan.js";
 import { validateWorkflowTreeDefinition } from "./schema.js";
-import { collectReferencedFoundationIds } from "./tree-references.js";
 import type { BundledKnowledgeFoundation, WorkflowTreeDefinition } from "./types.js";
 
 export type EnterpriseTreeStoreOptions = {
@@ -68,6 +72,20 @@ type EnterpriseTreeVersionRow = {
   saved_at: number | bigint;
 };
 
+/** Opaque identity for one raw row; callers never receive its possibly-sensitive bytes. */
+function fingerprintEnterpriseTreeRow(row: EnterpriseTreeRow): string {
+  const canonicalFields = [
+    row.tree_id,
+    row.version,
+    row.name,
+    row.definition_json,
+    row.source_format,
+    String(row.imported_at),
+    String(row.updated_at),
+  ];
+  return createHash("sha256").update(JSON.stringify(canonicalFields)).digest("hex");
+}
+
 /** One recorded revision of a tree definition (newest first in listings). */
 export type WorkflowTreeVersionRecord = {
   treeId: string;
@@ -85,6 +103,26 @@ export type WorkflowTreeVersionDetail = {
   revision: number;
   savedAt: number;
 };
+
+type EnterpriseWorkflowTreeUpsertPrecondition =
+  | { kind: "create-only" }
+  | {
+      kind: "expected-hash";
+      hash: string;
+      /** The process-stable registry source whose hash the caller matched. */
+      expectedSource: "builtin" | "imported";
+    }
+  | {
+      kind: "expected-bundle-state";
+      treeId: string;
+      expectedSource: "absent" | "builtin" | "imported";
+      treeHash: string | null;
+      knowledgeFingerprint: string;
+    };
+
+type EnterpriseWorkflowTreeUpsertResult =
+  | { upserted: true; replacedImported: boolean }
+  | { upserted: false; reason: "already-exists" | "tree-changed" | "tree-unavailable" };
 
 function parseSourceFormat(value: string): WorkflowTreeSourceFormat {
   if (value === "yaml" || value === "json") {
@@ -235,13 +273,81 @@ export function upsertEnterpriseWorkflowTree(
      * untouched, so editing a tree never silently drops its bundled knowledge.
      */
     bundledFoundations?: readonly BundledKnowledgeFoundation[];
+    /** Optional optimistic guard checked against the imported row under the write lock. */
+    precondition?: EnterpriseWorkflowTreeUpsertPrecondition;
   },
   options: EnterpriseTreeStoreOptions = {},
-): void {
+): EnterpriseWorkflowTreeUpsertResult {
   const now = params.now ?? Date.now();
   const definitionJson = JSON.stringify(params.tree);
-  runOpenClawStateWriteTransaction((database) => {
+  return runOpenClawStateWriteTransaction<EnterpriseWorkflowTreeUpsertResult>((database) => {
     const stateDb = getNodeSqliteKysely<EnterpriseTreeDatabase>(database.db);
+    const currentRow = executeSqliteQueryTakeFirstSync(
+      database.db,
+      stateDb
+        .selectFrom("enterprise_workflow_trees")
+        .selectAll()
+        .where("tree_id", "=", params.tree.id),
+    ) as EnterpriseTreeRow | undefined;
+    if (params.precondition) {
+      // BEGIN IMMEDIATE is already held here. Keep this check, history append,
+      // tree write, and knowledge reconciliation in the same transaction.
+      if (params.precondition.kind === "create-only") {
+        if (currentRow) {
+          return { upserted: false, reason: "already-exists" };
+        }
+      } else if (params.precondition.kind === "expected-bundle-state") {
+        if (params.precondition.treeId !== params.tree.id) {
+          return { upserted: false, reason: "tree-changed" };
+        }
+        const expectsImported = params.precondition.expectedSource === "imported";
+        if (Boolean(currentRow) !== expectsImported) {
+          return { upserted: false, reason: "tree-changed" };
+        }
+        if (currentRow) {
+          let currentTree: WorkflowTreeDefinition;
+          try {
+            currentTree = rowToRecord(currentRow).tree;
+          } catch {
+            return { upserted: false, reason: "tree-unavailable" };
+          }
+          if (hashWorkflowTree(currentTree) !== params.precondition.treeHash) {
+            return { upserted: false, reason: "tree-changed" };
+          }
+        }
+        // The bundle replaces both tables. Checking the owned rows under the same
+        // BEGIN IMMEDIATE lock closes the race where the tree bytes stay equal but
+        // another importer changes its inlined knowledge after preview.
+        const knowledgeFingerprint = fingerprintBundledKnowledgeForTreeFromDatabase(
+          database,
+          params.tree.id,
+        );
+        if (knowledgeFingerprint !== params.precondition.knowledgeFingerprint) {
+          return { upserted: false, reason: "tree-changed" };
+        }
+      } else if (params.precondition.expectedSource === "builtin" && currentRow) {
+        // A built-in has no store row. Even identical bytes here mean another
+        // writer installed an override after preview, so source identity changed.
+        return { upserted: false, reason: "tree-changed" };
+      } else if (!currentRow) {
+        // Built-ins are process-stable and have no store row. An expected
+        // imported row disappearing is a conflict, but a matched built-in may
+        // be overridden while the imported slot remains empty.
+        if (params.precondition.expectedSource === "imported") {
+          return { upserted: false, reason: "tree-changed" };
+        }
+      } else {
+        let currentTree: WorkflowTreeDefinition;
+        try {
+          currentTree = rowToRecord(currentRow).tree;
+        } catch {
+          return { upserted: false, reason: "tree-unavailable" };
+        }
+        if (hashWorkflowTree(currentTree) !== params.precondition.hash) {
+          return { upserted: false, reason: "tree-changed" };
+        }
+      }
+    }
     // Preserve the definition being overwritten (upgrade/divergence) first.
     const priorRevision = snapshotCurrentTreeRow(database, params.tree.id, now);
 
@@ -282,12 +388,13 @@ export function upsertEnterpriseWorkflowTree(
         saved_at: now,
       }),
     );
-    // Keep this tree's persisted bundled foundations in sync with its definition,
-    // in the SAME transaction so tree and knowledge are never half-applied. Note:
-    // only the live set is kept — bundled knowledge is NOT snapshotted into the
-    // append-only revision history above, so restoring an old tree revision does
-    // not restore that revision's knowledge (re-import the bundle for that). This
-    // is a known limitation; see docs/cli/enterprise.md.
+    // A bundle import replaces this tree's persisted foundation set in the SAME
+    // transaction, so tree and knowledge are never half-applied. A plain tree
+    // import carries no foundation content and intentionally leaves the set alone:
+    // editing a definition must not destroy the only persisted copy of its bundle.
+    // Runtime hydration filters these rows against the current healthy definition.
+    // Bundled knowledge is not part of revision history; re-import a bundle to
+    // restore different content.
     if (params.bundledFoundations) {
       // Bundle import: replace with the inlined set (the importer already filtered
       // it to the tree's references), so a re-import drops foundations it omitted.
@@ -296,15 +403,8 @@ export function upsertEnterpriseWorkflowTree(
         foundations: params.bundledFoundations,
         now,
       });
-    } else {
-      // Plain tree import (no inlined content): keep still-referenced foundations,
-      // but drop ones the new definition no longer references, so detached
-      // knowledge cannot outlive the reference and leak into unrelated runs.
-      pruneBundledKnowledgeFoundationsForTree(database, {
-        treeId: params.tree.id,
-        keepIds: collectReferencedFoundationIds(params.tree),
-      });
     }
+    return { upserted: true, replacedImported: currentRow !== undefined };
   }, stateDatabaseOptions(options));
 }
 
@@ -340,6 +440,26 @@ export function listEnterpriseWorkflowTreeVersions(
     sourceFormat: parseSourceFormat(row.source_format),
     savedAt: normalizeSqliteNumber(row.saved_at) ?? 0,
   }));
+}
+
+/** Tree ids that still own an append-only revision history, sorted for stable UI lists. */
+export function listEnterpriseWorkflowTreeHistoryIds(
+  options: EnterpriseTreeStoreOptions = {},
+): string[] {
+  if (!treeStoreDatabaseExists(options)) {
+    return [];
+  }
+  const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  const stateDb = getNodeSqliteKysely<EnterpriseTreeDatabase>(database.db);
+  const rows = executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .selectFrom("enterprise_workflow_tree_versions")
+      .select("tree_id")
+      .distinct()
+      .orderBy("tree_id", "asc"),
+  ).rows as Array<{ tree_id: string }>;
+  return rows.map((row) => row.tree_id);
 }
 
 /** Read one recorded revision's full definition (null when absent). */
@@ -406,8 +526,12 @@ export type EnterpriseWorkflowTreeReadResult = {
    * keyed by the row id so operators can re-import or remove them without
    * losing the healthy imports read alongside.
    */
-  rowErrors: Array<{ treeId: string; message: string }>;
+  rowErrors: Array<{ treeId: string; message: string; fingerprint: string }>;
 };
+
+type EnterpriseWorkflowTreeDeleteResult =
+  | { removed: true }
+  | { removed: false; reason: "not-found" | "tree-changed" | "tree-unavailable" };
 
 /** Read every imported tree, ordered by tree id, with per-row error capture. */
 export function listEnterpriseWorkflowTrees(
@@ -417,13 +541,19 @@ export function listEnterpriseWorkflowTrees(
     return { records: [], rowErrors: [] };
   }
   const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  return readEnterpriseWorkflowTreesFromDatabase(database);
+}
+
+function readEnterpriseWorkflowTreesFromDatabase(
+  database: OpenClawStateDatabase,
+): EnterpriseWorkflowTreeReadResult {
   const stateDb = getNodeSqliteKysely<EnterpriseTreeDatabase>(database.db);
   const rows = executeSqliteQuerySync(
     database.db,
     stateDb.selectFrom("enterprise_workflow_trees").selectAll().orderBy("tree_id", "asc"),
   ).rows as EnterpriseTreeRow[];
   const records: ImportedWorkflowTreeRecord[] = [];
-  const rowErrors: Array<{ treeId: string; message: string }> = [];
+  const rowErrors: EnterpriseWorkflowTreeReadResult["rowErrors"] = [];
   for (const row of rows) {
     try {
       records.push(rowToRecord(row));
@@ -431,10 +561,56 @@ export function listEnterpriseWorkflowTrees(
       rowErrors.push({
         treeId: row.tree_id,
         message: err instanceof Error ? err.message : String(err),
+        fingerprint: fingerprintEnterpriseTreeRow(row),
       });
     }
   }
   return { records, rowErrors };
+}
+
+export type EnterpriseWorkflowKnowledgeSnapshot = {
+  trees: EnterpriseWorkflowTreeReadResult;
+  foundations: BundledKnowledgeFoundationReadResult;
+};
+
+/** Read tree definitions and their owned knowledge from one SQLite snapshot. */
+export function readEnterpriseWorkflowKnowledgeSnapshot(
+  options: EnterpriseTreeStoreOptions = {},
+): EnterpriseWorkflowKnowledgeSnapshot {
+  if (!treeStoreDatabaseExists(options)) {
+    return {
+      trees: { records: [], rowErrors: [] },
+      foundations: { records: [], rowErrors: [] },
+    };
+  }
+  const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  return runSqliteReadTransactionSync(database.db, () => ({
+    trees: readEnterpriseWorkflowTreesFromDatabase(database),
+    foundations: readBundledKnowledgeFoundationsFromDatabase(database),
+  }));
+}
+
+function deleteEnterpriseWorkflowTreeInTransaction(
+  database: OpenClawStateDatabase,
+  treeId: string,
+): boolean {
+  const stateDb = getNodeSqliteKysely<EnterpriseTreeDatabase>(database.db);
+  // Preserve the current definition in history before deleting the live row,
+  // so a pre-history tree removed before its first save stays restorable.
+  snapshotCurrentTreeRow(database, treeId, Date.now());
+  const result = executeSqliteQuerySync(
+    database.db,
+    stateDb.deleteFrom("enterprise_workflow_trees").where("tree_id", "=", treeId),
+  );
+  const removed = (normalizeSqliteNumber(result.numAffectedRows ?? 0n) ?? 0) > 0;
+  if (removed) {
+    // There is no FK to cascade from (built-in trees are code, not rows), so
+    // this has to be explicit: otherwise the removed tree's objects and bundled
+    // foundations survive and are inherited by whatever tree next claims the id.
+    deleteOntologyObjectsForTree(database, treeId);
+    deleteBundledKnowledgeFoundationsForTree(database, treeId);
+  }
+  return removed;
 }
 
 /** Delete one imported tree. Returns true when a row was removed. */
@@ -445,24 +621,55 @@ export function deleteEnterpriseWorkflowTree(
   if (!treeStoreDatabaseExists(options)) {
     return false;
   }
-  let removed = false;
-  runOpenClawStateWriteTransaction((database) => {
+  return runOpenClawStateWriteTransaction(
+    (database) => deleteEnterpriseWorkflowTreeInTransaction(database, treeId),
+    stateDatabaseOptions(options),
+  );
+}
+
+/** Atomically remove an imported row only while its expected state still holds. */
+export function deleteEnterpriseWorkflowTreeIfUnchanged(
+  params:
+    | { treeId: string; expectedHash: string }
+    | { treeId: string; expectedInvalidFingerprint: string },
+  options: EnterpriseTreeStoreOptions = {},
+): EnterpriseWorkflowTreeDeleteResult {
+  if (!treeStoreDatabaseExists(options)) {
+    return { removed: false, reason: "not-found" };
+  }
+  return runOpenClawStateWriteTransaction<EnterpriseWorkflowTreeDeleteResult>((database) => {
+    // BEGIN IMMEDIATE excludes other writers before this read; comparison,
+    // history snapshot, deletion, and owned-data cleanup must stay in this txn.
     const stateDb = getNodeSqliteKysely<EnterpriseTreeDatabase>(database.db);
-    // Preserve the current definition in history before deleting the live row,
-    // so a pre-history tree removed before its first save stays restorable.
-    snapshotCurrentTreeRow(database, treeId, Date.now());
-    const result = executeSqliteQuerySync(
+    const row = executeSqliteQueryTakeFirstSync(
       database.db,
-      stateDb.deleteFrom("enterprise_workflow_trees").where("tree_id", "=", treeId),
-    );
-    removed = (normalizeSqliteNumber(result.numAffectedRows ?? 0n) ?? 0) > 0;
-    if (removed) {
-      // There is no FK to cascade from (built-in trees are code, not rows), so
-      // this has to be explicit: otherwise the removed tree's objects and bundled
-      // foundations survive and are inherited by whatever tree next claims the id.
-      deleteOntologyObjectsForTree(database, treeId);
-      deleteBundledKnowledgeFoundationsForTree(database, treeId);
+      stateDb
+        .selectFrom("enterprise_workflow_trees")
+        .selectAll()
+        .where("tree_id", "=", params.treeId),
+    ) as EnterpriseTreeRow | undefined;
+    if (!row) {
+      return { removed: false, reason: "not-found" };
     }
+    let tree: WorkflowTreeDefinition;
+    try {
+      tree = rowToRecord(row).tree;
+    } catch {
+      if (!("expectedInvalidFingerprint" in params)) {
+        return { removed: false, reason: "tree-unavailable" };
+      }
+      if (fingerprintEnterpriseTreeRow(row) !== params.expectedInvalidFingerprint) {
+        return { removed: false, reason: "tree-changed" };
+      }
+      return deleteEnterpriseWorkflowTreeInTransaction(database, params.treeId)
+        ? { removed: true }
+        : { removed: false, reason: "not-found" };
+    }
+    if ("expectedInvalidFingerprint" in params || hashWorkflowTree(tree) !== params.expectedHash) {
+      return { removed: false, reason: "tree-changed" };
+    }
+    return deleteEnterpriseWorkflowTreeInTransaction(database, params.treeId)
+      ? { removed: true }
+      : { removed: false, reason: "not-found" };
   }, stateDatabaseOptions(options));
-  return removed;
 }

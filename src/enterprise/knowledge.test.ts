@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearBundleKnowledgeFoundations,
   clearEnterpriseKnowledgeFoundations,
+  describeWorkflowKnowledgeFoundations,
   InMemoryKnowledgeFoundation,
   listEnterpriseKnowledgeDocuments,
   listEnterpriseKnowledgeFoundationDescriptors,
@@ -143,15 +144,33 @@ describe("knowledge foundation registry", () => {
     expect(listEnterpriseKnowledgeFoundationIds()).toEqual(["acme.a", "acme.z"]);
   });
 
-  it("reports bundle ownership but not for a plugin-served id", () => {
-    registerBundleKnowledgeFoundation("acme.tree", "acme.bundle", foundation("bundled"));
-    registerBundleKnowledgeFoundation("acme.other", "acme.bundle", foundation("also bundled"));
+  it("keeps each bundle owner's descriptor separate but not for a plugin-served id", () => {
+    registerBundleKnowledgeFoundation(
+      "acme.tree",
+      "acme.bundle",
+      new InMemoryKnowledgeFoundation([], { kind: "remote", displayName: "Tree bundle" }),
+    );
+    registerBundleKnowledgeFoundation(
+      "acme.other",
+      "acme.bundle",
+      new InMemoryKnowledgeFoundation([], { kind: "remote", displayName: "Other bundle" }),
+    );
     registerEnterpriseKnowledgeFoundation("acme.plugin", foundation("plugin"));
     const entries = listEnterpriseKnowledgeFoundationDescriptors();
-    const bundled = entries.find((entry) => entry.foundationId === "acme.bundle");
+    const bundled = entries.filter((entry) => entry.foundationId === "acme.bundle");
     const plugin = entries.find((entry) => entry.foundationId === "acme.plugin");
-    // Sorted owners, so a client can scope suggestions to the tree on screen.
-    expect(bundled?.ownerTreeIds).toEqual(["acme.other", "acme.tree"]);
+    expect(bundled).toEqual([
+      {
+        foundationId: "acme.bundle",
+        descriptor: { kind: "remote", displayName: "Other bundle" },
+        ownerTreeIds: ["acme.other"],
+      },
+      {
+        foundationId: "acme.bundle",
+        descriptor: { kind: "remote", displayName: "Tree bundle" },
+        ownerTreeIds: ["acme.tree"],
+      },
+    ]);
     // A plugin registration is global (and outranks any bundle), so it owns no
     // tree — reported as an EMPTY list, which is how a client tells "global" from
     // a gateway too old to answer at all.
@@ -223,7 +242,7 @@ describe("resolveEnterpriseKnowledge", () => {
 
   it("returns an unmediated result for unknown runs", async () => {
     const result = await resolveEnterpriseKnowledge({ runId: "nope", query: "refund" });
-    expect(result).toEqual({ snippets: [], skipped: [], mediated: false });
+    expect(result).toEqual({ snippets: [], searched: [], skipped: [], mediated: false });
   });
 
   it("queries only ontology-allowed registered foundations", async () => {
@@ -234,6 +253,18 @@ describe("resolveEnterpriseKnowledge", () => {
     const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
     expect(result.mediated).toBe(true);
     expect(result.snippets.map((snippet) => snippet.foundationId)).toEqual(["acme.support"]);
+  });
+
+  it("prefers a global/plugin foundation over same-id content bundled by the run's tree", async () => {
+    registerEnterpriseActiveRun(
+      run({ treeId: "acme.support", knowledgeFoundations: ["acme.shared"] }),
+    );
+    registerBundleKnowledgeFoundation("acme.support", "acme.shared", foundation("bundle refund"));
+    registerEnterpriseKnowledgeFoundation("acme.shared", foundation("plugin refund"));
+
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+
+    expect(result.snippets.map((snippet) => snippet.text)).toEqual(["plugin refund"]);
   });
 
   it("queries all registered foundations when the step declares none", async () => {
@@ -382,6 +413,7 @@ describe("resolveEnterpriseKnowledge", () => {
       expect(result).toEqual({
         mediated: true,
         snippets: [],
+        searched: ["acme.empty"],
         skipped: [{ foundationId: "acme.missing", reason: "knowledge foundation unavailable" }],
       });
     },
@@ -394,6 +426,7 @@ describe("resolveEnterpriseKnowledge", () => {
       query: "refund",
       foundations: ["acme.missing"],
     });
+    expect(result.searched).toEqual([]);
     expect(result.skipped).toEqual([
       { foundationId: "acme.missing", reason: "knowledge foundation unavailable" },
     ]);
@@ -408,6 +441,7 @@ describe("resolveEnterpriseKnowledge", () => {
     );
     registerEnterpriseKnowledgeFoundation("acme.billing-kb", foundation("refund"));
     const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(result.searched).toEqual(["acme.billing-kb"]);
     expect(result.skipped).toEqual([]);
   });
 
@@ -831,5 +865,122 @@ describe("knowledge documents", () => {
       status: "ok",
       result: { outcome: "started" },
     });
+  });
+});
+
+describe("multi-store scoping and routing", () => {
+  function registerThree(): void {
+    registerEnterpriseKnowledgeFoundation("acme.billing-kb", foundation("refund window"));
+    registerEnterpriseKnowledgeFoundation("acme.legal-kb", foundation("refund dispute"));
+    registerEnterpriseKnowledgeFoundation("acme.hr-kb", foundation("refund travel"));
+  }
+
+  it("gives each step only the store wired to it, out of several registered", async () => {
+    registerThree();
+    registerEnterpriseActiveRun(branchedRun({ activeNodeId: "billing" }));
+    const billing = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(billing.snippets.map((snippet) => snippet.foundationId)).toEqual(["acme.billing-kb"]);
+    expect(billing.searched).toEqual(["acme.billing-kb"]);
+    clearEnterpriseActiveRunsForTest();
+
+    registerEnterpriseActiveRun(branchedRun({ activeNodeId: "legal" }));
+    const legal = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(legal.snippets.map((snippet) => snippet.foundationId)).toEqual(["acme.legal-kb"]);
+    expect(legal.searched).toEqual(["acme.legal-kb"]);
+  });
+
+  it("leaves a step nothing when an ancestor's own list excludes what it attaches", async () => {
+    registerThree();
+    // Root allows only HR; the billing leaf attaches only billing. Each level is
+    // an independent gate, so the intersection is empty — the shape
+    // collectWorkflowTreeWarnings warns about at authoring time.
+    registerEnterpriseActiveRun(
+      branchedRun({ activeNodeId: "billing", rootFoundations: ["acme.hr-kb"] }),
+    );
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
+    expect(result.snippets).toEqual([]);
+    expect(result.searched).toEqual([]);
+  });
+
+  it("names the stores it searched, so an empty result is not read as an empty scope", async () => {
+    registerEnterpriseKnowledgeFoundation("acme.billing-kb", foundation("refund window"));
+    registerEnterpriseActiveRun(branchedRun({ activeNodeId: "billing" }));
+
+    const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "zzz-nothing" });
+    // Without `searched` this is indistinguishable from a step wired to no store
+    // at all, and the model's only move is to give up or repeat the same target.
+    expect(result.snippets).toEqual([]);
+    expect(result.searched).toEqual(["acme.billing-kb"]);
+  });
+
+  it("withholds knowledge_search when every executable path excludes what is registered", () => {
+    // Not a capabilityGrants question: the plain allow-list narrows in every mode,
+    // so a work-map that names only sources nobody serves gets a tool that could
+    // never answer. The root has to narrow too — it is an executable path itself,
+    // where a non-advancing runtime spends its whole life.
+    registerEnterpriseKnowledgeFoundation("acme.hr-kb", foundation("refund travel"));
+    registerEnterpriseActiveRun(
+      branchedRun({ activeNodeId: "billing", rootFoundations: ["acme.billing-kb"] }),
+    );
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
+  });
+
+  it("judges a step-tracking plan by its leaves, not by its unnarrowed root", () => {
+    // The root's own path admits every registered store, but a step-tracking plan
+    // opens on a leaf and is never active on the root, so a store only the root
+    // would admit is neither retrievable nor worth a tool. Judging it root-first
+    // advertised a source no reachable step could query.
+    registerEnterpriseKnowledgeFoundation("acme.hr-kb", foundation("refund travel"));
+    registerEnterpriseActiveRun(branchedRun({ activeNodeId: "billing" }));
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
+    expect(describeWorkflowKnowledgeFoundations("run-k")).toEqual([]);
+  });
+
+  it("judges a plan with no steps to track by its root, where the cursor stays", () => {
+    // The mirror case: one node, so the cursor never leaves it and its own
+    // allow-list (here, none) is the whole answer.
+    registerEnterpriseKnowledgeFoundation("acme.hr-kb", foundation("refund travel"));
+    registerEnterpriseActiveRun(run({}));
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(true);
+  });
+});
+
+describe("describeWorkflowKnowledgeFoundations", () => {
+  function described(id: string, description: string): KnowledgeFoundationAdapter {
+    return {
+      retrieve: async () => [],
+      describe: () => ({ kind: "remote", displayName: id, description }),
+    };
+  }
+
+  it("names every store a step with no allow-list can reach", () => {
+    // The multi-store default: several foundations registered, no step narrowing
+    // them. Reading the step declarations alone would leave the model with no
+    // list at all while every one of them is queryable.
+    registerEnterpriseKnowledgeFoundation("acme.a", described("acme.a", "Invoices"));
+    registerEnterpriseKnowledgeFoundation("acme.b", described("acme.b", "Contracts"));
+    registerEnterpriseActiveRun(run({}));
+
+    expect(describeWorkflowKnowledgeFoundations("run-k")).toEqual([
+      { foundationId: "acme.a", description: "Invoices" },
+      { foundationId: "acme.b", description: "Contracts" },
+    ]);
+  });
+
+  it("drops a declared store nobody registered", () => {
+    // A dangling reference is a source the model would target and never get an
+    // answer from, spending a turn to learn what the registry already knows.
+    registerEnterpriseKnowledgeFoundation("acme.a", described("acme.a", "Invoices"));
+    registerEnterpriseActiveRun(run({ knowledgeFoundations: ["acme.a", "acme.retired"] }));
+
+    expect(describeWorkflowKnowledgeFoundations("run-k")).toEqual([
+      { foundationId: "acme.a", description: "Invoices" },
+    ]);
+  });
+
+  it("lists nothing for an explicit work-map that attaches nothing", () => {
+    registerEnterpriseKnowledgeFoundation("acme.a", described("acme.a", "Invoices"));
+    registerEnterpriseActiveRun(run({ capabilityGrants: "explicit" }));
+    expect(describeWorkflowKnowledgeFoundations("run-k")).toEqual([]);
   });
 });

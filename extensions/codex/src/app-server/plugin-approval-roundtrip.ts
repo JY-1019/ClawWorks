@@ -4,13 +4,15 @@
  */
 import {
   callGatewayTool,
+  cancelPluginApprovalForRunAbort,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import { resolveCodexGatewayTimeoutWithGraceMs } from "./attempt-timeouts.js";
 
 const DEFAULT_CODEX_APPROVAL_TIMEOUT_MS = 120_000;
 const MAX_PLUGIN_APPROVAL_TITLE_LENGTH = 80;
-const MAX_PLUGIN_APPROVAL_DESCRIPTION_LENGTH = 256;
+export const CODEX_PLUGIN_APPROVAL_DESCRIPTION_MAX_CHARS = 256;
 
 export type ExecApprovalDecision = "allow-once" | "allow-always" | "deny";
 
@@ -37,19 +39,27 @@ export async function requestPluginApproval(params: {
   paramsForRun: EmbeddedRunAttemptParams;
   title: string;
   description: string;
-  severity: "info" | "warning";
+  severity: "info" | "warning" | "critical";
   toolName: string;
   toolCallId?: string;
   allowedDecisions?: ExecApprovalDecision[];
+  signal?: AbortSignal;
 }): Promise<ApprovalRequestResult | undefined> {
   const timeoutMs = DEFAULT_CODEX_APPROVAL_TIMEOUT_MS;
+  params.signal?.throwIfAborted();
   return callGatewayTool(
     "plugin.approval.request",
-    { timeoutMs: resolveCodexGatewayTimeoutWithGraceMs(timeoutMs) },
+    {
+      timeoutMs: resolveCodexGatewayTimeoutWithGraceMs(timeoutMs),
+      ...(params.signal ? { signal: params.signal } : {}),
+    },
     {
       pluginId: "openclaw-codex-app-server",
       title: truncateForGateway(params.title, MAX_PLUGIN_APPROVAL_TITLE_LENGTH),
-      description: truncateForGateway(params.description, MAX_PLUGIN_APPROVAL_DESCRIPTION_LENGTH),
+      description: truncateForGateway(
+        params.description,
+        CODEX_PLUGIN_APPROVAL_DESCRIPTION_MAX_CHARS,
+      ),
       severity: params.severity,
       toolName: params.toolName,
       toolCallId: params.toolCallId,
@@ -87,29 +97,23 @@ export async function waitForPluginApprovalDecision(params: {
   signal?: AbortSignal;
 }): Promise<ExecApprovalDecision | null | undefined> {
   const timeoutMs = DEFAULT_CODEX_APPROVAL_TIMEOUT_MS;
-  const waitPromise: Promise<ApprovalWaitResult | undefined> = callGatewayTool(
-    "plugin.approval.waitDecision",
-    { timeoutMs: resolveCodexGatewayTimeoutWithGraceMs(timeoutMs) },
-    { id: params.approvalId },
-  );
-  if (!params.signal) {
-    return (await waitPromise)?.decision;
-  }
-  let onAbort: (() => void) | undefined;
-  const abortPromise = new Promise<never>((_, reject) => {
-    if (params.signal!.aborted) {
-      reject(toLintErrorObject(params.signal!.reason, "Non-Error rejection"));
-      return;
-    }
-    onAbort = () => reject(toLintErrorObject(params.signal!.reason, "Non-Error rejection"));
-    params.signal!.addEventListener("abort", onAbort, { once: true });
-  });
   try {
-    return (await Promise.race([waitPromise, abortPromise]))?.decision;
-  } finally {
-    if (onAbort) {
-      params.signal.removeEventListener("abort", onAbort);
+    const waitResult = await callGatewayTool<ApprovalWaitResult | undefined>(
+      "plugin.approval.waitDecision",
+      {
+        timeoutMs: resolveCodexGatewayTimeoutWithGraceMs(timeoutMs),
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      { id: params.approvalId },
+    );
+    return waitResult?.decision;
+  } catch (error) {
+    if (params.signal?.aborted) {
+      // The request and wait use separate sockets, so abort may land after the
+      // request was accepted but before the wait handler can cancel it server-side.
+      await cancelPluginApprovalForRunAbort(params.approvalId);
     }
+    throw error;
   }
 }
 
@@ -130,19 +134,7 @@ export function mapExecDecisionToOutcome(
 }
 
 function truncateForGateway(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, Math.max(0, maxLength - 3))}...`;
-}
-
-function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-  if (typeof value === "string") {
-    return new Error(value);
-  }
-  const error = new Error(fallbackMessage, { cause: value });
-  if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    Object.assign(error, value);
-  }
-  return error;
+  return value.length <= maxLength
+    ? value
+    : `${truncateUtf16Safe(value, Math.max(0, maxLength - 3))}...`;
 }

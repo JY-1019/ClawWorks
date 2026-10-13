@@ -8,7 +8,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 
 /** Gateway request handlers for invoking registered native hook relays. */
 export const nativeHookRelayHandlers: GatewayRequestHandlers = {
-  "nativeHook.invoke": async ({ params, respond }) => {
+  "nativeHook.invoke": async ({ params, respond, signal }) => {
     try {
       // Relay invocations are one-shot bridges into a live native harness.
       // Require the current generation so stale clients cannot post into a
@@ -19,7 +19,9 @@ export const nativeHookRelayHandlers: GatewayRequestHandlers = {
         generation: params.generation,
         event: params.event,
         rawPayload: params.rawPayload,
+        deadlineAtMs: params.deadlineAtMs,
         requireGeneration: true,
+        signal,
       });
       respond(true, result);
     } catch (error) {

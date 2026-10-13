@@ -5,6 +5,7 @@ import type { ChannelPlugin } from "../channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
+import { createDeferred } from "../test-utils/deferred.js";
 import {
   buildExecApprovalRequestMessage,
   createExecApprovalForwarder,
@@ -262,12 +263,9 @@ const TARGETS_CFG = makeTargetsCfg([{ channel: "slack", to: "U123" }]);
 function createForwarder(params: {
   cfg: OpenClawConfig;
   deliver?: ReturnType<typeof vi.fn>;
-  resolveSessionTarget?: () => {
-    channel: string;
-    to: string;
-    accountId?: string;
-    threadId?: string | number;
-  } | null;
+  resolveSessionTarget?: NonNullable<
+    Parameters<typeof createExecApprovalForwarder>[0]
+  >["resolveSessionTarget"];
 }) {
   const deliver = params.deliver ?? vi.fn().mockResolvedValue([]);
   const deps: NonNullable<Parameters<typeof createExecApprovalForwarder>[0]> = {
@@ -409,6 +407,68 @@ describe("exec approval forwarder", () => {
 
     await vi.advanceTimersByTimeAsync(baseRequest.expiresAtMs - baseRequest.createdAtMs);
     expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not forward a resolution before an in-flight pending request", async () => {
+    const releasePending = createDeferred();
+    const deliveryOrder: string[] = [];
+    const deliver = vi.fn(async (params: { payloads?: Array<{ text?: string }> }) => {
+      const text = params.payloads?.[0]?.text ?? "";
+      const kind = text.includes("approval required") ? "pending" : "resolved";
+      deliveryOrder.push(kind);
+      if (kind === "pending") {
+        await releasePending.promise;
+      }
+      return [];
+    });
+    const { forwarder } = createForwarder({ cfg: TARGETS_CFG, deliver });
+
+    await expect(forwarder.handleRequested(baseRequest)).resolves.toBe(true);
+    await vi.waitFor(() => expect(deliveryOrder).toEqual(["pending"]));
+
+    const resolvePromise = forwarder.handleResolved({
+      id: baseRequest.id,
+      decision: "allow-once",
+      resolvedBy: "slack:U123",
+      ts: 2000,
+    });
+    await Promise.resolve();
+    expect(deliveryOrder).toEqual(["pending"]);
+
+    releasePending.resolve();
+    await resolvePromise;
+    expect(deliveryOrder).toEqual(["pending", "resolved"]);
+  });
+
+  it("cancels a pending request resolved during target lookup", async () => {
+    const target = createDeferred<{ channel: string; to: string }>();
+    const resolveSessionTarget = vi.fn(() => target.promise);
+    const deliveryOrder: string[] = [];
+    const deliver = vi.fn(async (params: { payloads?: Array<{ text?: string }> }) => {
+      const text = params.payloads?.[0]?.text ?? "";
+      deliveryOrder.push(text.includes("approval required") ? "pending" : "resolved");
+      return [];
+    });
+    const { forwarder } = createForwarder({
+      cfg: makeSessionCfg(),
+      deliver,
+      resolveSessionTarget,
+    });
+
+    const requestPromise = forwarder.handleRequested(baseRequest);
+    await vi.waitFor(() => expect(resolveSessionTarget).toHaveBeenCalledOnce());
+    const resolvePromise = forwarder.handleResolved({
+      id: baseRequest.id,
+      decision: "allow-once",
+      resolvedBy: "slack:U123",
+      ts: 2000,
+    });
+    await vi.waitFor(() => expect(resolveSessionTarget).toHaveBeenCalledTimes(2));
+
+    target.resolve({ channel: "slack", to: "U123" });
+    await expect(requestPromise).resolves.toBe(false);
+    await resolvePromise;
+    expect(deliveryOrder).toEqual(["resolved"]);
   });
 
   it("forwards to explicit targets and expires", async () => {

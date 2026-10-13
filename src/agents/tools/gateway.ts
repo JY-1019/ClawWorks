@@ -35,6 +35,7 @@ export type GatewayCallOptions = {
   gatewayUrl?: string;
   gatewayToken?: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 type GatewayOverrideTarget = "local" | "remote";
@@ -207,6 +208,7 @@ const APPROVAL_RUNTIME_METHODS = new Set<string>([
   "exec.approval.resolve",
   "exec.approval.waitDecision",
   "plugin.approval.request",
+  "plugin.approval.resolve",
   "plugin.approval.waitDecision",
 ]);
 
@@ -356,6 +358,7 @@ export async function callGatewayTool<T = Record<string, unknown>>(
       method,
       params,
       timeoutMs: gateway.timeoutMs,
+      ...(opts.signal ? { signal: opts.signal } : {}),
       expectFinal: extra?.expectFinal,
       clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
       clientDisplayName: "agent",
@@ -370,5 +373,18 @@ export async function callGatewayTool<T = Record<string, unknown>>(
       throw staleGatewayAgentRuntimeIdentityError(error);
     }
     throw error;
+  }
+}
+
+/** Best-effort cleanup for a plugin approval whose owning run was aborted. */
+export async function cancelPluginApprovalForRunAbort(approvalId: string): Promise<void> {
+  try {
+    await callGatewayTool(
+      "plugin.approval.resolve",
+      { timeoutMs: 10_000 },
+      { id: approvalId, decision: "deny" },
+    );
+  } catch {
+    // The approval may already have resolved while cancellation raced it.
   }
 }

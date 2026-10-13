@@ -74,13 +74,13 @@ export type InsertChildResult =
  * Return a NEW definition with `child` appended under the node identified by
  * `parentId`. Immutable (structuredClone), so a failed splice leaves the caller's
  * definition untouched; every other field — the node's ontology, the envelope
- * keys — is preserved verbatim. The added node is bare (id + title); the operator
- * fills in its ontology in the editor before saving.
+ * keys — is preserved verbatim. Behavior/ontology fields can be added through
+ * the node inspector after this initial child is saved.
  */
 export function insertChildNode(
   definition: EditableTreeDefinition,
   parentId: string,
-  child: { id: string; title: string },
+  child: { id: string; title: string; description?: string },
 ): InsertChildResult {
   if (collectDefinitionNodeIds(definition).has(child.id)) {
     return { ok: false, reason: "duplicate-id" };
@@ -90,7 +90,50 @@ export function insertChildNode(
   if (!parent) {
     return { ok: false, reason: "parent-not-found" };
   }
-  parent.children = [...(parent.children ?? []), { id: child.id, title: child.title }];
+  parent.children = [...(parent.children ?? []), child];
+  return { ok: true, definition: next };
+}
+
+export type EditableTreeTrigger = "user" | "system" | "subagent";
+
+/** Replace guided tree metadata without disturbing raw-only or legacy fields. */
+export function setTreeSettings(
+  definition: EditableTreeDefinition,
+  settings: {
+    version: string;
+    name: string;
+    description: string;
+    triggers: readonly EditableTreeTrigger[];
+    priority?: number;
+  },
+): { ok: true; definition: EditableTreeDefinition } {
+  const next = structuredClone(definition);
+  next.version = settings.version.trim();
+  next.name = settings.name.trim();
+
+  const description = settings.description.trim();
+  if (description) {
+    next.description = description;
+  } else {
+    delete next.description;
+  }
+
+  const currentMatch =
+    typeof next.match === "object" && next.match !== null && !Array.isArray(next.match)
+      ? (next.match as Record<string, unknown>)
+      : {};
+  const { triggers: _triggers, priority: _priority, ...preservedMatch } = currentMatch;
+  const userOnly = settings.triggers.length === 1 && settings.triggers[0] === "user";
+  const match = {
+    ...preservedMatch,
+    ...(!userOnly ? { triggers: [...settings.triggers] } : {}),
+    ...(settings.priority !== undefined ? { priority: settings.priority } : {}),
+  };
+  if (Object.keys(match).length > 0) {
+    next.match = match;
+  } else {
+    delete next.match;
+  }
   return { ok: true, definition: next };
 }
 
@@ -152,6 +195,61 @@ export function addNodeOntologyEntry(
   return { ok: true, definition: next };
 }
 
+/** Declare MCP attachment governance, including before leaving explicit mode. */
+export function enableNodeMcpGovernance(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+): AddNodeOntologyEntryResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const ontology = nodeOntologyRecord(node);
+  if (Object.hasOwn(ontology, "mcpServers")) {
+    return { ok: false, reason: "duplicate-entry" };
+  }
+  node.ontology = { ...ontology, mcpServers: [] };
+  return { ok: true, definition: next };
+}
+
+/**
+ * Return an inherited-grant tree to legacy MCP behavior after every attachment
+ * has been removed. Explicit grants still govern MCP without a marker, and a
+ * non-empty list still grants a real server, so neither state can be disabled by
+ * deleting presence markers alone.
+ */
+export function disableTreeMcpGovernance(
+  definition: EditableTreeDefinition,
+): AddNodeOntologyEntryResult {
+  if (definition.capabilityGrants !== undefined) {
+    return { ok: false, reason: "entry-not-found" };
+  }
+  const nodesWithMarker = eachDefinitionNode(definition.root).filter((node) =>
+    Object.hasOwn(nodeOntologyRecord(node), "mcpServers"),
+  );
+  if (
+    nodesWithMarker.length === 0 ||
+    nodesWithMarker.some((node) => {
+      const servers = nodeOntologyRecord(node).mcpServers;
+      return !Array.isArray(servers) || servers.length > 0;
+    })
+  ) {
+    return { ok: false, reason: "entry-not-found" };
+  }
+
+  const next = structuredClone(definition);
+  for (const node of eachDefinitionNode(next.root)) {
+    const ontology = nodeOntologyRecord(node);
+    if (!Object.hasOwn(ontology, "mcpServers")) {
+      continue;
+    }
+    const { mcpServers: _dropped, ...rest } = ontology;
+    node.ontology = rest;
+  }
+  return { ok: true, definition: next };
+}
+
 /**
  * Detach one entry from a step's binding.
  *
@@ -194,28 +292,67 @@ export function removeNodeOntologyEntry(
   return { ok: true, definition: next };
 }
 
-/**
- * Set (or clear) a step's role prompt.
- *
- * Blank clears the key rather than storing an empty string: `guidance` is
- * optional, and an empty one would render an empty instruction line into the
- * step digest. Same immutable contract as the entry splicers — a failed set
- * leaves the caller's definition untouched, and every other field passes through.
- */
-export function setNodeGuidance(
+export type EditableNodeBehavior = {
+  title?: string;
+  description: string;
+  guidance: string;
+  contextHints: string[];
+  expectedOutput: string;
+  audit: boolean;
+};
+
+export type NodeBehaviorEditResult =
+  | { ok: true; definition: EditableTreeDefinition }
+  | { ok: false; reason: "node-not-found" }
+  | { ok: false; reason: "title-empty" };
+
+/** Replace the operator-authored behavior fields while preserving other ontology keys. */
+export function setNodeBehavior(
   definition: EditableTreeDefinition,
   nodeId: string,
-  guidance: string,
-): AddNodeOntologyEntryResult {
+  behavior: EditableNodeBehavior,
+): NodeBehaviorEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
   if (!node) {
     return { ok: false, reason: "node-not-found" };
   }
+  if (behavior.title !== undefined) {
+    const title = behavior.title.trim();
+    if (!title) {
+      return { ok: false, reason: "title-empty" };
+    }
+    node.title = title;
+  }
   const ontology = (node.ontology ?? {}) as Record<string, unknown>;
-  const trimmed = guidance.trim();
-  const { guidance: _dropped, ...rest } = ontology;
-  node.ontology = trimmed ? { ...rest, guidance: trimmed } : rest;
+  const {
+    guidance: _guidance,
+    contextHints: _contextHints,
+    expectedOutput: _expectedOutput,
+    audit: _audit,
+    ...rest
+  } = ontology;
+  const guidance = behavior.guidance.trim();
+  const contextHints = behavior.contextHints.map((hint) => hint.trim()).filter(Boolean);
+  const expectedOutput = behavior.expectedOutput.trim();
+  const updated = {
+    ...rest,
+    ...(contextHints.length > 0 ? { contextHints } : {}),
+    ...(guidance ? { guidance } : {}),
+    ...(expectedOutput ? { expectedOutput } : {}),
+    ...(behavior.audit ? { audit: true } : {}),
+  };
+  const description = behavior.description.trim();
+  if (description) {
+    node.description = description;
+  } else {
+    delete node.description;
+  }
+  if (Object.keys(updated).length > 0) {
+    node.ontology = updated;
+  } else {
+    delete node.ontology;
+  }
   return { ok: true, definition: next };
 }
 
@@ -257,12 +394,14 @@ export const ONTOLOGY_EDIT_REASONS = [
   "entity-referenced",
   "property-in-use",
   "primary-key-taken",
+  "identity-type-invalid",
   "action-not-found",
   "effect-needs-identity",
   "expression-invalid",
   "expression-property-unknown",
   "expression-type-invalid",
   "returns-mismatch",
+  "property-type-conflict",
   "parameter-type-conflict",
   "effect-target-taken",
   "create-required-unreachable",
@@ -275,6 +414,96 @@ export type OntologyEditReason = (typeof ONTOLOGY_EDIT_REASONS)[number];
 export type OntologyEditResult =
   | { ok: true; definition: EditableTreeDefinition }
   | { ok: false; reason: OntologyEditReason };
+
+type OntologyBreakageReason = Extract<
+  OntologyEditReason,
+  "duplicate-entry" | "entity-in-use" | "entity-referenced" | "property-in-use"
+>;
+
+export type TreeStructureEditReason =
+  | "node-not-found"
+  | "parent-not-found"
+  | "root-node"
+  | "invalid-parent"
+  | "invalid-index"
+  | OntologyBreakageReason;
+
+export type TreeStructureEditResult =
+  | { ok: true; definition: EditableTreeDefinition }
+  | { ok: false; reason: TreeStructureEditReason };
+
+/** Move a non-root subtree to an exact position in its new parent's final child list. */
+export function moveTreeNode(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  target: { parentId: string; index: number },
+): TreeStructureEditResult {
+  if (nodeId === definition.root.id) {
+    return { ok: false, reason: "root-node" };
+  }
+  const node = findNode(definition.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const parent = findNode(definition.root, target.parentId);
+  if (!parent) {
+    return { ok: false, reason: "parent-not-found" };
+  }
+  if (findNode(node, target.parentId)) {
+    return { ok: false, reason: "invalid-parent" };
+  }
+  const currentParent = findNodeParent(definition.root, nodeId);
+  const finalChildCount =
+    (parent.children?.length ?? 0) - (currentParent?.id === target.parentId ? 1 : 0);
+  if (!Number.isSafeInteger(target.index) || target.index < 0 || target.index > finalChildCount) {
+    return { ok: false, reason: "invalid-index" };
+  }
+
+  const next = structuredClone(definition);
+  const moved = detachTreeNode(next.root, nodeId);
+  const nextParent = findNode(next.root, target.parentId);
+  if (!moved || !nextParent) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const children = nextParent.children ?? [];
+  nextParent.children = [
+    ...children.slice(0, target.index),
+    moved,
+    ...children.slice(target.index),
+  ];
+  const blocker = newBreakageReason(definition, next);
+  return blocker ? { ok: false, reason: blocker } : { ok: true, definition: next };
+}
+
+/** Remove a non-root subtree unless doing so newly breaks an ontology consumer. */
+export function removeTreeNode(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+): TreeStructureEditResult {
+  if (nodeId === definition.root.id) {
+    return { ok: false, reason: "root-node" };
+  }
+  if (!findNode(definition.root, nodeId)) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const next = structuredClone(definition);
+  if (!detachTreeNode(next.root, nodeId)) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const hadMcpGovernance = eachDefinitionNode(definition.root).some((node) =>
+    Object.hasOwn(nodeOntologyRecord(node), "mcpServers"),
+  );
+  const keepsMcpGovernance = eachDefinitionNode(next.root).some((node) =>
+    Object.hasOwn(nodeOntologyRecord(node), "mcpServers"),
+  );
+  if (hadMcpGovernance && !keepsMcpGovernance) {
+    // MCP governance is presence-based. Keep the opt-in on the surviving root or
+    // deleting its last declaring subtree would make every registered server callable.
+    next.root.ontology = { ...nodeOntologyRecord(next.root), mcpServers: [] };
+  }
+  const blocker = newBreakageReason(definition, next);
+  return blocker ? { ok: false, reason: blocker } : { ok: true, definition: next };
+}
 
 /** The node's ontology as a plain record, or an empty one when it has none. */
 function nodeOntologyRecord(node: EditableTreeNode): Record<string, unknown> {
@@ -301,6 +530,46 @@ function withOntologyList(
   const ontology = nodeOntologyRecord(node);
   const { [key]: _dropped, ...rest } = ontology;
   node.ontology = next.length > 0 ? { ...rest, [key]: next } : rest;
+}
+
+function optionalTrimmedText(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
+function setOptionalText(
+  record: Record<string, unknown>,
+  key: string,
+  value: string | undefined,
+): void {
+  const trimmed = optionalTrimmedText(value);
+  if (trimmed !== undefined) {
+    record[key] = trimmed;
+  } else {
+    delete record[key];
+  }
+}
+
+/** Trim a schema non-blank list; null means at least one entry was blank. */
+function normalizedNonBlankList(
+  values: readonly string[] | undefined,
+): string[] | null | undefined {
+  if (values === undefined) {
+    return undefined;
+  }
+  const normalized = values.map((value) => value.trim());
+  return normalized.some((value) => !value) ? null : normalized;
+}
+
+function exactIndexedEntry(
+  entries: readonly Record<string, unknown>[],
+  index: number,
+  matches: (entry: Record<string, unknown>) => boolean,
+): Record<string, unknown> | null {
+  if (!Number.isSafeInteger(index) || index < 0) {
+    return null;
+  }
+  const entry = entries[index];
+  return entry && matches(entry) ? entry : null;
 }
 
 /**
@@ -339,6 +608,8 @@ export type DefinitionOntologyScope = {
    * instead of explaining it at the field.
    */
   primaryKeyByEntity: Map<string, string>;
+  /** Property types merged TREE-WIDE, matching import validation. */
+  propertyTypesByEntity: Map<string, Map<string, OntologyValueTypeName>>;
   /**
    * Property ids marked required per entity, merged TREE-WIDE.
    *
@@ -416,6 +687,7 @@ export function collectDefinitionOntologyScope(
     }
   }
   const primaryKeyByEntity = new Map<string, string>();
+  const propertyTypesByEntity = new Map<string, Map<string, OntologyValueTypeName>>();
   const requiredByEntity = new Map<string, Set<string>>();
   for (const node of eachDefinitionNode(definition.root)) {
     for (const entity of ontologyList(nodeOntologyRecord(node), "entities")) {
@@ -426,6 +698,13 @@ export function collectDefinitionOntologyScope(
       const properties = Array.isArray(entity.properties)
         ? (entity.properties as Record<string, unknown>[])
         : [];
+      const propertyTypes = propertyTypesByEntity.get(id) ?? new Map();
+      for (const property of properties) {
+        if (typeof property.id === "string" && isOntologyValueTypeName(property.type)) {
+          propertyTypes.set(property.id, property.type);
+        }
+      }
+      propertyTypesByEntity.set(id, propertyTypes);
       const key = properties.find((property) => property.primaryKey === true);
       if (key && typeof key.id === "string" && !primaryKeyByEntity.has(id)) {
         primaryKeyByEntity.set(id, key.id);
@@ -449,7 +728,13 @@ export function collectDefinitionOntologyScope(
       }
     }
   }
-  return { pathEntityShapes, primaryKeyByEntity, requiredByEntity, relationshipEndpoints };
+  return {
+    pathEntityShapes,
+    primaryKeyByEntity,
+    propertyTypesByEntity,
+    requiredByEntity,
+    relationshipEndpoints,
+  };
 }
 
 /**
@@ -461,7 +746,7 @@ export function collectDefinitionOntologyScope(
 export function addNodeOntologyEntity(
   definition: EditableTreeDefinition,
   nodeId: string,
-  entity: { id: string; title?: string },
+  entity: { id: string; title?: string; description?: string },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -477,7 +762,11 @@ export function addNodeOntologyEntity(
     return { ok: false, reason: "duplicate-entry" };
   }
   const title = entity.title?.trim();
-  withOntologyList(node, "entities", [...entities, { id, ...(title ? { title } : {}) }]);
+  const description = optionalTrimmedText(entity.description);
+  withOntologyList(node, "entities", [
+    ...entities,
+    { id, ...(title ? { title } : {}), ...(description ? { description } : {}) },
+  ]);
   return { ok: true, definition: next };
 }
 
@@ -491,7 +780,7 @@ export function addNodeOntologyEntity(
 export function removeNodeOntologyEntity(
   definition: EditableTreeDefinition,
   nodeId: string,
-  entityId: string,
+  target: string | IndexedIdTarget,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -500,13 +789,17 @@ export function removeNodeOntologyEntity(
   }
   const ontology = nodeOntologyRecord(node);
   const entities = ontologyList(ontology, "entities");
-  if (!entities.some((entity) => entity.id === entityId)) {
+  const matches = (entity: Record<string, unknown>, index: number) =>
+    typeof target === "string"
+      ? entity.id === target
+      : index === target.index && entity.id === target.id;
+  if (!entities.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
   withOntologyList(
     node,
     "entities",
-    entities.filter((entity) => entity.id !== entityId),
+    entities.filter((entity, index) => !matches(entity, index)),
   );
   // Judged AFTER the removal, and per referring declaration. "Still declared
   // somewhere" is not enough: an id on an unrelated sibling is not on the
@@ -524,7 +817,14 @@ export function addNodeOntologyProperty(
   definition: EditableTreeDefinition,
   nodeId: string,
   entityId: string,
-  property: { id: string; type: OntologyValueTypeName; primaryKey?: boolean },
+  property: {
+    id: string;
+    type: OntologyValueTypeName;
+    primaryKey?: boolean;
+    required?: boolean;
+    description?: string;
+  },
+  entityIndex?: number,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -533,7 +833,10 @@ export function addNodeOntologyProperty(
   }
   const entities = ontologyList(nodeOntologyRecord(node), "entities");
   const records = entities.filter((candidate) => candidate.id === entityId);
-  const entity = records[0];
+  const entity =
+    entityIndex === undefined
+      ? records[0]
+      : exactIndexedEntry(entities, entityIndex, (candidate) => candidate.id === entityId);
   if (!entity) {
     return { ok: false, reason: "entity-not-found" };
   }
@@ -553,6 +856,11 @@ export function addNodeOntologyProperty(
   ) {
     return { ok: false, reason: "duplicate-entry" };
   }
+  const scope = collectDefinitionOntologyScope(definition, nodeId);
+  const knownType = scope.propertyTypesByEntity.get(entityId)?.get(id);
+  if (knownType !== undefined && knownType !== property.type) {
+    return { ok: false, reason: "property-type-conflict" };
+  }
   const properties = Array.isArray(entity.properties)
     ? (entity.properties as Record<string, unknown>[])
     : [];
@@ -561,16 +869,24 @@ export function addNodeOntologyProperty(
   // a second. Refused rather than silently written without the flag — the
   // operator asked for an identity field and would otherwise get a plain one.
   if (property.primaryKey === true) {
-    const existingKey = collectDefinitionOntologyScope(definition, nodeId).primaryKeyByEntity.get(
-      entityId,
-    );
+    if (property.type === "boolean") {
+      return { ok: false, reason: "identity-type-invalid" };
+    }
+    const existingKey = scope.primaryKeyByEntity.get(entityId);
     if (existingKey !== undefined && existingKey !== id) {
       return { ok: false, reason: "primary-key-taken" };
     }
   }
+  const description = optionalTrimmedText(property.description);
   entity.properties = [
     ...properties,
-    { id, type: property.type, ...(property.primaryKey === true ? { primaryKey: true } : {}) },
+    {
+      id,
+      type: property.type,
+      ...(property.primaryKey === true ? { primaryKey: true } : {}),
+      ...(property.required === true ? { required: true } : {}),
+      ...(description ? { description } : {}),
+    },
   ];
   return { ok: true, definition: next };
 }
@@ -580,6 +896,7 @@ export function removeNodeOntologyProperty(
   nodeId: string,
   entityId: string,
   propertyId: string,
+  location?: { entityIndex: number; propertyIndex: number },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -590,9 +907,15 @@ export function removeNodeOntologyProperty(
   // declaring one entity twice with disjoint fields, and the inspector renders
   // them as one merged card — so the field the operator clicked may live in
   // either record.
-  const records = ontologyList(nodeOntologyRecord(node), "entities").filter(
-    (candidate) => candidate.id === entityId,
-  );
+  const entities = ontologyList(nodeOntologyRecord(node), "entities");
+  const exactEntity = location
+    ? exactIndexedEntry(entities, location.entityIndex, (candidate) => candidate.id === entityId)
+    : null;
+  const records = location
+    ? exactEntity
+      ? [exactEntity]
+      : []
+    : entities.filter((candidate) => candidate.id === entityId);
   if (records.length === 0) {
     return { ok: false, reason: "entity-not-found" };
   }
@@ -601,11 +924,13 @@ export function removeNodeOntologyProperty(
     const properties = Array.isArray(entity.properties)
       ? (entity.properties as Record<string, unknown>[])
       : [];
-    if (!properties.some((property) => property.id === propertyId)) {
+    const matches = (property: Record<string, unknown>, index: number) =>
+      property.id === propertyId && (!location || index === location.propertyIndex);
+    if (!properties.some(matches)) {
       continue;
     }
     removed = true;
-    const remaining = properties.filter((property) => property.id !== propertyId);
+    const remaining = properties.filter((property, index) => !matches(property, index));
     if (remaining.length > 0) {
       entity.properties = remaining;
     } else {
@@ -629,7 +954,14 @@ export function removeNodeOntologyProperty(
 export function addNodeOntologyRelationship(
   definition: EditableTreeDefinition,
   nodeId: string,
-  relationship: { id: string; from: string; to: string; cardinality?: OntologyCardinalityName },
+  relationship: {
+    id: string;
+    from: string;
+    to: string;
+    cardinality?: OntologyCardinalityName;
+    inverse?: string;
+    description?: string;
+  },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -659,6 +991,8 @@ export function addNodeOntologyRelationship(
   if (ontologyIdCollidesAtNode(next, nodeId, "relationships", id)) {
     return { ok: false, reason: "duplicate-entry" };
   }
+  const inverse = optionalTrimmedText(relationship.inverse);
+  const description = optionalTrimmedText(relationship.description);
   withOntologyList(node, "relationships", [
     ...relationships,
     {
@@ -670,6 +1004,8 @@ export function addNodeOntologyRelationship(
       ...(relationship.cardinality && relationship.cardinality !== "many-to-many"
         ? { cardinality: relationship.cardinality }
         : {}),
+      ...(inverse ? { inverse } : {}),
+      ...(description ? { description } : {}),
     },
   ]);
   return { ok: true, definition: next };
@@ -678,7 +1014,7 @@ export function addNodeOntologyRelationship(
 export function removeNodeOntologyRelationship(
   definition: EditableTreeDefinition,
   nodeId: string,
-  link: { id: string; from: string; to: string },
+  link: { id: string; from: string; to: string; index?: number },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -689,15 +1025,18 @@ export function removeNodeOntologyRelationship(
   // Matched on the whole triple. The schema permits one id to appear with
   // different endpoint pairs (the graph keys them that way too), and the editor
   // renders one chip each — so filtering by id alone would delete the others.
-  const matches = (relationship: Record<string, unknown>) =>
-    relationship.id === link.id && relationship.from === link.from && relationship.to === link.to;
+  const matches = (relationship: Record<string, unknown>, index: number) =>
+    relationship.id === link.id &&
+    relationship.from === link.from &&
+    relationship.to === link.to &&
+    (link.index === undefined || index === link.index);
   if (!relationships.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
   withOntologyList(
     node,
     "relationships",
-    relationships.filter((relationship) => !matches(relationship)),
+    relationships.filter((relationship, index) => !matches(relationship, index)),
   );
   // A seeded link names this relationship TYPE, so dropping the type would leave
   // a seed the import refuses. Same before/after rule as the other removers.
@@ -710,9 +1049,15 @@ export function removeNodeOntologyRelationship(
 
 /** One effect as the inspector collects it, before the splicer checks it. */
 export type OntologyEffectDraft =
-  | { kind: OntologyEffectKindName; entity: string }
-  | { kind: "call"; tool: string }
-  | { kind: "link" | "unlink"; relationship: string };
+  | { kind: OntologyEffectKindName; entity: string; description?: string }
+  | { kind: "call"; tool: string; description?: string }
+  | {
+      kind: "link" | "unlink";
+      relationship: string;
+      from?: string;
+      to?: string;
+      description?: string;
+    };
 
 /** Append one checked effect, keeping the array the caller already read. */
 function appendActionEffect(
@@ -723,7 +1068,7 @@ function appendActionEffect(
   action.effects = [...declared, added];
 }
 
-/** Effect kinds an action may declare (mirrors OntologyActionEffect.kind). */ /** Effect kinds an action may declare (mirrors OntologyActionEffect.kind). */
+/** Effect kinds an action may declare (mirrors OntologyActionEffect.kind). */
 export const ONTOLOGY_EFFECT_KINDS = ["read", "create", "update", "delete"] as const;
 
 export type OntologyEffectKindName = (typeof ONTOLOGY_EFFECT_KINDS)[number];
@@ -734,8 +1079,15 @@ function nodeOntologyActions(node: EditableTreeNode): Record<string, unknown>[] 
 }
 
 /** The action with `actionId` on this node, or null when the node declares none. */
-function findNodeAction(node: EditableTreeNode, actionId: string): Record<string, unknown> | null {
-  return nodeOntologyActions(node).find((action) => action.id === actionId) ?? null;
+function findNodeAction(
+  node: EditableTreeNode,
+  actionId: string,
+  actionIndex?: number,
+): Record<string, unknown> | null {
+  const actions = nodeOntologyActions(node);
+  return actionIndex === undefined
+    ? (actions.find((action) => action.id === actionId) ?? null)
+    : exactIndexedEntry(actions, actionIndex, (action) => action.id === actionId);
 }
 
 /**
@@ -783,7 +1135,13 @@ function ontologyIdCollidesAtNode(
 export function addNodeOntologyAction(
   definition: EditableTreeDefinition,
   nodeId: string,
-  action: { id: string; title?: string },
+  action: {
+    id: string;
+    title?: string;
+    description?: string;
+    tools?: string[];
+    preconditions?: string[];
+  },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -797,10 +1155,22 @@ export function addNodeOntologyAction(
   if (ontologyIdCollidesAtNode(next, nodeId, "actions", id)) {
     return { ok: false, reason: "duplicate-entry" };
   }
+  const tools = normalizedNonBlankList(action.tools);
+  const preconditions = normalizedNonBlankList(action.preconditions);
+  if (tools === null || preconditions === null) {
+    return { ok: false, reason: "invalid-id" };
+  }
   const title = action.title?.trim();
+  const description = optionalTrimmedText(action.description);
   withOntologyList(node, "actions", [
     ...nodeOntologyActions(node),
-    { id, ...(title ? { title } : {}) },
+    {
+      id,
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+      ...(tools !== undefined ? { tools } : {}),
+      ...(preconditions?.length ? { preconditions } : {}),
+    },
   ]);
   return { ok: true, definition: next };
 }
@@ -808,15 +1178,15 @@ export function addNodeOntologyAction(
 /**
  * Undeclare an action.
  *
- * No breakage check, unlike the entity and property removers: nothing in a
- * definition REFERENCES an action — governance policies select actions by id but
- * live in config, not in the tree — so dropping one can only ever remove
- * references, never orphan them.
+ * Nothing references an action directly, but imported definitions can contain a
+ * shadowed ancestor with the same id. Refuse a removal that would reveal an
+ * invalid declaration the runtime previously replaced with this one.
  */
 export function removeNodeOntologyAction(
   definition: EditableTreeDefinition,
   nodeId: string,
   actionId: string,
+  actionIndex?: number,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -824,14 +1194,20 @@ export function removeNodeOntologyAction(
     return { ok: false, reason: "node-not-found" };
   }
   const actions = nodeOntologyActions(node);
-  if (!actions.some((action) => action.id === actionId)) {
+  const matches = (action: Record<string, unknown>, index: number) =>
+    action.id === actionId && (actionIndex === undefined || index === actionIndex);
+  if (!actions.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
   withOntologyList(
     node,
     "actions",
-    actions.filter((action) => action.id !== actionId),
+    actions.filter((action, index) => !matches(action, index)),
   );
+  const blocker = newBreakageReason(definition, next);
+  if (blocker) {
+    return { ok: false, reason: blocker };
+  }
   return { ok: true, definition: next };
 }
 
@@ -847,10 +1223,11 @@ export function removeNodeOntologyAction(
  * and still refuses one that names a sibling branch's type, which no scope under
  * this node ever contains.
  */
-function executableShapeScopes(
+function executableNodes(
   definition: EditableTreeDefinition,
   nodeId: string,
-): DefinitionOntologyScope["pathEntityShapes"][] {
+  action?: Record<string, unknown>,
+): EditableTreeNode[] {
   const node = (nodePathToDefinitionNode(definition.root, nodeId) ?? []).at(-1);
   if (!node) {
     return [];
@@ -860,7 +1237,29 @@ function executableShapeScopes(
   // an interior node is only ever passed through. Including interior scopes here
   // would let a declaration pass on a node no run ever executes at.
   const leaves = eachDefinitionNode(node).filter((candidate) => !candidate.children?.length);
-  return (leaves.length > 0 ? leaves : [node]).map(
+  const candidates = leaves.length > 0 ? leaves : [node];
+  if (!action || typeof action.id !== "string") {
+    return candidates;
+  }
+  return candidates.filter((candidate) => {
+    let effective: Record<string, unknown> | undefined;
+    for (const step of nodePathToDefinitionNode(definition.root, candidate.id) ?? []) {
+      for (const declared of nodeOntologyActions(step)) {
+        if (declared.id === action.id) {
+          effective = declared;
+        }
+      }
+    }
+    return effective === action;
+  });
+}
+
+function executableShapeScopes(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  action?: Record<string, unknown>,
+): DefinitionOntologyScope["pathEntityShapes"][] {
+  return executableNodes(definition, nodeId, action).map(
     (candidate) => collectDefinitionOntologyScope(definition, candidate.id).pathEntityShapes,
   );
 }
@@ -876,13 +1275,9 @@ function executableShapeScopes(
 function executableRelationshipScopes(
   definition: EditableTreeDefinition,
   nodeId: string,
+  action?: Record<string, unknown>,
 ): Set<string>[] {
-  const node = (nodePathToDefinitionNode(definition.root, nodeId) ?? []).at(-1);
-  if (!node) {
-    return [];
-  }
-  const leaves = eachDefinitionNode(node).filter((candidate) => !candidate.children?.length);
-  return (leaves.length > 0 ? leaves : [node]).map((candidate) => {
+  return executableNodes(definition, nodeId, action).map((candidate) => {
     const ids = new Set<string>();
     for (const step of nodePathToDefinitionNode(definition.root, candidate.id) ?? []) {
       for (const relationship of ontologyList(nodeOntologyRecord(step), "relationships")) {
@@ -896,7 +1291,6 @@ function executableRelationshipScopes(
 }
 
 /**
- * The parameter/property type clash the runtime cannot resolve./**
  * The parameter/property type clash the runtime cannot resolve.
  *
  * A call's value is checked TWICE against two different declarations:
@@ -977,13 +1371,14 @@ export function addNodeOntologyActionEffect(
   nodeId: string,
   actionId: string,
   effect: OntologyEffectDraft,
+  actionIndex?: number,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
   if (!node) {
     return { ok: false, reason: "node-not-found" };
   }
-  const action = findNodeAction(node, actionId);
+  const action = findNodeAction(node, actionId, actionIndex);
   if (!action) {
     return { ok: false, reason: "action-not-found" };
   }
@@ -1010,23 +1405,44 @@ export function addNodeOntologyActionEffect(
     if (declared.some((existing) => existing.tool === tool)) {
       return { ok: false, reason: "duplicate-entry" };
     }
-    appendActionEffect(action, declared, { kind: "call", tool });
+    const description = optionalTrimmedText(effect.description);
+    appendActionEffect(action, declared, {
+      kind: "call",
+      tool,
+      ...(description ? { description } : {}),
+    });
     return { ok: true, definition: next };
   }
   // Narrowed by the field, not the kind: the object variant's `kind` is a
   // four-value enum, and excluding all four does not reduce it away. The call
   // lane returned above, so anything without an entity relates two objects.
   if (!("entity" in effect)) {
+    const from = optionalTrimmedText(effect.from);
+    const to = optionalTrimmedText(effect.to);
+    const description = optionalTrimmedText(effect.description);
+    if (
+      (from !== undefined && !isValidEnterpriseId(from)) ||
+      (to !== undefined && !isValidEnterpriseId(to))
+    ) {
+      return { ok: false, reason: "invalid-id" };
+    }
     // EVERY leaf, the same rule the object effects below follow: the action is
     // inherited into all of them, and planLinkEffect refuses it at whichever leaf
     // cannot address the link type.
-    if (!executableRelationshipScopes(next, nodeId).every((ids) => ids.has(effect.relationship))) {
+    if (
+      !executableRelationshipScopes(next, nodeId, action).every((ids) =>
+        ids.has(effect.relationship),
+      )
+    ) {
       return { ok: false, reason: "relationship-not-found" };
     }
     if (
       declared.some(
         (existing) =>
-          existing.kind === effect.kind && existing.relationship === effect.relationship,
+          existing.kind === effect.kind &&
+          existing.relationship === effect.relationship &&
+          existing.from === from &&
+          existing.to === to,
       )
     ) {
       return { ok: false, reason: "duplicate-entry" };
@@ -1034,13 +1450,16 @@ export function addNodeOntologyActionEffect(
     appendActionEffect(action, declared, {
       kind: effect.kind,
       relationship: effect.relationship,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(description ? { description } : {}),
     });
     return { ok: true, definition: next };
   }
   // EVERY leaf, not some: the action is inherited into all of them, and planEffect
   // refuses it at whichever leaf cannot address the type. An action that resolves
   // on one branch only belongs on that branch's node.
-  const scopes = executableShapeScopes(next, nodeId);
+  const scopes = executableShapeScopes(next, nodeId, action);
   if (!scopes.every((scope) => scope.has(effect.entity))) {
     return { ok: false, reason: "entity-not-found" };
   }
@@ -1080,7 +1499,12 @@ export function addNodeOntologyActionEffect(
   ) {
     return { ok: false, reason: "effect-target-taken" };
   }
-  const added = { entity: effect.entity, kind: effect.kind };
+  const description = optionalTrimmedText(effect.description);
+  const added = {
+    entity: effect.entity,
+    kind: effect.kind,
+    ...(description ? { description } : {}),
+  };
   // The mirror of the check in addNodeOntologyActionParameter: parameters may be
   // declared before the effect that gives them a target, so the clash has to be
   // caught from whichever side arrives second.
@@ -1113,17 +1537,18 @@ export function removeNodeOntologyActionEffect(
   definition: EditableTreeDefinition,
   nodeId: string,
   actionId: string,
-  effect:
+  effect: { actionIndex?: number; effectIndex?: number } & (
     | { entity: string; kind: OntologyEffectKindName }
     | { kind: "call"; tool: string }
-    | { kind: "link" | "unlink"; relationship: string },
+    | { kind: "link" | "unlink"; relationship: string }
+  ),
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
   if (!node) {
     return { ok: false, reason: "node-not-found" };
   }
-  const action = findNodeAction(node, actionId);
+  const action = findNodeAction(node, actionId, effect.actionIndex);
   if (!action) {
     return { ok: false, reason: "action-not-found" };
   }
@@ -1133,7 +1558,10 @@ export function removeNodeOntologyActionEffect(
   // Each variant is identified by the field it carries: an outward or graph
   // effect has no entity, so the object-effect match would drop every one of them
   // on the action at once.
-  const matches = (candidate: Record<string, unknown>) => {
+  const matches = (candidate: Record<string, unknown>, index: number) => {
+    if (effect.effectIndex !== undefined && index !== effect.effectIndex) {
+      return false;
+    }
     if ("entity" in effect) {
       return candidate.entity === effect.entity && candidate.kind === effect.kind;
     }
@@ -1145,7 +1573,7 @@ export function removeNodeOntologyActionEffect(
   if (!effects.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
-  const remaining = effects.filter((candidate) => !matches(candidate));
+  const remaining = effects.filter((candidate, index) => !matches(candidate, index));
   if (remaining.length > 0) {
     action.effects = remaining;
   } else {
@@ -1167,14 +1595,20 @@ export function addNodeOntologyActionParameter(
   definition: EditableTreeDefinition,
   nodeId: string,
   actionId: string,
-  parameter: { id: string; type: OntologyValueTypeName; required?: boolean },
+  parameter: {
+    id: string;
+    type: OntologyValueTypeName;
+    required?: boolean;
+    description?: string;
+  },
+  actionIndex?: number,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
   if (!node) {
     return { ok: false, reason: "node-not-found" };
   }
-  const action = findNodeAction(node, actionId);
+  const action = findNodeAction(node, actionId, actionIndex);
   if (!action) {
     return { ok: false, reason: "action-not-found" };
   }
@@ -1198,16 +1632,22 @@ export function addNodeOntologyActionParameter(
   // property may be contributed by a descendant, and that is the leaf the call
   // resolves at.
   if (
-    parameterClashesAnywhere(executableShapeScopes(next, nodeId), declaredEffects, {
+    parameterClashesAnywhere(executableShapeScopes(next, nodeId, action), declaredEffects, {
       id,
       type: parameter.type,
     })
   ) {
     return { ok: false, reason: "parameter-type-conflict" };
   }
+  const description = optionalTrimmedText(parameter.description);
   action.parameters = [
     ...parameters,
-    { id, type: parameter.type, ...(parameter.required === true ? { required: true } : {}) },
+    {
+      id,
+      type: parameter.type,
+      ...(parameter.required === true ? { required: true } : {}),
+      ...(description ? { description } : {}),
+    },
   ];
   return { ok: true, definition: next };
 }
@@ -1217,23 +1657,26 @@ export function removeNodeOntologyActionParameter(
   nodeId: string,
   actionId: string,
   parameterId: string,
+  location?: { actionIndex: number; parameterIndex: number },
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
   if (!node) {
     return { ok: false, reason: "node-not-found" };
   }
-  const action = findNodeAction(node, actionId);
+  const action = findNodeAction(node, actionId, location?.actionIndex);
   if (!action) {
     return { ok: false, reason: "action-not-found" };
   }
   const parameters = Array.isArray(action.parameters)
     ? (action.parameters as Record<string, unknown>[])
     : [];
-  if (!parameters.some((parameter) => parameter.id === parameterId)) {
+  const matches = (parameter: Record<string, unknown>, index: number) =>
+    parameter.id === parameterId && (!location || index === location.parameterIndex);
+  if (!parameters.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
-  const remaining = parameters.filter((parameter) => parameter.id !== parameterId);
+  const remaining = parameters.filter((parameter, index) => !matches(parameter, index));
   if (remaining.length > 0) {
     action.parameters = remaining;
   } else {
@@ -1259,6 +1702,7 @@ export function addNodeOntologyFunction(
   fn: {
     id: string;
     title?: string;
+    description?: string;
     entity: string;
     expression: string;
     returns: OntologyValueTypeName;
@@ -1320,21 +1764,30 @@ export function addNodeOntologyFunction(
     return { ok: false, reason: "returns-mismatch" };
   }
   const title = fn.title?.trim();
+  const description = optionalTrimmedText(fn.description);
   withOntologyList(node, "functions", [
     ...ontologyList(nodeOntologyRecord(node), "functions"),
-    { id, ...(title ? { title } : {}), entity: fn.entity, expression, returns: fn.returns },
+    {
+      id,
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+      entity: fn.entity,
+      expression,
+      returns: fn.returns,
+    },
   ]);
   return { ok: true, definition: next };
 }
 
 /**
- * Undeclare a derived function. No breakage check, for the same reason action
- * removal needs none: nothing in a definition references a function.
+ * Undeclare a derived function, unless doing so reveals an invalid shadowed
+ * ancestor declaration with the same id.
  */
 export function removeNodeOntologyFunction(
   definition: EditableTreeDefinition,
   nodeId: string,
   functionId: string,
+  functionIndex?: number,
 ): OntologyEditResult {
   const next = structuredClone(definition);
   const node = findNode(next.root, nodeId);
@@ -1342,64 +1795,435 @@ export function removeNodeOntologyFunction(
     return { ok: false, reason: "node-not-found" };
   }
   const functions = ontologyList(nodeOntologyRecord(node), "functions");
-  if (!functions.some((fn) => fn.id === functionId)) {
+  const matches = (fn: Record<string, unknown>, index: number) =>
+    fn.id === functionId && (functionIndex === undefined || index === functionIndex);
+  if (!functions.some(matches)) {
     return { ok: false, reason: "entry-not-found" };
   }
   withOntologyList(
     node,
     "functions",
-    functions.filter((fn) => fn.id !== functionId),
+    functions.filter((fn, index) => !matches(fn, index)),
+  );
+  const blocker = newBreakageReason(definition, next);
+  if (blocker) {
+    return { ok: false, reason: blocker };
+  }
+  return { ok: true, definition: next };
+}
+
+export type IndexedIdTarget = { index: number; id: string };
+
+/** Metadata fields that can change without changing an ontology entry's identity. */
+export type NodeOntologyMetadataUpdate =
+  | {
+      kind: "entity";
+      target: IndexedIdTarget;
+      title?: string;
+      description?: string;
+    }
+  | {
+      kind: "property";
+      entity: IndexedIdTarget;
+      target: IndexedIdTarget & {
+        type: OntologyValueTypeName;
+        primaryKey: boolean;
+      };
+      required: boolean;
+      description?: string;
+    }
+  | {
+      kind: "relationship";
+      target: IndexedIdTarget & {
+        from: string;
+        to: string;
+        cardinality?: OntologyCardinalityName;
+      };
+      inverse?: string;
+      description?: string;
+    }
+  | {
+      kind: "action";
+      target: IndexedIdTarget;
+      title?: string;
+      description?: string;
+      tools?: string[];
+      preconditions?: string[];
+    }
+  | {
+      kind: "object-effect";
+      action: IndexedIdTarget;
+      target: { index: number; kind: OntologyEffectKindName; entity: string };
+      description?: string;
+    }
+  | {
+      kind: "call-effect";
+      action: IndexedIdTarget;
+      target: { index: number; kind: "call"; tool: string };
+      description?: string;
+    }
+  | {
+      kind: "link-effect";
+      action: IndexedIdTarget;
+      target: { index: number; kind: "link" | "unlink"; relationship: string };
+      description?: string;
+      from?: string;
+      to?: string;
+    }
+  | {
+      kind: "parameter";
+      action: IndexedIdTarget;
+      target: IndexedIdTarget & { type: OntologyValueTypeName };
+      required: boolean;
+      description?: string;
+    }
+  | {
+      kind: "function";
+      target: IndexedIdTarget & {
+        entity: string;
+        expression: string;
+        returns: OntologyValueTypeName;
+      };
+      title?: string;
+      description?: string;
+    }
+  | {
+      kind: "constraint";
+      target: IndexedIdTarget;
+      description: string;
+    };
+
+/**
+ * Replace only display/governance metadata on one exact ontology record.
+ *
+ * Index plus immutable identity is deliberate: definitions may contain duplicate
+ * ids, and a stale inspector must fail instead of updating whichever duplicate
+ * happens to occupy its old array position.
+ */
+export function updateNodeOntologyMetadata(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  update: NodeOntologyMetadataUpdate,
+): OntologyEditResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const ontology = nodeOntologyRecord(node);
+  const actions = nodeOntologyActions(node);
+  const exactAction = (target: IndexedIdTarget) =>
+    exactIndexedEntry(actions, target.index, (candidate) => candidate.id === target.id);
+
+  switch (update.kind) {
+    case "entity": {
+      const entity = exactIndexedEntry(
+        ontologyList(ontology, "entities"),
+        update.target.index,
+        (candidate) => candidate.id === update.target.id,
+      );
+      if (!entity) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      setOptionalText(entity, "title", update.title);
+      setOptionalText(entity, "description", update.description);
+      break;
+    }
+    case "property": {
+      const entity = exactIndexedEntry(
+        ontologyList(ontology, "entities"),
+        update.entity.index,
+        (candidate) => candidate.id === update.entity.id,
+      );
+      const property = entity
+        ? exactIndexedEntry(
+            Array.isArray(entity.properties)
+              ? (entity.properties as Record<string, unknown>[])
+              : [],
+            update.target.index,
+            (candidate) =>
+              candidate.id === update.target.id &&
+              candidate.type === update.target.type &&
+              (candidate.primaryKey === true) === update.target.primaryKey,
+          )
+        : null;
+      if (!property) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      if (update.required) {
+        property.required = true;
+      } else {
+        delete property.required;
+      }
+      setOptionalText(property, "description", update.description);
+      break;
+    }
+    case "relationship": {
+      const relationship = exactIndexedEntry(
+        ontologyList(ontology, "relationships"),
+        update.target.index,
+        (candidate) =>
+          candidate.id === update.target.id &&
+          candidate.from === update.target.from &&
+          candidate.to === update.target.to &&
+          candidate.cardinality === update.target.cardinality,
+      );
+      if (!relationship) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      setOptionalText(relationship, "inverse", update.inverse);
+      setOptionalText(relationship, "description", update.description);
+      break;
+    }
+    case "action": {
+      const action = exactAction(update.target);
+      const tools = normalizedNonBlankList(update.tools);
+      const preconditions = normalizedNonBlankList(update.preconditions);
+      if (!action) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      if (tools === null || preconditions === null) {
+        return { ok: false, reason: "invalid-id" };
+      }
+      setOptionalText(action, "title", update.title);
+      setOptionalText(action, "description", update.description);
+      if (tools === undefined) {
+        delete action.tools;
+      } else {
+        action.tools = tools;
+      }
+      if (preconditions?.length) {
+        action.preconditions = preconditions;
+      } else {
+        delete action.preconditions;
+      }
+      break;
+    }
+    case "object-effect": {
+      const action = exactAction(update.action);
+      const effect = action
+        ? exactIndexedEntry(
+            Array.isArray(action.effects) ? (action.effects as Record<string, unknown>[]) : [],
+            update.target.index,
+            (candidate) =>
+              candidate.kind === update.target.kind && candidate.entity === update.target.entity,
+          )
+        : null;
+      if (!effect) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      setOptionalText(effect, "description", update.description);
+      break;
+    }
+    case "call-effect": {
+      const action = exactAction(update.action);
+      const effect = action
+        ? exactIndexedEntry(
+            Array.isArray(action.effects) ? (action.effects as Record<string, unknown>[]) : [],
+            update.target.index,
+            (candidate) =>
+              candidate.kind === update.target.kind && candidate.tool === update.target.tool,
+          )
+        : null;
+      if (!effect) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      setOptionalText(effect, "description", update.description);
+      break;
+    }
+    case "link-effect": {
+      const action = exactAction(update.action);
+      const effect = action
+        ? exactIndexedEntry(
+            Array.isArray(action.effects) ? (action.effects as Record<string, unknown>[]) : [],
+            update.target.index,
+            (candidate) =>
+              candidate.kind === update.target.kind &&
+              candidate.relationship === update.target.relationship,
+          )
+        : null;
+      if (!effect) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      const from = optionalTrimmedText(update.from);
+      const to = optionalTrimmedText(update.to);
+      if (
+        (from !== undefined && !isValidEnterpriseId(from)) ||
+        (to !== undefined && !isValidEnterpriseId(to))
+      ) {
+        return { ok: false, reason: "invalid-id" };
+      }
+      setOptionalText(effect, "description", update.description);
+      setOptionalText(effect, "from", from);
+      setOptionalText(effect, "to", to);
+      break;
+    }
+    case "parameter": {
+      const action = exactAction(update.action);
+      const parameter = action
+        ? exactIndexedEntry(
+            Array.isArray(action.parameters)
+              ? (action.parameters as Record<string, unknown>[])
+              : [],
+            update.target.index,
+            (candidate) =>
+              candidate.id === update.target.id && candidate.type === update.target.type,
+          )
+        : null;
+      if (!parameter) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      if (update.required) {
+        parameter.required = true;
+      } else {
+        delete parameter.required;
+      }
+      setOptionalText(parameter, "description", update.description);
+      break;
+    }
+    case "function": {
+      const fn = exactIndexedEntry(
+        ontologyList(ontology, "functions"),
+        update.target.index,
+        (candidate) =>
+          candidate.id === update.target.id &&
+          candidate.entity === update.target.entity &&
+          candidate.expression === update.target.expression &&
+          candidate.returns === update.target.returns,
+      );
+      if (!fn) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      setOptionalText(fn, "title", update.title);
+      setOptionalText(fn, "description", update.description);
+      break;
+    }
+    case "constraint": {
+      const constraint = exactIndexedEntry(
+        ontologyList(ontology, "constraints"),
+        update.target.index,
+        (candidate) => candidate.id === update.target.id,
+      );
+      const description = optionalTrimmedText(update.description);
+      if (!constraint) {
+        return { ok: false, reason: "entry-not-found" };
+      }
+      if (!description) {
+        return { ok: false, reason: "invalid-id" };
+      }
+      constraint.description = description;
+      break;
+    }
+  }
+  return { ok: true, definition: next };
+}
+
+/** Add one operator-readable constraint to this exact step. */
+export function addNodeOntologyConstraint(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  constraint: { id: string; description: string },
+): OntologyEditResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const id = constraint.id.trim().toLowerCase();
+  const description = optionalTrimmedText(constraint.description);
+  if (!isValidEnterpriseId(id) || !description) {
+    return { ok: false, reason: "invalid-id" };
+  }
+  const constraints = ontologyList(nodeOntologyRecord(node), "constraints");
+  if (constraints.some((existing) => existing.id === id)) {
+    return { ok: false, reason: "duplicate-entry" };
+  }
+  withOntologyList(node, "constraints", [...constraints, { id, description }]);
+  return { ok: true, definition: next };
+}
+
+/** Remove exactly the constraint shown by the inspector, including its array position. */
+export function removeNodeOntologyConstraint(
+  definition: EditableTreeDefinition,
+  nodeId: string,
+  target: IndexedIdTarget,
+): OntologyEditResult {
+  const next = structuredClone(definition);
+  const node = findNode(next.root, nodeId);
+  if (!node) {
+    return { ok: false, reason: "node-not-found" };
+  }
+  const constraints = ontologyList(nodeOntologyRecord(node), "constraints");
+  if (!exactIndexedEntry(constraints, target.index, (entry) => entry.id === target.id)) {
+    return { ok: false, reason: "entry-not-found" };
+  }
+  withOntologyList(
+    node,
+    "constraints",
+    constraints.filter((_constraint, index) => index !== target.index),
   );
   return { ok: true, definition: next };
 }
 
 /**
- * Every ontology reference that does NOT resolve, as stable keys.
+ * Every ontology reference resolution, scoped to the leaf where it executes.
  *
  * One scan for all of them, because they share a rule the importer does not
  * enforce: import validates references TREE-wide, while the runtime resolves
  * each declaration through its own root→node path. A link, a derived function,
  * or an action can therefore be accepted on save and fail at execution.
  *
- * Callers compare the set before and after an edit and refuse only when the edit
- * ADDS a break — so a work-map that arrived broken stays editable, and an edit on
- * one branch is not blocked by an unrelated branch's existing problem.
+ * Callers compare before and after and refuse only when an edit breaks a previously
+ * healthy execution path. Existing problems on unrelated branches stay editable.
  */
-function brokenOntologyReferences(definition: EditableTreeDefinition): Set<string> {
-  const broken = new Set<string>();
-  const nodes = eachDefinitionNode(definition.root);
+type ActionParameterMapping = {
+  activeId: string;
+  pathIds: Set<string>;
+  actionKey: string;
+  entityId: string;
+  parameterId: string;
+  mapped: boolean;
+};
 
-  // Seeded data is validated TREE-wide by the schema, unlike the runtime-scoped
-  // consumers below, so it gets one merged view rather than a per-path one.
-  const treeWide = new Map<string, { properties: Set<string>; primaryKey?: string }>();
-  const treeWideLinkIds = new Set<string>();
+type ScopedOntologyCheck = {
+  activeId: string;
+  pathIds: Set<string>;
+  identity: string;
+  reason: Exclude<OntologyBreakageReason, "duplicate-entry">;
+  broken: boolean;
+};
+
+type OntologyReferenceState = {
+  collisions: Set<string>;
+  checks: ScopedOntologyCheck[];
+  actionParameterMappings: ActionParameterMapping[];
+};
+
+function ontologyReferenceState(definition: EditableTreeDefinition): OntologyReferenceState {
+  const collisions = new Set<string>();
+  const checks: ScopedOntologyCheck[] = [];
+  const actionParameterMappings: ActionParameterMapping[] = [];
+  const nodes = eachDefinitionNode(definition.root);
+  const requiredByEntity = new Map<string, Set<string>>();
   for (const node of nodes) {
-    const ontology = nodeOntologyRecord(node);
-    for (const entity of ontologyList(ontology, "entities")) {
-      const id = typeof entity.id === "string" ? entity.id : "";
-      if (!id) {
+    for (const entity of ontologyList(nodeOntologyRecord(node), "entities")) {
+      if (typeof entity.id !== "string") {
         continue;
       }
-      const merged = treeWide.get(id) ?? { properties: new Set<string>() };
+      const required = requiredByEntity.get(entity.id) ?? new Set<string>();
       for (const property of Array.isArray(entity.properties)
         ? (entity.properties as Record<string, unknown>[])
         : []) {
-        if (typeof property.id !== "string") {
-          continue;
-        }
-        merged.properties.add(property.id);
-        if (property.primaryKey === true && merged.primaryKey === undefined) {
-          merged.primaryKey = property.id;
+        if (property.required === true && typeof property.id === "string") {
+          required.add(property.id);
         }
       }
-      treeWide.set(id, merged);
-    }
-    for (const relationship of ontologyList(ontology, "relationships")) {
-      if (typeof relationship.id === "string") {
-        treeWideLinkIds.add(relationship.id);
-      }
+      requiredByEntity.set(entity.id, required);
     }
   }
+  // Interior steps only route to leaves. Counting them as executions would hide
+  // the new break exposed when deleting or moving their final child.
+  const activeNodes = nodes.filter((node) => !node.children?.length);
 
   // Consumers, by contrast, resolve at the node they RUN at. Iterated as
   // active-node candidates because declarations inherit downward: a function on
@@ -1409,29 +2233,40 @@ function brokenOntologyReferences(definition: EditableTreeDefinition): Set<strin
   // Paths and scopes are built once per node, top-down, so a deep chain costs one
   // pass rather than a rescan per owner.
   const pathOf = new Map<string, EditableTreeNode[]>();
-  const scopeOf = new Map<string, Map<string, { properties: Set<string>; primaryKey?: string }>>();
+  const scopeOf = new Map<
+    string,
+    Map<string, { properties: Map<string, OntologyValueTypeName>; primaryKey?: string }>
+  >();
   const visit = (node: EditableTreeNode, parentPath: EditableTreeNode[]) => {
     const path = [...parentPath, node];
     pathOf.set(node.id, path);
     const parentScope =
       parentPath.length > 0 ? scopeOf.get(parentPath.at(-1)?.id ?? "") : undefined;
-    const scope = new Map<string, { properties: Set<string>; primaryKey?: string }>();
+    const scope = new Map<
+      string,
+      { properties: Map<string, OntologyValueTypeName>; primaryKey?: string }
+    >();
     for (const [id, entity] of parentScope ?? []) {
-      scope.set(id, { properties: new Set(entity.properties), primaryKey: entity.primaryKey });
+      scope.set(id, { properties: new Map(entity.properties), primaryKey: entity.primaryKey });
     }
     for (const entity of ontologyList(nodeOntologyRecord(node), "entities")) {
       const id = typeof entity.id === "string" ? entity.id : "";
       if (!id) {
         continue;
       }
-      const merged = scope.get(id) ?? { properties: new Set<string>() };
+      const merged = scope.get(id) ?? {
+        properties: new Map<string, OntologyValueTypeName>(),
+      };
       for (const property of Array.isArray(entity.properties)
         ? (entity.properties as Record<string, unknown>[])
         : []) {
         if (typeof property.id !== "string") {
           continue;
         }
-        merged.properties.add(property.id);
+        merged.properties.set(
+          property.id,
+          isOntologyValueTypeName(property.type) ? property.type : "string",
+        );
         if (property.primaryKey === true && merged.primaryKey === undefined) {
           merged.primaryKey = property.id;
         }
@@ -1445,120 +2280,340 @@ function brokenOntologyReferences(definition: EditableTreeDefinition): Set<strin
   };
   visit(definition.root, []);
 
-  for (const active of nodes) {
+  for (const active of activeNodes) {
     const visible = scopeOf.get(active.id) ?? new Map();
     const path = pathOf.get(active.id) ?? [];
-    // Links resolve LAST-WINS per id along the path: resolveActiveOntologyScope
-    // maps them by id alone, and the schema permits one id to name two endpoint
-    // pairs. Checking every declaration would let a dangling earlier link hide
-    // behind a valid later one — its break would already be in the before-set, so
-    // removing the later link would look harmless while exposing the broken one.
-    const effectiveLinks = new Map<string, Record<string, unknown>>();
+    const activePathIds = new Set(path.map((candidate) => candidate.id));
+    const record = (identity: string, reason: ScopedOntologyCheck["reason"], broken: boolean) =>
+      checks.push({ activeId: active.id, pathIds: activePathIds, identity, reason, broken });
+    // These three kinds resolve LAST-WINS per id along the path. Check only the
+    // effective declaration, and record a newly introduced collision separately:
+    // a reparent must not silently change which action/function/link runs.
+    type EffectiveEntry = { declarationKey: string; entry: Record<string, unknown> };
+    const effectiveLinks = new Map<string, EffectiveEntry>();
+    const effectiveFunctions = new Map<string, EffectiveEntry>();
+    const effectiveActions = new Map<string, EffectiveEntry>();
     for (const owner of path) {
-      for (const relationship of ontologyList(nodeOntologyRecord(owner), "relationships")) {
-        if (typeof relationship.id === "string") {
-          effectiveLinks.set(relationship.id, relationship);
+      const ontology = nodeOntologyRecord(owner);
+      for (const [kind, entries, effective] of [
+        ["relationship", ontologyList(ontology, "relationships"), effectiveLinks],
+        ["function", ontologyList(ontology, "functions"), effectiveFunctions],
+        ["action", ontologyList(ontology, "actions"), effectiveActions],
+      ] as const) {
+        const remainingById = new Map<string, number>();
+        for (const entry of entries) {
+          if (typeof entry.id === "string") {
+            remainingById.set(entry.id, (remainingById.get(entry.id) ?? 0) + 1);
+          }
+        }
+        for (const entry of entries) {
+          if (typeof entry.id !== "string") {
+            continue;
+          }
+          const ordinal = (remainingById.get(entry.id) ?? 1) - 1;
+          remainingById.set(entry.id, ordinal);
+          const current = {
+            declarationKey: `${owner.id}:${entry.id}:${ordinal}`,
+            entry,
+          };
+          const previous = effective.get(entry.id);
+          if (previous) {
+            collisions.add(`shadow-${kind}:${previous.declarationKey}:${current.declarationKey}`);
+          }
+          effective.set(entry.id, current);
         }
       }
     }
-    for (const [linkId, relationship] of effectiveLinks) {
-      for (const endpoint of [relationship.from, relationship.to]) {
-        if (typeof endpoint === "string" && !visible.has(endpoint)) {
-          broken.add(`link:${active.id}:${linkId}:${endpoint}`);
-        }
+    for (const { declarationKey, entry: relationship } of effectiveLinks.values()) {
+      for (const side of ["from", "to"] as const) {
+        const endpoint = relationship[side];
+        record(
+          `relationship:${declarationKey}:${side}`,
+          "entity-in-use",
+          typeof endpoint === "string" && !visible.has(endpoint),
+        );
       }
     }
 
-    for (const owner of path) {
-      const ownerOntology = nodeOntologyRecord(owner);
-
-      for (const fn of ontologyList(ownerOntology, "functions")) {
-        const entity = typeof fn.entity === "string" ? visible.get(fn.entity) : undefined;
-        if (!entity) {
-          broken.add(`fn-entity:${active.id}:${String(fn.id)}`);
-          continue;
-        }
-        if (typeof fn.expression !== "string") {
-          continue;
-        }
-        // Parsed, not pattern-matched: only the parser knows which occurrences
-        // are property tokens rather than op names or string literals. An
-        // expression that will not parse is the importer's problem.
-        const parsed = parseOntologyExpression(fn.expression);
-        if (!parsed.ok) {
-          continue;
-        }
-        for (const property of ontologyExpressionProperties(parsed.expression)) {
-          if (!entity.properties.has(property)) {
-            broken.add(`fn-property:${active.id}:${String(fn.id)}:${property}`);
-          }
-        }
+    for (const { declarationKey, entry: fn } of effectiveFunctions.values()) {
+      const entity = typeof fn.entity === "string" ? visible.get(fn.entity) : undefined;
+      record(`function:${declarationKey}:entity`, "entity-referenced", !entity);
+      if (!entity) {
+        continue;
       }
+      if (typeof fn.expression !== "string") {
+        continue;
+      }
+      const parsed = parseOntologyExpression(fn.expression);
+      if (!parsed.ok) {
+        continue;
+      }
+      for (const property of ontologyExpressionProperties(parsed.expression)) {
+        record(
+          `function:${declarationKey}:property:${property}`,
+          "property-in-use",
+          !entity.properties.has(property),
+        );
+      }
+    }
 
-      for (const action of ontologyList(ownerOntology, "actions")) {
-        const effects = Array.isArray(action.effects)
-          ? (action.effects as Record<string, unknown>[])
-          : [];
-        const parameters = Array.isArray(action.parameters)
-          ? (action.parameters as Record<string, unknown>[])
-          : [];
-        for (const effect of effects) {
-          const entity = typeof effect.entity === "string" ? visible.get(effect.entity) : undefined;
-          if (!entity) {
-            broken.add(`action-entity:${active.id}:${String(action.id)}:${String(effect.entity)}`);
+    for (const { declarationKey: actionKey, entry: action } of effectiveActions.values()) {
+      const effects = Array.isArray(action.effects)
+        ? (action.effects as Record<string, unknown>[])
+        : [];
+      const parameters = Array.isArray(action.parameters)
+        ? (action.parameters as Record<string, unknown>[])
+        : [];
+      const declaredParameters = parameters.filter(
+        (parameter): parameter is Record<string, unknown> & { id: string } =>
+          typeof parameter.id === "string",
+      );
+      const parameterById = new Map(
+        declaredParameters.map((parameter) => [parameter.id, parameter]),
+      );
+      record(
+        `action:${actionKey}:duplicate-parameters`,
+        "property-in-use",
+        parameterById.size !== declaredParameters.length,
+      );
+      record(
+        `action:${actionKey}:effects`,
+        "property-in-use",
+        !effects.some((effect) => effect.kind !== "read"),
+      );
+      const writtenEntities = new Set<string>();
+      for (const [effectIndex, effect] of effects.entries()) {
+        const effectKey = `action:${actionKey}:effect:${effectIndex}`;
+        // Outward calls resolve no local ontology state.
+        if (effect.kind === "call") {
+          continue;
+        }
+        if (effect.kind === "link" || effect.kind === "unlink") {
+          const relationship =
+            typeof effect.relationship === "string"
+              ? effectiveLinks.get(effect.relationship)?.entry
+              : undefined;
+          record(`${effectKey}:relationship`, "entity-referenced", !relationship);
+          if (!relationship) {
             continue;
           }
-          // A read needs nothing more; a write needs the identity field to say
-          // which instance it acts on.
-          if (effect.kind === "read") {
-            continue;
-          }
-          if (entity.primaryKey === undefined) {
-            broken.add(`action-key:${active.id}:${String(action.id)}:${String(effect.entity)}`);
-          }
-          // Parameters map onto properties for create and update only: the delete
-          // branch returns before property mapping
-          // (src/enterprise/ontology-actions.ts), so it needs the key alone.
-          if (effect.kind !== "create" && effect.kind !== "update") {
-            continue;
-          }
-          for (const parameter of parameters) {
-            if (
-              typeof parameter.id === "string" &&
-              parameter.id !== entity.primaryKey &&
-              !entity.properties.has(parameter.id)
-            ) {
-              broken.add(
-                `action-param:${active.id}:${String(action.id)}:${String(effect.entity)}:${parameter.id}`,
-              );
+          const fromEntity = visible.get(relationship.from);
+          const toEntity = visible.get(relationship.to);
+          const fromParameter =
+            typeof effect.from === "string" ? effect.from : fromEntity?.primaryKey;
+          const toParameter = typeof effect.to === "string" ? effect.to : toEntity?.primaryKey;
+          const ambiguousEndpoints =
+            relationship.from === relationship.to && fromParameter === toParameter;
+          record(`${effectKey}:endpoints`, "property-in-use", ambiguousEndpoints);
+          for (const side of ["from", "to"] as const) {
+            const entityId = relationship[side];
+            const entity = typeof entityId === "string" ? visible.get(entityId) : undefined;
+            record(`${effectKey}:${side}:entity`, "entity-referenced", !entity);
+            if (!entity) {
+              continue;
             }
+            record(`${effectKey}:${side}:key`, "property-in-use", !entity.primaryKey);
+            if (!entity.primaryKey) {
+              continue;
+            }
+            const explicitParameter = effect[side];
+            const parameterId =
+              typeof explicitParameter === "string" ? explicitParameter : entity.primaryKey;
+            const parameter = parameterById.get(parameterId);
+            const primaryKeyType = entity.properties.get(entity.primaryKey);
+            record(`${effectKey}:${side}:parameter`, "property-in-use", !parameter);
+            record(
+              `${effectKey}:${side}:parameter-type`,
+              "property-in-use",
+              Boolean(parameter) && (primaryKeyType === "boolean" || parameter?.type === "boolean"),
+            );
+          }
+          continue;
+        }
+        const entity = typeof effect.entity === "string" ? visible.get(effect.entity) : undefined;
+        record(`${effectKey}:entity`, "entity-referenced", !entity);
+        if (!entity) {
+          continue;
+        }
+        if (effect.kind === "read") {
+          continue;
+        }
+        record(
+          `${effectKey}:duplicate-target`,
+          "property-in-use",
+          writtenEntities.has(String(effect.entity)),
+        );
+        writtenEntities.add(String(effect.entity));
+        record(`${effectKey}:key`, "property-in-use", entity.primaryKey === undefined);
+        if (entity.primaryKey !== undefined) {
+          const identityParameter = parameterById.get(entity.primaryKey);
+          const identityType = entity.properties.get(entity.primaryKey);
+          record(`${effectKey}:key-parameter`, "property-in-use", !identityParameter);
+          const identityTypeMismatch =
+            identityParameter !== undefined &&
+            (identityType === "boolean" ||
+              (isOntologyValueTypeName(identityParameter.type) &&
+                identityType !== undefined &&
+                expressionTypeOf(identityParameter.type) !== expressionTypeOf(identityType)));
+          record(`${effectKey}:key-parameter-type`, "property-in-use", identityTypeMismatch);
+        }
+        if (effect.kind === "create") {
+          for (const required of requiredByEntity.get(String(effect.entity)) ?? []) {
+            const propertyType = entity.properties.get(required);
+            record(
+              `${effectKey}:required:${required}:property`,
+              "property-in-use",
+              propertyType === undefined,
+            );
+            if (propertyType === undefined) {
+              continue;
+            }
+            const parameter = parameterById.get(required);
+            const parameterMismatch =
+              parameter !== undefined &&
+              isOntologyValueTypeName(parameter.type) &&
+              expressionTypeOf(parameter.type) !== expressionTypeOf(propertyType);
+            record(
+              `${effectKey}:required:${required}:parameter`,
+              "property-in-use",
+              !parameter || parameterMismatch,
+            );
+          }
+        }
+        if (effect.kind === "create" || effect.kind === "update") {
+          for (const parameter of parameters) {
+            if (typeof parameter.id !== "string" || parameter.id === entity.primaryKey) {
+              continue;
+            }
+            const propertyType = entity.properties.get(parameter.id);
+            const parameterType = parameter.type;
+            const mapped = propertyType !== undefined;
+            actionParameterMappings.push({
+              activeId: active.id,
+              pathIds: activePathIds,
+              actionKey,
+              entityId: String(effect.entity),
+              parameterId: parameter.id,
+              mapped,
+            });
+            record(
+              `${effectKey}:parameter:${parameter.id}:type`,
+              "property-in-use",
+              mapped &&
+                isOntologyValueTypeName(parameterType) &&
+                expressionTypeOf(propertyType) !== expressionTypeOf(parameterType),
+            );
           }
         }
       }
     }
   }
-  return broken;
+  return { collisions, checks, actionParameterMappings };
+}
+
+function newScopedBreakageReasons(
+  before: readonly ScopedOntologyCheck[],
+  after: readonly ScopedOntologyCheck[],
+): Set<ScopedOntologyCheck["reason"]> {
+  const reasons = new Set<ScopedOntologyCheck["reason"]>();
+  for (const current of after) {
+    if (!current.broken) {
+      continue;
+    }
+    const same = before.filter(
+      (candidate) => candidate.identity === current.identity && candidate.reason === current.reason,
+    );
+    const exact = same.find((candidate) => candidate.activeId === current.activeId);
+    if (exact) {
+      if (!exact.broken) {
+        reasons.add(current.reason);
+      }
+      continue;
+    }
+    const formerAncestors = same.filter((candidate) => current.pathIds.has(candidate.activeId));
+    if (formerAncestors.length > 0) {
+      if (formerAncestors.some((candidate) => !candidate.broken)) {
+        reasons.add(current.reason);
+      }
+      continue;
+    }
+    const formerDescendants = same.filter((candidate) => candidate.pathIds.has(current.activeId));
+    if (formerDescendants.length > 0) {
+      if (formerDescendants.some((candidate) => !candidate.broken)) {
+        reasons.add(current.reason);
+      }
+      continue;
+    }
+    reasons.add(current.reason);
+  }
+  return reasons;
+}
+
+function actionParameterMappingBroke(
+  before: readonly ActionParameterMapping[],
+  after: readonly ActionParameterMapping[],
+): boolean {
+  return after.some((current) => {
+    if (current.mapped) {
+      return false;
+    }
+    const sameParameter = before.filter(
+      (candidate) =>
+        candidate.actionKey === current.actionKey &&
+        candidate.entityId === current.entityId &&
+        candidate.parameterId === current.parameterId,
+    );
+    if (sameParameter.length === 0) {
+      // Never mapped means a rationale/context input, which the runtime keeps in
+      // the audit trail rather than writing an object field.
+      return false;
+    }
+    const sameExecution = sameParameter.find(
+      (candidate) => candidate.activeId === current.activeId,
+    );
+    if (sameExecution) {
+      return sameExecution.mapped;
+    }
+    // Removing or moving a last child makes its parent executable. Treat its
+    // former descendant leaves as the same execution surface for dependency
+    // purposes; losing their mapped field is still a semantic break.
+    const formerDescendants = sameParameter.filter((candidate) =>
+      candidate.pathIds.has(current.activeId),
+    );
+    return formerDescendants.length > 0
+      ? formerDescendants.every((candidate) => candidate.mapped)
+      : sameParameter.every((candidate) => candidate.mapped);
+  });
 }
 
 /** The kind of the first break an edit introduced, or null when it introduced none. */
 function newBreakageReason(
   before: EditableTreeDefinition,
   after: EditableTreeDefinition,
-): "entity-in-use" | "entity-referenced" | "property-in-use" | null {
-  const existing = brokenOntologyReferences(before);
-  const added = [...brokenOntologyReferences(after)].filter((key) => !existing.has(key));
-  if (added.length === 0) {
-    return null;
+): OntologyBreakageReason | null {
+  const beforeState = ontologyReferenceState(before);
+  const afterState = ontologyReferenceState(after);
+  const collisionAdded = [...afterState.collisions].some((key) => !beforeState.collisions.has(key));
+  if (collisionAdded) {
+    return "duplicate-entry";
+  }
+  const reasons = newScopedBreakageReasons(beforeState.checks, afterState.checks);
+  const mappingBroke = actionParameterMappingBroke(
+    beforeState.actionParameterMappings,
+    afterState.actionParameterMappings,
+  );
+  if (mappingBroke) {
+    reasons.add("property-in-use");
   }
   // A link is the dependency an operator can clear from this editor, so it wins
   // the message; the rest have to be resolved by re-importing the work-map.
-  if (added.some((key) => key.startsWith("link:"))) {
+  if (reasons.has("entity-in-use")) {
     return "entity-in-use";
   }
-  if (added.some((key) => key.startsWith("fn-entity:") || key.startsWith("action-entity:"))) {
+  if (reasons.has("entity-referenced")) {
     return "entity-referenced";
   }
-  return "property-in-use";
+  return reasons.has("property-in-use") ? "property-in-use" : null;
 }
 
 function findNode(node: EditableTreeNode, id: string): EditableTreeNode | null {
@@ -1572,4 +2627,30 @@ function findNode(node: EditableTreeNode, id: string): EditableTreeNode | null {
     }
   }
   return null;
+}
+
+function findNodeParent(node: EditableTreeNode, id: string): EditableTreeNode | null {
+  for (const child of node.children ?? []) {
+    if (child.id === id) {
+      return node;
+    }
+    const found = findNodeParent(child, id);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+function detachTreeNode(root: EditableTreeNode, id: string): EditableTreeNode | null {
+  const parent = findNodeParent(root, id);
+  const index = parent?.children?.findIndex((child) => child.id === id) ?? -1;
+  if (!parent?.children || index < 0) {
+    return null;
+  }
+  const [detached] = parent.children.splice(index, 1);
+  if (parent.children.length === 0) {
+    delete parent.children;
+  }
+  return detached ?? null;
 }

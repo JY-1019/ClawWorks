@@ -274,6 +274,49 @@ export const th: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "การรันเวิร์กโฟลว์ที่มีการกำกับดูแลและแผนผังเวิร์กโฟลว์ที่ลงทะเบียนไว้",
+    historyOnly: "Removed work-map with restorable revisions",
+    historyOnlyBadge: "history only",
+    historyOnlyRestore: "This work-map was removed. Choose a saved revision below to restore it.",
+    removeFingerprintUnavailable:
+      "Cannot safely remove {treeId}: this gateway did not return the imported row identity. Refresh or update the gateway, then try again.",
+    bundle: {
+      import: "Import bundle",
+      exportYaml: "Bundle YAML",
+      exportJson: "Bundle JSON",
+      previewTitle: "Review workflow bundle",
+      previewBody:
+        "Nothing has been changed yet. Review the replacement, inlined knowledge, dependencies, and governance gaps before applying these exact file contents.",
+      create: "Creates a new work-map",
+      replace: "Replaces the current {source} work-map at version {version}",
+      inlinedKnowledge: "Knowledge included in the bundle",
+      requiredTools: "Required tools (verify this gateway provides them)",
+      requiredSkills: "Required skills",
+      requiredMcp: "Required MCP servers",
+      requiredKnowledge: "Knowledge sources",
+      missingSkills: "Missing or unavailable skills",
+      missingMcp: "Missing MCP servers",
+      missingKnowledge: "Knowledge not included in the bundle or globally available",
+      removedKnowledge: "Owned knowledge this import deletes (no revision history)",
+      replacedKnowledge: "Owned knowledge rows this import replaces (no revision history)",
+      shadowedKnowledge:
+        "Bundled knowledge ignored at runtime (a global/plugin foundation with the same id takes precedence)",
+      unverifiedKnowledge: "Knowledge not included in the bundle (verify local availability)",
+      verificationUnavailable: "Local availability could not be verified",
+      missingPolicies: "Missing governance policies",
+      conflictingPolicies: "Governance policies with different definitions",
+      modeDowngrade: "Governance is weaker here: {from} → {to}.",
+      authorWarnings: "Work-map authoring warnings",
+      apply: "Apply bundle",
+      previewRejected: "This bundle cannot be previewed: {issues}",
+      applyRejected: "Nothing was imported. Preview the current state again: {issues}",
+      applyUnknown:
+        "The result is unknown ({message}). Refresh before retrying so you do not overwrite a successful import.",
+      applied: "Imported bundle for {treeId}.",
+      exported: "Exported bundle for {treeId}.",
+      exportImplicitKnowledge:
+        "the work-map allows implicit knowledge that a bundle cannot enumerate",
+      exportWarning: "Bundle downloaded with portability warnings: {warnings}",
+    },
     toolsTab: {
       title: "เครื่องมือ",
       subtitle:
@@ -319,7 +362,7 @@ export const th: TranslationMap = {
       configInvalid:
         "การตั้งค่า Gateway ไม่สามารถแยกวิเคราะห์ได้ ดังนั้นหน้าจอนี้จึงไม่มีสิ่งใดให้เพิ่ม กรุณาแก้ไขในตัวแก้ไขการตั้งค่าก่อน — การบันทึกจากที่นี่จะแทนที่ไฟล์ด้วยรายการนี้เท่านั้น",
       rawDraftPending:
-        "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึกในตัวแก้ไขการกำหนดค่าแบบ raw กรุณาบันทึกหรือยกเลิกก่อน — การลงทะเบียนที่นี่จะเขียนทับฉบับร่างนั้น",
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
       save: "บันทึก",
       publish: "บันทึกและเผยแพร่",
       publishing: "กำลังเผยแพร่...",
@@ -431,6 +474,11 @@ export const th: TranslationMap = {
       add: "เพิ่ม",
       cancel: "Cancel",
       removeTitle: "ถอด {entry} ออกจากขั้นตอนนี้",
+      removeLastAllowedTool:
+        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+      removeLastKnowledgeFoundation:
+        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+      requireMcpAttachments: "Require attachments",
       none: "ยังไม่มีการประกาศ",
       scopeNarrowingApproval:
         "ขั้นตอนนี้ยังไม่มีรายการเครื่องมือที่อนุญาต จึงอนุญาตเครื่องมือทั้งหมดยกเว้นที่ถูกปฏิเสธ การเพิ่มรายการแรกจะเปลี่ยนเป็นรายการอนุญาต เครื่องมือที่ระบุไว้จะทำงานได้อย่างอิสระ และเครื่องมืออื่น ๆ จะต้องได้รับการอนุมัติเป็นรายครั้ง",
@@ -444,6 +492,8 @@ export const th: TranslationMap = {
       foundationIdInvalid: "ใช้ ID ของ Foundation: ส่วนตัวอักษรพิมพ์เล็กคั่นด้วยจุด เช่น acme.runbooks",
       ancestorGateApproval:
         "ขั้นตอนหลัก ({nodeIds}) มีรายการอนุญาตของตนเองสำหรับสิ่งนี้ Governance จะตรวจสอบแต่ละขั้นตอนจากรากขึ้นไป ดังนั้นรายการที่เพิ่มที่นี่จะทำงานโดยไม่ต้องขออนุมัติก็ต่อเมื่อขั้นตอนเหล่านั้นอนุญาตด้วยเท่านั้น มิฉะนั้นจะต้องมีการอนุมัติแบบครั้งเดียว ให้เพิ่มรายการในขั้นตอนเหล่านั้นด้วย หรือใช้ Denied tools เพื่อปฏิเสธโดยตรง",
+      ancestorGateKnowledge:
+        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "กรุณากรอกค่าก่อน",
       duplicate: "รายการนี้ถูกประกาศในขั้นตอนนี้แล้ว",
       nodeMissing: "ขั้นตอนนั้นไม่อยู่ในทรีแล้ว กรุณาโหลดใหม่แล้วลองอีกครั้ง",
@@ -451,7 +501,7 @@ export const th: TranslationMap = {
       importFailed:
         "การบันทึกไม่ได้รับการยืนยัน อาจมีการบันทึกหรือไม่ก็ได้ — รีเฟรช work-map เพื่อตรวจสอบก่อนลองอีกครั้ง",
       mcpFirstAttachment:
-        "แผนงานนี้ยังไม่ได้ควบคุม MCP เมื่อเพิ่มเซิร์ฟเวอร์ตัวแรกที่นี่จะเปิดใช้งานโหมดปฏิเสธโดยค่าเริ่มต้นสำหรับแผนงานทั้งหมด: ทุกขั้นตอนที่ไม่มีสิ่งแนบจะไม่สามารถเข้าถึงเซิร์ฟเวอร์ MCP ใดๆ ได้",
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
       mcpNoneAttached:
         "ขั้นตอนนี้ไม่มี MCP server แนบอยู่ จึงไม่สามารถเรียกใช้ได้ ต่างจาก tools และ knowledge ตรงที่ MCP ไม่ให้สิทธิ์ใดๆ โดยค่าเริ่มต้น",
       importNotSent:
@@ -486,13 +536,17 @@ export const th: TranslationMap = {
       noProperties: "No fields yet.",
       links: "Links",
       noLinks: "No links declared yet.",
+      editTitle: "Edit {item}",
+      formLabel: "Ontology editor",
       titleLabel: "Display name (optional)",
+      descriptionLabel: "Description",
       typeLabel: "Type",
       primaryKeyLabel: "Identifies an instance",
       primaryKeyMark: "(identity)",
       fromLabel: "From",
       toLabel: "To",
       cardinalityLabel: "Cardinality",
+      inverseLabel: "Inverse name (optional)",
       save: "บันทึก",
       actions: "Actions",
       actionsSummary:
@@ -506,14 +560,31 @@ export const th: TranslationMap = {
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
       incompleteActionDetail:
-        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+        "This action cannot be called yet. Object writes need identity parameters (and creates need every required field); links need parameters for both endpoint identities.",
       removeEffectTitle: "Remove the {kind} effect on {entity}",
       removeParameterTitle: "Remove the {parameter} parameter",
       requiredLabel: "Required",
       requiredMark: "(required)",
+      toolsModeLabel: "Policy tool matching",
+      toolsModeHint:
+        "Chooses which tool calls this action's policy matches. Outward calls are added separately as effects.",
+      toolsMode: {
+        all: "Match all tool calls",
+        selected: "Match selected tool calls",
+        none: "Match no tool calls",
+      },
+      toolsLabel: "Matched tool selectors",
+      preconditionsLabel: "Advisory preconditions",
+      addListItem: "Add {item}",
+      removeListItem: "Remove {item}",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
       linkRelationshipLabel: "Link type",
+      linkEndpointsLabel: "Endpoint parameters",
+      linkFromParameterLabel: "From-object parameter",
+      linkToParameterLabel: "To-object parameter",
+      defaultIdentity: "Use the object type's identity field",
+      unavailableParameter: "{parameter} (not declared)",
       callToolLabel: "Tool",
       callToolPlaceholder: "server__operation",
       callToolHint:
@@ -524,6 +595,11 @@ export const th: TranslationMap = {
       functionEntityLabel: "Computed over",
       expressionLabel: "Expression",
       returnsLabel: "Returns",
+      constraints: "Constraints",
+      addConstraint: "Add constraint",
+      noConstraints: "No advisory constraints declared yet.",
+      shadowedDeclaration: "Shadowed by a later declaration with the same id",
+      removeConstraintTitle: "Remove the {constraint} constraint",
       idLabel: {
         entity: "Object type id",
         property: "Field id",
@@ -531,20 +607,26 @@ export const th: TranslationMap = {
         action: "Action id",
         "action-parameter": "Parameter id",
         function: "Derived value id",
+        constraint: "Constraint id",
       },
       error: {
         "invalid-id":
           "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
-        "endpoint-missing": "A link needs an object type at both ends.",
-        "duplicate-entry": "That id is already declared on this step.",
+        "endpoint-missing": "Choose the required object type, link type, or tool.",
+        "description-empty": "Enter a description.",
+        "selection-empty":
+          "Add at least one tool selector, or choose Match all tool calls or Match no tool calls.",
+        "duplicate-entry": "That id is already declared in this work-map scope.",
         "entity-not-found": "That object type is not in this step's scope.",
         "entity-in-use": "A link still points at this object type. Remove the link first.",
         "entity-referenced":
-          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+          "An action or derived value still uses an object or link type this edit would remove from its scope. Change that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
+        "identity-type-invalid":
+          "An identity field must be text, a number, a date, or an id. Boolean values cannot identify ontology objects.",
         "action-not-found": "That action is no longer declared on this step.",
         "effect-needs-identity":
           "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
@@ -554,6 +636,8 @@ export const th: TranslationMap = {
         "expression-type-invalid":
           "The expression does not type-check against this object type's fields.",
         "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "property-type-conflict":
+          "This work-map already declares that field on the same object type with a different type.",
         "create-required-unreachable":
           "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
         "effect-target-taken":
@@ -566,13 +650,31 @@ export const th: TranslationMap = {
       },
     },
     guidanceEditor: {
-      title: "พรอมต์บทบาท",
+      title: "Step behavior",
       guidanceNote:
-        "อธิบายว่าขั้นตอนนี้มีไว้เพื่ออะไร ด้วยคำพูดของคุณเอง ข้อความนี้จะถูกแสดงในสรุปขั้นตอนเป็นคำแนะนำและไม่ได้ให้สิทธิ์ใดๆ — ขั้นตอนยังคงไม่สามารถเรียกใช้เครื่องมือที่ขอบเขตของมันไม่อนุญาต ไม่ว่าพรอมต์จะเขียนอย่างไรก็ตาม",
-      fieldLabel: "Role prompt สำหรับขั้นตอน {nodeId}",
+        "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
+      titleLabel: "Step title",
+      parentLabel: "Parent step",
+      positionLabel: "Position among siblings",
+      descriptionLabel: "Description",
+      fieldLabel: "Instructions for step {nodeId}",
       placeholder: "เช่น ยืนยันตัวตนของผู้เรียกร้องก่อนแจ้งตัวเลขใดๆ",
-      save: "บันทึกพรอมต์บทบาท",
+      contextHintsLabel: "Context hints",
+      contextHintsPlaceholder: "e.g. Prefer the policy handbook over assumptions.",
+      addContextHint: "Add context hint",
+      removeContextHint: "Remove context hint",
+      expectedOutputLabel: "Expected output",
+      expectedOutputPlaceholder: "e.g. A decision, rationale, and record id.",
+      auditLabel: "Record detailed tool-decision audit events",
+      save: "Save behavior",
       revert: "ย้อนกลับ",
+      reparentWarning:
+        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+      error: {
+        "title-empty": "Enter a step title.",
+        "move-refused":
+          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+      },
     },
     capabilities: {
       toolsTitle: "เครื่องมือ",
@@ -586,7 +688,7 @@ export const th: TranslationMap = {
         "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
       knowledgeTitle: "ฐานความรู้",
       knowledgeHint:
-        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -647,9 +749,11 @@ export const th: TranslationMap = {
         "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to this step and everything under it, and no grant further down the branch can take it back.",
       deniedToolsOff:
         "Enterprise mediation is off, so denials are neither applied nor recorded. Turn mediation on for this to take effect or appear in the run trace.",
-      skillNotInstalled: "ยังไม่ได้ติดตั้ง",
-      foundationNotRegistered: "ยังไม่ได้ลงทะเบียน",
+      skillNotModelVisible: "not available to the model for this agent",
+      foundationNotRegistered: "not retrievable by this work-map",
+      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "ไม่ได้ลงทะเบียนใน mcp.servers",
+      mcpDisabled: "disabled in mcp.servers",
       inherited: "สืบทอดมาจากขั้นตอนหลัก:",
     },
     skillsTab: {
@@ -678,6 +782,9 @@ export const th: TranslationMap = {
     executionCount: "{count} การดำเนินการของการรันนี้",
     stepsTitle: "ขั้นตอน",
     resume: "Continue this run",
+    resumeChat: "Continue from unfinished step",
+    resumeChatHint:
+      "The unfinished step restarts on your next matching message. An in-flight external action is not resumed.",
     resumeHint:
       "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
     resumeRequested:
@@ -712,15 +819,20 @@ export const th: TranslationMap = {
       explicit: "การให้สิทธิ์โดยตรง",
       inherited: "ขอบเขตที่สืบทอด",
       explicitHintGated:
-        "แต่ละขั้นตอนควรใช้เครื่องมือ, Skills, MCP servers และ knowledge foundations ที่ระบุไว้ในขั้นตอนนั้นหรือขั้นตอนระดับบน Skills, MCP servers และ knowledge foundations ที่ไม่ได้ระบุไว้ในขั้นตอนจะถูกระงับโดยสิ้นเชิง เครื่องมือที่ไม่ได้ระบุไว้จะต้องขออนุมัติเป็นรายครั้งแทน และการตอบกลับและการอ่าน (message, read, memory_search) ยังคงใช้งานได้ เว้นแต่ขั้นตอนหรือนโยบายการกำกับดูแลจะปฏิเสธ",
+        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "แผนงานนี้ให้สิทธิ์ความสามารถอย่างชัดแจ้ง แต่โหมดองค์กรไม่ได้บังคับใช้ การให้สิทธิ์เครื่องมือ, Skills และ MCP จะถูกบันทึกไว้แต่ไม่ได้นำไปใช้งาน การให้สิทธิ์ความรู้ยังคงจำกัดขอบเขตการเรียกค้นในทุกโหมด",
       explicitHintOff:
         "แผนผังงานนี้มอบความสามารถอย่างชัดเจน แต่การไกล่เกลี่ยระดับองค์กรไม่ได้เปิดใช้งานอยู่ จึงไม่มีการมอบสิทธิ์ใดมีผลบังคับใช้ การมอบสิทธิ์ด้านล่างจะถูกบันทึกไว้และมีผลเมื่อเปิดใช้งานการไกล่เกลี่ย",
       inheritedHint:
-        "รายการของแต่ละขั้นตอนจะจำกัดขอบเขตจากสิ่งที่ขั้นตอนระดับบนอนุญาตไว้ หากขั้นตอนย่อยไม่ได้ระบุรายการไว้ จะสามารถใช้เครื่องมือหรือ Skills ใดก็ได้",
+        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "ให้สิทธิ์อย่างชัดเจน",
       turnOff: "ใช้ขอบเขตที่สืบทอดมา",
+      turnOffWarning:
+        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+      stopMcp: "Stop requiring MCP attachments",
+      stopMcpWarning:
+        "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
     structureTitle: "โครงสร้าง",
     ontologyTitle: "ออนโทโลยี",
@@ -736,13 +848,20 @@ export const th: TranslationMap = {
     addNodeTitle: "โหนดลูกใหม่",
     addNodeIdLabel: "รหัสโหนด (ตัวพิมพ์เล็กคั่นด้วยจุด เช่น support.triage)",
     addNodeTitleLabel: "ชื่อ",
-    addNodeSubmit: "เพิ่มไปยังตัวแก้ไข",
+    addNodeDescriptionLabel: "Description (optional)",
+    addNodeSubmit: "Add step",
     addNodeErrorIdEmpty: "กรุณาป้อนรหัสโหนด",
     addNodeErrorIdPattern: "รหัสต้องเป็นตัวพิมพ์เล็กคั่นด้วยจุด เช่น support.triage",
     addNodeErrorIdDuplicate: "โหนดที่มีรหัสนี้มีอยู่แล้วในแผนผังนี้",
     addNodeErrorTitleEmpty: "กรุณาป้อนชื่อ",
     addNodeErrorParentMissing: "โหนดแม่ไม่อยู่ในแผนผังนี้แล้ว",
     addNodeErrorExportFailed: "ไม่สามารถโหลดคำจำกัดความของแผนผังเพื่อแก้ไขได้",
+    removeNode: "Delete step and descendants",
+    removeNodeWarning:
+      'Delete "{node}" and every step beneath it? This records a new work-map revision.',
+    structureEditRefused:
+      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+    editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "ลากโหนด · เลื่อนเพื่อซูม",
     routeTitle: "เส้นทางที่ใช้",
     routeViewLabel: "มุมมองเส้นทาง",
@@ -784,12 +903,47 @@ export const th: TranslationMap = {
     contextHints: "คำแนะนำบริบท: {hints}",
     expectedOutput: "ผลลัพธ์ที่คาดหวัง: {text}",
     newTree: "ทรีใหม่",
+    importTree: "Import file",
+    newTreeTitle: "New workflow tree",
+    treeSettingsTitle: "Work-map settings",
+    treeSettingsButton: "Settings",
+    newTreeIdLabel: "Tree id",
+    newTreeIdPlaceholder: "support.intake",
+    treeSettingsVersionLabel: "Version",
+    newTreeNameLabel: "ชื่อ",
+    newTreeRootIdLabel: "First step id",
+    newTreeRootIdPlaceholder: "support",
+    newTreeRootTitleLabel: "First step title",
+    newTreeDescriptionLabel: "Description (optional)",
+    treeSettingsTriggersLabel: "Runs this work-map applies to",
+    treeSettingsTrigger: {
+      user: "User messages",
+      system: "System runs",
+      subagent: "Subagent runs",
+    },
+    treeSettingsPriorityLabel: "Routing priority (optional)",
+    newTreeReview: "Review definition",
+    newTreeErrorIdEmpty: "Enter a tree id.",
+    newTreeErrorIdPattern: "Tree id must be dotted lowercase.",
+    newTreeErrorIdDuplicate: "That tree already exists. Select it and use Edit instead.",
+    treeSettingsErrorVersionEmpty: "Enter a version.",
+    newTreeErrorNameEmpty: "Enter a tree name.",
+    treeSettingsErrorTriggersEmpty: "Choose at least one run type.",
+    treeSettingsErrorPriorityInvalid: "Priority must be a whole number.",
+    newTreeErrorRootIdEmpty: "Enter the first step id.",
+    newTreeErrorRootIdPattern: "Step id must be dotted lowercase.",
+    newTreeErrorRootTitleEmpty: "Enter the first step title.",
     edit: "แก้ไข",
     exportYaml: "ส่งออก YAML",
     exportJson: "ส่งออก JSON",
     remove: "ลบ",
     editorTitle: "แก้ไขคำจำกัดความของทรี",
     editorHint: "แก้ไขคำจำกัดความดิบ จากนั้นกดบันทึกเพื่อบันทึกเวอร์ชันใหม่",
+    editorDiscardWarning: "Discard the unsaved tree draft?",
+    saveContinuesNavigation:
+      "This save has already been sent and will continue if you open another work-map. Open it anyway?",
+    editorFormatWarning: "Switch format and discard the current editor contents?",
+    treeWarnings: "Some declarations on this work-map cannot be reached by any run:",
     saveInvalid: "คำจำกัดความไม่ผ่านการตรวจสอบ:",
     saving: "กำลังบันทึก…",
     save: "บันทึก",
@@ -800,8 +954,13 @@ export const th: TranslationMap = {
     confirmSaveBody: "การดำเนินการนี้จะนำเข้าคำจำกัดความที่แก้ไขและบันทึกรีวิชันใหม่",
     confirmRemoveTitle: "ลบ workflow tree หรือไม่?",
     confirmRemoveBody: "ลบ tree {treeId} ที่นำเข้าออกจากรีจิสทรี",
-    confirmRemoveWarning:
-      "คำจำกัดความที่ใช้งานอยู่จะถูกลบ และรายการในตัวที่ถูกซ่อนจะปรากฏขึ้นอีกครั้ง ประวัติเวอร์ชันจะยังคงอยู่",
+    confirmRemoveDataLossWarning:
+      "This permanently deletes the tree's live ontology objects, links, and bundled knowledge. Version history keeps only definitions. Workflow bundles preserve definitions and bundled knowledge, but cannot restore live objects or links. Back up ClawWorks state before deleting data you need. A shadowed built-in then reappears.",
+    removeNotSent:
+      "Nothing was removed: the gateway connection dropped before this was sent. Reconnect and try again.",
+    removeRefused: "The server refused the removal, so nothing was removed: {message}",
+    removeUnconfirmed:
+      "The removal did not confirm. It may or may not have been applied — refresh the work-map before trying again.",
   },
   sessionsView: {
     title: "เซสชัน",
@@ -1263,7 +1422,7 @@ export const th: TranslationMap = {
     layout: "Card layout",
     layoutCompact: "ความหนาแน่นการ์ดแบบกระชับ",
     layoutComfortable: "ความหนาแน่นการ์ดแบบสบายตา",
-    dispatch: "กระตุ้น dispatcher",
+    dispatch: "Dispatch ready work",
     dispatchSummary:
       "Dispatch complete: started {started}, promoted {promoted}, blocked {blocked}, reclaimed {reclaimed}, orchestrated {orchestrated}, failures {failures}.",
     dispatchSummaryEmpty: "Dispatch complete: no ready work changed.",

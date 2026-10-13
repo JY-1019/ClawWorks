@@ -381,7 +381,13 @@ describe("enterprise trace store", () => {
       storeOptions,
     );
     // Still running: there is nothing to continue yet.
-    expect(requestEnterpriseRunResume("exec-resume", { now: 8000 }, storeOptions)).toEqual({
+    expect(
+      requestEnterpriseRunResume(
+        "exec-resume",
+        { expectedSessionId: "t-resume", activeSessionId: "t-resume", now: 8000 },
+        storeOptions,
+      ),
+    ).toEqual({
       ok: false,
       reason: "still-running",
     });
@@ -389,7 +395,13 @@ describe("enterprise trace store", () => {
       { executionId: "exec-resume", status: "aborted", now: 950 },
       storeOptions,
     );
-    expect(requestEnterpriseRunResume("exec-resume", { now: 8000 }, storeOptions)).toEqual({
+    expect(
+      requestEnterpriseRunResume(
+        "exec-resume",
+        { expectedSessionId: "t-resume", activeSessionId: "t-resume", now: 8000 },
+        storeOptions,
+      ),
+    ).toEqual({
       ok: true,
       sessionKey: "agent:main:resume",
       treeId: "acme.support",
@@ -454,7 +466,13 @@ describe("enterprise trace store", () => {
     );
     // Resuming it would open exactly where a fresh run does, so the marker would
     // only add a claim to the trace that nothing acts on.
-    expect(requestEnterpriseRunResume("exec-resume-empty", { now: 8000 }, storeOptions)).toEqual({
+    expect(
+      requestEnterpriseRunResume(
+        "exec-resume-empty",
+        { expectedSessionId: "t-empty", activeSessionId: "t-empty", now: 8000 },
+        storeOptions,
+      ),
+    ).toEqual({
       ok: false,
       reason: "no-steps-completed",
     });
@@ -487,7 +505,13 @@ describe("enterprise trace store", () => {
         storeOptions,
       );
       finalizeEnterpriseRun({ executionId, status: "aborted", now: 985 }, storeOptions);
-      expect(requestEnterpriseRunResume(executionId, { now: 8000 }, storeOptions).ok).toBe(true);
+      expect(
+        requestEnterpriseRunResume(
+          executionId,
+          { expectedSessionId: "t-one", activeSessionId: "t-one", now: 8000 },
+          storeOptions,
+        ).ok,
+      ).toBe(true);
     }
     // The second request replaces the first: two marked rows would leave whichever
     // one mediation read first deciding where the next run opens.
@@ -548,7 +572,13 @@ describe("enterprise trace store", () => {
       storeOptions,
     );
     // Accepting it would let mediation fall back to step 1 and rerun everything.
-    expect(requestEnterpriseRunResume("exec-resume-done", { now: 8000 }, storeOptions)).toEqual({
+    expect(
+      requestEnterpriseRunResume(
+        "exec-resume-done",
+        { expectedSessionId: "t-done", activeSessionId: "t-done", now: 8000 },
+        storeOptions,
+      ),
+    ).toEqual({
       ok: false,
       reason: "route-complete",
     });
@@ -588,9 +618,13 @@ describe("enterprise trace store", () => {
         { executionId: lane.executionId, status: "aborted", now: 1210 },
         storeOptions,
       );
-      expect(requestEnterpriseRunResume(lane.executionId, { now: 8000 }, storeOptions).ok).toBe(
-        true,
-      );
+      expect(
+        requestEnterpriseRunResume(
+          lane.executionId,
+          { expectedSessionId: "t-lane", activeSessionId: "t-lane", now: 8000 },
+          storeOptions,
+        ).ok,
+      ).toBe(true);
     }
     // Both stay pending: the second request must not have cleared the first, and
     // each agent's next run picks up its own.
@@ -697,7 +731,13 @@ describe("enterprise trace store", () => {
       storeOptions,
     );
 
-    expect(requestEnterpriseRunResume("exec-chain-2", { now: 8000 }, storeOptions).ok).toBe(true);
+    expect(
+      requestEnterpriseRunResume(
+        "exec-chain-2",
+        { expectedSessionId: "t-chain", activeSessionId: "t-chain", now: 8000 },
+        storeOptions,
+      ).ok,
+    ).toBe(true);
     // Both steps carry forward, so the third run opens on `c`.
     expect(
       takeEnterpriseRunResume(
@@ -764,7 +804,13 @@ describe("enterprise trace store", () => {
 
     // `a` was redone after the reopen, so the run is resumable and the next one
     // opens on `b` — the first step whose work the correction invalidated.
-    expect(requestEnterpriseRunResume("exec-reopen-1", { now: 8000 }, storeOptions).ok).toBe(true);
+    expect(
+      requestEnterpriseRunResume(
+        "exec-reopen-1",
+        { expectedSessionId: "t-reopen", activeSessionId: "t-reopen", now: 8000 },
+        storeOptions,
+      ).ok,
+    ).toBe(true);
     expect(
       takeEnterpriseRunResume(
         {
@@ -823,7 +869,13 @@ describe("enterprise trace store", () => {
       storeOptions,
     );
 
-    expect(requestEnterpriseRunResume("exec-reopen-2", { now: 8000 }, storeOptions)).toMatchObject({
+    expect(
+      requestEnterpriseRunResume(
+        "exec-reopen-2",
+        { expectedSessionId: "t-reopen2", activeSessionId: "t-reopen2", now: 8000 },
+        storeOptions,
+      ),
+    ).toMatchObject({
       ok: false,
       reason: "no-steps-completed",
     });
@@ -901,9 +953,27 @@ describe("enterprise trace store", () => {
       { executionId: "exec-resume-bind", status: "aborted", now: 1410 },
       storeOptions,
     );
-    expect(requestEnterpriseRunResume("exec-resume-bind", { now: 8000 }, storeOptions).ok).toBe(
-      true,
-    );
+    // A bare reset creates no newer enterprise row, so the session owner's
+    // current transcript snapshot must be checked while the marker lock is held.
+    expect(
+      requestEnterpriseRunResume(
+        "exec-resume-bind",
+        {
+          expectedSessionId: "t-before",
+          activeSessionId: "t-after-reset",
+          now: 8000,
+        },
+        storeOptions,
+      ),
+    ).toEqual({ ok: false, reason: "transcript-rotated" });
+    expect(getEnterpriseRunRecord("run-resume-6", storeOptions)?.resumeRequested).toBe(false);
+    expect(
+      requestEnterpriseRunResume(
+        "exec-resume-bind",
+        { expectedSessionId: "t-before", activeSessionId: "t-before", now: 8000 },
+        storeOptions,
+      ).ok,
+    ).toBe(true);
 
     // `/new` rebinds the session key to a fresh transcript. That conversation
     // never saw the completed steps, so the marker must not follow it there.
@@ -991,7 +1061,13 @@ describe("enterprise trace store", () => {
     );
 
     // Accepting it would leave the screen waiting on something that cannot happen.
-    expect(requestEnterpriseRunResume("exec-rotated", { now: 8000 }, storeOptions)).toEqual({
+    expect(
+      requestEnterpriseRunResume(
+        "exec-rotated",
+        { expectedSessionId: "t-old", activeSessionId: "t-old", now: 8000 },
+        storeOptions,
+      ),
+    ).toEqual({
       ok: false,
       reason: "transcript-rotated",
     });

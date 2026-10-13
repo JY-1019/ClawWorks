@@ -99,9 +99,9 @@ describe("enterprise.knowledge.documents.upload input validation", () => {
       reached = true;
     });
 
-    // Buffer.from ignores characters outside the alphabet, so "Zm9v!!!!" would
-    // decode to "foo" and "!!!!" to an empty file.
-    for (const contentBase64 of ["Zm9v!!!!", "!!!!", "not base64 at all"]) {
+    // Buffer.from also accepts truncated quartets: "A" and "A=" both decode to
+    // an empty file, while "AAAAA" silently discards the trailing symbol.
+    for (const contentBase64 of ["Zm9v!!!!", "!!!!", "not base64 at all!", "A", "A=", "AAAAA"]) {
       const { ok, error } = await invoke("enterprise.knowledge.documents.upload", {
         foundationId: "local.kb",
         name: "notes.md",
@@ -111,6 +111,28 @@ describe("enterprise.knowledge.documents.upload input validation", () => {
       expect(String((error as { message?: string }).message)).toMatch(/not valid base64/);
     }
     expect(reached).toBe(false);
+  });
+
+  it("accepts canonical padded and unpadded quartets", async () => {
+    const seen: number[] = [];
+    registerEnterpriseKnowledgeFoundation("local.kb", {
+      retrieve: async () => [],
+      describe: () => ({ kind: "local", displayName: "Local KB" }),
+      uploadDocument: async (file) => {
+        seen.push(file.content.byteLength);
+        return { outcome: "accepted" };
+      },
+    });
+
+    for (const contentBase64 of ["TQ==", "TWE=", "Zm9v", "TQ", "TWE"]) {
+      const { ok } = await invoke("enterprise.knowledge.documents.upload", {
+        foundationId: "local.kb",
+        name: "notes.md",
+        contentBase64,
+      });
+      expect(ok).toBe(true);
+    }
+    expect(seen).toEqual([1, 2, 3, 1, 2]);
   });
 });
 

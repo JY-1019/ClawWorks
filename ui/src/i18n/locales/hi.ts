@@ -277,6 +277,49 @@ export const hi: TranslationMap = {
   enterprise: {
     title: "Enterprise",
     subtitle: "शासित वर्कफ़्लो रन और पंजीकृत वर्कफ़्लो ट्री।",
+    historyOnly: "Removed work-map with restorable revisions",
+    historyOnlyBadge: "history only",
+    historyOnlyRestore: "This work-map was removed. Choose a saved revision below to restore it.",
+    removeFingerprintUnavailable:
+      "Cannot safely remove {treeId}: this gateway did not return the imported row identity. Refresh or update the gateway, then try again.",
+    bundle: {
+      import: "Import bundle",
+      exportYaml: "Bundle YAML",
+      exportJson: "Bundle JSON",
+      previewTitle: "Review workflow bundle",
+      previewBody:
+        "Nothing has been changed yet. Review the replacement, inlined knowledge, dependencies, and governance gaps before applying these exact file contents.",
+      create: "Creates a new work-map",
+      replace: "Replaces the current {source} work-map at version {version}",
+      inlinedKnowledge: "Knowledge included in the bundle",
+      requiredTools: "Required tools (verify this gateway provides them)",
+      requiredSkills: "Required skills",
+      requiredMcp: "Required MCP servers",
+      requiredKnowledge: "Knowledge sources",
+      missingSkills: "Missing or unavailable skills",
+      missingMcp: "Missing MCP servers",
+      missingKnowledge: "Knowledge not included in the bundle or globally available",
+      removedKnowledge: "Owned knowledge this import deletes (no revision history)",
+      replacedKnowledge: "Owned knowledge rows this import replaces (no revision history)",
+      shadowedKnowledge:
+        "Bundled knowledge ignored at runtime (a global/plugin foundation with the same id takes precedence)",
+      unverifiedKnowledge: "Knowledge not included in the bundle (verify local availability)",
+      verificationUnavailable: "Local availability could not be verified",
+      missingPolicies: "Missing governance policies",
+      conflictingPolicies: "Governance policies with different definitions",
+      modeDowngrade: "Governance is weaker here: {from} → {to}.",
+      authorWarnings: "Work-map authoring warnings",
+      apply: "Apply bundle",
+      previewRejected: "This bundle cannot be previewed: {issues}",
+      applyRejected: "Nothing was imported. Preview the current state again: {issues}",
+      applyUnknown:
+        "The result is unknown ({message}). Refresh before retrying so you do not overwrite a successful import.",
+      applied: "Imported bundle for {treeId}.",
+      exported: "Exported bundle for {treeId}.",
+      exportImplicitKnowledge:
+        "the work-map allows implicit knowledge that a bundle cannot enumerate",
+      exportWarning: "Bundle downloaded with portability warnings: {warnings}",
+    },
     toolsTab: {
       title: "टूल्स",
       subtitle:
@@ -322,7 +365,7 @@ export const hi: TranslationMap = {
       configInvalid:
         "Gateway कॉन्फ़िग पार्स नहीं हो रहा है, इसलिए इस स्क्रीन में जोड़ने के लिए कुछ नहीं है। पहले इसे कॉन्फ़िग एडिटर में ठीक करें — यहाँ से सेव करने पर फ़ाइल केवल इस एंट्री से बदल जाएगी।",
       rawDraftPending:
-        "रॉ कॉन्फ़िग एडिटर में आपके असहेजे परिवर्तन हैं। पहले उन्हें सहेजें या हटाएं — यहाँ पंजीकरण करने से वह ड्राफ़्ट अधिलेखित हो जाएगा।",
+        "The config editor is in raw mode. Switch it to form mode first — registering here writes the form, and saving from raw mode would serialize it over your raw text.",
       save: "सहेजें",
       publish: "सहेजें और प्रकाशित करें",
       publishing: "प्रकाशित हो रहा है...",
@@ -434,6 +477,11 @@ export const hi: TranslationMap = {
       add: "जोड़ें",
       cancel: "रद्द करें",
       removeTitle: "इस चरण से {entry} अलग करें",
+      removeLastAllowedTool:
+        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+      removeLastKnowledgeFoundation:
+        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+      requireMcpAttachments: "Require attachments",
       none: "अभी तक कोई घोषित नहीं।",
       scopeNarrowingApproval:
         "इस चरण में अभी तक कोई टूल अनुमति सूची नहीं है, इसलिए यह अस्वीकृत टूल को छोड़कर हर टूल को अनुमति देता है। पहली प्रविष्टि जोड़ने से यह एक अनुमति सूची में बदल जाती है। सूचीबद्ध टूल स्वतंत्र रूप से चलते हैं और किसी भी अन्य टूल के लिए एकमुश्त अनुमोदन की आवश्यकता होती है।",
@@ -448,6 +496,8 @@ export const hi: TranslationMap = {
         "एक foundation id का उपयोग करें: डॉटेड लोअरकेस सेगमेंट, उदाहरण के लिए acme.runbooks.",
       ancestorGateApproval:
         "पैरेंट स्टेप्स ({nodeIds}) के पास इसके लिए अपनी अलग allowlist है। Governance रूट से प्रत्येक स्टेप की जाँच करता है, इसलिए यहाँ जोड़ी गई एंट्री केवल तभी बिना पूछे चलेगी जब वे स्टेप्स भी इसे अनुमति दें; अन्यथा इसे एक बार की अनुमति की आवश्यकता होगी। इसे उन स्टेप्स में भी जोड़ें, या इसे पूरी तरह से अस्वीकार करने के लिए Denied tools का उपयोग करें।",
+      ancestorGateKnowledge:
+        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "पहले एक मान दर्ज करें।",
       duplicate: "यह प्रविष्टि इस स्टेप पर पहले से घोषित है।",
       nodeMissing: "वह स्टेप अब ट्री में नहीं है; पुनः लोड करें और दोबारा प्रयास करें।",
@@ -455,7 +505,7 @@ export const hi: TranslationMap = {
       importFailed:
         "सेव की पुष्टि नहीं हुई। यह लागू हुआ भी हो सकता है और नहीं भी — दोबारा प्रयास करने से पहले वर्क-मैप को रिफ्रेश करके देखें।",
       mcpFirstAttachment:
-        "यह वर्क-मैप अभी तक MCP को नियंत्रित नहीं करता है। यहाँ पहला सर्वर जोड़ने से पूरे वर्क-मैप के लिए deny-by-default सक्रिय हो जाएगा: बिना अटैचमेंट वाला हर स्टेप तब किसी भी MCP सर्वर तक नहीं पहुँच पाएगा।",
+        "This work-map declares no MCP attachment yet. Adding the first server here opts the WHOLE work-map into deny-by-default: wherever enterprise mode enforces, every step without an attachment then reaches no MCP server.",
       mcpNoneAttached:
         "इस चरण में कोई MCP सर्वर संलग्न नहीं है, इसलिए यह किसी को भी कॉल नहीं कर सकता। टूल्स और नॉलेज के विपरीत, MCP डिफ़ॉल्ट रूप से कुछ भी प्रदान नहीं करता।",
       importNotSent:
@@ -491,13 +541,17 @@ export const hi: TranslationMap = {
       noProperties: "No fields yet.",
       links: "Links",
       noLinks: "No links declared yet.",
+      editTitle: "Edit {item}",
+      formLabel: "Ontology editor",
       titleLabel: "Display name (optional)",
+      descriptionLabel: "विवरण",
       typeLabel: "Type",
       primaryKeyLabel: "Identifies an instance",
       primaryKeyMark: "(identity)",
       fromLabel: "From",
       toLabel: "प्रति",
       cardinalityLabel: "Cardinality",
+      inverseLabel: "Inverse name (optional)",
       save: "सहेजें",
       actions: "कार्रवाइयाँ",
       actionsSummary:
@@ -511,14 +565,31 @@ export const hi: TranslationMap = {
       noEffects: "No effects yet.",
       noParameters: "No parameters yet.",
       incompleteActionDetail:
-        "This action cannot be called yet. It needs a create, update, or delete effect, a parameter naming the identity field of every object type it writes, and — for a create — a parameter for each of that type's required fields, including ones another branch marks required.",
+        "This action cannot be called yet. Object writes need identity parameters (and creates need every required field); links need parameters for both endpoint identities.",
       removeEffectTitle: "Remove the {kind} effect on {entity}",
       removeParameterTitle: "Remove the {parameter} parameter",
       requiredLabel: "आवश्यक",
       requiredMark: "(required)",
+      toolsModeLabel: "Policy tool matching",
+      toolsModeHint:
+        "Chooses which tool calls this action's policy matches. Outward calls are added separately as effects.",
+      toolsMode: {
+        all: "Match all tool calls",
+        selected: "Match selected tool calls",
+        none: "Match no tool calls",
+      },
+      toolsLabel: "Matched tool selectors",
+      preconditionsLabel: "Advisory preconditions",
+      addListItem: "Add {item}",
+      removeListItem: "Remove {item}",
       effectEntityLabel: "Object type",
       effectKindLabel: "Effect",
       linkRelationshipLabel: "Link type",
+      linkEndpointsLabel: "Endpoint parameters",
+      linkFromParameterLabel: "From-object parameter",
+      linkToParameterLabel: "To-object parameter",
+      defaultIdentity: "Use the object type's identity field",
+      unavailableParameter: "{parameter} (not declared)",
       callToolLabel: "टूल",
       callToolPlaceholder: "server__operation",
       callToolHint:
@@ -529,6 +600,11 @@ export const hi: TranslationMap = {
       functionEntityLabel: "Computed over",
       expressionLabel: "एक्सप्रेशन",
       returnsLabel: "Returns",
+      constraints: "Constraints",
+      addConstraint: "Add constraint",
+      noConstraints: "No advisory constraints declared yet.",
+      shadowedDeclaration: "Shadowed by a later declaration with the same id",
+      removeConstraintTitle: "Remove the {constraint} constraint",
       idLabel: {
         entity: "Object type id",
         property: "Field id",
@@ -536,20 +612,26 @@ export const hi: TranslationMap = {
         action: "Action id",
         "action-parameter": "Parameter id",
         function: "Derived value id",
+        constraint: "Constraint id",
       },
       error: {
         "invalid-id":
           "Ids are lowercase letters, digits, dashes, and dots between segments — the same shape the work-map import accepts.",
-        "endpoint-missing": "A link needs an object type at both ends.",
-        "duplicate-entry": "That id is already declared on this step.",
+        "endpoint-missing": "Choose the required object type, link type, or tool.",
+        "description-empty": "Enter a description.",
+        "selection-empty":
+          "Add at least one tool selector, or choose Match all tool calls or Match no tool calls.",
+        "duplicate-entry": "That id is already declared in this work-map scope.",
         "entity-not-found": "That object type is not in this step's scope.",
         "entity-in-use": "A link still points at this object type. Remove the link first.",
         "entity-referenced":
-          "An action or derived value on this work-map still uses this object type. Remove that reference first.",
+          "An action or derived value still uses an object or link type this edit would remove from its scope. Change that reference first.",
         "property-in-use":
           "A derived value or a write action on this work-map still needs this field. Change it first.",
         "primary-key-taken":
           "This object type already has a field that identifies an instance, and it can only have one.",
+        "identity-type-invalid":
+          "An identity field must be text, a number, a date, or an id. Boolean values cannot identify ontology objects.",
         "action-not-found": "That action is no longer declared on this step.",
         "effect-needs-identity":
           "A create, update, or delete effect has to say which instance it acts on, so the object type needs a field that identifies one.",
@@ -559,6 +641,8 @@ export const hi: TranslationMap = {
         "expression-type-invalid":
           "The expression does not type-check against this object type's fields.",
         "returns-mismatch": "The expression does not produce the type this derived value returns.",
+        "property-type-conflict":
+          "This work-map already declares that field on the same object type with a different type.",
         "create-required-unreachable":
           "Another branch of this work-map marks a field of that object type required, and this step cannot see it. A create here would be refused on every call, so declare the type's required fields where this step can reach them.",
         "effect-target-taken":
@@ -571,13 +655,31 @@ export const hi: TranslationMap = {
       },
     },
     guidanceEditor: {
-      title: "भूमिका प्रॉम्प्ट",
+      title: "Step behavior",
       guidanceNote:
-        "यह चरण किसके लिए है, अपने शब्दों में। इसे चरण डाइजेस्ट में निर्देश के रूप में रेंडर किया जाता है और यह कभी कुछ अनुमति नहीं देता — एक चरण अभी भी उस tool को कॉल नहीं कर सकता जिसे उसका scope रोकता है, चाहे prompt कैसे भी लिखा गया हो।",
-      fieldLabel: "चरण {nodeId} के लिए रोल prompt",
+        "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
+      titleLabel: "Step title",
+      parentLabel: "Parent step",
+      positionLabel: "Position among siblings",
+      descriptionLabel: "विवरण",
+      fieldLabel: "Instructions for step {nodeId}",
       placeholder: "उदा. कोई भी राशि बताने से पहले दावेदार की पहचान की पुष्टि करें।",
-      save: "भूमिका प्रॉम्प्ट सहेजें",
+      contextHintsLabel: "Context hints",
+      contextHintsPlaceholder: "e.g. Prefer the policy handbook over assumptions.",
+      addContextHint: "Add context hint",
+      removeContextHint: "Remove context hint",
+      expectedOutputLabel: "Expected output",
+      expectedOutputPlaceholder: "e.g. A decision, rationale, and record id.",
+      auditLabel: "Record detailed tool-decision audit events",
+      save: "Save behavior",
       revert: "पूर्ववत करें",
+      reparentWarning:
+        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+      error: {
+        "title-empty": "Enter a step title.",
+        "move-refused":
+          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+      },
     },
     capabilities: {
       toolsTitle: "टूल्स",
@@ -591,7 +693,7 @@ export const hi: TranslationMap = {
         "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
       knowledgeTitle: "नॉलेज",
       knowledgeHint:
-        "Knowledge foundations this step may retrieve from. Every step on the path is its own gate, so an ancestor's list narrows this one.",
+        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -653,9 +755,11 @@ export const hi: TranslationMap = {
         "Enterprise मीडिएशन निरीक्षण कर रहा है, इसलिए अस्वीकृतियाँ रिकॉर्ड की जाती हैं लेकिन लागू नहीं होतीं। जब यह लागू करेगा, तो अस्वीकृति इस चरण और इसके अंतर्गत सब कुछ पर लागू होगी, और शाखा में आगे कोई अनुमति इसे वापस नहीं ले सकती।",
       deniedToolsOff:
         "Enterprise मीडिएशन बंद है, इसलिए अस्वीकृतियाँ न लागू होती हैं न रिकॉर्ड। इसे प्रभावी करने या रन ट्रेस में दिखाने के लिए मीडिएशन चालू करें।",
-      skillNotInstalled: "इंस्टॉल नहीं है",
-      foundationNotRegistered: "पंजीकृत नहीं है",
+      skillNotModelVisible: "not available to the model for this agent",
+      foundationNotRegistered: "not retrievable by this work-map",
+      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "mcp.servers में पंजीकृत नहीं",
+      mcpDisabled: "disabled in mcp.servers",
       inherited: "पैरेंट स्टेप से इनहेरिट किया गया:",
     },
     skillsTab: {
@@ -684,6 +788,9 @@ export const hi: TranslationMap = {
     executionCount: "इस रन के {count} निष्पादन",
     stepsTitle: "चरण",
     resume: "Continue this run",
+    resumeChat: "Continue from unfinished step",
+    resumeChatHint:
+      "The unfinished step restarts on your next matching message. An in-flight external action is not resumed.",
     resumeHint:
       "The next request in this session that routes to this work-map opens on the first step this run did not finish, instead of starting it over. Nothing runs until you send that request, and requests routed elsewhere leave this waiting.",
     resumeRequested:
@@ -718,15 +825,20 @@ export const hi: TranslationMap = {
       explicit: "स्पष्ट अनुदान",
       inherited: "विरासत में मिले स्कोप",
       explicitHintGated:
-        "प्रत्येक स्टेप को उन टूल्स, Skills, MCP सर्वर्स, और नॉलेज फाउंडेशन्स का उपयोग करना चाहिए जो उसमें या उसके ऊपर के किसी स्टेप में सूचीबद्ध हैं। जो Skills, MCP सर्वर्स और नॉलेज फाउंडेशन्स किसी स्टेप में सूचीबद्ध नहीं हैं, वे पूरी तरह रोक दिए जाते हैं। एक असूचीबद्ध टूल इसके बजाय एक बार की स्वीकृति माँगता है, और उत्तर देना और पढ़ना (message, read, memory_search) तब तक उपलब्ध रहते हैं जब तक कोई स्टेप या governance नीति उन्हें अस्वीकार न करे।",
+        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "यह वर्क-मैप स्पष्ट रूप से क्षमताएँ प्रदान करता है, लेकिन एंटरप्राइज़ मोड लागू नहीं है। Tool, skill और MCP अनुदान लागू होने के बजाय रिकॉर्ड किए जाते हैं। Knowledge अनुदान हर मोड में रिट्रीवल को स्कोप करते हैं।",
       explicitHintOff:
         "यह वर्क-मैप स्पष्ट रूप से क्षमताएँ प्रदान करता है, लेकिन एंटरप्राइज़ मीडिएशन सक्रिय नहीं है, इसलिए कोई अनुदान लागू नहीं होता। नीचे दिए गए अनुदान सहेजे गए हैं और मीडिएशन सक्षम होने पर प्रभावी होंगे।",
       inheritedHint:
-        "एक चरण की सूचियाँ उसके पूर्वजों द्वारा अनुमत को सीमित करती हैं; जिस चरण की शाखा में कुछ सूचीबद्ध नहीं है, वह किसी भी टूल या skill का उपयोग कर सकता है।",
+        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "स्पष्ट रूप से अनुदान दें",
       turnOff: "इनहेरिटेड स्कोप का उपयोग करें",
+      turnOffWarning:
+        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+      stopMcp: "Stop requiring MCP attachments",
+      stopMcpWarning:
+        "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
     structureTitle: "संरचना",
     ontologyTitle: "ऑन्टोलॉजी",
@@ -742,13 +854,20 @@ export const hi: TranslationMap = {
     addNodeTitle: "नया चाइल्ड नोड",
     addNodeIdLabel: "नोड id (डॉटेड लोअरकेस, जैसे support.triage)",
     addNodeTitleLabel: "शीर्षक",
-    addNodeSubmit: "एडिटर में जोड़ें",
+    addNodeDescriptionLabel: "Description (optional)",
+    addNodeSubmit: "Add step",
     addNodeErrorIdEmpty: "नोड id दर्ज करें।",
     addNodeErrorIdPattern: "Id डॉटेड लोअरकेस होना चाहिए, जैसे support.triage।",
     addNodeErrorIdDuplicate: "इस ट्री में उस id वाला नोड पहले से मौजूद है।",
     addNodeErrorTitleEmpty: "शीर्षक दर्ज करें।",
     addNodeErrorParentMissing: "पैरेंट नोड अब इस ट्री में नहीं है।",
     addNodeErrorExportFailed: "संपादन के लिए ट्री परिभाषा लोड नहीं हो सकी।",
+    removeNode: "Delete step and descendants",
+    removeNodeWarning:
+      'Delete "{node}" and every step beneath it? This records a new work-map revision.',
+    structureEditRefused:
+      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+    editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "नोड खींचें · ज़ूम करने के लिए स्क्रॉल करें",
     routeTitle: "अपनाया गया मार्ग",
     routeViewLabel: "रूट दृश्य",
@@ -790,12 +909,47 @@ export const hi: TranslationMap = {
     contextHints: "संदर्भ संकेत: {hints}",
     expectedOutput: "अपेक्षित आउटपुट: {text}",
     newTree: "नया ट्री",
+    importTree: "Import file",
+    newTreeTitle: "New workflow tree",
+    treeSettingsTitle: "Work-map settings",
+    treeSettingsButton: "सेटिंग्स",
+    newTreeIdLabel: "Tree id",
+    newTreeIdPlaceholder: "support.intake",
+    treeSettingsVersionLabel: "संस्करण",
+    newTreeNameLabel: "नाम",
+    newTreeRootIdLabel: "First step id",
+    newTreeRootIdPlaceholder: "support",
+    newTreeRootTitleLabel: "First step title",
+    newTreeDescriptionLabel: "Description (optional)",
+    treeSettingsTriggersLabel: "Runs this work-map applies to",
+    treeSettingsTrigger: {
+      user: "User messages",
+      system: "System runs",
+      subagent: "Subagent runs",
+    },
+    treeSettingsPriorityLabel: "Routing priority (optional)",
+    newTreeReview: "Review definition",
+    newTreeErrorIdEmpty: "Enter a tree id.",
+    newTreeErrorIdPattern: "Tree id must be dotted lowercase.",
+    newTreeErrorIdDuplicate: "That tree already exists. Select it and use Edit instead.",
+    treeSettingsErrorVersionEmpty: "Enter a version.",
+    newTreeErrorNameEmpty: "Enter a tree name.",
+    treeSettingsErrorTriggersEmpty: "Choose at least one run type.",
+    treeSettingsErrorPriorityInvalid: "Priority must be a whole number.",
+    newTreeErrorRootIdEmpty: "Enter the first step id.",
+    newTreeErrorRootIdPattern: "Step id must be dotted lowercase.",
+    newTreeErrorRootTitleEmpty: "Enter the first step title.",
     edit: "संपादित करें",
     exportYaml: "YAML निर्यात करें",
     exportJson: "JSON निर्यात करें",
     remove: "हटाएँ",
     editorTitle: "ट्री परिभाषा संपादित करें",
     editorHint: "रॉ परिभाषा संपादित करें, फिर नया संस्करण रिकॉर्ड करने के लिए सेव करें।",
+    editorDiscardWarning: "Discard the unsaved tree draft?",
+    saveContinuesNavigation:
+      "This save has already been sent and will continue if you open another work-map. Open it anyway?",
+    editorFormatWarning: "Switch format and discard the current editor contents?",
+    treeWarnings: "Some declarations on this work-map cannot be reached by any run:",
     saveInvalid: "परिभाषा मान्य नहीं हुई:",
     saving: "सहेजा जा रहा है…",
     save: "सहेजें",
@@ -806,8 +960,13 @@ export const hi: TranslationMap = {
     confirmSaveBody: "यह संपादित परिभाषा आयात करता है और एक नया संशोधन रिकॉर्ड करता है।",
     confirmRemoveTitle: "वर्कफ़्लो ट्री हटाएँ?",
     confirmRemoveBody: "आयातित ट्री {treeId} को रजिस्ट्री से हटाएँ।",
-    confirmRemoveWarning:
-      "लाइव परिभाषा हटा दी जाती है; एक छायांकित बिल्ट-इन पुनः दिखाई देता है। संस्करण इतिहास रखा जाता है।",
+    confirmRemoveDataLossWarning:
+      "This permanently deletes the tree's live ontology objects, links, and bundled knowledge. Version history keeps only definitions. Workflow bundles preserve definitions and bundled knowledge, but cannot restore live objects or links. Back up ClawWorks state before deleting data you need. A shadowed built-in then reappears.",
+    removeNotSent:
+      "Nothing was removed: the gateway connection dropped before this was sent. Reconnect and try again.",
+    removeRefused: "The server refused the removal, so nothing was removed: {message}",
+    removeUnconfirmed:
+      "The removal did not confirm. It may or may not have been applied — refresh the work-map before trying again.",
   },
   sessionsView: {
     title: "सेशन",

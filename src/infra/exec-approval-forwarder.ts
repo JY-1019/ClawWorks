@@ -68,11 +68,23 @@ type ApprovalRouteRequest = {
   turnSourceThreadId?: string | number | null;
 };
 
-type PendingApproval<TRouteRequest extends ApprovalRouteRequest> = {
-  routeRequest: TRouteRequest;
-  targets: ForwardTarget[];
-  timeoutId: NodeJS.Timeout | null;
-};
+type PendingApproval<TRouteRequest extends ApprovalRouteRequest> =
+  | {
+      state: "routing";
+      routeRequest: TRouteRequest;
+    }
+  | {
+      state: "ready";
+      routeRequest: TRouteRequest;
+      targets: ForwardTarget[];
+      timeoutId: NodeJS.Timeout | null;
+      pendingDelivery: Promise<void>;
+    };
+
+type ReadyPendingApproval<TRouteRequest extends ApprovalRouteRequest> = Extract<
+  PendingApproval<TRouteRequest>,
+  { state: "ready" }
+>;
 
 type ApprovalRenderContext<TRouteRequest extends ApprovalRouteRequest> = {
   cfg: OpenClawConfig;
@@ -549,25 +561,42 @@ function createApprovalHandlers<
     const config = params.strategy.config(cfg);
     const requestId = params.strategy.getRequestId(request);
     const routeRequest = params.strategy.getRouteRequestFromRequest(request);
-    const filteredTargets = [
-      ...(shouldForwardRoute({ config, routeRequest })
-        ? await resolveForwardTargets({
+    // Install a cancellable placeholder before route lookup yields. A concurrent
+    // resolution removes it, preventing a late pending prompt from being installed.
+    const routingEntry: PendingApproval<TRouteRequest> = { state: "routing", routeRequest };
+    pending.set(requestId, routingEntry);
+
+    let filteredTargets: ForwardTarget[];
+    try {
+      filteredTargets = [
+        ...(shouldForwardRoute({ config, routeRequest })
+          ? await resolveForwardTargets({
+              cfg,
+              config,
+              routeRequest,
+              resolveSessionTarget: params.resolveSessionTarget,
+            })
+          : []),
+      ].filter(
+        (target) =>
+          !shouldSkipForwardingFallback({
+            approvalKind: params.strategy.kind,
+            target,
             cfg,
-            config,
             routeRequest,
-            resolveSessionTarget: params.resolveSessionTarget,
-          })
-        : []),
-    ].filter(
-      (target) =>
-        !shouldSkipForwardingFallback({
-          approvalKind: params.strategy.kind,
-          target,
-          cfg,
-          routeRequest,
-        }),
-    );
+          }),
+      );
+    } catch (error) {
+      if (pending.get(requestId) === routingEntry) {
+        pending.delete(requestId);
+      }
+      throw error;
+    }
+    if (pending.get(requestId) !== routingEntry) {
+      return false;
+    }
     if (filteredTargets.length === 0) {
+      pending.delete(requestId);
       return false;
     }
 
@@ -575,10 +604,11 @@ function createApprovalHandlers<
     const timeoutId = setTimeout(() => {
       void (async () => {
         const entry = pending.get(requestId);
-        if (!entry) {
+        if (entry?.state !== "ready") {
           return;
         }
         pending.delete(requestId);
+        await entry.pendingDelivery;
         await deliverToTargets({
           cfg,
           targets: entry.targets,
@@ -593,88 +623,96 @@ function createApprovalHandlers<
     }, expiresInMs);
     timeoutId.unref?.();
 
-    const pendingEntry: PendingApproval<TRouteRequest> = {
+    const pendingEntry: ReadyPendingApproval<TRouteRequest> = {
+      state: "ready",
       routeRequest,
       targets: filteredTargets,
       timeoutId,
+      // Defer the send until after this entry is installed. Resolution removes
+      // the entry first, then waits for any send already in flight.
+      pendingDelivery: Promise.resolve()
+        .then(() =>
+          deliverToTargets({
+            cfg,
+            targets: filteredTargets,
+            buildPayload: (target) =>
+              params.strategy.buildPendingPayload({
+                cfg,
+                request,
+                target,
+                routeRequest,
+                nowMs: params.nowMs(),
+              }),
+            beforeDeliver: async (target, payload) => {
+              const channel = normalizeMessageChannel(target.channel) ?? target.channel;
+              if (!channel) {
+                return;
+              }
+              await getLoadedChannelPlugin(channel)?.outbound?.beforeDeliverPayload?.({
+                cfg,
+                target,
+                payload,
+                hint: {
+                  kind: "approval-pending",
+                  approvalKind: params.strategy.kind,
+                },
+              });
+            },
+            deliver: params.deliver,
+            shouldSend: () => pending.get(requestId) === pendingEntry,
+          }),
+        )
+        .catch((err: unknown) => {
+          log.error(
+            `${params.strategy.kind} approvals: failed to deliver request ${requestId}: ${String(err)}`,
+          );
+        }),
     };
     pending.set(requestId, pendingEntry);
 
     if (pending.get(requestId) !== pendingEntry) {
       return false;
     }
-
-    void deliverToTargets({
-      cfg,
-      targets: filteredTargets,
-      buildPayload: (target) =>
-        params.strategy.buildPendingPayload({
-          cfg,
-          request,
-          target,
-          routeRequest,
-          nowMs: params.nowMs(),
-        }),
-      beforeDeliver: async (target, payload) => {
-        const channel = normalizeMessageChannel(target.channel) ?? target.channel;
-        if (!channel) {
-          return;
-        }
-        await getLoadedChannelPlugin(channel)?.outbound?.beforeDeliverPayload?.({
-          cfg,
-          target,
-          payload,
-          hint: {
-            kind: "approval-pending",
-            approvalKind: params.strategy.kind,
-          },
-        });
-      },
-      deliver: params.deliver,
-      shouldSend: () => pending.get(requestId) === pendingEntry,
-    }).catch((err: unknown) => {
-      log.error(
-        `${params.strategy.kind} approvals: failed to deliver request ${requestId}: ${String(err)}`,
-      );
-    });
     return true;
   };
 
   const handleResolved = async (resolved: TResolved) => {
     const resolvedId = params.strategy.getResolvedId(resolved);
     const entry = pending.get(resolvedId);
-    if (entry?.timeoutId) {
+    if (entry?.state === "ready" && entry.timeoutId) {
       clearTimeout(entry.timeoutId);
     }
     if (entry) {
       pending.delete(resolvedId);
+      if (entry.state === "ready") {
+        await entry.pendingDelivery;
+      }
     }
 
     const cfg = params.getConfig();
-    let targets = entry?.targets;
-    if (!targets) {
-      const routeRequest = params.strategy.getRouteRequestFromResolved(resolved);
-      if (routeRequest) {
-        const config = params.strategy.config(cfg);
-        targets = [
-          ...(shouldForwardRoute({ config, routeRequest })
-            ? await resolveForwardTargets({
-                cfg,
-                config,
-                routeRequest,
-                resolveSessionTarget: params.resolveSessionTarget,
-              })
-            : []),
-        ].filter(
-          (target) =>
-            !shouldSkipForwardingFallback({
-              approvalKind: params.strategy.kind,
-              target,
+    const routeRequest =
+      entry?.routeRequest ?? params.strategy.getRouteRequestFromResolved(resolved);
+    let targets = entry?.state === "ready" ? entry.targets : undefined;
+    if (!targets && routeRequest) {
+      const config = params.strategy.config(cfg);
+      targets = [
+        ...(shouldForwardRoute({ config, routeRequest })
+          ? await resolveForwardTargets({
               cfg,
+              config,
               routeRequest,
-            }),
-        );
-      }
+              resolveSessionTarget: params.resolveSessionTarget,
+            })
+          : []),
+      ].filter(
+        (target) =>
+          !shouldSkipForwardingFallback({
+            approvalKind: params.strategy.kind,
+            target,
+            cfg,
+            routeRequest,
+          }),
+      );
     }
     if (!targets?.length) {
       return;
@@ -688,10 +726,7 @@ function createApprovalHandlers<
           cfg,
           resolved,
           target,
-          routeRequest:
-            entry?.routeRequest ??
-            params.strategy.getRouteRequestFromResolved(resolved) ??
-            ({} as TRouteRequest),
+          routeRequest: routeRequest ?? ({} as TRouteRequest),
         }),
       deliver: params.deliver,
     });
@@ -699,7 +734,7 @@ function createApprovalHandlers<
 
   const stop = () => {
     for (const entry of pending.values()) {
-      if (entry.timeoutId) {
+      if (entry.state === "ready" && entry.timeoutId) {
         clearTimeout(entry.timeoutId);
       }
     }

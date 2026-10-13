@@ -7,10 +7,12 @@
  * same reload contract imported trees use.
  *
  * Scoped by tree_id and written inside the tree's own write transaction
- * (mirroring enterprise_ontology_objects) so a re-import replaces exactly that
- * tree's set and a tree removal drops its foundations atomically — the tree owns
- * this satellite data and its lifecycle.
+ * (mirroring enterprise_ontology_objects) so a bundle re-import replaces exactly
+ * that tree's set and a tree removal drops its foundations atomically. Plain tree
+ * edits leave the rows intact; runtime hydration admits only rows still referenced
+ * by the current healthy definition.
  */
+import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
@@ -20,11 +22,8 @@ import {
   type OpenClawStateDatabaseOptions,
 } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import type {
-  BundledKnowledgeFoundation,
-  KnowledgeFoundationDescriptor,
-  KnowledgeSnippet,
-} from "./types.js";
+import { BundledKnowledgeFoundationSchema } from "./schema.js";
+import type { BundledKnowledgeFoundation } from "./types.js";
 
 export type EnterpriseKnowledgeStoreOptions = {
   env?: NodeJS.ProcessEnv;
@@ -42,6 +41,12 @@ export type BundledKnowledgeFoundationReadResult = {
   /** Rows that failed to parse. `treeId` is kept so a caller can tell WHICH
    *  (tree, foundation) tuple an operator owns even when its content is unreadable. */
   rowErrors: Array<{ treeId: string; foundationId: string; message: string }>;
+};
+
+/** Raw target state used to review and transactionally guard a bundle replacement. */
+export type BundledKnowledgeTargetState = {
+  fingerprint: string;
+  foundationIds: string[];
 };
 
 type EnterpriseKnowledgeDatabase = Pick<
@@ -90,9 +95,11 @@ function knowledgeStoreDatabaseExists(options: EnterpriseKnowledgeStoreOptions):
 }
 
 function rowToRecord(row: BundledFoundationRow): BundledKnowledgeFoundation {
-  const descriptor = JSON.parse(row.descriptor_json) as KnowledgeFoundationDescriptor;
-  const snippets = JSON.parse(row.snippets_json) as KnowledgeSnippet[];
-  return { id: row.foundation_id, descriptor, snippets };
+  return BundledKnowledgeFoundationSchema.parse({
+    id: row.foundation_id,
+    descriptor: JSON.parse(row.descriptor_json),
+    snippets: JSON.parse(row.snippets_json),
+  });
 }
 
 /**
@@ -142,29 +149,6 @@ export function deleteBundledKnowledgeFoundationsForTree(
 }
 
 /**
- * Prune a tree's persisted foundations to the given keep-set, inside the caller's
- * write transaction. Used by a plain tree import (which carries no inlined
- * content): it drops foundation rows the new definition no longer references so
- * they cannot outlive the reference and leak into unrelated runs, while leaving
- * still-referenced rows untouched. An empty keep-set removes them all.
- */
-export function pruneBundledKnowledgeFoundationsForTree(
-  database: OpenClawStateDatabase,
-  params: { treeId: string; keepIds: readonly string[] },
-): void {
-  const stateDb = getNodeSqliteKysely<EnterpriseKnowledgeDatabase>(database.db);
-  let query = stateDb
-    .deleteFrom("enterprise_tree_bundled_foundations")
-    .where("tree_id", "=", params.treeId);
-  if (params.keepIds.length > 0) {
-    // `not in ()` is invalid SQL, so only add the filter when there is something
-    // to keep; an empty keep-set falls through to deleting every row for the tree.
-    query = query.where("foundation_id", "not in", [...params.keepIds]);
-  }
-  executeSqliteQuerySync(database.db, query);
-}
-
-/**
  * Read every persisted bundled foundation for runtime re-registration, one record
  * per (tree, foundation) row so the registry can key each foundation under its
  * owning tree and never leak bundle knowledge across workflows. Ordered by
@@ -178,6 +162,13 @@ export function listBundledKnowledgeFoundations(
     return { records: [], rowErrors: [] };
   }
   const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  return readBundledKnowledgeFoundationsFromDatabase(database);
+}
+
+/** Read through a caller-owned connection/transaction so related tables share its snapshot. */
+export function readBundledKnowledgeFoundationsFromDatabase(
+  database: OpenClawStateDatabase,
+): BundledKnowledgeFoundationReadResult {
   const stateDb = getNodeSqliteKysely<EnterpriseKnowledgeDatabase>(database.db);
   const rows = executeSqliteQuerySync(
     database.db,
@@ -201,4 +192,66 @@ export function listBundledKnowledgeFoundations(
     }
   }
   return { records, rowErrors };
+}
+
+/**
+ * Opaque identity of every persisted bundle row owned by one tree. Raw JSON and
+ * timestamps are intentional: even a semantically identical concurrent bundle
+ * import is a new target state that an older preview must not overwrite.
+ */
+export function getBundledKnowledgeTargetStateForTreeFromDatabase(
+  database: OpenClawStateDatabase,
+  treeId: string,
+): BundledKnowledgeTargetState {
+  const stateDb = getNodeSqliteKysely<EnterpriseKnowledgeDatabase>(database.db);
+  const rows = executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .selectFrom("enterprise_tree_bundled_foundations")
+      .selectAll()
+      .where("tree_id", "=", treeId)
+      .orderBy("foundation_id", "asc"),
+  ).rows as BundledFoundationRow[];
+  const identity = rows.map((row) => ({
+    foundationId: row.foundation_id,
+    descriptorJson: row.descriptor_json,
+    snippetsJson: row.snippets_json,
+    importedAt: String(row.imported_at),
+    updatedAt: String(row.updated_at),
+  }));
+  return {
+    fingerprint: createHash("sha256").update(JSON.stringify(identity)).digest("hex"),
+    // Read from raw rows so a corrupt foundation remains visible as replaceable
+    // data instead of being silently dropped from the destructive preview.
+    foundationIds: rows.map((row) => row.foundation_id),
+  };
+}
+
+export function fingerprintBundledKnowledgeForTreeFromDatabase(
+  database: OpenClawStateDatabase,
+  treeId: string,
+): string {
+  return getBundledKnowledgeTargetStateForTreeFromDatabase(database, treeId).fingerprint;
+}
+
+/** Read a tree's owned-knowledge identity and raw ids for a bundle preview. */
+export function getBundledKnowledgeTargetStateForTree(
+  treeId: string,
+  options: EnterpriseKnowledgeStoreOptions = {},
+): BundledKnowledgeTargetState {
+  if (!knowledgeStoreDatabaseExists(options)) {
+    return {
+      fingerprint: createHash("sha256").update("[]").digest("hex"),
+      foundationIds: [],
+    };
+  }
+  const database = openOpenClawStateDatabase(stateDatabaseOptions(options));
+  return getBundledKnowledgeTargetStateForTreeFromDatabase(database, treeId);
+}
+
+export function fingerprintBundledKnowledgeForTree(
+  treeId: string,
+  options: EnterpriseKnowledgeStoreOptions = {},
+): string {
+  return getBundledKnowledgeTargetStateForTree(treeId, options).fingerprint;
 }

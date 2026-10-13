@@ -21,6 +21,20 @@ const createOpenClawCodingToolsMock = vi.fn();
 const toolExecuteMock = vi.fn();
 const handleCodexAppServerApprovalRequestMock = vi.fn();
 const resolveCodexProviderWebSearchSupportForClientMock = vi.fn();
+const finalizeNativeHookRelayExecutedToolMock = vi.fn();
+
+vi.mock("openclaw/plugin-sdk/agent-harness-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/agent-harness-runtime")>();
+  return {
+    ...actual,
+    finalizeNativeHookRelayExecutedTool: (
+      params: Parameters<typeof actual.finalizeNativeHookRelayExecutedTool>[0],
+    ) => {
+      finalizeNativeHookRelayExecutedToolMock(params);
+      return actual.finalizeNativeHookRelayExecutedTool(params);
+    },
+  };
+});
 
 vi.mock("./session-binding.js", () => ({
   clearCodexAppServerBinding: vi.fn(),
@@ -77,6 +91,21 @@ type FakeClient = {
   handleRequest: (request: ServerRequest) => Promise<unknown>;
 };
 
+function nativeHookIsolationResponse(method: string, requestParams?: unknown): unknown {
+  if (method === "config/read") {
+    return { config: {}, origins: {}, layers: null };
+  }
+  if (method === "hooks/list") {
+    const cwds = (requestParams as { cwds?: unknown }).cwds;
+    return {
+      data: Array.isArray(cwds)
+        ? cwds.map((cwd) => ({ cwd, hooks: [], warnings: [], errors: [] }))
+        : [],
+    };
+  }
+  return undefined;
+}
+
 function createFakeClient(): FakeClient {
   const notifications: FakeClient["notifications"] = [];
   const requests: FakeClient["requests"] = [];
@@ -117,7 +146,11 @@ function createFakeClient(): FakeClient {
       return undefined;
     },
   };
-  client.request.mockImplementation(async (method: string) => {
+  client.request.mockImplementation(async (method: string, requestParams?: unknown) => {
+    const isolationResponse = nativeHookIsolationResponse(method, requestParams);
+    if (isolationResponse !== undefined) {
+      return isolationResponse;
+    }
     if (method === "thread/fork") {
       return threadResult("side-thread");
     }
@@ -394,6 +427,7 @@ describe("runCodexAppServerSideQuestion", () => {
     toolExecuteMock.mockReset();
     handleCodexAppServerApprovalRequestMock.mockReset();
     resolveCodexProviderWebSearchSupportForClientMock.mockReset();
+    finalizeNativeHookRelayExecutedToolMock.mockReset();
     resolveCodexProviderWebSearchSupportForClientMock.mockResolvedValue("supported");
 
     toolExecuteMock.mockResolvedValue({
@@ -853,6 +887,10 @@ describe("runCodexAppServerSideQuestion", () => {
     const client = createFakeClient();
     let relayIdDuringFork: string | undefined;
     client.request.mockImplementation(async (method: string, requestParams: unknown) => {
+      const isolationResponse = nativeHookIsolationResponse(method, requestParams);
+      if (isolationResponse !== undefined) {
+        return isolationResponse;
+      }
       if (method === "thread/fork") {
         const config = (requestParams as { config?: Record<string, unknown> }).config;
         relayIdDuringFork = extractRelayIdFromThreadConfig(config);
@@ -927,12 +965,258 @@ describe("runCodexAppServerSideQuestion", () => {
     ).toBeUndefined();
   });
 
+  it("settles side-thread native tools before unregister when PostToolUse is missing", async () => {
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([{ hookName: "after_tool_call", handler: vi.fn() }]),
+    );
+    const client = createFakeClient();
+    let relayIdDuringFork: string | undefined;
+    let generationDuringFork: string | undefined;
+    let callsAfterCommandCompletion = -1;
+    let callsAfterDeniedCompletion = -1;
+    let callsAfterResultlessCompletion = -1;
+    let callsBeforeUnregister = -1;
+    client.request.mockImplementation(async (method: string, requestParams: unknown) => {
+      const isolationResponse = nativeHookIsolationResponse(method, requestParams);
+      if (isolationResponse !== undefined) {
+        return isolationResponse;
+      }
+      if (method === "thread/fork") {
+        relayIdDuringFork = extractRelayIdFromThreadConfig(
+          (requestParams as { config?: Record<string, unknown> }).config,
+        );
+        const registration =
+          nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayIdDuringFork);
+        generationDuringFork = registration?.generation;
+        return threadResult("side-thread");
+      }
+      if (method === "thread/inject_items") {
+        return {};
+      }
+      if (method === "turn/start") {
+        setTimeout(() => {
+          void (async () => {
+            client.emit({
+              method: "item/completed",
+              params: {
+                threadId: "side-thread",
+                turnId: "turn-1",
+                item: {
+                  type: "commandExecution",
+                  id: "cmd-side-completed",
+                  command: "git status --short",
+                  cwd: "/tmp/workspace",
+                  processId: "123",
+                  source: "agent",
+                  status: "completed",
+                  commandActions: [],
+                  aggregatedOutput: "",
+                  exitCode: 0,
+                  durationMs: 5,
+                },
+              },
+            });
+            callsAfterCommandCompletion = finalizeNativeHookRelayExecutedToolMock.mock.calls.length;
+            const deniedItem = {
+              type: "mcpToolCall",
+              id: "mcp-side-legacy-denied",
+              server: "github",
+              tool: "create_issue",
+              status: "inProgress",
+              arguments: { title: "denied" },
+              result: null,
+              error: null,
+              durationMs: null,
+            };
+            client.emit({
+              method: "item/started",
+              params: { threadId: "side-thread", turnId: "turn-1", item: deniedItem },
+            });
+            await expect(
+              client.handleRequest({
+                id: "legacy-mcp-approval",
+                method: "item/tool/requestUserInput",
+                params: {
+                  threadId: "side-thread",
+                  turnId: "turn-1",
+                  itemId: deniedItem.id,
+                  questions: [
+                    {
+                      id: `mcp_tool_call_approval_${deniedItem.id}`,
+                      header: "Approve app tool call?",
+                      question: "Allow GitHub to create an issue?",
+                    },
+                  ],
+                },
+              }),
+            ).resolves.toEqual({ answers: {} });
+            client.emit({
+              method: "item/completed",
+              params: {
+                threadId: "side-thread",
+                turnId: "turn-1",
+                item: {
+                  ...deniedItem,
+                  status: "failed",
+                  error: { message: "MCP tool call cancelled by user" },
+                  durationMs: 0,
+                },
+              },
+            });
+            callsAfterDeniedCompletion = finalizeNativeHookRelayExecutedToolMock.mock.calls.length;
+            client.emit({
+              method: "item/completed",
+              params: {
+                threadId: "side-thread",
+                turnId: "turn-1",
+                item: {
+                  type: "mcpToolCall",
+                  id: "mcp-side-resultless-failure",
+                  server: "github",
+                  tool: "create_issue",
+                  status: "failed",
+                  arguments: { title: "timed out" },
+                  result: null,
+                  error: { message: "MCP transport timed out after dispatch" },
+                  durationMs: 0,
+                },
+              },
+            });
+            callsAfterResultlessCompletion =
+              finalizeNativeHookRelayExecutedToolMock.mock.calls.length;
+            client.emit({
+              method: "turn/completed",
+              params: {
+                threadId: "side-thread",
+                turn: {
+                  id: "turn-1",
+                  threadId: "side-thread",
+                  status: "interrupted",
+                  items: [
+                    {
+                      type: "mcpToolCall",
+                      id: "mcp-side-completed",
+                      server: "github",
+                      tool: "list_issues",
+                      status: "completed",
+                      arguments: { state: "open" },
+                      result: { content: [], structuredContent: null, _meta: null },
+                      error: null,
+                      durationMs: 5,
+                    },
+                    {
+                      type: "mcpToolCall",
+                      id: "mcp-side-running-snapshot",
+                      server: "github",
+                      tool: "create_issue",
+                      status: "inProgress",
+                      arguments: { title: "interrupted" },
+                      result: null,
+                      error: null,
+                      durationMs: null,
+                    },
+                    { id: "agent-1", type: "agentMessage", text: "Side answer." },
+                  ],
+                  error: null,
+                  startedAt: null,
+                  completedAt: null,
+                  durationMs: null,
+                },
+              },
+            });
+          })();
+        }, 0);
+        return turnStartResult("turn-1");
+      }
+      if (method === "thread/unsubscribe") {
+        callsBeforeUnregister = finalizeNativeHookRelayExecutedToolMock.mock.calls.length;
+        expect(
+          nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayIdDuringFork!),
+        ).toBeDefined();
+        return {};
+      }
+      if (method === "turn/interrupt") {
+        return {};
+      }
+      throw new Error(`unexpected request: ${method}`);
+    });
+    getSharedCodexAppServerClientMock.mockResolvedValue(client);
+
+    await expect(
+      runCodexAppServerSideQuestion(
+        sideParams({
+          sessionKey: "agent:main:session-1",
+          opts: { runId: "run-side-native-fallback" },
+        }),
+        { nativeHookRelay: { enabled: true } },
+      ),
+    ).rejects.toThrow("Codex /btw side thread was interrupted.");
+
+    expect(finalizeNativeHookRelayExecutedToolMock.mock.calls).toEqual([
+      [
+        {
+          relayId: relayIdDuringFork,
+          toolUseId: "mcp-side-legacy-denied",
+          generation: generationDuringFork,
+          released: false,
+          toolInput: { title: "denied" },
+        },
+      ],
+      [
+        {
+          relayId: relayIdDuringFork,
+          toolUseId: "mcp-side-resultless-failure",
+          generation: generationDuringFork,
+          released: true,
+          toolInput: { title: "timed out" },
+        },
+      ],
+      [
+        {
+          relayId: relayIdDuringFork,
+          toolUseId: "cmd-side-completed",
+          generation: generationDuringFork,
+          released: true,
+        },
+      ],
+      [
+        {
+          relayId: relayIdDuringFork,
+          toolUseId: "mcp-side-completed",
+          generation: generationDuringFork,
+          released: true,
+          toolInput: { state: "open" },
+        },
+      ],
+      [
+        {
+          relayId: relayIdDuringFork,
+          toolUseId: "mcp-side-running-snapshot",
+          generation: generationDuringFork,
+          released: true,
+          toolInput: { title: "interrupted" },
+        },
+      ],
+    ]);
+    expect(callsAfterCommandCompletion).toBe(0);
+    expect(callsAfterDeniedCompletion).toBe(1);
+    expect(callsAfterResultlessCompletion).toBe(2);
+    expect(callsBeforeUnregister).toBe(5);
+    expect(
+      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayIdDuringFork!),
+    ).toBeUndefined();
+  });
+
   it("forwards side-thread command approvals through the active native hook relay", async () => {
     const client = createFakeClient();
     let relayIdDuringFork: string | undefined;
     let approvalResponse: unknown;
     handleCodexAppServerApprovalRequestMock.mockResolvedValueOnce({ decision: "decline" });
     client.request.mockImplementation(async (method: string, requestParams: unknown) => {
+      const isolationResponse = nativeHookIsolationResponse(method, requestParams);
+      if (isolationResponse !== undefined) {
+        return isolationResponse;
+      }
       if (method === "thread/fork") {
         const config = (requestParams as { config?: Record<string, unknown> }).config;
         relayIdDuringFork = extractRelayIdFromThreadConfig(config);
@@ -1419,6 +1703,10 @@ describe("runCodexAppServerSideQuestion", () => {
     let relayIdDuringFork: string | undefined;
     let startedAtMs = 0;
     client.request.mockImplementation(async (method: string, requestParams: unknown) => {
+      const isolationResponse = nativeHookIsolationResponse(method, requestParams);
+      if (isolationResponse !== undefined) {
+        return isolationResponse;
+      }
       if (method === "thread/fork") {
         relayIdDuringFork = extractRelayIdFromThreadConfig(
           (requestParams as { config?: Record<string, unknown> }).config,
@@ -1620,7 +1908,11 @@ describe("runCodexAppServerSideQuestion", () => {
       createMockPluginRegistry([{ hookName: "before_tool_call", handler: beforeToolCall }]),
     );
     const client = createFakeClient();
-    client.request.mockImplementation(async (method: string) => {
+    client.request.mockImplementation(async (method: string, requestParams?: unknown) => {
+      const isolationResponse = nativeHookIsolationResponse(method, requestParams);
+      if (isolationResponse !== undefined) {
+        return isolationResponse;
+      }
       if (method === "thread/fork") {
         return threadResult("side-thread");
       }

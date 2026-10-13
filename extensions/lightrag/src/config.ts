@@ -54,6 +54,7 @@ export function parseLightRagFoundations(pluginConfig: unknown): LightRagFoundat
     return [];
   }
   const descriptors: LightRagFoundationDescriptor[] = [];
+  const claimed = new Set<string>();
   for (const entry of raw) {
     const record = asRecord(entry);
     const id = nonBlankString(record.id);
@@ -61,6 +62,14 @@ export function parseLightRagFoundations(pluginConfig: unknown): LightRagFoundat
     if (!id || !serverUrl) {
       continue; // id + serverUrl are required to reach a server
     }
+    // FIRST entry wins, unlike the host registry's last-write-wins: within one
+    // operator-authored list the repeat is a typo, and dropping it keeps the id
+    // pointed at the server that appears where they expect to read it. Silent on
+    // purpose here — the host warns once per collision, including across plugins.
+    if (claimed.has(id)) {
+      continue;
+    }
+    claimed.add(id);
     const mode = QUERY_MODES.find((candidate) => candidate === record.mode) ?? DEFAULT_MODE;
     const kind = FOUNDATION_KINDS.find((candidate) => candidate === record.kind) ?? DEFAULT_KIND;
     const description = nonBlankString(record.description);

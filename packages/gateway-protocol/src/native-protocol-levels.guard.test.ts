@@ -68,6 +68,24 @@ function assertPattern(
   throw new Error(`${relativePath}: ${message}`);
 }
 
+function extractSwiftDeclaration(
+  content: string,
+  relativePath: string,
+  kind: "enum" | "struct",
+  name: string,
+): string {
+  const declaration = `public ${kind} ${name}:`;
+  const start = content.indexOf(declaration);
+  if (start < 0) {
+    throw new Error(`${relativePath}: missing Swift ${kind} for ${name}.`);
+  }
+  const end = content.indexOf("\n}\n", start);
+  if (end < 0) {
+    throw new Error(`${relativePath}: unterminated Swift ${kind} for ${name}.`);
+  }
+  return content.slice(start, end);
+}
+
 function stringLiteralUnionValues(schema: unknown): string[] | undefined {
   if (!schema || typeof schema !== "object") {
     return undefined;
@@ -215,13 +233,7 @@ describe("native Gateway protocol levels", () => {
         continue;
       }
 
-      const enumStart = `public enum ${name}: String, Codable, Sendable {`;
-      const start = swiftGenerated.indexOf(enumStart);
-      if (start < 0) {
-        throw new Error(`${swiftGeneratedPath}: missing Swift enum for ${name}.`);
-      }
-      const end = swiftGenerated.indexOf("\n}\n", start);
-      const enumSource = swiftGenerated.slice(start, end);
+      const enumSource = extractSwiftDeclaration(swiftGenerated, swiftGeneratedPath, "enum", name);
       for (const value of values) {
         assertPattern(
           enumSource,
@@ -230,6 +242,123 @@ describe("native Gateway protocol levels", () => {
           `${name} must include the ${JSON.stringify(value)} literal.`,
         );
       }
+    }
+  });
+
+  it("emits guarded enterprise Swift models with compatible defaults", async () => {
+    const swiftGeneratedPath =
+      "apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift";
+    const swiftGenerated = await readRepoFile(swiftGeneratedPath);
+    const expectations: Array<[structName: string, field: string, pattern: RegExp]> = [
+      ["EnterpriseBundlesPreviewParams", "content", /public let content: String/],
+      [
+        "EnterpriseBundlesPreviewResult",
+        "typed trees",
+        /public let trees: \[EnterpriseBundlePreviewTree\]\?/,
+      ],
+      ["EnterpriseBundlesPreviewResult", "review token default", /reviewtoken: String\? = nil/],
+      [
+        "EnterpriseBundlesPreviewResult",
+        "missing MCP servers",
+        /public let missingmcpservers: \[String\]\?/,
+      ],
+      [
+        "EnterpriseBundlesPreviewResult",
+        "removed foundations",
+        /public let removedfoundations: \[String\]\?/,
+      ],
+      [
+        "EnterpriseBundlesPreviewResult",
+        "replaced foundations",
+        /public let replacedfoundations: \[String\]\?/,
+      ],
+      [
+        "EnterpriseBundlesPreviewResult",
+        "shadowed foundations",
+        /public let shadowedfoundations: \[String\]\?/,
+      ],
+      ["EnterpriseTreesImportParams", "format", /public let format: AnyCodable/],
+      ["EnterpriseTreeImportError", "fingerprint default", /fingerprint: String\? = nil/],
+      [
+        "EnterpriseTreesListResult",
+        "historyOnlyTreeIds default",
+        /historyonlytreeids: \[String\]\? = nil/,
+      ],
+      ["EnterpriseTreesImportParams", "createOnly", /createonly: Bool\? = nil/],
+      ["EnterpriseTreesImportParams", "expectedHash", /expectedhash: String\? = nil/],
+      ["EnterpriseBundlesImportParams", "createOnly", /createonly: Bool\? = nil/],
+      ["EnterpriseBundlesImportParams", "expectedHash", /expectedhash: String\? = nil/],
+      ["EnterpriseBundlesImportParams", "review token", /public let reviewtoken: String/],
+      [
+        "EnterpriseBundlesImportResult",
+        "typed trees",
+        /public let trees: \[EnterpriseBundleTree\]\?/,
+      ],
+      [
+        "EnterpriseBundlesImportResult",
+        "missing MCP servers",
+        /public let missingmcpservers: \[String\]\?/,
+      ],
+      [
+        "EnterpriseBundlesImportResult",
+        "removed foundations",
+        /public let removedfoundations: \[String\]\?/,
+      ],
+      [
+        "EnterpriseBundlesImportResult",
+        "replaced foundations",
+        /public let replacedfoundations: \[String\]\?/,
+      ],
+      [
+        "EnterpriseBundlesImportResult",
+        "shadowed foundations",
+        /public let shadowedfoundations: \[String\]\?/,
+      ],
+      ["EnterpriseBundlesExportParams", "treeId", /public let treeid: String/],
+      [
+        "EnterpriseBundlesExportResult",
+        "typed skipped foundations",
+        /public let skippedfoundations: \[EnterpriseBundleSkippedFoundation\]\?/,
+      ],
+      [
+        "EnterpriseTreesImportResult",
+        "warnings default",
+        /warnings: \[EnterpriseTreeImportIssue\]\? = nil/,
+      ],
+      [
+        "EnterpriseTreesGetResult",
+        "warnings default",
+        /warnings: \[EnterpriseTreeImportIssue\]\? = nil/,
+      ],
+      ["EnterpriseTreesGetResult", "importError default", /importerror: String\? = nil/],
+      [
+        "EnterpriseTreesGetResult",
+        "importErrorFingerprint default",
+        /importerrorfingerprint: String\? = nil/,
+      ],
+      ["EnterpriseTreesRemoveParams", "expectedHash", /expectedhash: String\? = nil/],
+      [
+        "EnterpriseTreesRemoveParams",
+        "expectedInvalidFingerprint",
+        /expectedinvalidfingerprint: String\? = nil/,
+      ],
+      ["EnterpriseTreesRemoveResult", "reason default", /reason: String\? = nil/],
+      ["EnterpriseRunDetail", "sessionId default", /sessionid: String\? = nil/],
+      ["EnterpriseRunsResumeParams", "sessionId default", /sessionid: String\? = nil/],
+      [
+        "EnterpriseRunDetail",
+        "resumeRefusalReason default",
+        /resumerefusalreason: AnyCodable\? = nil/,
+      ],
+    ];
+    for (const [structName, field, pattern] of expectations) {
+      const source = extractSwiftDeclaration(
+        swiftGenerated,
+        swiftGeneratedPath,
+        "struct",
+        structName,
+      );
+      assertPattern(source, swiftGeneratedPath, pattern, `${structName} must expose ${field}.`);
     }
   });
 });

@@ -235,14 +235,15 @@ It is a regulated financial-services operation under governance — customer
 lifecycle, financial-crime risk, claims, and regulatory reporting — at the scale
 where the bindings actually constrain each other: 46 nodes across 30 executable
 steps, depth 5, so route selection is a real problem, an object model declared per
-domain so claims cannot address a `sar`, six inlined corpora with one shared
-across two domains and two locked to a single domain, four MCP servers attached to
-the steps that need them and denied everywhere else, nine ontology writes, and `capabilityGrants: explicit`
-so every one of those is deny-by-default. The one thing a bundle cannot carry is
-the MCP servers themselves — their transport and credentials are deployment
-configuration — so register `acme-screening`, `acme-ledger`, `acme-tracker` and
-`acme-filing` under `mcp.servers` and the attachments resolve. Everything else
-runs on a stock install.
+domain so claims cannot address a `sar`, six inlined corpora with per-domain scope,
+five MCP servers attached to
+the steps that need them and denied everywhere else, ten action-declaring steps, and `capabilityGrants: explicit`
+so every one of those is deny-by-default. MCP transports and credentials are
+deployment configuration: register `acme-core-banking`, `acme-filing`, `acme-ledger`,
+`acme-screening`, and `acme-tracker` under `mcp.servers` and the attachments resolve.
+The bundle provides inline knowledge, not business records or automatic MCP-to-store
+ingestion. See the [golden-case prerequisites](/specs/enterprise-live-grid#data-and-integration-prerequisites)
+before grading record-dependent or external operations.
 
 Then open Enterprise and select the work-map on Worktree. The Tools and Skills
 screens list the catalog for the gateway's default agent — tools resolve against
@@ -299,10 +300,11 @@ capabilityGrants: explicit
 ```
 
 With `capabilityGrants: explicit`, **tools, skills, MCP servers, and knowledge
-foundations are all deny-by-default**: a step reaches only what it or a step above
-it attaches. Skills, MCP servers and knowledge foundations are withheld outright.
-Tools work slightly differently, and the difference matters when you are reasoning
-about the boundary — read on.
+foundations are all deny-by-default**. Tools, MCP servers, and knowledge follow
+the active root-to-step path. Skills are narrowed once for the run to those
+declared anywhere on its planned route; each step's declaration says which of
+that run-scoped set it should use. Tools work slightly differently, and the
+difference matters when you are reasoning about the boundary — read on.
 
 - **Tools**: `allowedTools` controls what a step may call **without asking**. A
   call no list on the root-to-step path names is not refused outright: it raises a
@@ -334,7 +336,10 @@ about the boundary — read on.
   for a CLI harness, and its `skills.entries.<name>` credentials are not injected
   for the run — nor handed to a CLI subprocess the run starts. Nothing is
   installed or uninstalled by this; the agent's own skill filter still applies
-  first, so a work-map can only narrow what the agent already had.
+  first, so a work-map can only narrow what the agent already had. This boundary
+  is route-wide because the catalog and instruction appendix are fixed for prompt
+  stability; the per-step Skills line is the model's applicability cue, not a
+  second physical filter.
 - **Knowledge foundations**: a step queries only the foundations its path names.
   Without the switch an omitted or empty list means every configured foundation,
   which is the right default for a work-map that scopes nothing — but it is the
@@ -1007,10 +1012,21 @@ merges the results. When several are in scope, the model can pass a
 `foundations` argument to target specific ids; any id outside the step's
 allow-list is reported as skipped, never queried, so targeting narrows the
 search but never widens authority. To help the model route, the
-`knowledge_search` tool description lists the foundations this workflow
-references, each with the short summary from its adapter's
+`knowledge_search` tool description lists the foundations this run can actually
+retrieve, each with the short summary from its adapter's
 `describe().description` (the operator-facing display name is never surfaced to
-the model). Returned snippets carry a `foundationId` (and a `source` when the
+the model). That list is what the run can reach, not what its steps happen to
+name: a work-map whose steps declare no allow-list still gets every registered
+foundation glossed, so a deployment with several stores can be routed instead of
+searched blindly, while an id no adapter registered is left out rather than
+advertised as a source that could never answer. Which of them the _active_ step
+may query stays in that step's digest, and retrieval enforces it.
+
+Every result names the foundations that answered in `searched`, alongside
+`snippets` and `skipped`. With several stores in scope an empty `snippets` is
+otherwise ambiguous — a source that holds nothing looks exactly like one that was
+never reached — and the model's next call has to be a different target rather
+than a repeat. Returned snippets carry a `foundationId` (and a `source` when the
 foundation provides one), and the tool advises the model to cite the foundation,
 plus the `source` when the snippet has one, whenever it uses a snippet.
 
@@ -1055,32 +1071,70 @@ event log of run lifecycle plus governance decisions.
   tree registry is admin-scoped: `enterprise.trees.import` and
   `enterprise.trees.remove` require `operator.admin`, and every import records a
   revision browsable through `enterprise.trees.history.list` /
-  `enterprise.trees.history.get`.
+  `enterprise.trees.history.get`. Bundle preview, import, and export use
+  `enterprise.bundles.preview`, `enterprise.bundles.import`, and
+  `enterprise.bundles.export`; all three require `operator.admin`, because the
+  preview compares protected governance configuration and export can contain
+  owned knowledge.
 - **Control UI**: the sidebar's **Enterprise** group holds one route per surface —
   **Worktree** (`/enterprise`), **History** (`/enterprise/history`), **Tools**
   (`/enterprise/tools`), **Skills** (`/enterprise/skills`), and **Knowledge**
   (`/knowledge`) — so each is deep linkable.
-  - _Worktree_ renders the tree's node hierarchy and an ontology graph. Clicking a
-    node opens that node's own scope: the ontology it can address plus the live
-    object instances of each addressable type (served by `enterprise.objects.list`,
-    which fails closed on a tree whose definition did not load and only returns
-    instances of types the current definition still addresses).
+  - _Worktree_ renders the tree's node hierarchy and an ontology graph. With
+    `operator.admin`, **New tree** collects the identity, version, description,
+    routing triggers, priority, and first step in a guided form, then generates a
+    JSON definition for review and save. **Settings** changes the mutable routing
+    fields of an existing work-map without exposing its stable id. **Import file**
+    loads a new-id `.yaml`,
+    `.yml`, or `.json` definition into the raw editor without saving it; **Save**
+    validates and records the revision, but refuses to replace an id that already
+    exists. To update or remove an existing work-map, select it first: both
+    operations are checked against the exact version you opened, so another
+    operator's newer save is preserved. On a conflict, discard the stale edit,
+    refresh the tree, and reapply the change. Switching the editor between YAML
+    and JSON asks before replacing its contents rather than converting unsaved
+    text.
+
+    **Import bundle** opens an explicit preview before any write. It shows the
+    replacement, every declared Tool, Skill, MCP, and Knowledge dependency,
+    locally missing or unverifiable dependencies, and governance-mode/policy
+    conflicts. It also identifies owned knowledge rows the import replaces or
+    deletes; bundle knowledge has no revision history. A separate warning names
+    inlined ids that a same-id global/plugin foundation will shadow at runtime.
+    Confirm applies the exact selected
+    bytes only while the reviewed
+    deployment and complete replaceable tree-plus-owned-knowledge state still
+    match; otherwise it asks for a fresh preview. **Bundle YAML** and **Bundle
+    JSON** export the selected work-map with snapshot-capable owned knowledge and
+    governance metadata. MCP transports, credentials, and other deployment
+    configuration never travel in the bundle.
+
+    Clicking a node opens that node's own scope: the ontology it can address plus
+    the live object instances of each addressable type (served by
+    `enterprise.objects.list`, which fails closed on a tree whose definition did
+    not load and only returns instances of types the current definition still
+    addresses).
     With `operator.admin` the whole of that node's ontology is editable in place —
     object types and their fields, links, the **actions** `invoke_action` may run
-    (each with its effects and parameters), and the **derived values**
-    `compute_function` evaluates. The two verbs carry checks the import does not:
-    an effect resolves against the step's own root-to-node path and a write effect
-    needs the type's identity field, and a function's expression is parsed and its
-    property reads checked against what the step can address — so a definition the
-    importer would accept but the runtime could not resolve is refused at the
-    field. A local action with no create/update/delete effect is flagged, because
-    the write path refuses to run one; an outward action is exempt, since its call
-    is how it happens.
+    (each with tool coverage, preconditions, effects, and parameters), the
+    **derived values** `compute_function` evaluates, and advisory constraints.
+    Descriptions, required fields, inverse names, effect metadata, and graph-link
+    parameter mappings are edited beside the declaration they describe. Function
+    expressions are parsed and their property reads are checked against what the
+    step can address. Action effects intentionally allow incomplete intermediate
+    mappings so an operator can build them incrementally; the inspector and
+    authoring warnings mark such an action uncallable until its endpoint and
+    identity mappings resolve against the step's root-to-node scope. A local
+    action with no create/update/delete effect is likewise flagged because the
+    write path cannot run it; an outward action is exempt, since its call is how
+    it happens.
+
   - _History_ lists recent runs and shows a per-execution inspector with the plan
     steps, their ontology scope, and the governance trace.
-  - Continuing an interrupted run happens there too. An execution that ended part
-    way through its route offers **Continue this run** to `operator.admin`
-    operators; it does not start anything. It arms that execution, and the next
+  - Continuing an interrupted run is available both in History and beside the
+    conversation composer. An execution that ended part way through its route
+    offers **Continue this run** to `operator.admin` operators; it does not start
+    anything. It arms that execution, and the next
     request in the same session, from the same agent, that routes to the same
     work-map, in the same transcript, and started after you clicked, opens on the
     first step the run did not finish instead of starting the work-map over.
@@ -1122,12 +1176,20 @@ event log of run lifecycle plus governance decisions.
     and they are written straight away — tool scopes additionally accept a typed
     glob or `group:` selector, since no catalog can enumerate those. Adding a
     child step is a separate control in its own block, because it changes the
-    work-map's shape rather than what the step may call; that one still opens the
-    editor for review. Every change lands through the same
-    `enterprise.trees.import` whole-tree replace. Adding the first tool (or the first foundation) on a step
-    turns that list into an allowlist, and every step from the root is an
-    independent gate, so the UI warns when an entry narrows scope or when an
-    ancestor's allowlist would still deny it.
+    work-map's shape rather than what the step may call. It collects the child's
+    id, title, and optional description, then saves the new revision directly.
+    Existing steps can be renamed, reordered, moved under another parent, or
+    removed with their subtree without opening the raw editor. Every change lands through the same
+    `enterprise.trees.import` whole-tree replace. Adding the first tool (or the
+    first foundation) on a step turns that list into an allowlist, and every step
+    from the root is an independent gate, so the UI warns when an entry narrows
+    scope or when an ancestor's allowlist would still deny it.
+  - **Step behavior** edits a node's title, parent/order, description,
+    instructions, context hints, expected output, and audit flag together without
+    requiring raw JSON/YAML.
+  - List and inspector reads fail independently. A work-map list failure does not
+    erase a successful run list, or vice versa; revision-history and live-object
+    errors stay in their own panels instead of hiding other loaded data.
 
 ## Related
 

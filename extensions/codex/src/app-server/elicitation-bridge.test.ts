@@ -1,6 +1,7 @@
 // Codex tests cover elicitation bridge plugin behavior.
 import {
   callGatewayTool,
+  cancelPluginApprovalForRunAbort,
   embeddedAgentLog,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
@@ -10,9 +11,11 @@ import { handleCodexAppServerElicitationRequest } from "./elicitation-bridge.js"
 vi.mock("openclaw/plugin-sdk/agent-harness-runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("openclaw/plugin-sdk/agent-harness-runtime")>()),
   callGatewayTool: vi.fn(),
+  cancelPluginApprovalForRunAbort: vi.fn(),
 }));
 
 const mockCallGatewayTool = vi.mocked(callGatewayTool);
+const mockCancelPluginApprovalForRunAbort = vi.mocked(cancelPluginApprovalForRunAbort);
 
 function mockCall(mock: { mock: { calls: unknown[][] } }, index = 0) {
   return mock.mock.calls.at(index);
@@ -204,6 +207,8 @@ function appsForPlugin(
 describe("Codex app-server elicitation bridge", () => {
   beforeEach(() => {
     mockCallGatewayTool.mockReset();
+    mockCancelPluginApprovalForRunAbort.mockReset();
+    mockCancelPluginApprovalForRunAbort.mockResolvedValue(undefined);
     vi.restoreAllMocks();
   });
 
@@ -1169,7 +1174,9 @@ describe("Codex app-server elicitation bridge", () => {
       .mockResolvedValueOnce({ id: "plugin:approval-calendar-abort", status: "accepted" })
       .mockImplementationOnce(() => {
         abortController.abort(new Error("turn stopped"));
-        return new Promise(() => {});
+        const error = new Error("gateway request aborted");
+        error.name = "AbortError";
+        return Promise.reject(error);
       });
 
     const result = await handleCodexAppServerElicitationRequest({
@@ -1192,6 +1199,12 @@ describe("Codex app-server elicitation bridge", () => {
     });
 
     expect(result).toEqual({ action: "cancel", content: null, _meta: null });
+    expect(mockCallGatewayTool.mock.calls[0]?.[1]).toMatchObject({
+      signal: abortController.signal,
+    });
+    expect(mockCancelPluginApprovalForRunAbort).toHaveBeenCalledWith(
+      "plugin:approval-calendar-abort",
+    );
   });
 
   it("declines connector-id plugin app elicitations when destructive actions are disabled", async () => {

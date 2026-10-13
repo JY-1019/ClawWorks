@@ -31,7 +31,7 @@ import {
 import { createOpenClawCodingTools } from "./agent-tools.js";
 import { CRITICAL_THRESHOLD } from "./tool-loop-detection.js";
 import type { AnyAgentTool } from "./tools/common.js";
-import { callGatewayTool } from "./tools/gateway.js";
+import { callGatewayTool, cancelPluginApprovalForRunAbort } from "./tools/gateway.js";
 
 vi.mock("../plugins/hook-runner-global.js", async () => {
   const actual = await vi.importActual<typeof import("../plugins/hook-runner-global.js")>(
@@ -44,6 +44,7 @@ vi.mock("../plugins/hook-runner-global.js", async () => {
 });
 vi.mock("./tools/gateway.js", () => ({
   callGatewayTool: vi.fn(),
+  cancelPluginApprovalForRunAbort: vi.fn(),
 }));
 
 const mockGetGlobalHookRunner = vi.mocked(getGlobalHookRunner);
@@ -1007,6 +1008,7 @@ describe("before_tool_call requireApproval handling", () => {
     runBeforeToolCall: ReturnType<typeof vi.fn>;
   };
   const mockCallGateway = vi.mocked(callGatewayTool);
+  const mockCancelPluginApprovalForRunAbort = vi.mocked(cancelPluginApprovalForRunAbort);
 
   function requireRecord(value: unknown, label: string): Record<string, unknown> {
     if (typeof value !== "object" || value === null) {
@@ -1054,6 +1056,8 @@ describe("before_tool_call requireApproval handling", () => {
     // preloads hook-runner-global before this test's module reset/mocks take effect.
     setGlobalHookRunnerForTest(hookRunner);
     mockCallGateway.mockReset();
+    mockCancelPluginApprovalForRunAbort.mockReset();
+    mockCancelPluginApprovalForRunAbort.mockResolvedValue(undefined);
     setActivePluginRegistry(createEmptyPluginRegistry());
   });
 
@@ -1071,7 +1075,21 @@ describe("before_tool_call requireApproval handling", () => {
 
     const controller = new AbortController();
     mockCallGateway.mockResolvedValueOnce({ id: "server-id-abort", status: "accepted" });
-    mockCallGateway.mockImplementationOnce(() => new Promise(() => {}));
+    mockCallGateway.mockImplementationOnce((_method, opts) => {
+      const signal = (opts as { signal?: AbortSignal }).signal;
+      return new Promise((_, reject) => {
+        const rejectAbort = () => {
+          const error = new Error("gateway request aborted");
+          error.name = "AbortError";
+          reject(error);
+        };
+        if (signal?.aborted) {
+          rejectAbort();
+        } else {
+          signal?.addEventListener("abort", rejectAbort, { once: true });
+        }
+      });
+    });
     setTimeout(() => controller.abort(options?.abortReason ?? new Error("run cancelled")), 10);
 
     return await runBeforeToolCallHook({
@@ -1611,7 +1629,32 @@ describe("before_tool_call requireApproval handling", () => {
 
     expect(result.blocked).toBe(true);
     expect(result).toHaveProperty("reason", "Approval cancelled (run aborted)");
-    expect(mockCallGateway).toHaveBeenCalledTimes(2);
+    expect(mockCallGateway.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
+    expect(mockCancelPluginApprovalForRunAbort).toHaveBeenCalledWith("server-id-abort");
+  });
+
+  it("does not create an approval after the run already aborted", async () => {
+    hookRunner.runBeforeToolCall.mockResolvedValue({
+      requireApproval: { title: "Too late", description: "Run already stopped" },
+    });
+    const controller = new AbortController();
+    controller.abort(new Error("run stopped"));
+
+    const result = await runBeforeToolCallHook({
+      toolName: "bash",
+      params: {},
+      ctx: { agentId: "main", sessionKey: "main" },
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "Approval cancelled (run aborted)",
+    });
+    expect(mockCallGateway).not.toHaveBeenCalled();
   });
 
   it("classifies non-Error abort reasons as run abort cancellation", async () => {
@@ -1621,7 +1664,7 @@ describe("before_tool_call requireApproval handling", () => {
     expect(result).toHaveProperty("reason", "Approval cancelled (run aborted)");
   });
 
-  it("removes abort listener after waitDecision resolves", async () => {
+  it("forwards the run abort signal to approval creation and waiting", async () => {
     hookRunner.runBeforeToolCall.mockResolvedValue({
       requireApproval: {
         title: "Cleanup listener",
@@ -1630,7 +1673,6 @@ describe("before_tool_call requireApproval handling", () => {
     });
 
     const controller = new AbortController();
-    const removeListenerSpy = vi.spyOn(controller.signal, "removeEventListener");
 
     mockCallGateway.mockResolvedValueOnce({ id: "server-id-cleanup", status: "accepted" });
     mockCallGateway.mockResolvedValueOnce({ id: "server-id-cleanup", decision: "allow-once" });
@@ -1643,7 +1685,8 @@ describe("before_tool_call requireApproval handling", () => {
     });
 
     expect(result.blocked).toBe(false);
-    expect(removeListenerSpy.mock.calls.map(([type]) => type)).toContain("abort");
+    expect(mockCallGateway.mock.calls[0]?.[1]).toMatchObject({ signal: controller.signal });
+    expect(mockCallGateway.mock.calls[1]?.[1]).toMatchObject({ signal: controller.signal });
   });
 
   it("calls onResolution with allow-once on approval", async () => {

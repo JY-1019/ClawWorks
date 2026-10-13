@@ -35,6 +35,37 @@ export const EnterpriseIdSchema = z
     'must be a dotted lowercase id (e.g. "assist.respond"): segments of [a-z0-9-] separated by dots',
   );
 
+/** Operator-facing metadata persisted with an inlined knowledge foundation. */
+export const KnowledgeFoundationDescriptorSchema = z
+  .object({
+    kind: z.enum(["remote", "local"]),
+    displayName: z.string(),
+    detail: z.string().optional(),
+    description: z.string().optional(),
+  })
+  .strict();
+
+// The stored foundation id on a snippet is descriptive only — retrieval re-stamps
+// it with the querying foundation — so it stays a free string, not a dotted id.
+export const KnowledgeSnippetSchema = z
+  .object({
+    foundationId: z.string(),
+    title: z.string().optional(),
+    text: z.string(),
+    score: z.number().optional(),
+    source: z.string().optional(),
+  })
+  .strict();
+
+/** One complete, self-contained knowledge foundation carried by a workflow bundle. */
+export const BundledKnowledgeFoundationSchema = z
+  .object({
+    id: EnterpriseIdSchema,
+    descriptor: KnowledgeFoundationDescriptorSchema,
+    snippets: z.array(KnowledgeSnippetSchema),
+  })
+  .strict();
+
 // A step's skill ids must match the full runtime SKILL.md name contract
 // (validateName in src/skills/loading/session.ts): lowercase a-z, digits, and
 // single hyphens between segments, at most 64 chars — no leading/trailing or

@@ -5,10 +5,9 @@ import { NonEmptyString } from "./primitives.js";
 /**
  * ClawWorks enterprise inspection protocol schemas.
  *
- * Read-only projections of the workflow-tree registry and the run trace store,
- * surfaced to operator clients (the UI enterprise tab). These are bounded
- * summaries — the model-visible plan/ontology carries more, but only the
- * execution-scoping fields an inspector renders are exposed here.
+ * Workflow-tree registry and run-trace shapes surfaced to operator clients.
+ * List entries stay bounded; a selected tree projects its complete authorable
+ * ontology so the Control UI can inspect and edit it without parsing source.
  */
 
 const TimestampSchema = Type.Integer({ minimum: 0 });
@@ -46,7 +45,15 @@ export const EnterpriseTreeImportErrorSchema = Type.Object(
   {
     treeId: Type.String(),
     message: Type.String(),
+    /** Opaque identity of the invalid stored row, used for guarded removal. */
+    fingerprint: Type.Optional(NonEmptyString),
   },
+  { additionalProperties: false },
+);
+
+/** One validation issue or authoring warning (path + message). */
+export const EnterpriseTreeImportIssueSchema = Type.Object(
+  { path: Type.String(), message: Type.String() },
   { additionalProperties: false },
 );
 
@@ -58,6 +65,8 @@ export const EnterpriseTreesListResultSchema = Type.Object(
   {
     trees: Type.Array(EnterpriseTreeSummarySchema),
     importErrors: Type.Array(EnterpriseTreeImportErrorSchema),
+    /** Removed imported-only trees whose retained revisions can still be restored. */
+    historyOnlyTreeIds: Type.Optional(Type.Array(NonEmptyString)),
     storeError: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
@@ -255,15 +264,14 @@ export const EnterpriseTreeDetailSchema = Type.Object(
     source: EnterpriseTreeSourceSchema,
     match: Type.Optional(EnterpriseTreeMatchSchema),
     /**
-     * `"explicit"` when the work-map grants capabilities per step: a step reaches
-     * only the tools, skills, MCP servers, and knowledge foundations its own path
-     * attaches. Absent for the inherited semantics every tree written before this
-     * field carries, which is why a client must read absence as "not explicit"
-     * rather than defaulting.
+     * `"explicit"` when the work-map grants capabilities instead of inheriting
+     * open scope. Tools, MCP servers, and knowledge foundations follow the active
+     * root→step path. Skills are narrowed once for the run to those declared on
+     * its planned route; each step still identifies which of them applies there.
+     * Absent for the inherited semantics every older tree carries.
      *
-     * The first three apply under `enterprise.mode: "enforce"`; the knowledge
-     * grant applies while observing as well, since a step's knowledge list has
-     * always scoped retrieval in every mode.
+     * Tool, skill-catalog, and MCP grants apply under `enterprise.mode:
+     * "enforce"`; knowledge remains scoped while observing as well.
      */
     capabilityGrants: Type.Optional(Type.Literal("explicit")),
     nodes: Type.Array(EnterpriseTreeNodeSchema),
@@ -279,15 +287,20 @@ export const EnterpriseTreesGetParamsSchema = Type.Object(
 
 /**
  * Tree detail response. `tree` is null when the id is not registered. When the
- * requested tree's imported definition failed to load, `importError` carries the
- * reason (a stale built-in may still be returned as `tree`); `storeError` is set
- * when the whole tree store is unreadable. Callers must not treat a present
- * `tree` as authoritative while `importError`/`storeError` is set.
+ * requested tree's imported definition failed to load, `importError` carries its
+ * reason (a stale built-in may still be returned as `tree`); the additive
+ * `importErrorFingerprint` lets newer clients guard removal of that exact bad
+ * row. `storeError` is set when the whole tree store is unreadable. Callers must
+ * not treat a present `tree` as authoritative while `importError`/`storeError`
+ * is set.
  */
 export const EnterpriseTreesGetResultSchema = Type.Object(
   {
     tree: Type.Union([EnterpriseTreeDetailSchema, Type.Null()]),
+    /** Authoring warnings computed from this exact authoritative tree snapshot. */
+    warnings: Type.Optional(Type.Array(EnterpriseTreeImportIssueSchema)),
     importError: Type.Optional(Type.String()),
+    importErrorFingerprint: Type.Optional(NonEmptyString),
     storeError: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
@@ -332,23 +345,63 @@ export const EnterpriseObjectsListResultSchema = Type.Object(
 /** Exchange serialization format for tree import/export. */
 export const EnterpriseTreeFormatSchema = Type.Union([Type.Literal("yaml"), Type.Literal("json")]);
 
-/** One validation issue for a rejected tree import (path + message). */
-export const EnterpriseTreeImportIssueSchema = Type.Object(
-  { path: Type.String(), message: Type.String() },
+const EnterpriseTreeContentProperties = {
+  content: Type.String(),
+  format: EnterpriseTreeFormatSchema,
+} as const;
+
+const EnterpriseCreateOnlyGuardProperties = {
+  /** Create only when neither a built-in nor imported tree owns the parsed id. */
+  createOnly: Type.Literal(true),
+} as const;
+
+const EnterpriseExpectedHashGuardProperties = {
+  /** Update only while the current tree keeps this stable content hash. */
+  expectedHash: NonEmptyString,
+} as const;
+
+const EnterpriseTreeCreateOnlyImportParamsSchema = Type.Object(
+  {
+    ...EnterpriseTreeContentProperties,
+    ...EnterpriseCreateOnlyGuardProperties,
+  },
   { additionalProperties: false },
 );
 
-/** Import (create/overwrite) one tree from raw YAML/JSON content. */
-export const EnterpriseTreesImportParamsSchema = Type.Object(
-  { content: Type.String(), format: EnterpriseTreeFormatSchema },
+const EnterpriseTreeExpectedHashImportParamsSchema = Type.Object(
+  {
+    ...EnterpriseTreeContentProperties,
+    ...EnterpriseExpectedHashGuardProperties,
+  },
   { additionalProperties: false },
+);
+
+const EnterpriseTreeImportProjection = {
+  type: "object",
+  properties: {
+    ...EnterpriseTreeContentProperties,
+    ...EnterpriseCreateOnlyGuardProperties,
+    ...EnterpriseExpectedHashGuardProperties,
+  },
+  required: ["content", "format"],
+  additionalProperties: false,
+} as const;
+
+/** Import (create/overwrite) one tree from raw YAML/JSON content. */
+export const EnterpriseTreesImportParamsSchema = Type.Union(
+  [
+    Type.Object(EnterpriseTreeContentProperties, { additionalProperties: false }),
+    EnterpriseTreeCreateOnlyImportParamsSchema,
+    EnterpriseTreeExpectedHashImportParamsSchema,
+  ],
+  EnterpriseTreeImportProjection,
 );
 
 /**
  * Import outcome. `ok: true` carries the stored id and what it replaced (an
  * existing import, a shadowed built-in, or nothing). `ok: false` carries the
- * schema validation issues so the editor can surface them inline; the request
- * itself still succeeds (bad content is user data, not a protocol error).
+ * validation or write-precondition issues so the editor can surface them inline;
+ * the request itself still succeeds because these are expected user outcomes.
  */
 export const EnterpriseTreesImportResultSchema = Type.Object(
   {
@@ -358,6 +411,15 @@ export const EnterpriseTreesImportResultSchema = Type.Object(
       Type.Union([Type.Literal("builtin"), Type.Literal("imported"), Type.Null()]),
     ),
     issues: Type.Optional(Type.Array(EnterpriseTreeImportIssueSchema)),
+    /**
+     * Authoring checks on the tree that was WRITTEN: declarations no run could
+     * ever reach (an unreachable action, a knowledge source every path excludes).
+     * Same path+message shape as `issues`, and deliberately not one: the import
+     * succeeded, so a client that ignores this field keeps working — but a
+     * work-map authored in a GUI would otherwise ship a dead declaration that
+     * only the CLI importer ever printed.
+     */
+    warnings: Type.Optional(Type.Array(EnterpriseTreeImportIssueSchema)),
   },
   { additionalProperties: false },
 );
@@ -378,16 +440,238 @@ export const EnterpriseTreesExportResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** Remove one imported tree (a shadowed built-in reappears). */
-export const EnterpriseTreesRemoveParamsSchema = Type.Object(
-  { treeId: NonEmptyString },
+/** Inspect one workflow bundle without writing it. */
+export const EnterpriseBundlesPreviewParamsSchema = Type.Object(
+  { content: Type.String(), format: EnterpriseTreeFormatSchema },
   { additionalProperties: false },
 );
 
-/** Remove result; `removed` is false when no imported row existed. */
-export const EnterpriseTreesRemoveResultSchema = Type.Object(
-  { removed: Type.Boolean() },
+const EnterpriseBundleReviewTokenSchema = Type.String({
+  minLength: 64,
+  maxLength: 64,
+  pattern: "^[a-f0-9]{64}$",
+});
+
+export const EnterpriseBundleTreeSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    replaced: Type.Union([EnterpriseTreeSourceSchema, Type.Null()]),
+  },
   { additionalProperties: false },
+);
+
+export const EnterpriseBundlePreviewTreeSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    version: Type.String(),
+    replaced: Type.Union([EnterpriseTreeSourceSchema, Type.Null()]),
+    currentVersion: Type.Union([Type.String(), Type.Null()]),
+    /** Hash the guarded apply must match; null means use createOnly. */
+    currentHash: Type.Union([NonEmptyString, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+/** Enterprise execution mode, switchable from the chat surface. */
+export const EnterpriseModeSchema = Type.Union([
+  Type.Literal("enforce"),
+  Type.Literal("observe"),
+  Type.Literal("off"),
+]);
+
+export const EnterpriseBundleModeDowngradeSchema = Type.Object(
+  { from: EnterpriseModeSchema, to: EnterpriseModeSchema },
+  { additionalProperties: false },
+);
+
+const EnterpriseBundleDiagnostics = {
+  foundations: Type.Array(NonEmptyString),
+  missingFoundations: Type.Array(NonEmptyString),
+  removedFoundations: Type.Array(NonEmptyString),
+  replacedFoundations: Type.Array(NonEmptyString),
+  shadowedFoundations: Type.Array(NonEmptyString),
+  requiredTools: Type.Array(NonEmptyString),
+  requiredSkills: Type.Array(NonEmptyString),
+  requiredMcpServers: Type.Array(NonEmptyString),
+  missingMcpServers: Type.Array(NonEmptyString),
+  warnings: Type.Array(EnterpriseTreeImportIssueSchema),
+  missingGovernancePolicies: Type.Array(NonEmptyString),
+  conflictingGovernancePolicies: Type.Array(NonEmptyString),
+  governanceModeDowngrade: Type.Optional(EnterpriseBundleModeDowngradeSchema),
+} as const;
+
+const EnterpriseBundleFailureSchema = Type.Object(
+  { ok: Type.Literal(false), issues: Type.Array(EnterpriseTreeImportIssueSchema) },
+  { additionalProperties: false },
+);
+
+/** Complete dependency/replacement review returned before a bundle can be applied. */
+export const EnterpriseBundlesPreviewResultSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        ok: Type.Literal(true),
+        reviewToken: EnterpriseBundleReviewTokenSchema,
+        trees: Type.Array(EnterpriseBundlePreviewTreeSchema),
+        ...EnterpriseBundleDiagnostics,
+      },
+      { additionalProperties: false },
+    ),
+    EnterpriseBundleFailureSchema,
+  ],
+  {
+    type: "object",
+    properties: {
+      ok: Type.Boolean(),
+      reviewToken: EnterpriseBundleReviewTokenSchema,
+      trees: Type.Array(EnterpriseBundlePreviewTreeSchema),
+      ...EnterpriseBundleDiagnostics,
+      issues: Type.Array(EnterpriseTreeImportIssueSchema),
+    },
+    required: ["ok"],
+    additionalProperties: false,
+  },
+);
+
+/** Guarded bundle apply: create after an empty preview, or update the exact previewed hash. */
+export const EnterpriseBundlesImportParamsSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        ...EnterpriseTreeContentProperties,
+        reviewToken: EnterpriseBundleReviewTokenSchema,
+        ...EnterpriseCreateOnlyGuardProperties,
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        ...EnterpriseTreeContentProperties,
+        reviewToken: EnterpriseBundleReviewTokenSchema,
+        ...EnterpriseExpectedHashGuardProperties,
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    type: "object",
+    properties: {
+      ...EnterpriseTreeContentProperties,
+      reviewToken: EnterpriseBundleReviewTokenSchema,
+      ...EnterpriseCreateOnlyGuardProperties,
+      ...EnterpriseExpectedHashGuardProperties,
+    },
+    required: ["content", "format", "reviewToken"],
+    additionalProperties: false,
+  },
+);
+
+/** Applied bundle result; user/data issues remain an expected ok:false payload. */
+export const EnterpriseBundlesImportResultSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        ok: Type.Literal(true),
+        trees: Type.Array(EnterpriseBundleTreeSchema),
+        ...EnterpriseBundleDiagnostics,
+      },
+      { additionalProperties: false },
+    ),
+    EnterpriseBundleFailureSchema,
+  ],
+  {
+    type: "object",
+    properties: {
+      ok: Type.Boolean(),
+      trees: Type.Array(EnterpriseBundleTreeSchema),
+      ...EnterpriseBundleDiagnostics,
+      issues: Type.Array(EnterpriseTreeImportIssueSchema),
+    },
+    required: ["ok"],
+    additionalProperties: false,
+  },
+);
+
+/** Export one tree plus its inlinable knowledge and dependency manifest. */
+export const EnterpriseBundlesExportParamsSchema = Type.Object(
+  { treeId: NonEmptyString, format: EnterpriseTreeFormatSchema },
+  { additionalProperties: false },
+);
+
+export const EnterpriseBundleSkippedFoundationSchema = Type.Object(
+  { id: NonEmptyString, reason: Type.String() },
+  { additionalProperties: false },
+);
+
+export const EnterpriseBundlesExportResultSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        ok: Type.Literal(true),
+        content: Type.String(),
+        source: EnterpriseTreeSourceSchema,
+        skippedFoundations: Type.Array(EnterpriseBundleSkippedFoundationSchema),
+        impliedAllowAllKnowledge: Type.Boolean(),
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      { ok: Type.Literal(false), reason: Type.String() },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    type: "object",
+    properties: {
+      ok: Type.Boolean(),
+      content: Type.String(),
+      source: EnterpriseTreeSourceSchema,
+      skippedFoundations: Type.Array(EnterpriseBundleSkippedFoundationSchema),
+      impliedAllowAllKnowledge: Type.Boolean(),
+      reason: Type.String(),
+    },
+    required: ["ok"],
+    additionalProperties: false,
+  },
+);
+
+/** Remove one imported tree (a shadowed built-in reappears). */
+export const EnterpriseTreesRemoveParamsSchema = Type.Object(
+  {
+    treeId: NonEmptyString,
+    /** Added in protocol v4; the server refuses a legacy unguarded request. */
+    expectedHash: Type.Optional(NonEmptyString),
+    /** Added in protocol v4; identifies one exact malformed persisted row. */
+    expectedInvalidFingerprint: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+/** Expected remove outcome; conflicts and unreadable rows are not request errors. */
+export const EnterpriseTreesRemoveResultSchema = Type.Union(
+  [
+    Type.Object({ removed: Type.Literal(true) }, { additionalProperties: false }),
+    Type.Object(
+      {
+        removed: Type.Literal(false),
+        reason: Type.Union([
+          Type.Literal("not-found"),
+          Type.Literal("precondition-required"),
+          Type.Literal("tree-changed"),
+          Type.Literal("tree-unavailable"),
+        ]),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    // Preserve the discriminated anyOf validation while generating one stable
+    // native result struct; `reason` remains required only when removed is false.
+    type: "object",
+    properties: { removed: Type.Boolean(), reason: Type.String() },
+    required: ["removed"],
+    additionalProperties: false,
+  },
 );
 
 /** One recorded revision of a tree, summarized for the history list. */
@@ -556,11 +840,22 @@ export const EnterpriseRunRouteSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const EnterpriseRunsResumeRefusalReasonSchema = Type.Union([
+  Type.Literal("not-found"),
+  Type.Literal("still-running"),
+  Type.Literal("no-session"),
+  Type.Literal("no-steps-completed"),
+  Type.Literal("route-complete"),
+  Type.Literal("transcript-rotated"),
+]);
+
 export const EnterpriseRunDetailSchema = Type.Object(
   {
     executionId: NonEmptyString,
     runId: NonEmptyString,
     sessionKey: Type.Union([Type.String(), Type.Null()]),
+    /** Transcript UUID this execution belongs to; absent on legacy trace rows. */
+    sessionId: Type.Optional(NonEmptyString),
     agentId: Type.Union([Type.String(), Type.Null()]),
     treeId: Type.String(),
     treeVersion: Type.String(),
@@ -593,6 +888,8 @@ export const EnterpriseRunDetailSchema = Type.Object(
      * whose only outcome is a refusal.
      */
     resumable: Type.Optional(Type.Boolean()),
+    /** Why resume would be refused; absent when the run is resumable. */
+    resumeRefusalReason: Type.Optional(EnterpriseRunsResumeRefusalReasonSchema),
     matchedBy: Type.String(),
     requestSummary: Type.String(),
     activeNodeId: Type.String(),
@@ -627,6 +924,12 @@ export const EnterpriseRunsGetResultSchema = Type.Object(
 export const EnterpriseRunsResumeParamsSchema = Type.Object(
   {
     executionId: NonEmptyString,
+    /**
+     * Expected transcript UUID from run detail; the server verifies it is still
+     * current. Added in protocol v4, so an absent legacy value is accepted at
+     * the wire boundary but safely refused as transcript-rotated.
+     */
+    sessionId: Type.Optional(NonEmptyString),
   },
   { additionalProperties: false },
 );
@@ -639,26 +942,10 @@ export const EnterpriseRunsResumeParamsSchema = Type.Object(
 export const EnterpriseRunsResumeResultSchema = Type.Object(
   {
     ok: Type.Boolean(),
-    reason: Type.Optional(
-      Type.Union([
-        Type.Literal("not-found"),
-        Type.Literal("still-running"),
-        Type.Literal("no-session"),
-        Type.Literal("no-steps-completed"),
-        Type.Literal("route-complete"),
-        Type.Literal("transcript-rotated"),
-      ]),
-    ),
+    reason: Type.Optional(EnterpriseRunsResumeRefusalReasonSchema),
   },
   { additionalProperties: false },
 );
-
-/** Enterprise execution mode, switchable from the chat surface. */
-export const EnterpriseModeSchema = Type.Union([
-  Type.Literal("enforce"),
-  Type.Literal("observe"),
-  Type.Literal("off"),
-]);
 
 export const EnterpriseModeGetParamsSchema = Type.Object({}, { additionalProperties: false });
 
@@ -708,11 +995,10 @@ export const EnterpriseKnowledgeFoundationSummarySchema = Type.Object(
     /** Non-secret one-line summary of what the foundation covers. */
     description: Type.Optional(Type.String()),
     /**
-     * Trees whose imported bundle owns this foundation. Retrieval resolves a
-     * bundle foundation only for its OWNING tree, so a client must not read the
-     * registry as deployment-wide: two workflows can carry the same id with
-     * different content. Omitted when a plugin registered the id, which is
-     * global and therefore retrievable by every tree.
+     * The one tree whose imported bundle owns this row. Retrieval resolves a
+     * bundle foundation only for its OWNING tree, so the same id may appear in
+     * several rows with different descriptors. Empty means a plugin registered
+     * the id globally; omitted means an older gateway did not report ownership.
      */
     ownerTreeIds: Type.Optional(Type.Array(NonEmptyString)),
     /** Nodes whose ontology allow-list names this foundation. */

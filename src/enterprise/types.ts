@@ -297,12 +297,11 @@ export const WORKFLOW_TREE_SCHEMA_VERSION = 1 as const;
 /**
  * How a work-map hands capabilities to its steps.
  *
- * `"explicit"` makes every family deny-by-default — a step may use only the
- * tools, skills, MCP servers, and knowledge foundations its own root→step path
- * attaches. Omitted keeps
- * the inherited semantics `allowedTools` and `skills` already have (a scope
- * narrows what an ancestor allowed; a path that scopes nothing allows
- * everything), which is what every tree written before this field carries.
+ * `"explicit"` makes every family deny-by-default. Tools, MCP servers, and
+ * knowledge foundations follow the active root→step path. Skills are narrowed
+ * once for the run to those declared anywhere on its planned route; each step's
+ * declaration says which of that run-scoped set applies there. Omitted keeps the
+ * inherited semantics older trees carry.
  *
  * An opt-in rather than the default because both fields PREDATE it: a stored
  * tree that scopes one leaf means "narrow that leaf", and reading it as "deny

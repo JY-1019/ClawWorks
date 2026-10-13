@@ -16,6 +16,7 @@ import { getEnterpriseActiveRun } from "./runtime.js";
 import type {
   EnterpriseId,
   OntologyAction,
+  OntologyBinding,
   OntologyEntity,
   OntologyFunction,
   OntologyRelationship,
@@ -45,6 +46,38 @@ export type NodeOntologyScope = {
   treeRequiredProperties: Map<EnterpriseId, Set<string>>;
 };
 
+export type OntologyPathScope = Pick<
+  NodeOntologyScope,
+  "entities" | "relationships" | "actions" | "functions"
+>;
+
+/** Merge ontology declarations root-first so descendants extend or replace them. */
+export function mergeOntologyPath(
+  nodes: readonly { ontology?: OntologyBinding }[],
+): OntologyPathScope {
+  const scope: OntologyPathScope = {
+    entities: new Map(),
+    relationships: new Map(),
+    actions: new Map(),
+    functions: new Map(),
+  };
+  for (const node of nodes) {
+    for (const entity of node.ontology?.entities ?? []) {
+      scope.entities.set(entity.id, mergeEntity(scope.entities.get(entity.id), entity));
+    }
+    for (const relationship of node.ontology?.relationships ?? []) {
+      scope.relationships.set(relationship.id, relationship);
+    }
+    for (const action of node.ontology?.actions ?? []) {
+      scope.actions.set(action.id, action);
+    }
+    for (const fn of node.ontology?.functions ?? []) {
+      scope.functions.set(fn.id, fn);
+    }
+  }
+  return scope;
+}
+
 /**
  * Merge the ontology down the root→active path.
  *
@@ -62,36 +95,18 @@ export function resolveActiveOntologyScope(runId: string): NodeOntologyScope | n
   if (!node) {
     return null;
   }
-  const scope: NodeOntologyScope = {
+  const ontology = mergeOntologyPath(resolvePlanNodePath(run.plan, node.nodeId));
+  return {
     treeId: run.plan.treeId,
     nodeId: node.nodeId,
     enforce: run.plan.mode === "enforce",
-    entities: new Map(),
-    relationships: new Map(),
-    actions: new Map(),
-    functions: new Map(),
+    ...ontology,
     // Snapshotted when the run was mediated, from the tree it PLANNED against. A
     // per-call registry lookup would drift: a re-import mid-run invalidates the
     // registry, and the run would start judging creates against a tree version it
     // never planned or prompted against.
     treeRequiredProperties: run.treeRequiredProperties ?? new Map(),
   };
-  // Root first, so a deeper node's redeclaration of the same id wins.
-  for (const step of resolvePlanNodePath(run.plan, node.nodeId)) {
-    for (const entity of step.ontology.entities ?? []) {
-      scope.entities.set(entity.id, mergeEntity(scope.entities.get(entity.id), entity));
-    }
-    for (const relationship of step.ontology.relationships ?? []) {
-      scope.relationships.set(relationship.id, relationship);
-    }
-    for (const action of step.ontology.actions ?? []) {
-      scope.actions.set(action.id, action);
-    }
-    for (const fn of step.ontology.functions ?? []) {
-      scope.functions.set(fn.id, fn);
-    }
-  }
-  return scope;
 }
 
 /**

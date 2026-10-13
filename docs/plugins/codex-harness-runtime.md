@@ -83,6 +83,15 @@ ClawWorks plugin behavior. For the supported native tool and permission bridge,
 ClawWorks injects per-thread Codex config for `PreToolUse`, `PostToolUse`,
 `PermissionRequest`, and `Stop`.
 
+When `PreToolUse` policy work is active, ClawWorks verifies immediately before
+each main or side turn that Codex hooks are enabled and that no other enabled,
+command `PreToolUse` hook is present. A sibling hook could become trusted during
+the turn and replace the tool input after ClawWorks approved it, so a conflict
+stops the turn and identifies the hook to disable. The check runs at every turn
+boundary because Codex can reload hook trust while a thread is open. Selecting
+`pre_tool_use` also selects `post_tool_use`, which lets the matching completion
+settle the pending policy decision after the native tool actually runs.
+
 When Codex app-server approvals are enabled, meaning `approvalPolicy` is not
 `"never"`, the default injected native hook config omits `PermissionRequest` so
 Codex's app-server reviewer and ClawWorks's approval bridge handle real
@@ -100,15 +109,19 @@ ClawWorks can mirror selected events, but it cannot rewrite the native Codex
 thread unless Codex exposes that operation through app-server or native hook
 callbacks.
 
-Codex app-server report-mode `PreToolUse` events defer plugin approval requests
-to the matching app-server approval. If a ClawWorks `before_tool_call` hook
-returns `requireApproval` while the native payload sets report approval mode
-(`openclaw_approval_mode` is `"report"`), the native hook relay records the
-plugin approval requirement and returns no native decision. When Codex sends the
-app-server approval request for the same tool use, ClawWorks opens the plugin
-approval prompt and maps the decision back to Codex. Codex `PermissionRequest`
-events are a separate approval path and can still route through ClawWorks
-approvals when the runtime is configured for that bridge.
+An actual native `PreToolUse` callback runs synchronously and can open a
+ClawWorks approval in the Control UI before returning its decision to Codex.
+That policy approval does not approve a later Codex provider prompt: when both
+apply, the provider prompt remains authoritative and includes the pending plugin
+rationale so the operator can decide from one visible context.
+
+ClawWorks also uses a synthetic report-mode `PreToolUse` call when an app-server
+approval arrives before a native callback is available. The report marker is a
+ClawWorks relay field, not part of Codex's native hook payload. If a
+`before_tool_call` hook returns `requireApproval`, the relay records it for the
+matching app-server approval instead of inventing a native decision. Codex
+`PermissionRequest` events are a separate approval path and can still route
+through ClawWorks approvals when the runtime is configured for that bridge.
 
 Codex app-server item notifications also provide async `after_tool_call`
 observations for native tool completions that are not already covered by the

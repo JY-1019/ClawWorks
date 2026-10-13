@@ -30,7 +30,7 @@ the English installation walkthrough remains the tutorial linked above.
   API server, registered through the bundled LightRAG plugin as the
   `acme.returns-kb` knowledge foundation. It indexes and answers with a model,
   so it needs an LLM and an embedding binding; `.env.example` carries an OpenAI
-  setup and a local-Ollama alternative.
+  API setup without downloading local models.
 - **acme-tracker** (`http://localhost:9700/mcp`) — a read-only MCP server with
   two tools, `order_status` and `shipment_track`, over an in-memory order book.
   No credentials, no external calls. Its dates are offsets from "now", so order
@@ -46,9 +46,28 @@ issue-tracker integration, even though both examples use the name `acme-tracker`
 From this directory (`examples/enterprise/tutorial`):
 
 ```bash
-cp .env.example .env    # then fill in the LLM/embedding credentials
+cp -n .env.example .env # preserve existing credentials
+chmod 600 .env
+# Edit .env in your editor; fill BOTH LLM_BINDING_API_KEY and EMBEDDING_BINDING_API_KEY.
 docker compose up -d --build
 ```
+
+Only this example's LightRAG container reads the model credentials; the Gateway
+and MCP tracker do not. The `.env` file is Git-ignored. API calls may incur
+charges and send uploaded policy text to the configured providers. A ChatGPT
+or Claude subscription does not supply these API credentials.
+
+You can use the same provider key in both fields, or configure separate API
+hosts, models, and keys. Keep `EMBEDDING_DIM` consistent with the embedding
+model. After editing credentials, run `docker compose up -d --force-recreate
+lightrag` from this directory; `restart` alone does not reload the environment.
+Changing the embedding model requires re-indexing, not just restarting.
+
+The **Knowledge → Connect a source → API key** field is for
+`LIGHTRAG_API_KEY`, a separate server-access key, **not** either provider key.
+Provider credentials are edited in this example's `.env`, not that GUI field.
+Blank provider keys are not a working configuration; a health response alone
+does not validate them.
 
 Check both are up:
 

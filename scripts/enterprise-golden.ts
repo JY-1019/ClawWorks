@@ -204,17 +204,67 @@ async function main(): Promise<number> {
 
   // ---- 2. A row this work-map OWNS, written and then read back THROUGH THE
   // PRODUCTION TOOLS. The example declares no instances any more, so a read has to
-  // open with a write. The SAR is the artifact to use: no upstream system holds it,
-  // which is why its step CREATES it rather than updating something a file seeded.
+  // open with a write. The case and SAR are local artifacts: no upstream system
+  // holds them, so their steps create them rather than relying on preloaded rows.
   //
   // Calling the store helper directly would skip the tools' own argument adapter
   // and scope resolution, so a regression that broke the wired-up tool would still
   // leave this green.
   {
+    const caseRunId = "golden-case-create";
+    await openRun(caseRunId, "AL-9001 조사 케이스 열기", [
+      "finops.risk.monitoring.investigation.case-file.evidence",
+    ]);
+    const opened = await createInvokeActionTool({ runId: caseRunId }).execute("g1", {
+      action: "open-investigation-case",
+      args: {
+        "case-id": "CS-9001",
+        "alert-id": "AL-9001",
+        status: "open",
+        analyst: "Mina Park",
+      },
+    });
+    record(
+      "the evidence step opens the local case from supplied metadata",
+      !JSON.stringify(opened).includes('"error"'),
+      JSON.stringify(opened).slice(0, 120),
+    );
+    expectEqual(
+      "the case lifecycle starts with its supplied alert and status",
+      searchOntologyObjects({ treeId: TREE_ID, entity: "investigation-case", limit: 10 }).map(
+        (row) => [
+          row.objectId,
+          row.properties["alert-id"],
+          row.properties.status,
+          row.properties.analyst,
+        ],
+      ),
+      [["CS-9001", "AL-9001", "open", "Mina Park"]],
+    );
+    endEnterpriseRun({ runId: caseRunId, status: "completed" });
+
+    const dispositionRunId = "golden-case-disposition";
+    await openRun(dispositionRunId, "CS-9001 보고 가능으로 처분", [
+      "finops.risk.monitoring.investigation.case-file.disposition",
+    ]);
+    const disposed = await createInvokeActionTool({ runId: dispositionRunId }).execute("g2", {
+      action: "close-investigation",
+      args: { "case-id": "CS-9001", status: "reportable", analyst: "Mina Park" },
+    });
+    record(
+      "the disposition step updates the local case lifecycle",
+      !JSON.stringify(disposed).includes('"error"') &&
+        searchOntologyObjects({ treeId: TREE_ID, entity: "investigation-case", limit: 10 }).some(
+          (row) => row.objectId === "CS-9001" && row.properties.status === "reportable",
+        ),
+      JSON.stringify(disposed).slice(0, 120),
+    );
+    endEnterpriseRun({ runId: dispositionRunId, status: "completed" });
+
     const runId = "golden-reads";
     await openRun(runId, "CS-9001 케이스 SAR 초안 작성", ["finops.risk.monitoring.sar-filing"]);
 
-    const drafted = await createInvokeActionTool({ runId }).execute("g1", {
+    const drafted = await createInvokeActionTool({ runId }).execute("g3", {
       action: "draft-sar",
       args: {
         "sar-id": "SR-9001",
@@ -239,9 +289,22 @@ async function main(): Promise<number> {
       ]),
       [["SR-9001", "CS-9001", "Structuring across two same-counterparty transfers."]],
     );
-    // Creating the same id twice is refused, which is what stops a second report
-    // being opened for one case.
-    const again = await createInvokeActionTool({ runId }).execute("g2", {
+    // Identity is the SAR id. The relationship is one-to-many, so a case can
+    // produce another report with a distinct id.
+    const another = await createInvokeActionTool({ runId }).execute("g4", {
+      action: "draft-sar",
+      args: {
+        "sar-id": "SR-9002",
+        "case-id": "CS-9001",
+        narrative: "Follow-up report for the same case.",
+      },
+    });
+    record(
+      "a case may produce multiple SARs with distinct report ids",
+      !JSON.stringify(another).includes('"error"'),
+      JSON.stringify(another).slice(0, 120),
+    );
+    const again = await createInvokeActionTool({ runId }).execute("g5", {
       action: "draft-sar",
       args: { "sar-id": "SR-9001", "case-id": "CS-9001", narrative: "second attempt" },
     });
@@ -251,10 +314,22 @@ async function main(): Promise<number> {
       JSON.stringify(again).slice(0, 120),
     );
 
-    // The GRAPH effect. Seeded links are gone, so an edge exists only because an
+    const missingEndpoint = await createInvokeActionTool({ runId }).execute("g6", {
+      action: "attach-sar-to-case",
+      args: { "case-id": "CS-4040", "sar-id": "SR-9001" },
+    });
+    record(
+      "a graph action refuses a missing case endpoint",
+      toolError(missingEndpoint).includes(
+        'cannot link missing "investigation-case" object "CS-4040"',
+      ),
+      JSON.stringify(missingEndpoint).slice(0, 140),
+    );
+
+    // The GRAPH effect has no preloaded links, so an edge exists only because an
     // action wrote one — and without this, get_neighbors would have nothing to walk
     // anywhere in the example.
-    const linked = await createInvokeActionTool({ runId }).execute("g3", {
+    const linked = await createInvokeActionTool({ runId }).execute("g7", {
       action: "attach-sar-to-case",
       args: { "case-id": "CS-9001", "sar-id": "SR-9001" },
     });
@@ -264,7 +339,7 @@ async function main(): Promise<number> {
       JSON.stringify(linked).slice(0, 120),
     );
 
-    const search = await createSearchObjectsTool({ runId }).execute("g4", {
+    const search = await createSearchObjectsTool({ runId }).execute("g8", {
       entity: "sar",
       limit: 50,
     });
@@ -275,7 +350,7 @@ async function main(): Promise<number> {
       searchText.slice(0, 110),
     );
 
-    const neighbors = await createGetNeighborsTool({ runId }).execute("g5", {
+    const neighbors = await createGetNeighborsTool({ runId }).execute("g9", {
       entity: "sar",
       objectId: "SR-9001",
     });
@@ -290,7 +365,7 @@ async function main(): Promise<number> {
     // is declared one branch away under finops.claims.settlement, so this step
     // cannot address it at all — the ontology, not just the tool scope, is what
     // stops a monitoring step from reading claim money.
-    const offBranch = await createSearchObjectsTool({ runId }).execute("g6", {
+    const offBranch = await createSearchObjectsTool({ runId }).execute("g10", {
       entity: "payment",
       limit: 5,
     });
@@ -410,11 +485,11 @@ async function main(): Promise<number> {
           ? `${digest.length} chars, 28 unrouted steps omitted`
           : "a routed step is missing from the digest",
     );
-    // The seeded types have to reach the model too, or it cannot name a real id.
+    // The declared types have to reach the model too, or it cannot name a real id.
     const declaresClaim = digest.includes("claim (claim-id*");
     const declaresPayment = digest.includes("payment (payment-id*");
     record(
-      "digest declares the seeded object types of both branches",
+      "digest declares the object types of both branches",
       declaresClaim && declaresPayment,
       // Name both halves: a detail that says "claim + payment declared" next to a
       // FAIL hides which one actually went missing.
@@ -598,7 +673,7 @@ async function main(): Promise<number> {
     endEnterpriseRun({ runId: filingId, status: "completed" });
   }
 
-  // ---- 8. MCP: four servers, and the attachment is the whole grant. Both
+  // ---- 8. MCP: five servers, and the attachment is the whole grant. Both
   // directions matter on every one of them — the step that attaches may call it,
   // and its siblings may not, even though nothing in their tool scope says so.
   {

@@ -12,6 +12,11 @@ import {
 } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
+  clearEnterpriseKnowledgeFoundations,
+  InMemoryKnowledgeFoundation,
+  registerEnterpriseKnowledgeFoundation,
+} from "../enterprise/knowledge.js";
+import {
   beginEnterpriseRun,
   clearEnterpriseRunMediationForTest,
   endEnterpriseRun,
@@ -131,7 +136,10 @@ describe("enterprise trees commands", () => {
     const removeRuntime = makeRuntime();
     enterpriseTreesRemoveCommand("acme.customer-support", removeRuntime);
     expect(removeRuntime.exitCodes).toEqual([]);
-    expect(removeRuntime.logs.join("\n")).toContain("Removed imported workflow tree");
+    expect(removeRuntime.logs.join("\n")).toContain(
+      "permanently deleted its live ontology objects",
+    );
+    expect(removeRuntime.logs.join("\n")).toContain("Definition history cannot restore that data");
   });
 
   it("reports export/remove failures with exit 1", () => {
@@ -309,14 +317,15 @@ describe("enterprise bundle import dependencies", () => {
 
   afterEach(() => {
     clearRuntimeConfigSnapshot();
+    clearEnterpriseKnowledgeFoundations();
     removeImportedWorkflowTree(BUNDLE_TREE_ID);
   });
 
-  it("warns only about MCP servers this deployment has not registered", () => {
+  it("warns about MCP servers this deployment has not enabled", () => {
     const runtime = importBundleWithConfig(null);
 
     expect(runtime.errors.join("\n")).toContain("acme-tracker");
-    expect(runtime.errors.join("\n")).toContain("must be registered under mcp.servers");
+    expect(runtime.errors.join("\n")).toContain("must be enabled under mcp.servers");
   });
 
   it("still warns when the registered server is disabled", () => {
@@ -326,7 +335,7 @@ describe("enterprise bundle import dependencies", () => {
       mcp: { servers: { "acme-tracker": { command: "npx", enabled: false } } },
     } as OpenClawConfig);
 
-    expect(runtime.errors.join("\n")).toContain("must be registered under mcp.servers");
+    expect(runtime.errors.join("\n")).toContain("must be enabled under mcp.servers");
     expect(runtime.logs.join("\n")).not.toContain("Required MCP servers");
   });
 
@@ -338,5 +347,42 @@ describe("enterprise bundle import dependencies", () => {
 
     expect(runtime.errors.join("\n")).not.toContain("must be registered");
     expect(runtime.logs.join("\n")).toContain("Required MCP servers: acme-tracker");
+  });
+
+  it("warns when a global/plugin foundation shadows imported bundle knowledge", () => {
+    const shadowedBundle = {
+      ...structuredClone(bundle),
+      trees: [
+        {
+          ...structuredClone(bundle.trees[0]),
+          root: {
+            ...structuredClone(bundle.trees[0].root),
+            ontology: {
+              ...structuredClone(bundle.trees[0].root.ontology),
+              knowledgeFoundations: ["acme.kb"],
+            },
+          },
+        },
+      ],
+      knowledgeFoundations: [
+        {
+          id: "acme.kb",
+          descriptor: { kind: "local", displayName: "Bundled KB" },
+          snippets: [{ foundationId: "acme.kb", text: "bundled content" }],
+        },
+      ],
+    };
+    registerEnterpriseKnowledgeFoundation(
+      "acme.kb",
+      new InMemoryKnowledgeFoundation([{ foundationId: "acme.kb", text: "plugin content" }]),
+    );
+    const file = path.join(tempDir, "shadowed.clawworks-bundle.json");
+    writeFileSync(file, JSON.stringify(shadowedBundle), "utf8");
+    const runtime = makeRuntime();
+
+    enterpriseBundleImportCommand(file, runtime);
+
+    expect(runtime.errors.join("\n")).toContain("global/plugin foundations take precedence");
+    expect(runtime.errors.join("\n")).toContain("acme.kb");
   });
 });

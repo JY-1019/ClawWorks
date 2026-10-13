@@ -30,15 +30,21 @@ openclaw enterprise trees remove <treeId>
   issues without importing. The full format reference is
   [Worktree Authoring](/concepts/clawworks-worktree-authoring).
 - Imported trees override built-in trees with the same id; removing the
-  import restores the built-in definition.
+  import restores the built-in definition. Removal permanently deletes the
+  imported tree's live ontology objects, links, and bundled knowledge. Definition
+  history keeps only tree definitions. Workflow bundles preserve definitions and
+  bundled knowledge, but do not include live objects or links. Before removing
+  data you need, create and verify a [state backup](/cli/backup) with
+  `openclaw backup create --verify`.
 - A running gateway loads tree definitions at startup; restart it after
   imports or removals.
 
 ## Bundles
 
-A bundle is a self-contained exchange artifact: one workflow tree plus
-everything it references, so a recipient can import it and run identically
-with no extra setup.
+A bundle is a portable workflow artifact: one workflow tree plus any
+snapshot-capable owned knowledge it references. It reports external tool, skill,
+MCP server, and knowledge requirements that the recipient may still need to set
+up before the workflow can run as intended.
 
 ```bash
 openclaw enterprise bundle export <treeId> [--out <file>] [--format yaml|json]
@@ -46,7 +52,7 @@ openclaw enterprise bundle import <file>
 ```
 
 - A bundle inlines the knowledge foundations the tree references and lists
-  the tool names its nodes allow or deny, on top of the tree definition
+  the tool selectors its nodes allow or outward action effects call, on top of the tree definition
   itself. `import` persists the tree and the inlined foundations, then a
   gateway restart re-registers them.
 - Only foundations this deployment owns in process (the in-memory reference
@@ -62,6 +68,8 @@ openclaw enterprise bundle import <file>
 
 ### Known limitations
 
+- Bundles do not contain live ontology objects or links and cannot restore them
+  after a tree is removed. Use a state backup to preserve runtime data.
 - Bundled knowledge is workflow-scoped: a run may only retrieve foundations its
   own tree imported, so a bundle's knowledge never leaks into another workflow.
 - Bundled knowledge is not versioned with tree-definition revision history.

@@ -4,6 +4,7 @@ import type { ChannelPlugin } from "../channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
+import { createDeferred } from "../test-utils/deferred.js";
 import { createExecApprovalForwarder } from "./exec-approval-forwarder.js";
 import type { PluginApprovalRequest, PluginApprovalResolved } from "./plugin-approvals.js";
 
@@ -34,15 +35,25 @@ const PLUGIN_DISABLED_CFG = {
   },
 } as OpenClawConfig;
 
-function createForwarder(params: { cfg: OpenClawConfig; deliver?: ReturnType<typeof vi.fn> }) {
+function createForwarder(params: {
+  cfg: OpenClawConfig;
+  deliver?: ReturnType<typeof vi.fn>;
+  resolveSessionTarget?: NonNullable<
+    Parameters<typeof createExecApprovalForwarder>[0]
+  >["resolveSessionTarget"];
+}) {
   const deliver = params.deliver ?? vi.fn().mockResolvedValue([]);
-  const forwarder = createExecApprovalForwarder({
+  const deps: NonNullable<Parameters<typeof createExecApprovalForwarder>[0]> = {
     getConfig: () => params.cfg,
     deliver: deliver as unknown as NonNullable<
       NonNullable<Parameters<typeof createExecApprovalForwarder>[0]>["deliver"]
     >,
     nowMs: () => 1000,
-  });
+  };
+  if (params.resolveSessionTarget) {
+    deps.resolveSessionTarget = params.resolveSessionTarget;
+  }
+  const forwarder = createExecApprovalForwarder(deps);
   return { deliver, forwarder };
 }
 
@@ -354,6 +365,59 @@ describe("plugin approval forwarding", () => {
       const text = firstDeliveredPayload(deliver)?.text ?? "";
       expect(text).toContain("Plugin approval");
       expect(text).toContain("allowed once");
+    });
+
+    it("does not deliver a resolution before an in-flight pending request", async () => {
+      const releasePending = createDeferred();
+      const deliveryOrder: string[] = [];
+      const deliver = vi.fn(async (params: DeliveryArgs) => {
+        const text = params.payloads?.[0]?.text ?? "";
+        const kind = text.includes("approval required") ? "pending" : "resolved";
+        deliveryOrder.push(kind);
+        if (kind === "pending") {
+          await releasePending.promise;
+        }
+        return [];
+      });
+      const { forwarder } = createForwarder({ cfg: PLUGIN_TARGETS_CFG, deliver });
+
+      await expect(forwarder.handlePluginApprovalRequested!(makePluginRequest())).resolves.toBe(
+        true,
+      );
+      await vi.waitFor(() => expect(deliveryOrder).toEqual(["pending"]));
+
+      const resolvePromise = forwarder.handlePluginApprovalResolved!(makePluginResolved());
+      await Promise.resolve();
+      expect(deliveryOrder).toEqual(["pending"]);
+
+      releasePending.resolve();
+      await resolvePromise;
+      expect(deliveryOrder).toEqual(["pending", "resolved"]);
+    });
+
+    it("cancels a pending request resolved during target lookup", async () => {
+      const target = createDeferred<{ channel: string; to: string }>();
+      const resolveSessionTarget = vi.fn(() => target.promise);
+      const deliveryOrder: string[] = [];
+      const deliver = vi.fn(async (params: DeliveryArgs) => {
+        const text = params.payloads?.[0]?.text ?? "";
+        deliveryOrder.push(text.includes("approval required") ? "pending" : "resolved");
+        return [];
+      });
+      const cfg = {
+        approvals: { plugin: { enabled: true, mode: "session" } },
+      } as OpenClawConfig;
+      const { forwarder } = createForwarder({ cfg, deliver, resolveSessionTarget });
+
+      const requestPromise = forwarder.handlePluginApprovalRequested!(makePluginRequest());
+      await vi.waitFor(() => expect(resolveSessionTarget).toHaveBeenCalledOnce());
+      const resolvePromise = forwarder.handlePluginApprovalResolved!(makePluginResolved());
+      await vi.waitFor(() => expect(resolveSessionTarget).toHaveBeenCalledTimes(2));
+
+      target.resolve({ channel: "slack", to: "U123" });
+      await expect(requestPromise).resolves.toBe(false);
+      await resolvePromise;
+      expect(deliveryOrder).toEqual(["resolved"]);
     });
 
     it("reconstructs targets from resolved request snapshot when pending cache is missing", async () => {

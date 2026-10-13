@@ -1,15 +1,32 @@
-// Control UI tests cover enterprise inspection controller behavior.
 import { describe, expect, it, vi } from "vitest";
+// Control UI tests cover enterprise inspection controller behavior.
+import type { EnterpriseTreeDetail } from "../../../../packages/gateway-protocol/src/index.js";
 import { GatewayNotConnectedError, GatewayRequestError } from "../gateway.ts";
 import {
   beginAddEnterpriseNode,
   beginEditEnterpriseTree,
+  beginEditEnterpriseTreeSettings,
+  beginEnterpriseOntologyDraft,
   beginNewEnterpriseTree,
+  applyEnterpriseBundle,
+  cancelEnterpriseBundlePreview,
+  cancelEditEnterpriseTree,
+  cancelEnterpriseTreeConfirm,
+  removeEnterpriseNode,
   cancelAddEnterpriseNode,
+  cancelEnterpriseTreeDraft,
   confirmEnterpriseTreeAction,
+  disableEnterpriseMcpGovernance,
   editEnterpriseNodeDraft,
+  editEnterpriseNodeGuidance,
+  enableEnterpriseMcpGovernance,
+  editEnterpriseOntologyDraft,
+  editEnterpriseTreeDraft,
   type EnterpriseState,
   exportEnterpriseTree,
+  exportEnterpriseBundle,
+  importEnterpriseTreeFile,
+  previewEnterpriseBundleFile,
   loadEnterprise,
   loadEnterpriseCatalogs,
   loadEnterpriseRunDetail,
@@ -17,9 +34,13 @@ import {
   loadEnterpriseTreeVersion,
   loadEnterpriseTreeVersions,
   refreshEnterprise,
+  reconcileEnterpriseEditAccess,
+  requestEnterpriseRunResume,
   requestRemoveEnterpriseTree,
   requestSaveEnterpriseTree,
+  selectEnterpriseNode,
   selectEnterpriseTree,
+  saveEnterpriseNodeGuidance,
   setEnterpriseTreeEditContent,
   setEnterpriseTreeEditFormat,
   cancelEnterpriseBindingPicker,
@@ -34,6 +55,8 @@ import {
   editEnterpriseMcpDraft,
   editEnterpriseMcpHeader,
   submitAddEnterpriseNode,
+  submitEnterpriseTreeDraft,
+  submitEnterpriseOntologyDraft,
   submitEnterpriseMcpDraft,
   submitEnterpriseBindingPicker,
   toggleEnterpriseBindingPickerValue,
@@ -50,6 +73,8 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseLoading: false,
     enterpriseRuns: [],
     enterpriseTrees: [],
+    enterpriseHistoryOnlyTreeIds: [],
+    enterpriseListErrors: { runs: null, trees: null },
     enterpriseImportErrors: [],
     enterpriseStoreError: null,
     enterpriseSelectedExecutionId: null,
@@ -64,23 +89,31 @@ function createState(): { state: EnterpriseState; request: ReturnType<typeof vi.
     enterpriseNodeObjectsEntity: null,
     enterpriseNodeObjects: [],
     enterpriseNodeObjectsLoading: false,
+    enterpriseNodeObjectsError: null,
     enterpriseTreeEditing: false,
+    enterpriseTreeDraft: null,
     enterpriseTreeEditTreeId: null,
     enterpriseTreeEditRevision: null,
+    enterpriseTreeEditGuard: null,
     enterpriseTreeEditContent: "",
     enterpriseTreeEditFormat: "yaml",
     enterpriseTreeSaving: false,
     enterpriseTreeSaveIssues: null,
+    enterpriseTreeWarnings: null,
     enterpriseTreeSaveError: null,
     enterpriseTreeConfirm: null,
+    enterpriseBundleDraft: null,
+    enterpriseBundleStatus: null,
     enterpriseTreeVersions: [],
     enterpriseTreeVersionsLoading: false,
+    enterpriseTreeVersionsError: null,
     enterpriseNodeDraft: null,
     enterpriseBindingPicker: null,
     enterpriseBindingDetail: null,
     enterpriseGuidanceDraft: null,
     enterpriseOntologyDraft: null,
     enterpriseMcpDraft: null,
+    enterpriseMcpRemoveConfirm: null,
     enterpriseCatalogPhase: "unloaded",
     enterpriseCatalogErrors: { tools: null, skills: null, foundations: null },
     enterpriseCatalogAgentId: null,
@@ -97,6 +130,7 @@ function treeDetail(id: string, source: "builtin" | "imported" = "imported") {
   return {
     id,
     version: "1.0.0",
+    hash: `hash-${id}`,
     name: `Tree ${id}`,
     source,
     nodes: [
@@ -151,6 +185,34 @@ function runDetail(executionId: string, runId: string, activeNodeId: string) {
   };
 }
 
+function bundlePreview(currentHash: string | null = null) {
+  return {
+    ok: true as const,
+    reviewToken: "a".repeat(64),
+    trees: [
+      {
+        id: "acme.bundle",
+        version: "2.0.0",
+        replaced: currentHash ? ("imported" as const) : null,
+        currentVersion: currentHash ? "1.0.0" : null,
+        currentHash,
+      },
+    ],
+    foundations: ["acme.inline"],
+    missingFoundations: ["acme.remote"],
+    removedFoundations: [],
+    replacedFoundations: [],
+    shadowedFoundations: [],
+    requiredTools: ["read"],
+    requiredSkills: ["bundle-skill"],
+    requiredMcpServers: ["bundle-mcp"],
+    missingMcpServers: ["bundle-mcp"],
+    warnings: [],
+    missingGovernancePolicies: ["bundle.policy"],
+    conflictingGovernancePolicies: [],
+  };
+}
+
 function mockListAndTrees(request: ReturnType<typeof vi.fn<TestRequest>>) {
   request.mockImplementation(async (method) => {
     if (method === "enterprise.runs.list") {
@@ -159,7 +221,7 @@ function mockListAndTrees(request: ReturnType<typeof vi.fn<TestRequest>>) {
     if (method === "enterprise.trees.list") {
       return {
         trees: [{ id: "t", version: "1", name: "T", source: "builtin", nodeCount: 1 }],
-        importErrors: [{ treeId: "acme.broken", message: "corrupt row" }],
+        importErrors: [{ treeId: "acme.broken", message: "corrupt row", fingerprint: "broken-v1" }],
       };
     }
     throw new Error(`unexpected method ${method}`);
@@ -177,9 +239,65 @@ describe("loadEnterprise", () => {
     expect(state.enterpriseTrees).toHaveLength(1);
     // Import failures keep the failing treeId + message so operators can act.
     expect(state.enterpriseImportErrors).toEqual([
-      { treeId: "acme.broken", message: "corrupt row" },
+      { treeId: "acme.broken", message: "corrupt row", fingerprint: "broken-v1" },
     ]);
     expect(state.enterpriseError).toBeNull();
+    expect(state.enterpriseLoading).toBe(false);
+  });
+
+  it("keeps the successful list when its sibling request fails", async () => {
+    const { state, request } = createState();
+    state.enterpriseImportErrors = [{ treeId: "stale", message: "old", fingerprint: "stale-v1" }];
+    state.enterpriseStoreError = "old store error";
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [runSummary("exec-1", "run-1")] };
+      }
+      throw new Error("tree registry unavailable");
+    });
+
+    await loadEnterprise(state);
+
+    expect(state.enterpriseRuns).toHaveLength(1);
+    expect(state.enterpriseListErrors).toEqual({
+      runs: null,
+      trees: "Error: tree registry unavailable",
+    });
+    expect(state.enterpriseImportErrors).toEqual([]);
+    expect(state.enterpriseStoreError).toBeNull();
+    expect(state.enterpriseLoading).toBe(false);
+  });
+
+  it("publishes a settled tree list without waiting for a stalled run list", async () => {
+    const { state, request } = createState();
+    request.mockImplementation((method) => {
+      if (method === "enterprise.runs.list") {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({
+        trees: [{ id: "ready", version: "1", name: "Ready", source: "imported", nodeCount: 1 }],
+        importErrors: [],
+      });
+    });
+
+    void loadEnterprise(state);
+
+    await vi.waitFor(() => expect(state.enterpriseTrees.map((tree) => tree.id)).toEqual(["ready"]));
+    expect(state.enterpriseLoading).toBe(true);
+    expect(state.enterpriseListErrors.trees).toBeNull();
+    expect(state.enterpriseListErrors.runs).toBeUndefined();
+  });
+
+  it("turns synchronous request failures into settled panel errors", async () => {
+    const { state, request } = createState();
+    request.mockImplementation(() => {
+      throw new Error("socket closed");
+    });
+
+    await loadEnterprise(state);
+
+    expect(state.enterpriseListErrors.runs).toContain("socket closed");
+    expect(state.enterpriseListErrors.trees).toContain("socket closed");
     expect(state.enterpriseLoading).toBe(false);
   });
 
@@ -228,6 +346,7 @@ describe("loadEnterprise", () => {
     state.enterpriseTrees = [{ id: "t", version: "1", name: "T", source: "builtin", nodeCount: 1 }];
     state.enterpriseSelectedExecutionId = "exec-1";
     state.enterpriseDetail = runDetail("exec-1", "run-1", "support");
+    state.enterpriseBundleStatus = { kind: "warning", message: "protected policy id" };
     request.mockRejectedValue(
       new GatewayRequestError({ code: "UNAUTHORIZED", message: "missing scope: operator.read" }),
     );
@@ -238,6 +357,7 @@ describe("loadEnterprise", () => {
     expect(state.enterpriseTrees).toEqual([]);
     expect(state.enterpriseSelectedExecutionId).toBeNull();
     expect(state.enterpriseDetail).toBeNull();
+    expect(state.enterpriseBundleStatus).toBeNull();
     expect(state.enterpriseError).toContain("operator.read");
   });
 
@@ -299,29 +419,38 @@ describe("loadEnterprise", () => {
 });
 
 describe("loadEnterpriseRunDetail run tree", () => {
-  const mocks = (params: { runHash?: string; liveHash?: string }) => async (method: string) => {
-    if (method === "enterprise.runs.get") {
-      return {
-        run: {
-          ...runDetail("exec-1", "run-1", "support"),
-          ...(params.runHash ? { treeHash: params.runHash } : {}),
-        },
-      };
-    }
-    if (method === "enterprise.trees.get") {
-      return {
-        tree: {
-          id: "acme.support",
-          version: "1.0.0",
-          hash: params.liveHash,
-          name: "S",
-          source: "imported",
-          nodes: [],
-        },
-      };
-    }
-    throw new Error(`unexpected ${method}`);
-  };
+  const mocks =
+    (params: { runHash?: string; liveHash?: string; treeIssue?: "import" | "store" }) =>
+    async (method: string) => {
+      if (method === "enterprise.runs.get") {
+        return {
+          run: {
+            ...runDetail("exec-1", "run-1", "support"),
+            ...(params.runHash ? { treeHash: params.runHash } : {}),
+          },
+        };
+      }
+      if (method === "enterprise.trees.get") {
+        return {
+          tree: {
+            id: "acme.support",
+            version: "1.0.0",
+            hash: params.liveHash,
+            name: "S",
+            source: "imported",
+            nodes: [],
+          },
+          ...(params.treeIssue === "import"
+            ? {
+                importError: "invalid tree",
+                importErrorFingerprint: "support-v1",
+              }
+            : {}),
+          ...(params.treeIssue === "store" ? { storeError: "tree store unreadable" } : {}),
+        };
+      }
+      throw new Error(`unexpected ${method}`);
+    };
 
   it("shows the tree when its CONTENT is the definition the run planned against", async () => {
     const { state, request } = createState();
@@ -346,6 +475,19 @@ describe("loadEnterpriseRunDetail run tree", () => {
     await loadEnterpriseRunDetail(state, "exec-1");
     expect(state.enterpriseRunTree).toBeNull();
   });
+
+  it.each(["import", "store"] as const)(
+    "withholds an unauthoritative tree with a %s error",
+    async (treeIssue) => {
+      const { state, request } = createState();
+      request.mockImplementation(mocks({ runHash: "abc", liveHash: "abc", treeIssue }));
+
+      await loadEnterpriseRunDetail(state, "exec-1");
+
+      expect(state.enterpriseDetail).not.toBeNull();
+      expect(state.enterpriseRunTree).toBeNull();
+    },
+  );
 });
 
 describe("loadEnterpriseTreeDetail", () => {
@@ -373,11 +515,30 @@ describe("loadEnterpriseTreeDetail", () => {
     expect(state.enterpriseTreeDetail?.id).toBe("acme.support");
   });
 
+  it("replaces and clears warnings with each authoritative tree snapshot", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeWarnings = [{ path: "old", message: "Old warning" }];
+    request
+      .mockResolvedValueOnce({
+        tree: treeDetail("acme.support"),
+        warnings: [{ path: "current", message: "Current warning" }],
+      })
+      .mockResolvedValueOnce({ tree: treeDetail("acme.support") });
+
+    await loadEnterpriseTreeDetail(state, "acme.support");
+    expect(state.enterpriseTreeWarnings).toEqual([{ path: "current", message: "Current warning" }]);
+
+    await loadEnterpriseTreeDetail(state, "acme.support");
+    expect(state.enterpriseTreeWarnings).toBeNull();
+  });
+
   it("surfaces a load failure for a corrupt imported override (stale built-in returned)", async () => {
     const { state, request } = createState();
+    state.enterpriseTreeWarnings = [{ path: "old", message: "Old warning" }];
     request.mockResolvedValue({
       tree: treeDetail("acme.support", "builtin"),
       importError: "definition_json invalid",
+      importErrorFingerprint: "support-v1",
     });
 
     await loadEnterpriseTreeDetail(state, "acme.support");
@@ -385,6 +546,7 @@ describe("loadEnterpriseTreeDetail", () => {
     // The stale built-in still renders, but the override failure must be shown.
     expect(state.enterpriseTreeDetail?.source).toBe("builtin");
     expect(state.enterpriseTreeIssue).toBe("definition_json invalid");
+    expect(state.enterpriseTreeWarnings).toBeNull();
   });
 
   it("prefers the store-unreadable error over a per-tree import error", async () => {
@@ -392,6 +554,7 @@ describe("loadEnterpriseTreeDetail", () => {
     request.mockResolvedValue({
       tree: null,
       importError: "per-tree failure",
+      importErrorFingerprint: "support-v1",
       storeError: "tree store unreadable",
     });
 
@@ -483,7 +646,7 @@ describe("loadEnterpriseTreeDetail", () => {
   });
 });
 
-function treeWithObjectEntity(id: string, entityId: string) {
+function treeWithObjectEntity(id: string, entityId: string): EnterpriseTreeDetail {
   return {
     id,
     version: "1.0.0",
@@ -543,6 +706,7 @@ describe("loadEnterpriseTreeDetail node-selection reconcile", () => {
   it("drops the node selection when a refresh removes the selected node", async () => {
     const { state, request } = createState();
     state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
     // Selected node is absent from the reloaded tree (only *.root survives).
     state.enterpriseSelectedNodeId = "acme.support.gone";
     state.enterpriseNodeObjectsEntity = "claim";
@@ -557,6 +721,43 @@ describe("loadEnterpriseTreeDetail node-selection reconcile", () => {
     expect(state.enterpriseNodeObjects).toEqual([]);
     // A vanished node needs no instance fetch.
     expect(request).not.toHaveBeenCalledWith("enterprise.objects.list", expect.anything());
+  });
+
+  it("keeps a newer editor reseed while a late detail response drops a vanished node", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    state.enterpriseSelectedNodeId = "acme.support.gone";
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditTreeId = "acme.support";
+    state.enterpriseTreeEditContent = "id: acme.support\n";
+    let resolveDetail: ((value: unknown) => void) | undefined;
+    let resolveExport: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.get") {
+        return new Promise((resolve) => {
+          resolveDetail = resolve;
+        });
+      }
+      if (method === "enterprise.trees.export") {
+        return new Promise((resolve) => {
+          resolveExport = resolve;
+        });
+      }
+      return Promise.reject(new Error(`unexpected method ${method}`));
+    });
+
+    const detail = loadEnterpriseTreeDetail(state, "acme.support");
+    const reseed = setEnterpriseTreeEditFormat(state, "json");
+    resolveDetail?.({ tree: treeDetail("acme.support") });
+    await detail;
+
+    expect(state.enterpriseSelectedNodeId).toBeNull();
+    resolveExport?.({ content: '{"id":"acme.support"}\n', source: "imported" });
+    await reseed;
+
+    expect(state.enterpriseTreeEditFormat).toBe("json");
+    expect(state.enterpriseTreeEditContent).toBe('{"id":"acme.support"}\n');
   });
 
   it("drops the selection when a different tree opens, even on a shared node id", async () => {
@@ -605,6 +806,7 @@ describe("loadEnterpriseTreeDetail node-selection reconcile", () => {
     request.mockResolvedValue({
       tree: treeWithObjectEntity("acme.support", "claim"),
       importError: "definition_json invalid",
+      importErrorFingerprint: "support-v1",
     });
 
     await loadEnterpriseTreeDetail(state, "acme.support");
@@ -718,6 +920,161 @@ describe("refreshEnterprise", () => {
     expect(state.enterpriseTreeDetail?.id).toBe("acme.support");
   });
 
+  it("does not replace a newly selected tree's history after a stale refresh detail settles", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseTreeDetail = treeDetail("acme.a");
+    let resolveRefreshDetail: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method, params) => {
+      if (method === "enterprise.runs.list") {
+        return Promise.resolve({ runs: [] });
+      }
+      if (method === "enterprise.trees.list") {
+        return Promise.resolve({ trees: [], importErrors: [] });
+      }
+      if (method === "enterprise.trees.get") {
+        const treeId = (params as { treeId: string }).treeId;
+        if (treeId === "acme.a") {
+          return new Promise((resolve) => {
+            resolveRefreshDetail = resolve;
+          });
+        }
+        return Promise.resolve({ tree: treeDetail(treeId) });
+      }
+      if (method === "enterprise.trees.history.list") {
+        const treeId = (params as { treeId: string }).treeId;
+        return Promise.resolve({
+          versions: [
+            {
+              revision: treeId === "acme.b" ? 2 : 1,
+              version: "1.0.0",
+              name: treeId,
+              sourceFormat: "yaml",
+              savedAt: 1,
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`unexpected method ${method}`));
+    });
+
+    const refresh = refreshEnterprise(state);
+    await vi.waitFor(() => expect(resolveRefreshDetail).toBeDefined());
+    selectEnterpriseTree(state, "acme.b");
+    await vi.waitFor(() => expect(state.enterpriseTreeVersions[0]?.name).toBe("acme.b"));
+
+    resolveRefreshDetail?.({ tree: treeDetail("acme.a") });
+    await refresh;
+
+    expect(state.enterpriseSelectedTreeId).toBe("acme.b");
+    expect(state.enterpriseTreeDetail?.id).toBe("acme.b");
+    expect(state.enterpriseTreeVersions.map((version) => version.name)).toEqual(["acme.b"]);
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.history.list", {
+      treeId: "acme.a",
+    });
+  });
+
+  it("clears an uncertain save error without discarding a raw draft", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditTreeId = "acme.support";
+    state.enterpriseTreeEditContent = "unsaved raw draft";
+    request.mockRejectedValueOnce(new Error("connection lost after send"));
+
+    requestSaveEnterpriseTree(state);
+    await confirmEnterpriseTreeAction(state);
+    expect(state.enterpriseTreeSaveError).toContain("may or may not have been applied");
+
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [] };
+      }
+      if (method === "enterprise.trees.list") {
+        return { trees: [], importErrors: [] };
+      }
+      if (method === "enterprise.trees.get") {
+        return { tree: treeDetail("acme.support") };
+      }
+      if (method === "enterprise.trees.history.list") {
+        return { versions: [] };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await refreshEnterprise(state);
+
+    expect(state.enterpriseTreeSaveError).toBeNull();
+    expect(state.enterpriseTreeEditing).toBe(true);
+    expect(state.enterpriseTreeEditContent).toBe("unsaved raw draft");
+  });
+
+  it("clears an uncertain save error without discarding a valid visual draft", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginAddEnterpriseNode(state, "acme.support.root");
+    const draft = state.enterpriseNodeDraft;
+    state.enterpriseTreeSaveError = "reload before retry";
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.runs.list") {
+        return { runs: [] };
+      }
+      if (method === "enterprise.trees.list") {
+        return { trees: [], importErrors: [] };
+      }
+      if (method === "enterprise.trees.get") {
+        return { tree: treeDetail("acme.support") };
+      }
+      if (method === "enterprise.trees.history.list") {
+        return { versions: [] };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await refreshEnterprise(state);
+
+    expect(state.enterpriseTreeSaveError).toBeNull();
+    expect(state.enterpriseNodeDraft).toBe(draft);
+  });
+
+  it("does not clear a newer same-text save error while an older refresh settles", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditTreeId = "acme.support";
+    state.enterpriseTreeSaveError = "outcome unknown";
+    let resolveDetail: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method) => {
+      if (method === "enterprise.runs.list") {
+        return Promise.resolve({ runs: [] });
+      }
+      if (method === "enterprise.trees.list") {
+        return Promise.resolve({ trees: [], importErrors: [] });
+      }
+      if (method === "enterprise.trees.get") {
+        return new Promise((resolve) => {
+          resolveDetail = resolve;
+        });
+      }
+      if (method === "enterprise.trees.history.list") {
+        return Promise.resolve({ versions: [] });
+      }
+      return Promise.reject(new Error(`unexpected method ${method}`));
+    });
+
+    const refresh = refreshEnterprise(state);
+    await vi.waitFor(() => expect(resolveDetail).toBeDefined());
+    setEnterpriseTreeEditContent(state, "newer draft");
+    state.enterpriseTreeSaveError = "outcome unknown";
+    resolveDetail?.({ tree: treeDetail("acme.support") });
+    await refresh;
+
+    expect(state.enterpriseTreeSaveError).toBe("outcome unknown");
+    expect(state.enterpriseTreeEditContent).toBe("newer draft");
+  });
+
   it("skips the detail reload when nothing is selected", async () => {
     const { state, request } = createState();
     mockListAndTrees(request);
@@ -726,6 +1083,21 @@ describe("refreshEnterprise", () => {
 
     expect(request).not.toHaveBeenCalledWith("enterprise.runs.get", expect.anything());
     expect(request).not.toHaveBeenCalledWith("enterprise.trees.get", expect.anything());
+  });
+
+  it("refreshes a selected inspector without waiting for stalled lists", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedExecutionId = "exec-1";
+    request.mockImplementation((method) => {
+      if (method === "enterprise.runs.get") {
+        return Promise.resolve({ run: runDetail("exec-1", "run-1", "support") });
+      }
+      return new Promise(() => {});
+    });
+
+    void refreshEnterprise(state);
+
+    await vi.waitFor(() => expect(state.enterpriseDetail?.executionId).toBe("exec-1"));
   });
 
   it("preserves a failed run-detail error instead of clearing it via the tree reload", async () => {
@@ -756,7 +1128,7 @@ describe("refreshEnterprise", () => {
     expect(request).not.toHaveBeenCalledWith("enterprise.trees.get", expect.anything());
   });
 
-  it("preserves a failed list-refresh error instead of clearing it via detail reload", async () => {
+  it("keeps list failures while still refreshing an independent selected inspector", async () => {
     const { state, request } = createState();
     state.enterpriseSelectedExecutionId = "exec-1";
     // The list/tree refresh fails (non-auth); the detail fetch would succeed.
@@ -769,9 +1141,51 @@ describe("refreshEnterprise", () => {
 
     await refreshEnterprise(state);
 
-    // The banner must survive; the detail reload must not run and wipe it.
-    expect(state.enterpriseError).toContain("gateway unavailable");
-    expect(request).not.toHaveBeenCalledWith("enterprise.runs.get", expect.anything());
+    // Both section errors survive, while the usable detail endpoint is not held
+    // back by its unrelated list siblings.
+    expect(state.enterpriseListErrors.runs).toContain("gateway unavailable");
+    expect(state.enterpriseListErrors.trees).toContain("gateway unavailable");
+    expect(request).toHaveBeenCalledWith("enterprise.runs.get", { executionId: "exec-1" });
+  });
+});
+
+describe("enterprise run continuation", () => {
+  it("does not show a late refusal on a different selected run", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedExecutionId = "exec-1";
+    state.enterpriseDetail = {
+      ...runDetail("exec-1", "run-1", "support"),
+      sessionId: "session-original",
+    };
+    let resolveResume: ((value: unknown) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveResume = resolve;
+        }),
+    );
+
+    const pending = requestEnterpriseRunResume(state, "exec-1");
+    state.enterpriseSelectedExecutionId = "exec-2";
+    resolveResume?.({ ok: false, reason: "transcript-rotated" });
+    await pending;
+
+    expect(state.enterpriseError).toBeNull();
+    expect(state.enterpriseResuming).toBe(false);
+    expect(request).toHaveBeenCalledWith("enterprise.runs.resume", {
+      executionId: "exec-1",
+      sessionId: "session-original",
+    });
+  });
+
+  it("does not arm a legacy run without transcript identity", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedExecutionId = "exec-1";
+    state.enterpriseDetail = runDetail("exec-1", "run-1", "support");
+
+    await requestEnterpriseRunResume(state, "exec-1");
+
+    expect(request).not.toHaveBeenCalled();
   });
 });
 
@@ -803,9 +1217,39 @@ describe("enterprise tree editing", () => {
     expect(state.enterpriseSelectedTreeId).toBe("acme.support");
   });
 
+  it("keeps authoritative warnings while only editor state changes", async () => {
+    const { state, request } = createState();
+    const warnings = [{ path: "root", message: "Unreachable action" }];
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    state.enterpriseTreeWarnings = warnings;
+    request.mockResolvedValue({ content: "id: acme.support\n", source: "imported" });
+
+    await beginEditEnterpriseTree(state);
+    await setEnterpriseTreeEditFormat(state, "json");
+    beginNewEnterpriseTree(state);
+    selectEnterpriseTree(state, "acme.support");
+
+    expect(state.enterpriseTreeWarnings).toEqual(warnings);
+  });
+
+  it("discards a new draft when the loaded tree row is selected again", () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginNewEnterpriseTree(state);
+
+    selectEnterpriseTree(state, "acme.support");
+
+    expect(state.enterpriseTreeDraft).toBeNull();
+    expect(state.enterpriseTreeDetail?.id).toBe("acme.support");
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("beginEditEnterpriseTree seeds the editor from the tree export", async () => {
     const { state, request } = createState();
     state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
     request.mockResolvedValue({ content: "id: acme.support\n", source: "imported" });
 
     await beginEditEnterpriseTree(state);
@@ -815,6 +1259,7 @@ describe("enterprise tree editing", () => {
       format: "yaml",
     });
     expect(state.enterpriseTreeEditContent).toBe("id: acme.support\n");
+    expect(state.enterpriseTreeEditGuard).toEqual({ expectedHash: "hash-acme.support" });
     expect(state.enterpriseTreeEditing).toBe(true);
   });
 
@@ -822,10 +1267,13 @@ describe("enterprise tree editing", () => {
     const { state, request } = createState();
     state.enterpriseTreeEditing = true;
     state.enterpriseTreeEditContent = "id: acme.support\n";
+    state.enterpriseTreeEditGuard = { expectedHash: "hash-before-edit" };
     const seen: string[] = [];
-    request.mockImplementation(async (method) => {
+    let importParams: unknown;
+    request.mockImplementation(async (method, params) => {
       seen.push(method);
       if (method === "enterprise.trees.import") {
+        importParams = params;
         return { ok: true, treeId: "acme.support", replaced: null };
       }
       if (method === "enterprise.runs.list") {
@@ -848,10 +1296,30 @@ describe("enterprise tree editing", () => {
     await confirmEnterpriseTreeAction(state);
 
     expect(seen).toContain("enterprise.trees.import");
+    expect(importParams).toMatchObject({ expectedHash: "hash-before-edit" });
     expect(state.enterpriseTreeConfirm).toBeNull();
     expect(state.enterpriseTreeEditing).toBe(false);
     expect(state.enterpriseTreeSaving).toBe(false);
     expect(state.enterpriseTreeDetail?.id).toBe("acme.support");
+  });
+
+  it("releases the save lock after the import even when its refresh stalls", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditContent = "id: acme.support\n";
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.import") {
+        return Promise.resolve({ ok: true, treeId: "acme.support", replaced: null });
+      }
+      return new Promise(() => {});
+    });
+
+    requestSaveEnterpriseTree(state);
+    void confirmEnterpriseTreeAction(state);
+
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("enterprise.trees.list", {}));
+    expect(state.enterpriseTreeSaving).toBe(false);
+    expect(state.enterpriseTreeEditing).toBe(false);
   });
 
   it("preserves a failed list reload after a save instead of hiding it", async () => {
@@ -871,14 +1339,18 @@ describe("enterprise tree editing", () => {
     requestSaveEnterpriseTree(state);
     await confirmEnterpriseTreeAction(state);
 
-    // The list-reload error must survive; opening the saved tree would clear it.
-    expect(state.enterpriseError).toContain("list unavailable");
-    expect(request).not.toHaveBeenCalledWith("enterprise.trees.get", expect.anything());
+    // The list failure remains visible even though the independent detail reload
+    // installs the post-save hash.
+    expect(state.enterpriseListErrors.trees).toContain("list unavailable");
+    expect(request).toHaveBeenCalledWith("enterprise.trees.get", { treeId: "acme.support" });
   });
 
-  it("clears stale validation errors when a new-tree draft switches format", async () => {
+  it("clears stale validation errors when an imported draft switches format", async () => {
     const { state } = createState();
-    beginNewEnterpriseTree(state);
+    await importEnterpriseTreeFile(state, {
+      name: "tree.yaml",
+      text: async () => "id: old\n",
+    });
     state.enterpriseTreeSaveError = "old error";
     state.enterpriseTreeSaveIssues = [{ path: "root", message: "bad" }];
 
@@ -887,6 +1359,217 @@ describe("enterprise tree editing", () => {
     // The regenerated template must not keep diagnostics for content it replaced.
     expect(state.enterpriseTreeSaveError).toBeNull();
     expect(state.enterpriseTreeSaveIssues).toBeNull();
+  });
+
+  it("drops a slow file read after the operator starts another draft", async () => {
+    const { state } = createState();
+    let resolveText: ((content: string) => void) | undefined;
+    const pending = importEnterpriseTreeFile(state, {
+      name: "slow.yaml",
+      text: () =>
+        new Promise((resolve) => {
+          resolveText = resolve;
+        }),
+    });
+
+    beginNewEnterpriseTree(state);
+    resolveText?.("id: stale\n");
+    await pending;
+
+    expect(state.enterpriseTreeDraft).not.toBeNull();
+    expect(state.enterpriseTreeEditing).toBe(false);
+    expect(state.enterpriseTreeEditContent).toBe("");
+  });
+
+  it("drops a slow file read when the selected row is clicked again", async () => {
+    const { state } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let resolveText: ((content: string) => void) | undefined;
+    const pending = importEnterpriseTreeFile(state, {
+      name: "slow.yaml",
+      text: () =>
+        new Promise((resolve) => {
+          resolveText = resolve;
+        }),
+    });
+
+    selectEnterpriseTree(state, "acme.support");
+    resolveText?.("id: stale\n");
+    await pending;
+
+    expect(state.enterpriseTreeEditing).toBe(false);
+    expect(state.enterpriseTreeEditContent).toBe("");
+  });
+
+  it.each(["export", "file"] as const)(
+    "does not open a raw editor from a pending %s seed after admin access is lost",
+    async (source) => {
+      const { state, request } = createState();
+      let releaseSeed: (() => void) | undefined;
+      const seedGate = new Promise<void>((resolve) => {
+        releaseSeed = resolve;
+      });
+      let pending: Promise<void>;
+      if (source === "export") {
+        state.enterpriseSelectedTreeId = "acme.support";
+        state.enterpriseTreeDetail = treeDetail("acme.support");
+        request.mockImplementation(async () => {
+          await seedGate;
+          return { content: "id: acme.support\n", source: "imported" };
+        });
+        pending = beginEditEnterpriseTree(state);
+      } else {
+        pending = importEnterpriseTreeFile(state, {
+          name: "slow.yaml",
+          text: async () => {
+            await seedGate;
+            return "id: acme.support\n";
+          },
+        });
+      }
+      expect(state.enterpriseTreeEditing).toBe(false);
+
+      reconcileEnterpriseEditAccess(state, false);
+      releaseSeed?.();
+      await pending;
+
+      expect(state.enterpriseTreeEditing).toBe(false);
+      expect(state.enterpriseTreeEditContent).toBe("");
+    },
+  );
+
+  it("does not restore history until the current tree hash is loaded", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+
+    await loadEnterpriseTreeVersion(state, "acme.support", 1);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(state.enterpriseTreeEditing).toBe(false);
+  });
+
+  it("reports a local file read failure without an unhandled rejection", async () => {
+    const { state } = createState();
+
+    await importEnterpriseTreeFile(state, {
+      name: "broken.yaml",
+      text: async () => {
+        throw new Error("read failed");
+      },
+    });
+
+    expect(state.enterpriseError).toContain("read failed");
+    expect(state.enterpriseTreeEditing).toBe(false);
+  });
+
+  it("retains exact bundle bytes through preview and clears them on cancel", async () => {
+    const { state, request } = createState();
+    const content = '{"schema":"clawworks.workflow-bundle"}\n';
+    request.mockResolvedValue(bundlePreview());
+
+    await previewEnterpriseBundleFile(state, {
+      name: "portable.bundle.json",
+      text: async () => content,
+    });
+
+    expect(request).toHaveBeenCalledWith("enterprise.bundles.preview", {
+      content,
+      format: "json",
+    });
+    expect(state.enterpriseBundleDraft).toMatchObject({
+      fileName: "portable.bundle.json",
+      content,
+      format: "json",
+    });
+    expect(request).not.toHaveBeenCalledWith("enterprise.bundles.import", expect.anything());
+
+    cancelEnterpriseBundlePreview(state);
+    expect(state.enterpriseBundleDraft).toBeNull();
+  });
+
+  it.each([
+    { currentHash: null, guard: { createOnly: true } },
+    { currentHash: "preview-hash", guard: { expectedHash: "preview-hash" } },
+  ])("applies a bundle only with its previewed $guard guard", async ({ currentHash, guard }) => {
+    const { state, request } = createState();
+    const content = "bundle bytes";
+    request.mockResolvedValueOnce(bundlePreview(currentHash)).mockResolvedValueOnce({
+      ok: false,
+      issues: [{ path: "trees.0.id", message: "changed since preview" }],
+    });
+    await previewEnterpriseBundleFile(state, {
+      name: "portable.yaml",
+      text: async () => content,
+    });
+
+    await applyEnterpriseBundle(state);
+
+    expect(request).toHaveBeenLastCalledWith("enterprise.bundles.import", {
+      content,
+      format: "yaml",
+      reviewToken: "a".repeat(64),
+      ...guard,
+    });
+    expect(state.enterpriseBundleDraft).toBeNull();
+    expect(state.enterpriseBundleStatus).toMatchObject({
+      kind: "error",
+      message: expect.stringContaining("changed since preview"),
+    });
+    expect(state.enterpriseTreeSaving).toBe(false);
+  });
+
+  it("drops a pending bundle preview after permission reconciliation", async () => {
+    const { state, request } = createState();
+    let finishPreview: ((value: unknown) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPreview = resolve;
+        }),
+    );
+    const pending = previewEnterpriseBundleFile(state, {
+      name: "portable.json",
+      text: async () => "private bundle bytes",
+    });
+    await vi.waitFor(() => expect(finishPreview).toBeDefined());
+
+    reconcileEnterpriseEditAccess(state, false);
+    finishPreview?.(bundlePreview());
+    await pending;
+
+    expect(state.enterpriseBundleDraft).toBeNull();
+  });
+
+  it("downloads a bundle and surfaces portability warnings", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    request.mockResolvedValue({
+      ok: true,
+      content: "portable bundle",
+      source: "imported",
+      skippedFoundations: [{ id: "remote.kb", reason: "unsupported" }],
+      impliedAllowAllKnowledge: true,
+    });
+    Object.defineProperty(URL, "createObjectURL", { value: () => "blob:mock", configurable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: () => {}, configurable: true });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      await exportEnterpriseBundle(state, "acme.support", "json");
+      expect(request).toHaveBeenCalledWith("enterprise.bundles.export", {
+        treeId: "acme.support",
+        format: "json",
+      });
+      expect(clickSpy).toHaveBeenCalledOnce();
+      expect(state.enterpriseBundleStatus).toMatchObject({
+        kind: "warning",
+        message: expect.stringContaining("remote.kb"),
+      });
+    } finally {
+      Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
+      clickSpy.mockRestore();
+    }
   });
 
   it("keeps the editor open and surfaces issues when the definition is invalid", async () => {
@@ -905,6 +1588,38 @@ describe("enterprise tree editing", () => {
     expect(state.enterpriseTreeEditing).toBe(true);
     expect(state.enterpriseTreeSaveIssues).toEqual([{ path: "root", message: "required" }]);
     expect(state.enterpriseTreeSaving).toBe(false);
+  });
+
+  it.each([
+    {
+      label: "unknown",
+      error: new Error("connection lost after send"),
+      expected: "may or may not have been applied",
+    },
+    {
+      label: "not-sent",
+      error: new GatewayNotConnectedError(),
+      expected: "gateway connection dropped before this was sent",
+    },
+    {
+      label: "refused",
+      error: new GatewayRequestError({ code: "FORBIDDEN", message: "operator.admin required" }),
+      expected: "server refused this change, so nothing was saved: operator.admin required",
+    },
+  ])("keeps the raw editor intact after a $label import failure", async ({ error, expected }) => {
+    const { state, request } = createState();
+    const content = "id: acme.support\n";
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditTreeId = "acme.support";
+    state.enterpriseTreeEditContent = content;
+    request.mockRejectedValue(error);
+
+    requestSaveEnterpriseTree(state);
+    await confirmEnterpriseTreeAction(state);
+
+    expect(state.enterpriseTreeEditing).toBe(true);
+    expect(state.enterpriseTreeEditContent).toBe(content);
+    expect(state.enterpriseTreeSaveError).toContain(expected);
   });
 
   it("confirms a remove: clears the selection and reloads the registry", async () => {
@@ -926,17 +1641,27 @@ describe("enterprise tree editing", () => {
       throw new Error(`unexpected ${method}`);
     });
 
-    requestRemoveEnterpriseTree(state, "acme.support");
-    expect(state.enterpriseTreeConfirm).toEqual({ kind: "remove", treeId: "acme.support" });
+    await requestRemoveEnterpriseTree(state, "acme.support");
+    expect(state.enterpriseTreeConfirm).toEqual({
+      kind: "remove",
+      treeId: "acme.support",
+      guard: { expectedHash: "hash-acme.support" },
+    });
     await confirmEnterpriseTreeAction(state);
 
-    expect(seen).toContain("enterprise.trees.remove");
+    expect(request).toHaveBeenCalledWith("enterprise.trees.remove", {
+      treeId: "acme.support",
+      expectedHash: "hash-acme.support",
+    });
+    expect(seen).toContain("enterprise.trees.list");
     expect(state.enterpriseSelectedTreeId).toBeNull();
     expect(state.enterpriseTreeDetail).toBeNull();
   });
 
   it("loadEnterpriseTreeVersion loads a revision into the editor to restore", async () => {
     const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
     request.mockResolvedValue({ content: "id: acme.support\nversion: 1.0.0\n" });
 
     await loadEnterpriseTreeVersion(state, "acme.support", 1);
@@ -950,52 +1675,385 @@ describe("enterprise tree editing", () => {
     expect(state.enterpriseTreeEditing).toBe(true);
   });
 
-  it("seeds the new-tree template with an explicit trigger scope", async () => {
+  it("loads a removed tree revision with a create-only restore guard", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.removed";
+    state.enterpriseHistoryOnlyTreeIds = ["acme.removed"];
+    request.mockResolvedValue({ content: "id: acme.removed\nversion: 1.0.0\n" });
+
+    await loadEnterpriseTreeVersion(state, "acme.removed", 3);
+
+    expect(request).toHaveBeenCalledWith("enterprise.trees.history.get", {
+      treeId: "acme.removed",
+      revision: 3,
+      format: "yaml",
+    });
+    expect(state.enterpriseTreeEditGuard).toEqual({ createOnly: true });
+    expect(state.enterpriseTreeEditing).toBe(true);
+  });
+
+  it("fetches a missing legacy import fingerprint before offering removal", async () => {
+    const { state, request } = createState();
+    state.enterpriseImportErrors = [{ treeId: "acme.corrupt", message: "bad row" }];
+    request.mockResolvedValue({
+      tree: null,
+      importError: "bad row",
+      importErrorFingerprint: "fingerprint-current",
+    });
+
+    await requestRemoveEnterpriseTree(state, "acme.corrupt");
+
+    expect(request).toHaveBeenCalledWith("enterprise.trees.get", { treeId: "acme.corrupt" });
+    expect(state.enterpriseTreeConfirm).toEqual({
+      kind: "remove",
+      treeId: "acme.corrupt",
+      guard: { expectedInvalidFingerprint: "fingerprint-current" },
+    });
+  });
+
+  it("never offers unguarded removal when a legacy gateway has no fingerprint", async () => {
+    const { state, request } = createState();
+    state.enterpriseImportErrors = [{ treeId: "acme.corrupt", message: "bad row" }];
+    request.mockResolvedValue({ tree: null, importError: "bad row" });
+
+    await requestRemoveEnterpriseTree(state, "acme.corrupt");
+
+    expect(state.enterpriseTreeConfirm).toBeNull();
+    expect(state.enterpriseError).toContain("Cannot safely remove");
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.remove", expect.anything());
+  });
+
+  it("builds a guided definition with its routing settings", async () => {
     const { state } = createState();
-    await setEnterpriseTreeEditFormat(state, "json"); // prefer JSON so we can parse it
     beginNewEnterpriseTree(state);
+    editEnterpriseTreeDraft(state, {
+      id: "support.intake",
+      version: "2.1.0",
+      name: "Support intake",
+      description: "Triage incoming requests.",
+      triggers: ["user", "subagent"],
+      priority: "7",
+      rootId: "support",
+      rootTitle: "Support",
+    });
+    await submitEnterpriseTreeDraft(state);
     const parsed = JSON.parse(state.enterpriseTreeEditContent) as {
-      match?: { triggers?: string[] };
+      version?: string;
+      match?: { triggers?: string[]; priority?: number };
     };
     // Saving imports the tree, and imported work-maps govern runs. `triggers` is
     // the deterministic gate the model cannot override, so the template must
     // pin it rather than leave a half-finished draft open to system runs.
-    expect(parsed.match?.triggers).toEqual(["user"]);
+    expect(parsed.version).toBe("2.1.0");
+    expect(parsed.match).toEqual({ triggers: ["user", "subagent"], priority: 7 });
+    expect(state.enterpriseTreeEditGuard).toEqual({ createOnly: true });
+    expect(state.enterpriseTreeConfirm).toBeNull();
+    expect(state.enterpriseTreeEditing).toBe(true);
   });
 
-  it("regenerates the template (not a stale export) when a new-tree format switches", async () => {
+  it("stages tree settings for a guarded confirmed save", async () => {
     const { state, request } = createState();
-    // A prior selection must not leak into a new-tree draft on format switch.
-    state.enterpriseSelectedTreeId = "acme.other";
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = {
+      ...treeDetail("acme.support"),
+      version: "1.0.0",
+      name: "Support",
+      description: "Old description",
+      match: { triggers: ["system"], priority: 2 },
+    };
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.trees.export") {
+        return {
+          content: JSON.stringify({
+            schema: "clawworks.workflow-tree",
+            schemaVersion: 1,
+            id: "acme.support",
+            version: "1.0.0",
+            name: "Support",
+            match: { keywords: ["legacy"], triggers: ["system"], priority: 2 },
+            root: { id: "acme.support.root", title: "Root" },
+          }),
+        };
+      }
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: "acme.support", replaced: null };
+      }
+      if (method === "enterprise.runs.list") {
+        return { runs: [] };
+      }
+      if (method === "enterprise.trees.list") {
+        return { trees: [], importErrors: [] };
+      }
+      if (method === "enterprise.trees.get") {
+        return { tree: treeDetail("acme.support") };
+      }
+      if (method === "enterprise.trees.history.list") {
+        return { versions: [] };
+      }
+      if (method === "tools.catalog") {
+        return { groups: [] };
+      }
+      if (method === "skills.status") {
+        return { skills: [] };
+      }
+      return { foundations: [] };
+    });
+
+    beginEditEnterpriseTreeSettings(state);
+    expect(state.enterpriseTreeDraft).toMatchObject({
+      mode: "settings",
+      expectedHash: "hash-acme.support",
+      triggers: ["system"],
+      priority: "2",
+    });
+    editEnterpriseTreeDraft(state, {
+      version: "2.0.0",
+      name: "Support operations",
+      description: "Current settings",
+      triggers: ["user", "subagent"],
+      priority: "0",
+    });
+
+    await submitEnterpriseTreeDraft(state);
+
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.import", expect.anything());
+    expect(state.enterpriseTreeEditGuard).toEqual({ expectedHash: "hash-acme.support" });
+    const saved = JSON.parse(state.enterpriseTreeEditContent);
+    expect(saved).toMatchObject({
+      version: "2.0.0",
+      name: "Support operations",
+      description: "Current settings",
+      match: { keywords: ["legacy"], triggers: ["user", "subagent"], priority: 0 },
+    });
+    expect(state.enterpriseTreeDraft).toBeNull();
+  });
+
+  it("closes saved settings before the post-write refresh finishes", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let resolveDetail: ((value: unknown) => void) | undefined;
+    let resolveList: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.export") {
+        return Promise.resolve({
+          content: JSON.stringify({
+            schema: "clawworks.workflow-tree",
+            schemaVersion: 1,
+            id: "acme.support",
+            version: "1.0.0",
+            name: "Support",
+            match: { triggers: ["user"] },
+            root: { id: "root", title: "Root" },
+          }),
+        });
+      }
+      if (method === "enterprise.trees.import") {
+        return Promise.resolve({ ok: true, treeId: "acme.support", replaced: null });
+      }
+      if (method === "enterprise.trees.get") {
+        return new Promise((resolve) => {
+          resolveDetail = resolve;
+        });
+      }
+      if (method === "enterprise.trees.list") {
+        return new Promise((resolve) => {
+          resolveList = resolve;
+        });
+      }
+      if (method === "enterprise.trees.history.list") {
+        return Promise.resolve({ versions: [] });
+      }
+      if (method === "tools.catalog") {
+        return Promise.resolve({ agentId: "main", profiles: [], groups: [] });
+      }
+      if (method === "skills.status") {
+        return Promise.resolve({ skills: [] });
+      }
+      return Promise.resolve({ foundations: [] });
+    });
+
+    beginEditEnterpriseTreeSettings(state);
+    const pending = submitEnterpriseTreeDraft(state);
+    await vi.waitFor(() => expect(state.enterpriseTreeDraft).toBeNull());
+    expect(state.enterpriseTreeSaving).toBe(false);
+
+    resolveDetail?.({ tree: treeDetail("acme.support") });
+    resolveList?.({ trees: [], importErrors: [] });
+    await pending;
+  });
+
+  it("lets a submitted settings form close while its write settles", () => {
+    const { state } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginEditEnterpriseTreeSettings(state);
+    state.enterpriseTreeSaving = true;
+
+    cancelEnterpriseTreeDraft(state);
+
+    expect(state.enterpriseTreeDraft).toBeNull();
+    expect(state.enterpriseTreeSaving).toBe(true);
+  });
+
+  it("cancels a settings save before its export becomes an import", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let resolveExport: ((value: unknown) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+    beginEditEnterpriseTreeSettings(state);
+
+    const pending = submitEnterpriseTreeDraft(state);
+    await vi.waitFor(() => expect(resolveExport).toBeDefined());
+    cancelEnterpriseTreeDraft(state);
+    resolveExport?.({
+      content: JSON.stringify({
+        schema: "clawworks.workflow-tree",
+        schemaVersion: 1,
+        id: "acme.support",
+        version: "1.0.0",
+        name: "Support",
+        root: { id: "root", title: "Root" },
+      }),
+    });
+    await pending;
+
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["enterprise.trees.export"]);
+    expect(state.enterpriseTreeDraft).toBeNull();
+    expect(state.enterpriseTreeSaving).toBe(false);
+  });
+
+  it("drops hidden write drafts when operator.admin is lost", () => {
+    const { state } = createState();
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginEditEnterpriseTreeSettings(state);
+    state.enterpriseGuidanceDraft = {
+      treeId: "acme.support",
+      nodeId: "acme.support.root",
+      expectedHash: "hash-acme.support",
+      title: "Root",
+      parentId: null,
+      position: 0,
+      description: "",
+      text: "draft",
+      contextHints: [],
+      expectedOutput: "",
+      audit: false,
+      error: null,
+    };
+
+    reconcileEnterpriseEditAccess(state, false);
+
+    expect(state.enterpriseTreeDraft).toBeNull();
+    expect(state.enterpriseGuidanceDraft).toBeNull();
+  });
+
+  it("drops credential drafts at every gateway identity boundary", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, {
+      transport: "streamable-http",
+      url: "https://mcp.example.test",
+      headers: [{ name: "Authorization", value: "secret", stored: false }],
+    });
+    state.enterpriseMcpRemoveConfirm = "other-server";
+    state.enterpriseBundleStatus = { kind: "warning", message: "protected policy id" };
+
+    reconcileEnterpriseEditAccess(state, true);
+
+    expect(state.enterpriseMcpDraft).toBeNull();
+    expect(state.enterpriseMcpRemoveConfirm).toBeNull();
+    expect(state.enterpriseBundleStatus).toBeNull();
+  });
+
+  it("refuses to create a new tree over an existing id", () => {
+    const { state } = createState();
+    state.enterpriseTrees = [
+      { id: "acme.other", version: "1", name: "Other", source: "imported", nodeCount: 1 },
+    ];
     beginNewEnterpriseTree(state);
-    expect(state.enterpriseTreeEditTreeId).toBeNull();
-    expect(state.enterpriseTreeEditContent).toContain("schema: clawworks.workflow-tree");
+    editEnterpriseTreeDraft(state, {
+      id: "acme.other",
+      name: "Replacement",
+      rootId: "root",
+      rootTitle: "Root",
+    });
+    void submitEnterpriseTreeDraft(state);
 
-    await setEnterpriseTreeEditFormat(state, "json");
-
-    // The editor now holds a JSON template, not an export of acme.other.
-    expect(request).not.toHaveBeenCalledWith("enterprise.trees.export", expect.anything());
-    expect(state.enterpriseTreeEditContent.trimStart().startsWith("{")).toBe(true);
-    expect(state.enterpriseTreeEditContent).toContain('"schema": "clawworks.workflow-tree"');
+    expect(state.enterpriseTreeDraft?.error).toBe("id-duplicate");
+    expect(state.enterpriseTreeEditing).toBe(false);
   });
 
   it("keeps the selection and warns when remove reports nothing was removed", async () => {
     const { state, request } = createState();
     state.enterpriseSelectedTreeId = "clawworks.assist";
     state.enterpriseTreeDetail = treeDetail("clawworks.assist", "builtin");
-    request.mockResolvedValue({ removed: false });
 
-    requestRemoveEnterpriseTree(state, "clawworks.assist");
+    await requestRemoveEnterpriseTree(state, "clawworks.assist");
     await confirmEnterpriseTreeAction(state);
 
     // A built-in cannot be removed; the selection stays and the id is unaffected.
     expect(state.enterpriseSelectedTreeId).toBe("clawworks.assist");
     expect(state.enterpriseTreeDetail).not.toBeNull();
     expect(state.enterpriseTreeIssue).toContain("clawworks.assist");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("keeps a changed tree selected and locks edits while guarded removal is pending", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let finishRemove: ((value: unknown) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishRemove = resolve;
+        }),
+    );
+
+    await requestRemoveEnterpriseTree(state, "acme.support");
+    const pending = confirmEnterpriseTreeAction(state);
+    expect(state.enterpriseTreeSaving).toBe(true);
+    selectEnterpriseTree(state, "acme.support");
+
+    finishRemove?.({ removed: false, reason: "tree-changed" });
+    await pending;
+
+    expect(state.enterpriseTreeSaving).toBe(false);
+    expect(state.enterpriseSelectedTreeId).toBe("acme.support");
+    expect(state.enterpriseTreeIssue).toContain("changed since it was loaded");
+  });
+
+  it("drops the stale detail when a removal outcome is unknown", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    state.enterpriseTreeWarnings = [{ path: "root", message: "stale warning" }];
+    state.enterpriseTreeVersions = [
+      { revision: 1, version: "1.0.0", name: "Support", sourceFormat: "yaml", savedAt: 1 },
+    ];
+    request.mockRejectedValue(new Error("connection lost after send"));
+
+    await requestRemoveEnterpriseTree(state, "acme.support");
+    await confirmEnterpriseTreeAction(state);
+
+    expect(state.enterpriseSelectedTreeId).toBe("acme.support");
+    expect(state.enterpriseTreeDetail).toBeNull();
+    expect(state.enterpriseTreeWarnings).toBeNull();
+    expect(state.enterpriseTreeVersions).toEqual([]);
+    expect(state.enterpriseTreeIssue).toContain("may or may not have been applied");
+    expect(state.enterpriseTreeIssue).toContain("refresh");
   });
 
   it("re-fetches the historical revision (not export) when a history draft switches format", async () => {
     const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
     request.mockResolvedValue({ content: "id: acme.support\nversion: 1.0.0\n" });
     await loadEnterpriseTreeVersion(state, "acme.support", 2);
     expect(state.enterpriseTreeEditRevision).toBe(2);
@@ -1016,6 +2074,7 @@ describe("enterprise tree editing", () => {
   it("keeps format and content in sync when a format-switch reseed fails", async () => {
     const { state, request } = createState();
     state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
     request.mockResolvedValueOnce({ content: "id: acme.support\n", source: "imported" });
     await beginEditEnterpriseTree(state);
     expect(state.enterpriseTreeEditFormat).toBe("yaml");
@@ -1033,6 +2092,8 @@ describe("enterprise tree editing", () => {
 
   it("clears a stale export error after a successful export", async () => {
     const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
     state.enterpriseTreeSaveError = "previous export failed";
     request.mockResolvedValue({ content: "id: acme.support\n", source: "imported" });
     // jsdom does not implement object URLs; stub them + the anchor click so the
@@ -1048,6 +2109,27 @@ describe("enterprise tree editing", () => {
       Reflect.deleteProperty(URL, "revokeObjectURL");
       clickSpy.mockRestore();
     }
+  });
+
+  it("does not paint a late export failure onto a newer draft", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    let finishExport: ((value: unknown) => void) | undefined;
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishExport = resolve;
+        }),
+    );
+
+    const pending = exportEnterpriseTree(state, "acme.support", "yaml");
+    beginNewEnterpriseTree(state);
+    state.enterpriseTreeSaveError = "newer draft failed";
+    finishExport?.({ content: null, reason: "old export failed" });
+    await pending;
+
+    expect(state.enterpriseTreeSaveError).toBe("newer draft failed");
   });
 
   it("keeps user typing over a late format-switch reseed", async () => {
@@ -1130,6 +2212,9 @@ describe("enterprise tree editing", () => {
     // ...then the operator saves before it resolves.
     requestSaveEnterpriseTree(state);
     const savePending = confirmEnterpriseTreeAction(state);
+    await vi.waitFor(() => expect(resolveImport).toBeDefined());
+    selectEnterpriseTree(state, "acme.a");
+    expect(state.enterpriseTreeEditing).toBe(true);
 
     // The stale reseed resolves; it must not replace the submitted content.
     resolveExport?.({ content: "reseeded json content", source: "imported" });
@@ -1140,11 +2225,12 @@ describe("enterprise tree editing", () => {
     await savePending;
   });
 
-  it("does not clobber a newer draft when a slow save completes", async () => {
+  it("preserves a newer draft error while a superseded save reconcile stalls", async () => {
     const { state } = createState();
     state.enterpriseTreeEditing = true;
     state.enterpriseTreeEditContent = "id: acme.a\n";
     let resolveImport: ((value: unknown) => void) | undefined;
+    let resolveTreeList: ((value: unknown) => void) | undefined;
     (state.client as unknown as { request: (method: string) => Promise<unknown> }).request = (
       method,
     ) => {
@@ -1156,6 +2242,11 @@ describe("enterprise tree editing", () => {
       if (method === "enterprise.runs.list") {
         return Promise.resolve({ runs: [] });
       }
+      if (method === "enterprise.trees.list") {
+        return new Promise((resolve) => {
+          resolveTreeList = resolve;
+        });
+      }
       return Promise.resolve({ trees: [], importErrors: [] });
     };
 
@@ -1163,14 +2254,76 @@ describe("enterprise tree editing", () => {
     const pending = confirmEnterpriseTreeAction(state); // import in flight
     // The operator starts a new draft during the save.
     beginNewEnterpriseTree(state);
+    state.enterpriseError = "newer draft failed";
 
     resolveImport?.({ ok: true, treeId: "acme.a", replaced: null });
+    await vi.waitFor(() => expect(resolveTreeList).toBeDefined());
+
+    // loadEnterprise clears its banner at start; the superseded reconcile must
+    // restore the newer screen's error without waiting for the stalled list.
+    expect(state.enterpriseError).toBe("newer draft failed");
+    resolveTreeList?.({ trees: [], importErrors: [] });
     await pending;
 
-    // The older save must not reset/reopen over the new-tree draft.
-    expect(state.enterpriseTreeEditing).toBe(true);
-    expect(state.enterpriseTreeEditTreeId).toBeNull();
-    expect(state.enterpriseTreeEditContent).toContain("schema: clawworks.workflow-tree");
+    // The older save must not close the newer guided draft.
+    expect(state.enterpriseTreeEditing).toBe(false);
+    expect(state.enterpriseTreeDraft).not.toBeNull();
+    expect(state.enterpriseError).toBe("newer draft failed");
+  });
+
+  it("releases return navigation once a successful import starts its refresh", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseTreeDetail = treeDetail("acme.a");
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditTreeId = "acme.a";
+    state.enterpriseTreeEditGuard = { expectedHash: "hash-acme.a" };
+    state.enterpriseTreeEditContent = "id: acme.a\n";
+    let finishImport: ((value: unknown) => void) | undefined;
+    let finishTreeList: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method, params) => {
+      if (method === "enterprise.trees.import") {
+        return new Promise((resolve) => {
+          finishImport = resolve;
+        });
+      }
+      if (method === "enterprise.trees.get") {
+        return Promise.resolve({ tree: treeDetail((params as { treeId: string }).treeId) });
+      }
+      if (method === "enterprise.trees.history.list") {
+        return Promise.resolve({ versions: [] });
+      }
+      if (method === "enterprise.trees.list") {
+        return new Promise((resolve) => {
+          finishTreeList = resolve;
+        });
+      }
+      if (method === "enterprise.runs.list") {
+        return Promise.resolve({ runs: [] });
+      }
+      if (method === "tools.catalog") {
+        return Promise.resolve({ agentId: "main", profiles: [], groups: [] });
+      }
+      if (method === "skills.status") {
+        return Promise.resolve({ skills: [] });
+      }
+      return Promise.resolve({ foundations: [] });
+    });
+
+    requestSaveEnterpriseTree(state);
+    const pending = confirmEnterpriseTreeAction(state);
+    await vi.waitFor(() => expect(finishImport).toBeDefined());
+    selectEnterpriseTree(state, "acme.b");
+    expect(state.enterpriseSelectedTreeId).toBe("acme.b");
+    finishImport?.({ ok: true, treeId: "acme.a", replaced: null });
+    await vi.waitFor(() => expect(finishTreeList).toBeDefined());
+
+    selectEnterpriseTree(state, "acme.a");
+    expect(state.enterpriseSelectedTreeId).toBe("acme.a");
+    expect(request).toHaveBeenCalledWith("enterprise.trees.get", { treeId: "acme.a" });
+
+    finishTreeList?.({ trees: [], importErrors: [] });
+    await pending;
   });
 
   it("keeps a selection started during the post-save registry reload", async () => {
@@ -1220,14 +2373,121 @@ describe("enterprise tree editing", () => {
     expect(state.enterpriseSelectedTreeId).toBe("other.tree");
   });
 
+  it("does not load history or warnings over a draft started during post-save detail", async () => {
+    const { state, request } = createState();
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditContent = "id: acme.a\n";
+    let resolveDetail: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.import") {
+        return Promise.resolve({
+          ok: true,
+          treeId: "acme.a",
+          replaced: null,
+          warnings: [{ path: "root", message: "saved warning" }],
+        });
+      }
+      if (method === "enterprise.runs.list") {
+        return Promise.resolve({ runs: [] });
+      }
+      if (method === "enterprise.trees.list") {
+        return Promise.resolve({ trees: [], importErrors: [] });
+      }
+      if (method === "enterprise.trees.get") {
+        return new Promise((resolve) => {
+          resolveDetail = resolve;
+        });
+      }
+      return Promise.reject(new Error(`unexpected ${method}`));
+    });
+
+    requestSaveEnterpriseTree(state);
+    const pending = confirmEnterpriseTreeAction(state);
+    await vi.waitFor(() => expect(resolveDetail).toBeDefined());
+    beginNewEnterpriseTree(state);
+    resolveDetail?.({ tree: treeDetail("acme.a") });
+    await pending;
+
+    expect(state.enterpriseTreeDraft).not.toBeNull();
+    expect(state.enterpriseTreeWarnings).toBeNull();
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.history.list", expect.anything());
+  });
+
+  it("withholds stale mutations until the saved detail hash reloads", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseTreeDetail = treeDetail("acme.a");
+    state.enterpriseTreeEditing = true;
+    state.enterpriseTreeEditTreeId = "acme.a";
+    state.enterpriseTreeEditGuard = { expectedHash: "hash-acme.a" };
+    state.enterpriseTreeEditContent = "id: acme.a\n";
+    let resolveTreeList: ((value: unknown) => void) | undefined;
+    let resolveDetail: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.import") {
+        return Promise.resolve({ ok: true, treeId: "acme.a", replaced: null });
+      }
+      if (method === "enterprise.trees.get") {
+        return new Promise((resolve) => {
+          resolveDetail = resolve;
+        });
+      }
+      if (method === "enterprise.runs.list") {
+        return Promise.resolve({ runs: [] });
+      }
+      if (method === "enterprise.trees.list") {
+        return new Promise((resolve) => {
+          resolveTreeList = resolve;
+        });
+      }
+      if (method === "enterprise.trees.history.list") {
+        return Promise.resolve({ versions: [] });
+      }
+      if (method === "tools.catalog") {
+        return Promise.resolve({ agentId: "main", profiles: [], groups: [] });
+      }
+      if (method === "skills.status") {
+        return Promise.resolve({ skills: [] });
+      }
+      return Promise.resolve({ foundations: [] });
+    });
+
+    requestSaveEnterpriseTree(state);
+    const savePending = confirmEnterpriseTreeAction(state);
+    await vi.waitFor(() => {
+      expect(resolveTreeList).toBeDefined();
+      expect(resolveDetail).toBeDefined();
+    });
+    expect(state.enterpriseTreeSaving).toBe(false);
+    expect(state.enterpriseTreeDetail).toBeNull();
+
+    // No remove action can capture the old hash while the authoritative detail
+    // reload is pending.
+    await requestRemoveEnterpriseTree(state, "acme.a");
+    expect(state.enterpriseTreeConfirm).toBeNull();
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.remove", expect.anything());
+
+    resolveDetail?.({ tree: { ...treeDetail("acme.a"), hash: "hash-after-save" } });
+    resolveTreeList?.({
+      trees: [{ id: "acme.a", version: "1", name: "A", source: "imported", nodeCount: 1 }],
+      importErrors: [],
+    });
+    await savePending;
+
+    await requestRemoveEnterpriseTree(state, "acme.a");
+    expect(state.enterpriseTreeConfirm).toEqual({
+      kind: "remove",
+      treeId: "acme.a",
+      guard: { expectedHash: "hash-after-save" },
+    });
+  });
+
   it("does not clear a newer selection when a slow remove of another tree resolves", async () => {
-    const { state } = createState();
+    const { state, request } = createState();
     state.enterpriseSelectedTreeId = "acme.a";
     state.enterpriseTreeDetail = treeDetail("acme.a");
     let resolveRemove: ((value: unknown) => void) | undefined;
-    (state.client as unknown as { request: (method: string) => Promise<unknown> }).request = (
-      method,
-    ) => {
+    request.mockImplementation((method) => {
       if (method === "enterprise.trees.remove") {
         return new Promise((resolve) => {
           resolveRemove = resolve;
@@ -1239,10 +2499,25 @@ describe("enterprise tree editing", () => {
       if (method === "enterprise.trees.history.list") {
         return Promise.resolve({ versions: [] });
       }
-      return Promise.resolve({ runs: [] });
-    };
+      if (method === "enterprise.runs.list") {
+        return Promise.resolve({ runs: [] });
+      }
+      if (method === "enterprise.trees.list") {
+        return Promise.resolve({
+          trees: [{ id: "acme.b", version: "1", name: "B", source: "imported", nodeCount: 1 }],
+          importErrors: [],
+        });
+      }
+      if (method === "tools.catalog") {
+        return Promise.resolve({ agentId: "main", profiles: [], groups: [] });
+      }
+      if (method === "skills.status") {
+        return Promise.resolve({ skills: [] });
+      }
+      return Promise.resolve({ foundations: [] });
+    });
 
-    requestRemoveEnterpriseTree(state, "acme.a");
+    await requestRemoveEnterpriseTree(state, "acme.a");
     const pending = confirmEnterpriseTreeAction(state); // remove in flight
     // The operator selects tree B while A's remove is still pending.
     selectEnterpriseTree(state, "acme.b");
@@ -1253,10 +2528,41 @@ describe("enterprise tree editing", () => {
 
     // B's selection must survive; the slow remove of A must not clear it.
     expect(state.enterpriseSelectedTreeId).toBe("acme.b");
+    expect(state.enterpriseTrees.map((tree) => tree.id)).toEqual(["acme.b"]);
+    expect(request).toHaveBeenCalledWith("enterprise.trees.list", {});
+  });
+
+  it("does not discard a newer draft when a slow remove resolves", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseTreeDetail = treeDetail("acme.a");
+    let finishRemove: ((value: unknown) => void) | undefined;
+    request.mockImplementation((method) => {
+      if (method === "enterprise.trees.remove") {
+        return new Promise((resolve) => {
+          finishRemove = resolve;
+        });
+      }
+      return Promise.reject(new Error(`unexpected ${method}`));
+    });
+
+    await requestRemoveEnterpriseTree(state, "acme.a");
+    const pending = confirmEnterpriseTreeAction(state);
+    beginNewEnterpriseTree(state);
+    state.enterpriseError = "newer draft failed";
+    finishRemove?.({ removed: true });
+    await pending;
+
+    expect(state.enterpriseTreeDraft).not.toBeNull();
+    expect(state.enterpriseError).toBe("newer draft failed");
+    expect(request).toHaveBeenCalledWith("enterprise.runs.list", {});
   });
 
   it("keeps an unrelated tree's editor when removing a corrupt row from the banner", async () => {
     const { state, request } = createState();
+    state.enterpriseImportErrors = [
+      { treeId: "corrupt.b", message: "invalid stored row", fingerprint: "corrupt-b-v1" },
+    ];
     state.enterpriseSelectedTreeId = "acme.a";
     state.enterpriseTreeDetail = treeDetail("acme.a");
     state.enterpriseTreeEditing = true;
@@ -1272,18 +2578,23 @@ describe("enterprise tree editing", () => {
       return { trees: [], importErrors: [] };
     });
 
-    requestRemoveEnterpriseTree(state, "corrupt.b");
+    await requestRemoveEnterpriseTree(state, "corrupt.b");
     await confirmEnterpriseTreeAction(state);
 
     // Removing corrupt.b must not discard the unsaved draft for acme.a.
     expect(state.enterpriseSelectedTreeId).toBe("acme.a");
     expect(state.enterpriseTreeEditing).toBe(true);
     expect(state.enterpriseTreeEditContent).toBe("unsaved draft");
+    expect(request).toHaveBeenCalledWith("enterprise.trees.remove", {
+      treeId: "corrupt.b",
+      expectedInvalidFingerprint: "corrupt-b-v1",
+    });
   });
 
   it("drops a stale editor seed when a newer edit intent supersedes it", async () => {
     const { state } = createState();
     state.enterpriseSelectedTreeId = "acme.a";
+    state.enterpriseTreeDetail = treeDetail("acme.a");
     let resolveExport: ((value: unknown) => void) | undefined;
     (state.client as unknown as { request: () => Promise<unknown> }).request = () =>
       new Promise((resolve) => {
@@ -1296,9 +2607,9 @@ describe("enterprise tree editing", () => {
     resolveExport?.({ content: "id: acme.a\n", source: "imported" });
     await pending;
 
-    // The stale export of A must not overwrite the new-tree template.
-    expect(state.enterpriseTreeEditTreeId).toBeNull();
-    expect(state.enterpriseTreeEditContent).toContain("schema: clawworks.workflow-tree");
+    // The stale export of A must not replace the newer guided draft.
+    expect(state.enterpriseTreeDraft).not.toBeNull();
+    expect(state.enterpriseTreeEditing).toBe(false);
   });
 
   it("clears all governed data when history-list is the first read to lose operator.read", async () => {
@@ -1349,6 +2660,20 @@ describe("enterprise tree editing", () => {
     expect(state.enterpriseTreeVersions).toEqual([]);
     expect(state.enterpriseTreeVersionsLoading).toBe(true);
   });
+
+  it("surfaces non-auth object and revision load failures", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeWithObjectEntity("acme.support", "claim");
+    request.mockRejectedValue(new Error("read failed"));
+
+    selectEnterpriseNode(state, "acme.support.root");
+    await loadEnterpriseTreeVersions(state, "acme.support");
+    await flushMicrotasks();
+
+    expect(state.enterpriseNodeObjectsError).toBe("Error: read failed");
+    expect(state.enterpriseTreeVersionsError).toBe("Error: read failed");
+  });
 });
 
 // The nested definition enterprise.trees.export serializes; its root id matches
@@ -1367,158 +2692,6 @@ function supportExportContent(): string {
     },
   });
 }
-
-describe("add child node (P5)", () => {
-  it("beginAddEnterpriseNode opens a draft scoped to the current tree", () => {
-    const { state } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseNode(state, "acme.support.root");
-    expect(state.enterpriseNodeDraft).toEqual({
-      treeId: "acme.support",
-      parentId: "acme.support.root",
-      id: "",
-      title: "",
-      error: null,
-    });
-  });
-
-  it("does not open a draft when no tree is loaded", () => {
-    const { state } = createState();
-    beginAddEnterpriseNode(state, "acme.support.root");
-    expect(state.enterpriseNodeDraft).toBeNull();
-  });
-
-  it("clears an open draft when the operator switches trees", () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ tree: treeDetail("acme.other") });
-    beginAddEnterpriseNode(state, "acme.support.root");
-    selectEnterpriseTree(state, "acme.other");
-    expect(state.enterpriseNodeDraft).toBeNull();
-  });
-
-  it("editing the draft updates fields and clears a prior error", () => {
-    const { state } = createState();
-    state.enterpriseNodeDraft = {
-      treeId: "acme.support",
-      parentId: "acme.support.root",
-      id: "bad id",
-      title: "",
-      error: "id-pattern",
-    };
-    editEnterpriseNodeDraft(state, { id: "acme.support.step" });
-    expect(state.enterpriseNodeDraft).toMatchObject({ id: "acme.support.step", error: null });
-    editEnterpriseNodeDraft(state, { title: "Step" });
-    expect(state.enterpriseNodeDraft?.title).toBe("Step");
-  });
-
-  it("cancel clears the draft", () => {
-    const { state } = createState();
-    beginAddEnterpriseNode(state, "acme.support.root");
-    cancelAddEnterpriseNode(state);
-    expect(state.enterpriseNodeDraft).toBeNull();
-  });
-
-  it("splices the child into a fresh export and loads it into the editor", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: supportExportContent() });
-    beginAddEnterpriseNode(state, "acme.support.root");
-    editEnterpriseNodeDraft(state, { id: "acme.support.resolve" });
-    editEnterpriseNodeDraft(state, { title: "Resolve" });
-
-    await submitAddEnterpriseNode(state);
-
-    // It re-exported the canonical definition as JSON, not the lossy flat detail.
-    expect(request).toHaveBeenCalledWith("enterprise.trees.export", {
-      treeId: "acme.support",
-      format: "json",
-    });
-    // The draft closed and the editor opened on the spliced definition.
-    expect(state.enterpriseNodeDraft).toBeNull();
-    expect(state.enterpriseTreeEditing).toBe(true);
-    expect(state.enterpriseTreeEditFormat).toBe("json");
-    const parsed = JSON.parse(state.enterpriseTreeEditContent);
-    expect(parsed.root.children).toEqual([{ id: "acme.support.resolve", title: "Resolve" }]);
-    // The operator has not saved yet — no import happened.
-    expect(request).not.toHaveBeenCalledWith("enterprise.trees.import", expect.anything());
-  });
-
-  it("rejects an invalid id in the form without re-exporting", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseNode(state, "acme.support.root");
-    editEnterpriseNodeDraft(state, { id: "Bad Id", title: "X" });
-
-    await submitAddEnterpriseNode(state);
-
-    expect(state.enterpriseNodeDraft?.error).toBe("id-pattern");
-    expect(state.enterpriseTreeEditing).toBe(false);
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("rejects a duplicate id (already a node in the tree)", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseNode(state, "acme.support.root");
-    editEnterpriseNodeDraft(state, { id: "acme.support.root", title: "X" });
-
-    await submitAddEnterpriseNode(state);
-
-    expect(state.enterpriseNodeDraft?.error).toBe("id-duplicate");
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("requires a title", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    beginAddEnterpriseNode(state, "acme.support.root");
-    editEnterpriseNodeDraft(state, { id: "acme.support.resolve", title: "   " });
-
-    await submitAddEnterpriseNode(state);
-
-    expect(state.enterpriseNodeDraft?.error).toBe("title-empty");
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("surfaces an export failure in the form", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockResolvedValue({ content: null, reason: "unavailable" });
-    beginAddEnterpriseNode(state, "acme.support.root");
-    editEnterpriseNodeDraft(state, { id: "acme.support.resolve", title: "Resolve" });
-
-    await submitAddEnterpriseNode(state);
-
-    expect(state.enterpriseNodeDraft?.error).toBe("export-failed");
-    expect(state.enterpriseTreeEditing).toBe(false);
-  });
-
-  it("abandons a submit whose form was edited during the slow export", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    let resolveExport: ((value: unknown) => void) | undefined;
-    request.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveExport = resolve;
-        }),
-    );
-    beginAddEnterpriseNode(state, "acme.support.root");
-    editEnterpriseNodeDraft(state, { id: "acme.support.resolve" });
-    editEnterpriseNodeDraft(state, { title: "Resolve" });
-
-    const pending = submitAddEnterpriseNode(state);
-    // The operator keeps typing while the export is still in flight.
-    editEnterpriseNodeDraft(state, { title: "Renamed" });
-    resolveExport?.({ content: supportExportContent() });
-    await pending;
-
-    // The stale submit must not close the form or seed the editor with old values.
-    expect(state.enterpriseTreeEditing).toBe(false);
-    expect(state.enterpriseNodeDraft?.title).toBe("Renamed");
-  });
-});
 
 describe("enterprise binding detail card", () => {
   const detail = {
@@ -1593,370 +2766,36 @@ describe("enterprise binding detail card", () => {
   });
 });
 
-describe("enterprise binding picker (tool grants / declared skills)", () => {
-  const exportThenImport = (request: ReturnType<typeof createState>["request"]) => {
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        return { ok: true, treeId: "acme.support" };
-      }
-      return {};
-    });
-  };
-
-  it("applies the picked tool grants directly, without routing through the editor", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    exportThenImport(request);
-    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
-    toggleEnterpriseBindingPickerValue(state, "group:enterprise");
-
-    await submitEnterpriseBindingPicker(state);
-
-    expect(request).toHaveBeenCalledWith("enterprise.trees.export", {
-      treeId: "acme.support",
-      format: "json",
-    });
-    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
-    if (!importCall) {
-      throw new Error("expected an enterprise.trees.import call");
-    }
-    const parsed = JSON.parse((importCall[1] as { content: string }).content);
-    expect(parsed.root.ontology.allowedTools).toContain("group:enterprise");
-    // The operator picked it; there is nothing to review, so no editor opens.
-    expect(state.enterpriseTreeEditing).toBe(false);
-    expect(state.enterpriseBindingPicker).toBeNull();
-  });
-
-  it("writes several picks as one revision", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    exportThenImport(request);
-    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
-    toggleEnterpriseBindingPickerValue(state, "memory_search");
-    toggleEnterpriseBindingPickerValue(state, "message");
-
-    await submitEnterpriseBindingPicker(state);
-
-    const imports = request.mock.calls.filter(([method]) => method === "enterprise.trees.import");
-    expect(imports).toHaveLength(1);
-    const parsed = JSON.parse((imports[0][1] as { content: string }).content);
-    expect(parsed.root.ontology.allowedTools).toEqual(
-      expect.arrayContaining(["memory_search", "message"]),
-    );
-  });
-
-  it("untick removes a pick", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    exportThenImport(request);
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-
-    await submitEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker?.failure?.kind).toBe("entry-empty");
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("declares a skill on the selected step", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    exportThenImport(request);
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-
-    await submitEnterpriseBindingPicker(state);
-
-    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
-    if (!importCall) {
-      throw new Error("expected an enterprise.trees.import call");
-    }
-    const parsed = JSON.parse((importCall[1] as { content: string }).content);
-    expect(parsed.root.ontology.skills).toEqual(["refund-policy"]);
-  });
-
-  it("rejects an empty selection without re-exporting", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-
-    await submitEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker?.failure?.kind).toBe("entry-empty");
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("keeps the skill-name contract on the free-text escape hatch", async () => {
-    // Tools accept globs, so the custom field is theirs; a skill or foundation
-    // typed there must still satisfy what the import will accept.
-    for (const bad of ["Refund Policy", "refund--policy", "-refund", "a".repeat(65)]) {
-      const { state, request } = createState();
-      state.enterpriseTreeDetail = treeDetail("acme.support");
-      openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-      setEnterpriseBindingPickerCustom(state, bad);
-
-      await submitEnterpriseBindingPicker(state);
-
-      expect(state.enterpriseBindingPicker?.failure?.kind).toBe("skill-name-invalid");
-      expect(request).not.toHaveBeenCalled();
-    }
-  });
-
-  it("does not apply the skill contract to tool grants", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    exportThenImport(request);
-    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
-    setEnterpriseBindingPickerCustom(state, "memory_*");
-
-    await submitEnterpriseBindingPicker(state);
-
-    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
-    if (!importCall) {
-      throw new Error("expected an enterprise.trees.import call");
-    }
-    const parsed = JSON.parse((importCall[1] as { content: string }).content);
-    expect(parsed.root.ontology.allowedTools).toContain("memory_*");
-  });
-
-  it("rejects a foundation id the import contract would refuse", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    openEnterpriseBindingPicker(state, "acme.support.root", "knowledgeFoundations");
-    setEnterpriseBindingPickerCustom(state, "Acme Runbooks");
-
-    await submitEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker?.failure?.kind).toBe("foundation-id-invalid");
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("keeps a rejected write open with the issue paths the server sent", async () => {
-    // A rejection is a definite refusal that wrote nothing, and its paths name the
-    // value to change. Collapsing it into the generic "the save did not confirm"
-    // would leave the operator with no way to correct the entry.
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        return {
-          ok: false,
-          issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
-        };
-      }
-      return {};
-    });
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-
-    await submitEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker?.failure).toEqual({
-      kind: "import-rejected",
-      issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
-    });
-    expect(state.enterpriseBindingPicker?.phase).toBe("idle");
-    // The editor owns that field; writing it here would show these issues against
-    // a draft they do not describe.
-    expect(state.enterpriseTreeSaveIssues).toBeNull();
-  });
-
-  it("reports a rejection that lands after the dialog was closed", async () => {
-    // Closing during the write says the save still lands. When it does not, the
-    // dismissed dialog cannot carry the failure, so the tree banner has to.
-    const { state, request } = createState();
-    state.enterpriseSelectedTreeId = "acme.support";
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    let rejectImport: ((value: unknown) => void) | null = null;
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        return new Promise((resolve) => {
-          rejectImport = resolve;
-        });
-      }
-      return {};
-    });
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-    const submitted = submitEnterpriseBindingPicker(state);
-    await vi.waitFor(() => expect(state.enterpriseBindingPicker?.phase).toBe("writing"));
-
-    cancelEnterpriseBindingPicker(state);
-    if (!rejectImport) {
-      throw new Error("expected the import to be in flight");
-    }
-    (rejectImport as (value: unknown) => void)({
-      ok: false,
-      issues: [{ path: "root.ontology.skills.0", message: "unknown skill" }],
-    });
-    await submitted;
-
-    expect(state.enterpriseBindingPicker).toBeNull();
-    expect(state.enterpriseTreeSaveError).toContain("root.ontology.skills.0: unknown skill");
-  });
-
-  it("drops a late failure once the operator moved to another tree", async () => {
-    // The banner renders beside whichever tree is selected, so posting this one
-    // there would report a failure of the work-map now on screen.
-    const { state, request } = createState();
-    state.enterpriseSelectedTreeId = "acme.support";
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    let finishImport: ((value: unknown) => void) | null = null;
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        return new Promise((resolve) => {
-          finishImport = resolve;
-        });
-      }
-      return {};
-    });
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-    const submitted = submitEnterpriseBindingPicker(state);
-    await vi.waitFor(() => expect(state.enterpriseBindingPicker?.phase).toBe("writing"));
-
-    cancelEnterpriseBindingPicker(state);
-    state.enterpriseSelectedTreeId = "acme.billing";
-    if (!finishImport) {
-      throw new Error("expected the import to be in flight");
-    }
-    (finishImport as (value: unknown) => void)({ ok: false, issues: [] });
-    await submitted;
-
-    expect(state.enterpriseTreeSaveError).toBeNull();
-  });
-
-  it("says nothing was written when the import never left the client", async () => {
-    // GatewayBrowserClient rejects before ws.send when the socket is not open, so
-    // this is a definite non-write — telling the operator it may have applied
-    // would send them to check a tree that never changed.
-    const { state, request } = createState();
-    state.enterpriseSelectedTreeId = "acme.support";
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        throw new GatewayNotConnectedError();
-      }
-      return {};
-    });
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-
-    await submitEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker?.failure).toEqual({ kind: "import-not-sent" });
-  });
-
-  it("keeps the gateway's message when the server refuses the write", async () => {
-    // An error frame is a definite refusal whose message names the reason; the
-    // generic "may have applied" copy would discard it.
-    const { state, request } = createState();
-    state.enterpriseSelectedTreeId = "acme.support";
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        throw new GatewayRequestError({ code: "FORBIDDEN", message: "operator.admin required" });
-      }
-      return {};
-    });
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-
-    await submitEnterpriseBindingPicker(state);
-
-    const failure = state.enterpriseBindingPicker?.failure;
-    expect(failure?.kind).toBe("import-refused");
-    expect(failure?.kind === "import-refused" && failure.message).toContain(
-      "operator.admin required",
-    );
-  });
-
-  it("drops a late failure once a newer draft owns the editor", async () => {
-    // New Tree keeps the selection but replaces the draft, and the banner renders
-    // inside that editor — so this failure would read as a problem with the tree
-    // the operator is now writing.
-    const { state, request } = createState();
-    state.enterpriseSelectedTreeId = "acme.support";
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    let finishImport: ((value: unknown) => void) | null = null;
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        return new Promise((resolve) => {
-          finishImport = resolve;
-        });
-      }
-      return {};
-    });
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-    const submitted = submitEnterpriseBindingPicker(state);
-    await vi.waitFor(() => expect(state.enterpriseBindingPicker?.phase).toBe("writing"));
-
-    cancelEnterpriseBindingPicker(state);
-    beginNewEnterpriseTree(state);
-    if (!finishImport) {
-      throw new Error("expected the import to be in flight");
-    }
-    (finishImport as (value: unknown) => void)({ ok: false, issues: [] });
-    await submitted;
-
-    expect(state.enterpriseTreeSaveError).toBeNull();
-  });
-
-  it("cancel works while an import is pending", () => {
-    // The client has no per-request timeout, so refusing to close while busy
-    // would trap the operator behind a native modal with every control disabled.
-    // A late result cannot resurrect it: submit only writes back when this exact
-    // picker object is still the one on screen.
-    const { state } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    const picker = state.enterpriseBindingPicker;
-    if (!picker) {
-      throw new Error("expected an open picker");
-    }
-    state.enterpriseBindingPicker = { ...picker, phase: "writing" };
-
-    cancelEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker).toBeNull();
-  });
-
-  it("cancel clears the picker", () => {
-    const { state } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
-    toggleEnterpriseBindingPickerValue(state, "refund-policy");
-
-    cancelEnterpriseBindingPicker(state);
-
-    expect(state.enterpriseBindingPicker).toBeNull();
-  });
-});
-
 describe("enterprise MCP registration", () => {
+  it("does not replace an open registration draft with another server", () => {
+    const { state } = createState();
+    beginEnterpriseMcpDraft(state);
+    editEnterpriseMcpDraft(state, { name: "unsaved-server" });
+
+    beginEnterpriseMcpEdit(state, {
+      name: "existing-server",
+      server: { command: "existing-command" },
+    });
+
+    expect(state.enterpriseMcpDraft).toMatchObject({
+      editing: null,
+      name: "unsaved-server",
+    });
+  });
+
+  it("does not open a draft over a pending removal confirmation", () => {
+    const { state } = createState();
+    state.enterpriseMcpRemoveConfirm = "existing-server";
+
+    beginEnterpriseMcpDraft(state);
+    beginEnterpriseMcpEdit(state, {
+      name: "existing-server",
+      server: { command: "existing-command" },
+    });
+
+    expect(state.enterpriseMcpDraft).toBeNull();
+  });
+
   it("hands a stdio server to the config writer and closes the form", () => {
     const { state } = createState();
     beginEnterpriseMcpDraft(state);
@@ -2225,9 +3064,36 @@ describe("enterprise catalogs", () => {
     expect(state.enterpriseCatalogPhase).toBe("ready");
   });
 
+  it("publishes a settled catalog without waiting for a stalled sibling", async () => {
+    const { state, request } = createState();
+    request.mockImplementation((method) => {
+      if (method === "tools.catalog") {
+        return Promise.resolve({
+          agentId: "main",
+          profiles: [],
+          groups: [{ id: "ready", label: "Ready", source: "core", tools: [] }],
+        });
+      }
+      if (method === "skills.status") {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({ foundations: [] });
+    });
+
+    void loadEnterpriseCatalogs(state);
+
+    await vi.waitFor(() =>
+      expect(state.enterpriseToolGroups.map((group) => group.id)).toEqual(["ready"]),
+    );
+    expect(state.enterpriseCatalogPhase).toBe("loading");
+    expect(state.enterpriseCatalogErrors.tools).toBeNull();
+    expect(state.enterpriseCatalogErrors.skills).toBeUndefined();
+  });
+
   it("reloads after a tree import, which can prune bundled foundations", async () => {
     const { state, request } = createState();
     state.enterpriseTreeEditContent = "{}";
+    state.enterpriseTreeEditing = true;
     request.mockImplementation(async (method) => {
       if (method === "enterprise.trees.import") {
         return { ok: true, treeId: "acme.support" };
@@ -2269,93 +3135,6 @@ describe("enterprise catalogs", () => {
     await stale;
 
     expect(state.enterpriseToolGroups.map((group) => group.id)).toEqual(["enterprise"]);
-  });
-});
-
-describe("toggleEnterpriseCapabilityGrants", () => {
-  const exportThenImport = (request: ReturnType<typeof createState>["request"]) => {
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      if (method === "enterprise.trees.import") {
-        return { ok: true, treeId: "acme.support" };
-      }
-      return {};
-    });
-  };
-
-  it("writes the flag onto the exported definition", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    exportThenImport(request);
-
-    await toggleEnterpriseCapabilityGrants(state);
-
-    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
-    if (!importCall) {
-      throw new Error("expected an enterprise.trees.import call");
-    }
-    const parsed = JSON.parse((importCall[1] as { content: string }).content);
-    expect(parsed.capabilityGrants).toBe("explicit");
-    // Whole-tree replace through the ONE write path: the steps come back untouched.
-    expect(parsed.root.id).toBe("acme.support.root");
-    expect(state.enterpriseTreeSaveError).toBeNull();
-  });
-
-  it("removes the key rather than writing a second mode", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = { ...treeDetail("acme.support"), capabilityGrants: "explicit" };
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return {
-          content: JSON.stringify({
-            ...JSON.parse(supportExportContent()),
-            capabilityGrants: "explicit",
-          }),
-        };
-      }
-      if (method === "enterprise.trees.import") {
-        return { ok: true, treeId: "acme.support" };
-      }
-      return {};
-    });
-
-    await toggleEnterpriseCapabilityGrants(state);
-
-    const importCall = request.mock.calls.find(([method]) => method === "enterprise.trees.import");
-    if (!importCall) {
-      throw new Error("expected an enterprise.trees.import call");
-    }
-    const parsed = JSON.parse((importCall[1] as { content: string }).content);
-    expect("capabilityGrants" in parsed).toBe(false);
-  });
-
-  it("reports a refused write instead of leaving the mode ambiguous", async () => {
-    const { state, request } = createState();
-    state.enterpriseTreeDetail = treeDetail("acme.support");
-    request.mockImplementation(async (method: string) => {
-      if (method === "enterprise.trees.export") {
-        return { content: supportExportContent() };
-      }
-      throw new GatewayRequestError({
-        code: "UNAUTHORIZED",
-        message: "missing scope: operator.admin",
-      });
-    });
-
-    await toggleEnterpriseCapabilityGrants(state);
-
-    expect(state.enterpriseTreeSaveError).toContain("missing scope: operator.admin");
-    expect(state.enterpriseTreeSaving).toBe(false);
-  });
-
-  it("does nothing without a selected work-map", async () => {
-    const { state, request } = createState();
-
-    await toggleEnterpriseCapabilityGrants(state);
-
-    expect(request).not.toHaveBeenCalled();
   });
 });
 
@@ -2780,6 +3559,29 @@ describe("MCP header rows", () => {
 });
 
 describe("an MCP edit is pinned to the entry it opened on", () => {
+  it("refuses when only the redacted config revision changed", () => {
+    const { state } = createState();
+    const server = {
+      url: "https://a.dev",
+      transport: "sse",
+      headers: { Authorization: "__OPENCLAW_REDACTED__" },
+    };
+    beginEnterpriseMcpEdit(state, { name: "acme-remote", server, configHash: "before" });
+    let applied = 0;
+
+    submitEnterpriseMcpDraft(state, {
+      existingNames: ["acme-remote"],
+      existingServer: server,
+      currentConfigHash: "after",
+      apply: () => {
+        applied += 1;
+      },
+    });
+
+    expect(applied).toBe(0);
+    expect(state.enterpriseMcpDraft?.error).toBe("entry-changed");
+  });
+
   it("refuses when the registered server changed under the form", () => {
     // Another admin repointing the same name rotates its header too. Staging
     // this draft's URL with the stored-value sentinel would let config.set
@@ -2922,5 +3724,207 @@ describe("a blank command is not a stdio launch", () => {
 
     expect(state.enterpriseMcpDraft?.transport).toBe("sse");
     expect(state.enterpriseMcpDraft?.url).toBe("https://mcp.acme.dev");
+  });
+});
+
+describe("visual tree edit transaction", () => {
+  async function setup() {
+    const { state, request } = createState();
+    const tree = treeDetail("acme.support");
+    state.enterpriseSelectedTreeId = tree.id;
+    state.enterpriseTreeDetail = tree;
+    request.mockImplementation(async (method) => {
+      if (method === "enterprise.trees.export") {
+        return { content: supportExportContent() };
+      }
+      if (method === "enterprise.trees.import") {
+        return { ok: true, treeId: tree.id };
+      }
+      if (method === "enterprise.trees.get") {
+        return { tree };
+      }
+      if (method === "enterprise.trees.list") {
+        return { trees: [], importErrors: [] };
+      }
+      if (method === "enterprise.trees.history.list") {
+        return { versions: [] };
+      }
+      if (method === "tools.catalog") {
+        return { groups: [] };
+      }
+      if (method === "skills.status") {
+        return { skills: [] };
+      }
+      return { foundations: [] };
+    });
+    await beginEditEnterpriseTree(state, true);
+    request.mockClear();
+    return { state, request, tree };
+  }
+
+  it("requires edit mode before opening forms or removing bindings", async () => {
+    const { state, request } = createState();
+    state.enterpriseSelectedTreeId = "acme.support";
+    state.enterpriseTreeDetail = treeDetail("acme.support");
+    beginAddEnterpriseNode(state, "acme.support.root");
+    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
+    editEnterpriseNodeGuidance(state, "acme.support.root", { title: "Changed" });
+    await removeEnterpriseBinding(state, {
+      nodeId: "acme.support.root",
+      field: "allowedTools",
+      entry: "read",
+    });
+    expect(state.enterpriseNodeDraft).toBeNull();
+    expect(state.enterpriseBindingPicker).toBeNull();
+    expect(state.enterpriseGuidanceDraft).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("combines additions and removals locally and imports only after Save confirmation", async () => {
+    const { state, request, tree } = await setup();
+    openEnterpriseBindingPicker(state, "acme.support.root", "allowedTools");
+    toggleEnterpriseBindingPickerValue(state, "knowledge_search");
+    toggleEnterpriseBindingPickerValue(state, "read");
+    await submitEnterpriseBindingPicker(state);
+    await removeEnterpriseBinding(state, {
+      nodeId: "acme.support.root",
+      field: "allowedTools",
+      entry: "read",
+    });
+    beginAddEnterpriseNode(state, "acme.support.root");
+    editEnterpriseNodeDraft(state, { id: "acme.support.child", title: "Child" });
+    await submitAddEnterpriseNode(state);
+    expect(state.enterpriseTreeDetail?.nodes.map((node) => node.id)).toContain(
+      "acme.support.child",
+    );
+    expect(request).not.toHaveBeenCalled();
+    const draft = JSON.parse(state.enterpriseTreeEditContent);
+    expect(draft.root.ontology.allowedTools).toContain("knowledge_search");
+    expect(draft.root.ontology.allowedTools).not.toContain("read");
+    requestSaveEnterpriseTree(state);
+    expect(state.enterpriseTreeConfirm).toEqual({ kind: "save" });
+    expect(request).not.toHaveBeenCalled();
+    cancelEnterpriseTreeConfirm(state);
+    expect(state.enterpriseTreeEditing).toBe(true);
+    requestSaveEnterpriseTree(state);
+    await confirmEnterpriseTreeAction(state);
+    const imports = request.mock.calls.filter(([method]) => method === "enterprise.trees.import");
+    expect(imports).toHaveLength(1);
+    expect(imports[0][1]).toMatchObject({ expectedHash: tree.hash, format: "json" });
+    expect(JSON.parse((imports[0][1] as { content: string }).content)).toEqual(draft);
+    expect(state.enterpriseTreeEditing).toBe(false);
+    expect(state.enterpriseVisualEditOriginal).toBeNull();
+  });
+
+  it("cancel restores every local edit without a write", async () => {
+    const { state, request, tree } = await setup();
+    editEnterpriseNodeGuidance(state, "acme.support.root", { title: "Changed" });
+    await saveEnterpriseNodeGuidance(state, "acme.support.root");
+    await toggleEnterpriseCapabilityGrants(state);
+    await enableEnterpriseMcpGovernance(state, "acme.support.root");
+    await toggleEnterpriseCapabilityGrants(state);
+    await disableEnterpriseMcpGovernance(state);
+    expect(state.enterpriseTreeDetail?.nodes[0].title).toBe("Changed");
+    cancelEditEnterpriseTree(state);
+    expect(state.enterpriseTreeDetail).toEqual(tree);
+    expect(state.enterpriseTreeEditContent).toBe("");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("keeps staged changes when the server rejects the original hash", async () => {
+    const { state, request } = await setup();
+    await toggleEnterpriseCapabilityGrants(state);
+    const content = state.enterpriseTreeEditContent;
+    request.mockResolvedValue({
+      ok: false,
+      issues: [{ path: "id", message: "changed since it was loaded" }],
+    });
+    requestSaveEnterpriseTree(state);
+    await confirmEnterpriseTreeAction(state);
+    expect(state.enterpriseTreeEditing).toBe(true);
+    expect(state.enterpriseTreeEditContent).toBe(content);
+    expect(state.enterpriseTreeSaveIssues?.[0].message).toContain("changed since");
+  });
+
+  it("preserves the visible draft and save error across sidebar refreshes", async () => {
+    const { state, request } = await setup();
+    beginAddEnterpriseNode(state, "acme.support.root");
+    editEnterpriseNodeDraft(state, { id: "acme.support.child", title: "Child" });
+    await submitAddEnterpriseNode(state);
+    selectEnterpriseNode(state, "acme.support.child");
+    state.enterpriseTreeSaveError = "Save was refused";
+    const content = state.enterpriseTreeEditContent;
+    await refreshEnterprise(state);
+    expect(state.enterpriseTreeDetail?.nodes.map((node) => node.id)).toContain(
+      "acme.support.child",
+    );
+    expect(state.enterpriseSelectedNodeId).toBe("acme.support.child");
+    expect(state.enterpriseTreeEditContent).toBe(content);
+    expect(state.enterpriseTreeSaveError).toBe("Save was refused");
+    expect(request).not.toHaveBeenCalledWith("enterprise.trees.get", expect.anything());
+    editEnterpriseNodeGuidance(state, "acme.support.child", { title: "Renamed child" });
+    await saveEnterpriseNodeGuidance(state, "acme.support.child");
+    expect(state.enterpriseTreeDetail?.nodes[1].title).toBe("Renamed child");
+  });
+
+  it("requires inline forms to be applied before Save and discards them on cancel", async () => {
+    const { state, request } = await setup();
+    editEnterpriseNodeGuidance(state, "acme.support.root", { title: "Pending" });
+    requestSaveEnterpriseTree(state);
+    expect(state.enterpriseTreeConfirm).toBeNull();
+    cancelEditEnterpriseTree(state);
+    expect(state.enterpriseGuidanceDraft).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["skills", "Refund Policy", "skill-name-invalid"],
+    ["knowledgeFoundations", "Acme Runbooks", "foundation-id-invalid"],
+  ] as const)("validates %s before changing the draft", async (field, value, failure) => {
+    const { state, request } = await setup();
+    const content = state.enterpriseTreeEditContent;
+    openEnterpriseBindingPicker(state, "acme.support.root", field);
+    setEnterpriseBindingPickerCustom(state, value);
+    await submitEnterpriseBindingPicker(state);
+    expect(state.enterpriseBindingPicker?.failure?.kind).toBe(failure);
+    expect(state.enterpriseTreeEditContent).toBe(content);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("can remove a newly added step and cancel a binding picker without persisting", async () => {
+    const { state, request } = await setup();
+    beginAddEnterpriseNode(state, "acme.support.root");
+    editEnterpriseNodeDraft(state, { id: "acme.support.child", title: "Child" });
+    await submitAddEnterpriseNode(state);
+    await removeEnterpriseNode(state, "acme.support.child");
+    expect(state.enterpriseTreeDetail?.nodes).toHaveLength(1);
+    openEnterpriseBindingPicker(state, "acme.support.root", "skills");
+    toggleEnterpriseBindingPickerValue(state, "refund-policy");
+    cancelEnterpriseBindingPicker(state);
+    expect(JSON.parse(state.enterpriseTreeEditContent).root.ontology.skills).toBeUndefined();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("checks duplicate steps and ontology errors against the current draft", async () => {
+    const { state, request } = await setup();
+    beginAddEnterpriseNode(state, "acme.support.root");
+    editEnterpriseNodeDraft(state, { id: "acme.support.root", title: "Duplicate" });
+    await submitAddEnterpriseNode(state);
+    expect(state.enterpriseNodeDraft?.error).toBe("id-duplicate");
+    cancelAddEnterpriseNode(state);
+    beginEnterpriseOntologyDraft(state, {
+      kind: "constraint",
+      nodeId: "acme.support.root",
+      id: "receipt",
+      description: "   ",
+    });
+    await submitEnterpriseOntologyDraft(state);
+    expect(state.enterpriseOntologyDraft?.error).toBe("description-empty");
+    editEnterpriseOntologyDraft(state, { description: "Keep the receipt." });
+    await submitEnterpriseOntologyDraft(state);
+    expect(JSON.parse(state.enterpriseTreeEditContent).root.ontology.constraints).toEqual([
+      { id: "receipt", description: "Keep the receipt." },
+    ]);
+    expect(request).not.toHaveBeenCalled();
   });
 });

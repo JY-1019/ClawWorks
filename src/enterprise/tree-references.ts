@@ -1,9 +1,9 @@
 /**
  * Pure helpers that read what a workflow tree references from its node ontology:
  * knowledge foundation ids and tool globs. Shared by bundle-io (to build/validate
- * a bundle) and the tree store (to keep persisted bundled foundations in sync with
- * the tree's current references), kept in its own module so neither has to import
- * the other.
+ * a bundle) and the persisted-foundation loader (to expose only content referenced
+ * by a healthy current tree), kept in its own module so neither has to duplicate
+ * the traversal.
  */
 import type { WorkflowNodeDefinition, WorkflowTreeDefinition } from "./types.js";
 
@@ -52,9 +52,8 @@ export function treeHasUnboundedKnowledgeScope(tree: WorkflowTreeDefinition): bo
 }
 
 /**
- * Tool globs the tree's nodes require available (their allow-lists), sorted. Only
- * allowed tools are a portability requirement: they name what the workflow expects
- * the target to provide. Denied tools are constraints — blocking a tool the target
+ * Tool selectors the tree requires available, sorted: allow-lists plus outward
+ * action call effects. Denied tools are constraints — blocking a tool the target
  * lacks is a no-op — so they are not collected.
  */
 export function collectReferencedToolGlobs(tree: WorkflowTreeDefinition): string[] {
@@ -62,6 +61,13 @@ export function collectReferencedToolGlobs(tree: WorkflowTreeDefinition): string
   walkWorkflowNodes(tree.root, (node) => {
     for (const tool of node.ontology?.allowedTools ?? []) {
       tools.add(tool);
+    }
+    for (const action of node.ontology?.actions ?? []) {
+      for (const effect of action.effects ?? []) {
+        if (effect.kind === "call") {
+          tools.add(effect.tool);
+        }
+      }
     }
   });
   return [...tools].toSorted();
@@ -73,6 +79,16 @@ export function collectReferencedToolGlobs(tree: WorkflowTreeDefinition): string
  * workflow expects the target to provide. Content is not inlined — the bundle
  * reports the names so a target missing a skill is visible, not silently degraded.
  */
+export function collectReferencedSkills(tree: WorkflowTreeDefinition): string[] {
+  const skills = new Set<string>();
+  walkWorkflowNodes(tree.root, (node) => {
+    for (const skill of node.ontology?.skills ?? []) {
+      skills.add(skill);
+    }
+  });
+  return [...skills].toSorted();
+}
+
 /**
  * MCP servers the tree attaches. A portability dependency like skills: the bundle
  * carries the NAMES so an import can say which `mcp.servers` entries the recipient
@@ -86,14 +102,4 @@ export function collectReferencedMcpServers(tree: WorkflowTreeDefinition): strin
     }
   });
   return [...servers].toSorted();
-}
-
-export function collectReferencedSkills(tree: WorkflowTreeDefinition): string[] {
-  const skills = new Set<string>();
-  walkWorkflowNodes(tree.root, (node) => {
-    for (const skill of node.ontology?.skills ?? []) {
-      skills.add(skill);
-    }
-  });
-  return [...skills].toSorted();
 }

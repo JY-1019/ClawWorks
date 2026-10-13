@@ -108,6 +108,17 @@ function validateParameters(
   return null;
 }
 
+/** Keep every object identity in the exact form the lookup tools can address. */
+function validateStringIdentity(parameterId: string, identity: string): string | null {
+  if (identity !== identity.trim()) {
+    return `"${parameterId}" must not have leading or trailing whitespace: the ontology tools would trim it and lose the object`;
+  }
+  if (identity.length === 0) {
+    return `"${parameterId}" must not be blank: a blank identity cannot be addressed or traversed`;
+  }
+  return null;
+}
+
 // A planned write, or the model-facing reason the effect cannot be performed.
 // A closed result rather than a bare `PlannedWrite | string`, matching every
 // other result in this module (the error string is the payload, not a sentinel).
@@ -162,17 +173,11 @@ function planEffect(
   // not be able to create one through the other door. The tools read objectId
   // through the trimming param reader, so a row stored as "" or " C-2 " comes
   // back from search_objects with an id nothing can look up again.
-  if (typeof identity === "string" && identity !== identity.trim()) {
-    return {
-      ok: false,
-      error: `"${primaryKey}" must not have leading or trailing whitespace: the ontology tools would trim it and lose the object`,
-    };
-  }
-  if (typeof identity === "string" && identity.length === 0) {
-    return {
-      ok: false,
-      error: `"${primaryKey}" must not be blank: a blank identity cannot be addressed or traversed`,
-    };
+  if (typeof identity === "string") {
+    const identityError = validateStringIdentity(primaryKey, identity);
+    if (identityError) {
+      return { ok: false, error: identityError };
+    }
   }
   // Type-check the identity against the primary-key PROPERTY here, before the
   // delete branch returns: an action may declare its key parameter with the wrong
@@ -282,10 +287,9 @@ function planEffect(
  * cannot work — which is any relationship whose two ends are the same type, where
  * both ends would otherwise read the same parameter.
  *
- * Endpoint existence is NOT checked here. get_neighbors joins edges back to
- * objects, so an edge to a missing object simply returns no neighbor; requiring
- * the target to exist first would forbid the ordinary case of an action that
- * creates an object and links it in the same call.
+ * Endpoint existence is checked after every effect has been planned. Deferring
+ * that check lets one action create and link an object while still guaranteeing
+ * that APPLY cannot persist a dangling edge.
  */
 function planLinkEffect(
   effect: OntologyLinkEffect,
@@ -310,6 +314,7 @@ function planLinkEffect(
     { side: "from" as const, entityId: relationship.from, parameter: effect.from },
     { side: "to" as const, entityId: relationship.to, parameter: effect.to },
   ];
+  const endpointParameters = new Set<string>();
   const resolved: { entityId: string; objectId: string }[] = [];
   for (const end of ends) {
     const entity = scope.entities.get(end.entityId);
@@ -327,6 +332,13 @@ function planLinkEffect(
       };
     }
     const parameterId = end.parameter ?? primaryKey;
+    if (relationship.from === relationship.to && endpointParameters.has(parameterId)) {
+      return {
+        ok: false,
+        error: `action "${action.id}" must use distinct endpoint parameters for same-type relationship "${effect.relationship}"; set "from" or "to" to another declared parameter`,
+      };
+    }
+    endpointParameters.add(parameterId);
     const value = args[parameterId];
     if (value === undefined) {
       return {
@@ -338,6 +350,21 @@ function planLinkEffect(
       return {
         ok: false,
         error: `action "${action.id}" passed ${value === null ? "null" : typeof value} as "${parameterId}", which cannot identify an object`,
+      };
+    }
+    if (typeof value === "string") {
+      const identityError = validateStringIdentity(parameterId, value);
+      if (identityError) {
+        return { ok: false, error: identityError };
+      }
+    }
+    const primaryKeyProperty = (entity.properties ?? []).find(
+      (property) => property.id === primaryKey,
+    );
+    if (primaryKeyProperty && !ontologyValueMatchesType(value, primaryKeyProperty.type)) {
+      return {
+        ok: false,
+        error: `property "${primaryKey}" of "${end.entityId}" is declared "${primaryKeyProperty.type}", but action "${action.id}" passed ${typeof value}`,
       };
     }
     consumed.add(parameterId);
@@ -419,7 +446,7 @@ export function invokeOntologyAction(
   // PLAN: resolve and check every effect before any of them writes.
   const consumed = new Set<string>();
   const planned: PlannedWrite[] = [];
-  const targets = new Set<string>();
+  const targets = new Map<string, PlannedWrite>();
   for (const effect of writeEffects) {
     const outcome = planEffect(effect, { database, scope, action, args, consumed });
     if (!outcome.ok) {
@@ -438,7 +465,7 @@ export function invokeOntologyAction(
         error: `action "${action.id}" declares more than one effect on "${target}"; effects are not ordered, so one object may be written once`,
       };
     }
-    targets.add(target);
+    targets.set(target, write);
     planned.push(write);
   }
 
@@ -449,6 +476,43 @@ export function invokeOntologyAction(
       return { ok: false, error: outcome.error };
     }
     plannedLinks.push(outcome.link);
+  }
+
+  // A link must point at the graph state that will exist AFTER this action.
+  // Planned creates/updates satisfy the endpoint, planned deletes invalidate it,
+  // and an unlink remains allowed so an old dangling edge can still be cleaned up.
+  for (const link of plannedLinks) {
+    if (link.kind === "unlink") {
+      continue;
+    }
+    const endpoints = [
+      { entityId: link.fromEntity, objectId: link.fromObjectId },
+      { entityId: link.toEntity, objectId: link.toObjectId },
+    ];
+    for (const endpoint of endpoints) {
+      const target = `${endpoint.entityId}/${endpoint.objectId}`;
+      const plannedEndpoint = targets.get(target);
+      if (plannedEndpoint?.kind === "delete") {
+        return {
+          ok: false,
+          error: `action "${action.id}" cannot link deleted "${endpoint.entityId}" object "${endpoint.objectId}"`,
+        };
+      }
+      if (plannedEndpoint) {
+        continue;
+      }
+      const existing = getOntologyObjectIn(database, {
+        treeId: scope.treeId,
+        entity: endpoint.entityId,
+        objectId: endpoint.objectId,
+      });
+      if (!existing) {
+        return {
+          ok: false,
+          error: `action "${action.id}" cannot link missing "${endpoint.entityId}" object "${endpoint.objectId}"`,
+        };
+      }
+    }
   }
 
   // APPLY: nothing below can fail on the ontology's terms.

@@ -122,13 +122,21 @@ import {
 import {
   beginAddEnterpriseNode,
   beginEditEnterpriseTree,
+  beginEditEnterpriseTreeSettings,
   beginNewEnterpriseTree,
+  applyEnterpriseBundle,
+  cancelEnterpriseBundlePreview,
   cancelAddEnterpriseNode,
   cancelEditEnterpriseTree,
+  cancelEnterpriseTreeDraft,
   cancelEnterpriseTreeConfirm,
   confirmEnterpriseTreeAction,
   editEnterpriseNodeDraft,
+  editEnterpriseTreeDraft,
   exportEnterpriseTree,
+  exportEnterpriseBundle,
+  importEnterpriseTreeFile,
+  previewEnterpriseBundleFile,
   loadEnterpriseCatalogs,
   loadEnterpriseRunDetail,
   requestEnterpriseRunResume,
@@ -158,18 +166,23 @@ import {
   removeEnterpriseOntologyAction,
   removeEnterpriseOntologyActionEffect,
   removeEnterpriseOntologyActionParameter,
+  removeEnterpriseOntologyConstraint,
   removeEnterpriseOntologyEntity,
   removeEnterpriseOntologyFunction,
   removeEnterpriseOntologyProperty,
   removeEnterpriseOntologyRelationship,
+  removeEnterpriseNode,
   submitEnterpriseOntologyDraft,
   editEnterpriseNodeGuidance,
+  disableEnterpriseMcpGovernance,
+  enableEnterpriseMcpGovernance,
   removeEnterpriseBinding,
   saveEnterpriseNodeGuidance,
   submitEnterpriseMcpDraft,
   setEnterpriseBindingPickerCustom,
   setEnterpriseBindingPickerQuery,
   submitAddEnterpriseNode,
+  submitEnterpriseTreeDraft,
   submitEnterpriseBindingPicker,
   toggleEnterpriseBindingPickerValue,
   toggleEnterpriseCapabilityGrants,
@@ -1454,6 +1467,12 @@ function renderGuardedChatControls(state: AppViewState) {
       // exact opposite of the live-progress it exists for. Fresh object per
       // event, so identity comparison is enough.
       state.enterpriseChatStep,
+      state.enterpriseChatRun,
+      // Reset keeps sessionKey stable, so a transcript rotation must repaint
+      // immediately and remove controls bound to the previous conversation.
+      state.currentSessionId,
+      state.enterpriseChatResumeBusy,
+      state.enterpriseChatResumeError,
       state.chatModelOverrides,
       state.chatModelSwitchPromises,
       state.chatModelsLoading,
@@ -3286,6 +3305,8 @@ export function renderApp(state: AppViewState) {
                 loading: state.enterpriseLoading,
                 runs: state.enterpriseRuns,
                 trees: state.enterpriseTrees,
+                historyOnlyTreeIds: state.enterpriseHistoryOnlyTreeIds,
+                listErrors: state.enterpriseListErrors,
                 importErrors: state.enterpriseImportErrors,
                 storeError: state.enterpriseStoreError,
                 selectedExecutionId: state.enterpriseSelectedExecutionId,
@@ -3304,16 +3325,23 @@ export function renderApp(state: AppViewState) {
                 nodeObjectsEntity: state.enterpriseNodeObjectsEntity,
                 nodeObjects: state.enterpriseNodeObjects,
                 nodeObjectsLoading: state.enterpriseNodeObjectsLoading,
+                nodeObjectsError: state.enterpriseNodeObjectsError,
                 treeEditing: state.enterpriseTreeEditing,
+                visualEditing: Boolean(state.enterpriseVisualEditOriginal),
+                treeDraft: state.enterpriseTreeDraft,
                 treeEditContent: state.enterpriseTreeEditContent,
                 treeEditFormat: state.enterpriseTreeEditFormat,
                 treeSaving: state.enterpriseTreeSaving,
                 treeSaveIssues: state.enterpriseTreeSaveIssues,
+                treeWarnings: state.enterpriseTreeWarnings,
                 treeSaveError: state.enterpriseTreeSaveError,
                 treeConfirm: state.enterpriseTreeConfirm,
+                bundleDraft: state.enterpriseBundleDraft,
+                bundleStatus: state.enterpriseBundleStatus,
                 treeVersions: state.enterpriseTreeVersions,
                 treeVersionsLoading: state.enterpriseTreeVersionsLoading,
-                canEdit: hasOperatorAdminAccess(state.hello?.auth ?? null),
+                treeVersionsError: state.enterpriseTreeVersionsError,
+                canEdit: state.connected && hasOperatorAdminAccess(state.hello?.auth ?? null),
                 nodeDraft: state.enterpriseNodeDraft,
                 catalogPhase: state.enterpriseCatalogPhase,
                 catalogErrors: state.enterpriseCatalogErrors,
@@ -3323,6 +3351,11 @@ export function renderApp(state: AppViewState) {
                 foundations: state.enterpriseFoundations,
                 error: state.enterpriseError,
                 onRefresh: () => {
+                  // An MCP draft may contain plaintext credentials tied to the
+                  // config revision that opened it. Do not rebase under it.
+                  if (state.enterpriseMcpDraft || state.enterpriseMcpRemoveConfirm) {
+                    return;
+                  }
                   void refreshEnterprise(state);
                   void loadEnterpriseCatalogs(state);
                   // The MCP list and the binding picker read `mcp.servers` from the
@@ -3332,28 +3365,43 @@ export function renderApp(state: AppViewState) {
                 },
                 onSelectRun: (executionId) => void loadEnterpriseRunDetail(state, executionId),
                 onSelectTree: (treeId) => selectEnterpriseTree(state, treeId),
-                onBeginEdit: () => void beginEditEnterpriseTree(state),
+                onBeginEdit: () => void beginEditEnterpriseTree(state, true),
+                onBeginRawEdit: () => void beginEditEnterpriseTree(state),
+                onBeginSettings: () => beginEditEnterpriseTreeSettings(state),
                 onBeginNew: () => beginNewEnterpriseTree(state),
+                onEditNew: (patch) => editEnterpriseTreeDraft(state, patch),
+                onCancelNew: () => cancelEnterpriseTreeDraft(state),
+                onSubmitNew: () => void submitEnterpriseTreeDraft(state),
+                onImportFile: (file) => void importEnterpriseTreeFile(state, file),
+                onPreviewBundleFile: (file) => void previewEnterpriseBundleFile(state, file),
+                onCancelBundlePreview: () => cancelEnterpriseBundlePreview(state),
+                onApplyBundle: () => void applyEnterpriseBundle(state),
                 onEditContent: (content) => setEnterpriseTreeEditContent(state, content),
                 onEditFormat: (format) => void setEnterpriseTreeEditFormat(state, format),
                 onCancelEdit: () => cancelEditEnterpriseTree(state),
                 onRequestSave: () => requestSaveEnterpriseTree(state),
-                onRequestRemove: (treeId) => requestRemoveEnterpriseTree(state, treeId),
+                onRequestRemove: (treeId) => void requestRemoveEnterpriseTree(state, treeId),
                 onCancelConfirm: () => cancelEnterpriseTreeConfirm(state),
                 onConfirm: () => void confirmEnterpriseTreeAction(state),
                 onExport: (treeId, format) => void exportEnterpriseTree(state, treeId, format),
+                onExportBundle: (treeId, format) =>
+                  void exportEnterpriseBundle(state, treeId, format),
                 onLoadVersion: (treeId, revision) =>
                   void loadEnterpriseTreeVersion(state, treeId, revision),
                 onSelectNode: (nodeId) => selectEnterpriseNode(state, nodeId),
                 onSelectNodeEntity: (entity) => selectEnterpriseNodeEntity(state, entity),
                 onToggleCapabilityGrants: () => void toggleEnterpriseCapabilityGrants(state),
+                onDisableMcpGovernance: () => void disableEnterpriseMcpGovernance(state),
                 onBeginAddNode: (parentId) => beginAddEnterpriseNode(state, parentId),
                 onEditNodeDraft: (patch) => editEnterpriseNodeDraft(state, patch),
                 onCancelAddNode: () => cancelAddEnterpriseNode(state),
                 onSubmitAddNode: () => void submitAddEnterpriseNode(state),
+                onRemoveNode: (nodeId) => void removeEnterpriseNode(state, nodeId),
                 bindingPicker: state.enterpriseBindingPicker,
                 onOpenBindingPicker: (nodeId, field) =>
                   openEnterpriseBindingPicker(state, nodeId, field),
+                onEnableMcpGovernance: (nodeId) =>
+                  void enableEnterpriseMcpGovernance(state, nodeId),
                 // Same export→import write the picker uses, so a detach is one
                 // revision the version history can restore like any other.
                 onRemoveBinding: (nodeId, field, entry) =>
@@ -3365,7 +3413,8 @@ export function renderApp(state: AppViewState) {
                 onOpenBindingDetail: (detail) => openEnterpriseBindingDetail(state, detail),
                 onCloseBindingDetail: () => closeEnterpriseBindingDetail(state),
                 guidanceDraft: state.enterpriseGuidanceDraft,
-                onGuidanceDraft: (nodeId, text) => editEnterpriseNodeGuidance(state, nodeId, text),
+                onGuidanceDraft: (nodeId, patch) =>
+                  editEnterpriseNodeGuidance(state, nodeId, patch),
                 onSaveGuidance: (nodeId) => void saveEnterpriseNodeGuidance(state, nodeId),
                 onCancelGuidance: () => cancelEnterpriseNodeGuidance(state),
                 ontologyDraft: state.enterpriseOntologyDraft,
@@ -3373,20 +3422,38 @@ export function renderApp(state: AppViewState) {
                 onEditOntologyDraft: (patch) => editEnterpriseOntologyDraft(state, patch),
                 onSubmitOntologyDraft: () => void submitEnterpriseOntologyDraft(state),
                 onCancelOntologyDraft: () => cancelEnterpriseOntologyDraft(state),
-                onRemoveOntologyEntity: (nodeId, entityId) =>
-                  void removeEnterpriseOntologyEntity(state, { nodeId, entityId }),
-                onRemoveOntologyProperty: (nodeId, entityId, propertyId) =>
-                  void removeEnterpriseOntologyProperty(state, { nodeId, entityId, propertyId }),
+                onRemoveOntologyEntity: (nodeId, entityId, entityIndex) =>
+                  void removeEnterpriseOntologyEntity(state, { nodeId, entityId, entityIndex }),
+                onRemoveOntologyProperty: (
+                  nodeId,
+                  entityId,
+                  propertyId,
+                  entityIndex,
+                  propertyIndex,
+                ) =>
+                  void removeEnterpriseOntologyProperty(state, {
+                    nodeId,
+                    entityId,
+                    propertyId,
+                    entityIndex,
+                    propertyIndex,
+                  }),
                 onRemoveOntologyRelationship: (nodeId, link) =>
                   void removeEnterpriseOntologyRelationship(state, { nodeId, link }),
-                onRemoveOntologyAction: (nodeId, actionId) =>
-                  void removeEnterpriseOntologyAction(state, { nodeId, actionId }),
+                onRemoveOntologyAction: (nodeId, actionId, actionIndex) =>
+                  void removeEnterpriseOntologyAction(state, { nodeId, actionId, actionIndex }),
                 onRemoveOntologyActionEffect: (nodeId, effect) =>
                   void removeEnterpriseOntologyActionEffect(state, { nodeId, ...effect }),
                 onRemoveOntologyActionParameter: (nodeId, parameter) =>
                   void removeEnterpriseOntologyActionParameter(state, { nodeId, ...parameter }),
-                onRemoveOntologyFunction: (nodeId, functionId) =>
-                  void removeEnterpriseOntologyFunction(state, { nodeId, functionId }),
+                onRemoveOntologyFunction: (nodeId, functionId, functionIndex) =>
+                  void removeEnterpriseOntologyFunction(state, {
+                    nodeId,
+                    functionId,
+                    functionIndex,
+                  }),
+                onRemoveOntologyConstraint: (nodeId, target) =>
+                  void removeEnterpriseOntologyConstraint(state, { nodeId, target }),
                 onBindingPickerQuery: (query) => setEnterpriseBindingPickerQuery(state, query),
                 onBindingPickerCustom: (value) => setEnterpriseBindingPickerCustom(state, value),
                 onToggleBindingPickerValue: (value) =>
@@ -3396,8 +3463,9 @@ export function renderApp(state: AppViewState) {
                 // tree, so the inspector shows the new binding without a detour.
                 onSubmitBindingPicker: () => void submitEnterpriseBindingPicker(state),
                 // Registration is config, not an enterprise store: the same
-                // `mcp.servers` the Settings MCP screen shows, read from the draft
-                // so a server added here is attachable before it is published.
+                // `mcp.servers` the Settings MCP screen shows. Bundle preview
+                // availability is server-derived; this draft list is only for
+                // authoring bindings and the MCP management screen.
                 mcpServers: summarizeMcpServerRows(readConfigDraft(state)),
                 mcpDraft: state.enterpriseMcpDraft,
                 // Unknown until config arrives: an empty registry before then is
@@ -3420,13 +3488,24 @@ export function renderApp(state: AppViewState) {
                 configDirty: state.configFormDirty,
                 configSaving: state.configSaving,
                 configApplying: state.configApplying,
-                onBeginMcpDraft: () => beginEnterpriseMcpDraft(state),
+                onBeginMcpDraft: () => {
+                  if (!state.enterpriseMcpRemoveConfirm) {
+                    beginEnterpriseMcpDraft(state);
+                  }
+                },
                 onBeginMcpEdit: (name) => {
+                  if (state.enterpriseMcpRemoveConfirm) {
+                    return;
+                  }
                   const server = readConfiguredMcpServer(state, name);
                   if (!server) {
                     return;
                   }
-                  beginEnterpriseMcpEdit(state, { name, server });
+                  beginEnterpriseMcpEdit(state, {
+                    name,
+                    server,
+                    configHash: state.configSnapshot?.hash ?? null,
+                  });
                 },
                 onEditMcpDraft: (patch) => editEnterpriseMcpDraft(state, patch),
                 onEditMcpHeader: (index, patch) => editEnterpriseMcpHeader(state, index, patch),
@@ -3446,6 +3525,7 @@ export function renderApp(state: AppViewState) {
                       (server) => server.name,
                     ),
                     ...(existingServer ? { existingServer } : {}),
+                    currentConfigHash: state.configSnapshot?.hash ?? null,
                     // The config controller owns every config write; this screen
                     // only decides what the new entry is.
                     apply: (name, server) =>
@@ -3453,7 +3533,11 @@ export function renderApp(state: AppViewState) {
                   });
                 },
                 onToggleMcpServer: (name, enabled) => {
-                  if (enterpriseMcpRegisterBlockedReason(state) !== null) {
+                  if (
+                    state.enterpriseMcpDraft ||
+                    state.enterpriseMcpRemoveConfirm ||
+                    enterpriseMcpRegisterBlockedReason(state) !== null
+                  ) {
                     return;
                   }
                   // The config controller's own writer, so this screen and the
@@ -3463,6 +3547,13 @@ export function renderApp(state: AppViewState) {
                 },
                 mcpRemoveConfirm: state.enterpriseMcpRemoveConfirm,
                 onRequestRemoveMcpServer: (name) => {
+                  if (
+                    state.enterpriseMcpDraft ||
+                    state.enterpriseMcpRemoveConfirm ||
+                    enterpriseMcpRegisterBlockedReason(state) !== null
+                  ) {
+                    return;
+                  }
                   state.enterpriseMcpRemoveConfirm = name;
                 },
                 onCancelRemoveMcpServer: () => {
@@ -3470,15 +3561,15 @@ export function renderApp(state: AppViewState) {
                 },
                 onConfirmRemoveMcpServer: () => {
                   const name = state.enterpriseMcpRemoveConfirm;
-                  state.enterpriseMcpRemoveConfirm = null;
-                  if (!name || enterpriseMcpRegisterBlockedReason(state) !== null) {
+                  if (
+                    !name ||
+                    state.enterpriseMcpDraft ||
+                    enterpriseMcpRegisterBlockedReason(state) !== null
+                  ) {
                     return;
                   }
+                  state.enterpriseMcpRemoveConfirm = null;
                   removeConfigFormValue(state, ["mcp", "servers", name]);
-                  // The form may have been open on the server that just went.
-                  if (state.enterpriseMcpDraft?.editing === name) {
-                    cancelEnterpriseMcpDraft(state);
-                  }
                 },
                 onSaveConfig: () => void saveConfig(state),
                 onApplyConfig: () => void applyConfig(state),

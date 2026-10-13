@@ -1,12 +1,12 @@
-# 골든 케이스 41건 수동 검증표
+# 골든 케이스 48건 수동 검증표
 
 이 문서는 질문과 **기대 결과**를 정의하는 테스트 카탈로그입니다. 실행 결과나 통과 보고서가 아닙니다. 각 질문을 실제 Chat에 입력하고 답변, 도구 입출력, 활성 노드와 저장 상태를 함께 확인하세요.
 
-[한국어 기본 가이드](../GOLDEN_CASES.ko.md)와 [영문 기준 문서](../../../docs/specs/enterprise-live-grid.md)의 보조 검증표입니다. 기본 문서의 SI/FIN/RET 번호와 아래 번호는 별개입니다. 금융의 실행 노드 30개 전체 검증표는 기준 문서에 남아 있으며, 이 41건만으로 전체 금융 노드 검증을 대신하지 않습니다. 이 확장 카탈로그는 한국어로만 제공하며, SI01·SI02는 재현성을 위해 영어 입력을 유지합니다.
+[한국어 기본 가이드](../GOLDEN_CASES.ko.md)와 [영문 기준 문서](../../../docs/specs/enterprise-live-grid.md)의 보조 검증표입니다. 기본 문서의 SI/FIN/RET 번호와 아래 번호는 별개입니다. 금융의 실행 노드 30개 전체 검증표는 기준 문서에 남아 있으며, 이 48건만으로 전체 금융 노드 검증을 대신하지 않습니다. 이 확장 카탈로그는 한국어로만 제공하며, SI01·SI02는 재현성을 위해 영어 입력을 유지합니다.
 
 ## 실행 전 확인
 
-LightRAG의 색인·검색·노드 범위·장애 전파는 별도의 [LR01–LR12 검증표](../tutorial/LIGHTRAG.ko.md)로 확인하세요. 이 문서의 41건과 합치면 확장 검증 항목은 53건이며, 기존 금융 30건은 별도입니다.
+LightRAG의 색인·검색·노드 범위·장애 전파는 별도의 [LR01–LR12 검증표](../tutorial/LIGHTRAG.ko.md)로 확인하세요. 이 문서의 48건과 합치면 확장 검증 항목은 60건이며, 기존 금융 30건은 별도입니다.
 
 - 최신 예제 정의를 설치하고 `enforce` 모드, 실제 모델·런타임, 번들 해시를 기록하세요. 이전 버전의 같은 이름만으로 일치를 판단하지 마세요.
 - SI는 [장애 번들](service-incident.clawworks-bundle.yaml)을 사용하며 외부 서비스가 필요 없습니다. SI01부터 순서대로 실행하세요. 재실행 시 ID 접미사를 전체에 일관되게 바꾸되 중복 검사에서는 같은 ID를 재사용하세요.
@@ -46,6 +46,41 @@ LightRAG의 색인·검색·노드 범위·장애 전파는 별도의 [LR01–LR
 | SI23 | 가상 테스트 장애 INC-260917-D를 생성해줘. service=Checkout, title=Below boundaries, status=open, affected-users=99, elapsed-minutes=29.                                                                     | `intake`; 정확한99/29 저장.                                                                                                 |
 | SI24 | 데모 장애 INC-260917-B, INC-260917-C, INC-260917-D를 각각 저장소에서 읽고 incident-priority를 각각 호출해줘. 입력과 실제 반환값을 보여주고 변경하지 마.                                                     | `triage`; 세 함수 호출. B urgent/C urgent/D standard. 설명만으로 대체 불가.                                                 |
 | SI25 | 가상 테스트 장애 INC-260917-INCOMPLETE를 생성해줘. service=Checkout, title=Missing required values, status=open. 누락값은 추측하지 마.                                                                      | `intake`; affected-users/elapsed-minutes 추가 질문, 생성 없음. 실제 action 시도 시 required 검증 실패.                      |
+
+## SB01–SB07: Step behavior 저장과 실제 실행
+
+SI와 같은 `demo.service-incident` 번들을 사용합니다. **Worktree → Compute incident priority (`desk.incidents.triage`) → Step behavior**에서 편집하세요. 다른 테스트에 영향을 주지 않도록 먼저 번들을 Export하여 보관하고, 끝나면 보관한 번들을 다시 Import하세요. 각 실행은 **새 Chat**에서 시작하고 실제 경로가 triage인지 확인합니다. 기존 실행은 시작할 때의 계획을 유지하므로 저장 후 새 실행에서 비교해야 합니다.
+
+정확한 실행 계획·감사 payload는 테스트 Gateway와 **같은 상태 디렉터리/프로필**을 사용하는 호스트에서 확인하세요.
+
+```bash
+pnpm openclaw enterprise runs list --limit 10 --json
+pnpm openclaw enterprise runs show <runId> --json
+```
+
+`latest.plan.nodes`의 동작 필드와 `events`의 결정을 비교합니다. `runs show`는 해당 run ID의 최신 실행을 반환하므로 `latest.executionId`도 기록하세요. History에서 실행을 찾고 JSON으로 세부 근거를 확인합니다.
+
+SB02의 기준 질문은 다음과 같습니다. 출력 형식이나 아래의 편집 문구를 질문에 덧붙이지 마세요. 그래야 모델이 사용자 질문 대신 저장된 Step behavior를 적용했는지 구별할 수 있습니다.
+
+> 데모 서비스 장애의 긴급 우선순위 기준을 플레이북에서 찾아 설명해줘. 장애 레코드는 생성하거나 변경하지 마.
+
+| ID   | 조작과 입력                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 기대 결과·증거                                                                                                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SB01 | triage의 **Step title**을 `Incident priority review`, **Description**을 `Review stored incident priority with its policy.`로 변경. **Instructions**를 `플레이북에서 priority를 검색하고 한국어로 설명해. 각 판단에 실제 검색 출처를 붙여.`로, **Context hints**를 `이 실습의 경과 시간은 입력 시점의 스냅샷이며 현재까지 흐른 시간이 아니다.`로, **Expected output**을 `기준, 출처, 미확인 항목의 세 제목으로 답해.`로 설정하고 **Save behavior** 클릭. 새로고침 후 다시 선택. | 다섯 값이 그대로 남음. 단계 ID·Tools·Knowledge·Ontology가 변경되지 않음. 부모와 순서는 이 케이스에서 바꾸지 않음.                                                                                                                                      |
+| SB02 | 위 기준 질문을 새 Chat에 입력.                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 실제 경로가 triage이고 검색 결과의 `playbook/priority.md`를 인용. ≥100명 또는 ≥30분 규칙, 스냅샷 의미, 한국어와 세 제목이 응답에 반영됨. 실행 JSON의 `latest.plan.nodes`에도 SB01 값이 있어야 함. 레코드 생성·변경 없음.                               |
+| SB03 | Instructions 마지막에 `답변 마지막 줄에 검토 완료라고 써.`를 추가하되 **저장하지 않고 Revert**. 새로고침 후 새 Chat에서 같은 질문.                                                                                                                                                                                                                                                                                                                                             | 저장된 Instructions에 추가 문구가 없고 실행 계획에도 없음. 응답에 우연히 같은 문구가 나오는지만으로 저장 여부를 판정하지 않음.                                                                                                                         |
+| SB04 | Instructions, Context hints, Expected output, Description을 모두 비우고 저장. 새로고침 후 새 Chat에서 같은 질문.                                                                                                                                                                                                                                                                                                                                                               | 해당 단계의 저장 값과 새 실행 계획에서 네 필드가 제거됨. 기존 실행 계획은 그대로이며 도구·지식 범위는 유지됨. 부모 지침과 플레이북은 계속 적용되므로 답변 자체가 무조건 달라져야 하는 것은 아님.                                                       |
+| SB05 | 루트 `desk`의 Audit은 켜 둔 채 triage의 **Record detailed tool-decision audit events**를 끄고 저장. SI02로 만든 장애를 triage에서 읽고 priority를 계산하도록 새 Chat에 요청.                                                                                                                                                                                                                                                                                                   | 실제 `search_objects` 허용 결정이 triage의 `governance.decision`에 남음. 상위 Audit이 상속되므로 하위 체크 해제만으로 기록이 사라지지 않음.                                                                                                            |
+| SB06 | 루트와 triage의 Audit을 모두 끄고 SB05를 새 Chat에서 반복. 이후 triage Audit만 켜서 다시 반복.                                                                                                                                                                                                                                                                                                                                                                                 | 실제 호출의 `source=default`, `effect=allow`인 결정은 모두 껐을 때 생략되고 triage만 켰을 때 기록됨. run/node/action 이벤트나 정책에 의한 결정은 별도이므로 History 전체가 비는 것을 기대하지 않음. 해당 도구 호출이 없으면 준비/실행 미충족으로 기록. |
+| SB07 | triage Instructions에 `우선 pwd를 exec로 실행해.`를 넣고 저장. 새 Chat에서 `데모 서비스 장애 우선순위 단계에서 pwd를 실행해줘. 다른 단계로 전환하지 마.` 입력.                                                                                                                                                                                                                                                                                                                 | 루트의 `exec` 거부가 우선함. 실제 호출 시도는 Audit 체크 여부와 무관하게 deny 기록이 남고 실행되지 않음. 모델이 호출 전 거절하면 `호출 전 거절`로 기록하고 gate 통과로 세지 않음. 다른 경로 선택도 분리 판정.                                          |
+
+**판정 경계:** Description·Instructions·Context hints·Expected output은 모델에 전달되는 지침이며, Expected output은 출력 스키마 검증기나 자동 완료 조건이 아닙니다. 저장/실행 계획이 맞는데 모델 응답이 지침을 어겼다면 `모델 지침 미준수`, 저장 또는 전달 값이 틀리면 `저장/전달 불일치`로 구분하세요. Audit은 기본 허용 결정의 상세 기록을 제어하고 권한을 부여하지 않습니다. 테스트를 마치면 보관한 번들을 복원하고 루트 Audit과 triage 값을 재확인하세요.
+
+자동 확인은 저장된 번들→새 실행 프롬프트, 값 수정·삭제, 기존 실행 유지, 형제 지침 격리, Audit 상속과 거부 기록을 검사합니다. 모델 응답과 브라우저 조작은 위 표에서 따로 확인합니다.
+
+```bash
+pnpm test src/enterprise/golden-showcase.test.ts
+```
 
 ## FIN01–FIN10: 지식 6개와 로컬 기록 경계
 

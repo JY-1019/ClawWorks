@@ -33,10 +33,20 @@ from disk at run time:
    restart it (`openclaw gateway restart`) before the import governs runs or
    shows up in the Control UI.
 
-The file on disk is now a copy. Editing it changes nothing until you import
-again; exporting (`openclaw enterprise trees export <treeId>`) writes the stored
-definition back out, which is the safe way to pick up edits made in the Control
-UI.
+With `operator.admin`, the Control UI provides the in-process path: open
+**Enterprise -> Worktree**, choose **Import file**, and select a `.yaml`, `.yml`,
+or `.json` definition. The file opens in the raw editor in its detected format;
+nothing is imported until you choose **Save** and confirm. Invalid content stays
+in the editor with path-scoped issues. A successful Control UI save refreshes
+the live registry immediately, so it does not need a gateway restart. File import
+is create-only: an existing id is refused rather than overwritten. Select that
+work-map and choose **YAML / JSON** when replacing an existing definition; the UI then
+checks that nobody changed it since you opened it.
+
+The file on disk is now a copy. Editing it changes nothing until you import it
+again with the CLI, or copy the change into the selected work-map's **YAML / JSON**
+screen. Exporting (`openclaw enterprise trees export <treeId>`) writes the stored
+definition back out, which is the safe way to pick up edits made in the Control UI.
 
 ## YAML or JSON
 
@@ -316,6 +326,10 @@ ontology:
   grant. Ids must be registered by an adapter (for example the
   [LightRAG plugin](/plugins/reference/lightrag)) or inlined by a
   [bundle](#bundles-carry-knowledge); a tree cannot carry knowledge on its own.
+  Wiring one step to one store and its sibling to another is the point of the
+  field, but the lists **intersect down the path**: each level that declares one
+  narrows again, so a leaf naming a store its root omits reaches nothing. Give
+  the root the union (or no list at all) and let the leaves narrow.
 
 ### Advisory text
 
@@ -572,13 +586,14 @@ Each check asks whether **any executable leaf path through the node** admits the
 capability, because declarations inherit downward while the gate judges the
 root-to-active path.
 
-| Warning                                                | Cause                                                                            | Fix                                                                                                      |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Step declares actions but no step under it can write   | No step on any path names `invoke_action` or `group:enterprise-write` literally. | Name one of them in `allowedTools` here or beneath. A glob like `invoke_*` does **not** opt into writes. |
-| Action declares no write effects                       | Every effect is `kind: read`.                                                    | Give it a `create`/`update`/`delete` effect, or describe the work in the step description instead.       |
-| Action writes a type with no `primaryKey`              | The target object type has no identity.                                          | Add a `primaryKey` property to that type.                                                                |
-| Action takes no parameter for the target's primary key | No call could name the object it writes.                                         | Add `{ id: <primaryKey>, type: id, required: true }` to `parameters`.                                    |
-| Step attaches a knowledge foundation it cannot query   | No path under the step can reach `knowledge_search`.                             | Grant `knowledge_search` on the step or an ancestor, and check no ancestor allow-list excludes it.       |
+| Warning                                                | Cause                                                                                                                  | Fix                                                                                                        |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Step declares actions but no step under it can write   | No step on any path names `invoke_action` or `group:enterprise-write` literally.                                       | Name one of them in `allowedTools` here or beneath. A glob like `invoke_*` does **not** opt into writes.   |
+| Action declares no write effects                       | Every effect is `kind: read`.                                                                                          | Give it a `create`/`update`/`delete` effect, or describe the work in the step description instead.         |
+| Action writes a type with no `primaryKey`              | The target object type has no identity.                                                                                | Add a `primaryKey` property to that type.                                                                  |
+| Action takes no parameter for the target's primary key | No call could name the object it writes.                                                                               | Add `{ id: <primaryKey>, type: id, required: true }` to `parameters`.                                      |
+| Step attaches a knowledge foundation it cannot query   | No path under the step can reach `knowledge_search`.                                                                   | Grant `knowledge_search` on the step or an ancestor, and check no ancestor allow-list excludes it.         |
+| Step's knowledge sources are excluded by an ancestor   | `knowledgeFoundations` allow-lists intersect down the path, and no id attached here survives the ancestors' own lists. | Add the id to the ancestor's `knowledgeFoundations`, or attach here only what the ancestor already allows. |
 
 These are worth treating as errors in practice. A declared-but-unreachable
 capability is advertised to the model in the digest and then refused by the
@@ -595,9 +610,11 @@ id: acme.expenses
 capabilityGrants: explicit
 ```
 
-One optional value, and deliberately not a boolean. With `explicit`, tools,
-skills, MCP servers, and knowledge foundations are all **deny-by-default**: a
-step reaches only what it or a step above it attaches.
+One optional value, and deliberately not a boolean. With `explicit`, tools, MCP
+servers, and knowledge foundations are **deny-by-default** on the active
+root-to-step path. Skills are deny-by-default for the run as a whole: only skills
+declared somewhere on its planned route are included, and each step's Skills line
+says which of that run-scoped set applies there.
 
 Three core tools stay available whatever the grants say — `message`, `read`, and
 `memory_search` — so a step granted one knowledge source can still reply and
@@ -978,9 +995,22 @@ openclaw enterprise bundle import acme-expenses-bundle.yaml
 openclaw gateway restart
 ```
 
+The Control UI exposes the same v1 artifact on **Enterprise -> Worktree**.
+**Import bundle** first shows the replacement, all declared dependencies,
+locally missing or unverifiable requirements, and governance conflicts; no write
+occurs until an admin confirms that preview. It also identifies owned foundation
+rows that are replaced or deleted, because bundle knowledge has no revision
+history, and warns when a global/plugin foundation with the same id will shadow
+an inlined row at runtime. Apply keeps the exact selected bytes
+and fails if the reviewed deployment or destination tree/owned knowledge changed.
+**Bundle YAML** and **Bundle JSON** export the selected work-map. Bundles carry
+only MCP server names and governance metadata, never server transport settings,
+credentials, tokens, or environment values.
+
 Only foundations this deployment owns in process can be inlined; server-backed
 corpora are reported as skipped on export, and the recipient configures those
-separately.
+separately. When a selected work-map already owns a bundled row, export preserves
+that row even if a global/plugin foundation currently shadows it.
 
 ## Authoring workflow
 
@@ -1007,22 +1037,39 @@ openclaw enterprise trees remove acme.expenses
 From a source checkout, prefix with `pnpm`: `pnpm openclaw enterprise trees
 validate ...`.
 
-The Control UI edits the same definition on **Enterprise -> Worktree**: the node
-inspector writes step bindings through the same whole-tree import, and every
-change lands as a revision, so version history can restore an earlier shape.
-Hand-authored files and UI edits are interchangeable as long as you export
-before editing the file again.
+The Control UI edits the same definition on **Enterprise -> Worktree**. **New
+tree** collects the tree id, version, name, description, routing triggers,
+priority, and first step in a guided form, then generates JSON for review and
+save. **Settings** updates those mutable tree fields while keeping the id stable.
+Choose **Edit** before changing steps, bindings, or ontology declarations.
+Changes stay in a local draft until you choose **Save** and confirm the save
+dialog; **Cancel** discards them. **Add child node** creates a step; **Step behavior** renames, reorders, reparents,
+or removes existing steps and edits their description, instructions, context
+hints, expected output, and audit flag. Step bindings and the ontology editor
+cover the static schema in place, including descriptions, required fields,
+inverse links, action tool coverage and preconditions, effect metadata, link
+parameters, and advisory constraints. Existing saves and removals are
+version-guarded; if another operator changed the tree, discard the stale draft,
+refresh, and reapply it. Use **YAML / JSON** for expert definition access.
+
+The raw editor does not convert unsaved content between YAML and JSON. Switching
+formats asks for confirmation, then replaces the content with a fresh export or
+template. Every successful change records a revision, so version history can
+restore an earlier shape. Hand-authored files and UI edits are interchangeable
+as long as you export before editing the file again.
 
 One shipped example lives in the source repository, at
 `examples/enterprise/financial-operations.clawworks-bundle.yaml`. It is a bundle,
-so it imports and runs as-is: 46 nodes across four domains — 30 of them
+with 46 nodes across four domains — 30 of them
 executable steps — an object model per domain, six inlined knowledge corpora,
-five MCP servers, nine steps that declare actions, and `capabilityGrants:
+five MCP server references, ten steps that declare actions, and `capabilityGrants:
 explicit` throughout. Read it for the shape of a
 real work-map rather than for a minimal one — every binding in it is load-bearing,
-and the comments say which failure each one exists to prevent. The only thing it
-cannot ship is the five MCP servers themselves; register them under `mcp.servers`
-and the attachments resolve.
+and the comments say which failure each one exists to prevent. The bundle does
+not provide the external MCP services or business records. Register the
+servers under `mcp.servers` to resolve attachments, and follow the
+[golden-case prerequisites](/specs/enterprise-live-grid#data-and-integration-prerequisites)
+for record-dependent and external-operation checks.
 
 ## Before you import
 

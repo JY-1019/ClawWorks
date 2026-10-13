@@ -22,6 +22,11 @@ import {
 } from "./run-mediation.js";
 import { completeEnterpriseStep, evaluateEnterpriseToolCall } from "./runtime.js";
 import { getEnterpriseRunRecord, listEnterpriseRunEvents } from "./trace-store.sqlite.js";
+import {
+  exportWorkflowTree,
+  importWorkflowTreeContent,
+  parseWorkflowTreeContent,
+} from "./tree-io.js";
 import { invalidateWorkflowTreeRegistry } from "./tree-registry.js";
 import type { OntologyValue } from "./types.js";
 
@@ -74,7 +79,7 @@ async function openRun(runId: string, routes: string[]) {
   if (result.kind !== "mediated") {
     throw new Error(`expected a mediated showcase run, got ${result.kind}`);
   }
-  return result.plan;
+  return result;
 }
 
 async function invoke(runId: string, action: string, args: Record<string, OntologyValue>) {
@@ -89,9 +94,161 @@ async function invoke(runId: string, action: string, args: Record<string, Ontolo
 }
 
 describe("the hands-on service incident golden case", () => {
+  it("carries saved step behavior into new runs without changing an active run", async () => {
+    const original = exportWorkflowTree({ treeId: TREE_ID, format: "json" });
+    if (!original.ok) {
+      throw new Error(original.reason);
+    }
+    const parsed = parseWorkflowTreeContent(original.content, "json");
+    if (!parsed.ok) {
+      throw new Error(JSON.stringify(parsed.issues));
+    }
+    const route = "desk.incidents.triage";
+    const step = parsed.tree.root.children
+      ?.find((node) => node.id === "desk.incidents")
+      ?.children?.find((node) => node.id === route);
+    if (!step?.ontology) {
+      throw new Error("the golden triage step must carry behavior");
+    }
+    const before = await openRun("behavior-before", [route]);
+    expect(before.promptSection).toContain(`Instructions: ${step.ontology.guidance}`);
+    expect(before.promptSection).toContain(`Expected output: ${step.ontology.expectedOutput}`);
+    expect(before.promptSection).toContain(
+      "Elapsed minutes are a supplied snapshot, not a running timer.",
+    );
+    expect(before.promptSection).not.toContain("UNSENT DRAFT");
+    const originalTools = step.ontology.allowedTools;
+    try {
+      step.title = "Incident priority review";
+      step.description = "Review stored incident priority with its policy.";
+      step.ontology.guidance = "Explain the priority rule in Korean and cite the retrieved source.";
+      step.ontology.contextHints = ["This exercise uses fictional incident records."];
+      step.ontology.expectedOutput = "Use sections: Rule, Source, Unknowns.";
+      expect(
+        importWorkflowTreeContent({ content: JSON.stringify(parsed.tree), format: "json" }).ok,
+      ).toBe(true);
+      // Reload the persisted definition, not the object just edited: this covers
+      // the save/registry boundary used by the UI's tree import RPC.
+      invalidateWorkflowTreeRegistry();
+      const after = await openRun("behavior-after", [route]);
+      expect(after.plan.nodes.find((node) => node.nodeId === route)).toMatchObject({
+        title: step.title,
+        description: step.description,
+        ontology: { ...step.ontology, allowedTools: originalTools },
+      });
+      for (const text of [
+        step.title,
+        step.description,
+        step.ontology.guidance,
+        ...step.ontology.contextHints,
+        step.ontology.expectedOutput,
+      ]) {
+        expect(after.promptSection).toContain(text);
+        expect(before.promptSection).not.toContain(text);
+      }
+      expect(before.plan.nodes.find((node) => node.nodeId === route)?.title).toBe(
+        "Compute incident priority",
+      );
+      expect(
+        evaluateEnterpriseToolCall({ runId: "behavior-after", toolName: "exec" })?.blocked,
+      ).toBe(true);
+      endEnterpriseRun({ runId: "behavior-after", status: "completed" });
+
+      delete step.description;
+      delete step.ontology.guidance;
+      delete step.ontology.contextHints;
+      delete step.ontology.expectedOutput;
+      expect(
+        importWorkflowTreeContent({ content: JSON.stringify(parsed.tree), format: "json" }).ok,
+      ).toBe(true);
+      const cleared = await openRun("behavior-cleared", [route]);
+      expect(cleared.promptSection).not.toContain("Explain the priority rule in Korean");
+      expect(cleared.promptSection).not.toContain("This exercise uses fictional incident records.");
+      expect(cleared.promptSection).not.toContain("Use sections: Rule, Source, Unknowns.");
+      expect(
+        cleared.plan.nodes.find((node) => node.nodeId === route)?.ontology.allowedTools,
+      ).toEqual(originalTools);
+      endEnterpriseRun({ runId: "behavior-cleared", status: "completed" });
+    } finally {
+      endEnterpriseRun({ runId: "behavior-before", status: "completed" });
+      expect(importWorkflowTreeContent({ content: original.content, format: "json" }).ok).toBe(
+        true,
+      );
+    }
+  });
+
+  it.each([
+    { rootAudit: true, stepAudit: false, recorded: true },
+    { rootAudit: false, stepAudit: true, recorded: true },
+    { rootAudit: false, stepAudit: false, recorded: false },
+  ])(
+    "audits default allows with root=$rootAudit and step=$stepAudit",
+    async ({ rootAudit, stepAudit, recorded }) => {
+      const original = exportWorkflowTree({ treeId: TREE_ID, format: "json" });
+      if (!original.ok) {
+        throw new Error(original.reason);
+      }
+      const parsed = parseWorkflowTreeContent(original.content, "json");
+      if (!parsed.ok) {
+        throw new Error(JSON.stringify(parsed.issues));
+      }
+      const route = "desk.incidents.triage";
+      const step = parsed.tree.root.children
+        ?.find((node) => node.id === "desk.incidents")
+        ?.children?.find((node) => node.id === route);
+      if (!step?.ontology || !parsed.tree.root.ontology) {
+        throw new Error("the golden root and triage step must carry ontology");
+      }
+      const runId = `behavior-audit-${rootAudit}-${stepAudit}`;
+      try {
+        parsed.tree.root.ontology.audit = rootAudit;
+        step.ontology.audit = stepAudit;
+        expect(
+          importWorkflowTreeContent({ content: JSON.stringify(parsed.tree), format: "json" }).ok,
+        ).toBe(true);
+        await openRun(runId, [route]);
+        expect(
+          evaluateEnterpriseToolCall({
+            runId,
+            toolName: "search_objects",
+            toolCallId: "audit-allow",
+          }),
+        ).toMatchObject({
+          blocked: false,
+          decision: { effect: "allow", source: "default" },
+        });
+        expect(
+          evaluateEnterpriseToolCall({ runId, toolName: "exec", toolCallId: "audit-deny" })
+            ?.blocked,
+        ).toBe(true);
+        endEnterpriseRun({ runId, status: "completed" });
+        const record = getEnterpriseRunRecord(runId);
+        if (!record) {
+          throw new Error("the audit run must have a persisted trace");
+        }
+        const decisions = listEnterpriseRunEvents(record.executionId).filter(
+          (event) => event.kind === "governance.decision",
+        );
+        expect(decisions.some((event) => event.payload.toolName === "search_objects")).toBe(
+          recorded,
+        );
+        expect(decisions).toContainEqual(
+          expect.objectContaining({
+            nodeId: route,
+            payload: expect.objectContaining({ toolName: "exec", effect: "deny" }),
+          }),
+        );
+      } finally {
+        expect(importWorkflowTreeContent({ content: original.content, format: "json" }).ok).toBe(
+          true,
+        );
+      }
+    },
+  );
+
   it("creates, computes, updates, links, and reports real local objects on the routed steps", async () => {
     const runId = "showcase-lifecycle";
-    const plan = await openRun(runId, ["desk.incidents"]);
+    const { plan } = await openRun(runId, ["desk.incidents"]);
     expect(plan.nodes.map((node) => node.nodeId)).toEqual([
       "desk",
       "desk.incidents",

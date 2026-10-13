@@ -2,8 +2,12 @@
 // workflow-tree registry and the run trace store to operator clients (the UI
 // enterprise tab). The wire shapes trim the model-visible plan/ontology to the
 // execution-scoping fields an inspector renders; the internal records carry more.
+import { canonicalizeBase64 } from "@openclaw/media-core/base64";
 import {
   ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES,
+  type EnterpriseBundlesExportResult,
+  type EnterpriseBundlesImportResult,
+  type EnterpriseBundlesPreviewResult,
   type EnterpriseKnowledgeDocumentsListResult,
   type EnterpriseKnowledgeDocumentsRemoveResult,
   type EnterpriseKnowledgeDocumentsUploadResult,
@@ -46,12 +50,20 @@ import {
   validateEnterpriseTreesImportParams,
   validateEnterpriseModeGetParams,
   validateEnterpriseModeSetParams,
+  validateEnterpriseBundlesExportParams,
+  validateEnterpriseBundlesImportParams,
+  validateEnterpriseBundlesPreviewParams,
   validateEnterpriseTreesListParams,
   validateEnterpriseTreesRemoveParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { readConfigFileSnapshotForWrite } from "../../config/io.js";
 import { getRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  exportWorkflowBundle,
+  importWorkflowBundle,
+  previewWorkflowBundleImport,
+} from "../../enterprise/bundle-io.js";
 import {
   listEnterpriseKnowledgeDocuments,
   listEnterpriseKnowledgeFoundationDescriptors,
@@ -80,7 +92,7 @@ import {
 import {
   exportWorkflowTree,
   importWorkflowTreeContent,
-  removeImportedWorkflowTree,
+  removeImportedWorkflowTreeIfUnchanged,
   serializeWorkflowTree,
 } from "../../enterprise/tree-io.js";
 import {
@@ -89,23 +101,23 @@ import {
   type WorkflowTreeRegistryEntry,
 } from "../../enterprise/tree-registry.js";
 import {
+  listEnterpriseWorkflowTreeHistoryIds,
   getEnterpriseWorkflowTreeVersion,
   listEnterpriseWorkflowTreeVersions,
 } from "../../enterprise/tree-store.sqlite.js";
+import { collectWorkflowTreeWarnings } from "../../enterprise/tree-warnings.js";
 import type {
   OntologyBinding,
   WorkflowNodeDefinition,
   WorkflowTreeMatch,
 } from "../../enterprise/types.js";
 import { resolveSessionOwnerAgentIdForKey, resolveSessionStoreKey } from "../session-store-key.js";
+import { loadSessionEntry } from "../session-utils.js";
 import { commitGatewayConfigWrite } from "./config-write-flow.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 /** Default page size for the object inspector when the caller omits `limit`. */
 const ENTERPRISE_OBJECTS_DEFAULT_LIMIT = 50;
-
-/** Strict base64: the decoder ignores stray characters, so validate first. */
-const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /** Longest document name accepted; most filesystems stop at 255 bytes. */
 const DOCUMENT_NAME_MAX_LENGTH = 200;
@@ -186,6 +198,16 @@ function mapEvent(event: EnterpriseRunEventRecord): EnterpriseRunEvent {
   };
 }
 
+function loadEnterpriseRunActiveSessionId(record: EnterpriseRunRecord): string | null {
+  if (!record.sessionKey) {
+    return null;
+  }
+  return (
+    loadSessionEntry(record.sessionKey, record.agentId ? { agentId: record.agentId } : undefined)
+      .entry?.sessionId ?? null
+  );
+}
+
 function mapRunDetail(
   record: EnterpriseRunRecord,
   events: EnterpriseRunEventRecord[],
@@ -196,18 +218,25 @@ function mapRunDetail(
   // Compared on executionId: the registry is keyed by runId, and a reused runId
   // would otherwise make every historical execution of it look live.
   const active = getEnterpriseActiveRun(record.runId);
+  const baseResumeRefusal = enterpriseRunResumeRefusal(record, cumulativeCompletedNodeIds(events));
+  const transcriptRotated =
+    !baseResumeRefusal &&
+    (record.sessionId !== loadEnterpriseRunActiveSessionId(record) ||
+      enterpriseRunTranscriptRotated(record));
+  const resumeRefusalReason =
+    baseResumeRefusal ?? (transcriptRotated ? "transcript-rotated" : undefined);
   return {
     executionId: record.executionId,
     runId: record.runId,
     ...(active?.executionId === record.executionId ? { locallyActive: true } : {}),
-    ...(record.resumeRequested ? { resumeRequested: true } : {}),
+    // A transcript can rotate after the marker was armed. The current refusal
+    // wins, or clients would wait on a continuation that can no longer fire.
+    ...(record.resumeRequested && !resumeRefusalReason ? { resumeRequested: true } : {}),
     // The same rule requestEnterpriseRunResume applies, so the control the
     // operator sees and the answer they get cannot disagree.
-    ...(enterpriseRunResumeRefusal(record, cumulativeCompletedNodeIds(events)) ||
-    enterpriseRunTranscriptRotated(record)
-      ? {}
-      : { resumable: true }),
+    ...(resumeRefusalReason ? { resumeRefusalReason } : { resumable: true }),
     sessionKey: record.sessionKey,
+    ...(record.sessionId ? { sessionId: record.sessionId } : {}),
     agentId: record.agentId,
     treeId: record.treeId,
     treeVersion: record.treeVersion,
@@ -469,6 +498,7 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
     const result: EnterpriseKnowledgeFoundationsListResult = {
       foundations: listEnterpriseKnowledgeFoundationDescriptors().map(
         ({ foundationId, descriptor, ownerTreeIds }): EnterpriseKnowledgeFoundationSummary => {
+          const allReferences = references.get(foundationId) ?? [];
           const summary: EnterpriseKnowledgeFoundationSummary = {
             id: foundationId,
             kind: descriptor.kind,
@@ -477,7 +507,12 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
             // foundation for its owning tree alone, and a client must be able to
             // tell that from a gateway too old to report ownership at all.
             ownerTreeIds,
-            referencedBy: references.get(foundationId) ?? [],
+            // A reused bundle id has one row per owning tree; pairing every row
+            // with every tree's references would imply this corpus serves them all.
+            referencedBy:
+              ownerTreeIds.length === 0
+                ? allReferences
+                : allReferences.filter((reference) => ownerTreeIds.includes(reference.treeId)),
           };
           if (descriptor.detail !== undefined) {
             summary.detail = descriptor.detail;
@@ -549,11 +584,11 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    // Buffer.from(_, "base64") silently discards characters outside the
-    // alphabet, so "Zm9v!!!!" would decode to "foo" and "!!!!" to an empty
-    // file. Reject the payload instead of storing something the caller did not
-    // send.
-    if (!BASE64_PATTERN.test(params.contentBase64)) {
+    // Buffer.from(_, "base64") silently discards invalid or truncated input.
+    // Decode only the shared validator's canonical value so the adapter always
+    // receives exactly the bytes the caller encoded.
+    const canonicalContent = canonicalizeBase64(params.contentBase64);
+    if (!canonicalContent) {
       respond(
         false,
         undefined,
@@ -575,7 +610,7 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const content = Buffer.from(params.contentBase64, "base64");
+    const content = Buffer.from(canonicalContent, "base64");
     // The schema caps the encoded string; this caps what it actually decoded to,
     // since base64 length only bounds the payload to within its 4/3 inflation.
     if (content.byteLength > ENTERPRISE_KNOWLEDGE_DOCUMENT_MAX_BYTES) {
@@ -620,6 +655,14 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       return;
     }
     const snapshot = getWorkflowTreeRegistrySnapshot();
+    const registeredIds = new Set(snapshot.entries.map((entry) => entry.tree.id));
+    const invalidIds = new Set(snapshot.importErrors.map((issue) => issue.treeId));
+    const historyOnlyTreeIds =
+      snapshot.storeError === undefined
+        ? listEnterpriseWorkflowTreeHistoryIds().filter(
+            (treeId) => !registeredIds.has(treeId) && !invalidIds.has(treeId),
+          )
+        : [];
     respond(true, {
       trees: snapshot.entries.map(
         (entry): EnterpriseTreeSummary => ({
@@ -631,6 +674,7 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
         }),
       ),
       importErrors: snapshot.importErrors,
+      ...(historyOnlyTreeIds.length > 0 ? { historyOnlyTreeIds } : {}),
       ...(snapshot.storeError !== undefined ? { storeError: snapshot.storeError } : {}),
     });
   },
@@ -659,6 +703,13 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
     }
     if (importError) {
       result.importError = importError.message;
+      result.importErrorFingerprint = importError.fingerprint;
+    }
+    if (entry && !importError && snapshot.storeError === undefined) {
+      const warnings = collectWorkflowTreeWarnings(entry.tree);
+      if (warnings.length > 0) {
+        result.warnings = warnings;
+      }
     }
     respond(true, result);
   },
@@ -728,13 +779,106 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    // Persist + snapshot a revision + refresh the registry. Schema-invalid
-    // content is user data, not a protocol error: report it as ok:false issues
-    // the editor renders inline rather than a request failure.
-    const outcome = importWorkflowTreeContent({ content: params.content, format: params.format });
+    if (!("createOnly" in params) && !("expectedHash" in params)) {
+      respond(true, {
+        ok: false,
+        issues: [
+          {
+            path: "",
+            message: "precondition required; preview or reload the tree before importing",
+          },
+        ],
+      } satisfies EnterpriseTreesImportResult);
+      return;
+    }
+    // Persist + snapshot a revision + refresh the registry. Validation failures
+    // and write conflicts are expected user outcomes: report them as ok:false
+    // issues the editor renders inline rather than as request failures.
+    const outcome = importWorkflowTreeContent({
+      content: params.content,
+      format: params.format,
+      ...("createOnly" in params ? { createOnly: params.createOnly } : {}),
+      ...("expectedHash" in params ? { expectedHash: params.expectedHash } : {}),
+    });
+    // Warnings ride the SUCCESS result: the tree is written and valid, but a
+    // declaration nothing can reach is still a work-map that cannot do what it
+    // says. Only the CLI importer used to print these, so a GUI author never saw
+    // them.
+    const warnings = outcome.ok ? collectWorkflowTreeWarnings(outcome.tree) : [];
     const result: EnterpriseTreesImportResult = outcome.ok
-      ? { ok: true, treeId: outcome.tree.id, replaced: outcome.replaced }
+      ? {
+          ok: true,
+          treeId: outcome.tree.id,
+          replaced: outcome.replaced,
+          ...(warnings.length > 0 ? { warnings } : {}),
+        }
       : { ok: false, issues: structuredClone(outcome.issues) };
+    respond(true, result);
+  },
+  "enterprise.bundles.preview": ({ params, respond }) => {
+    if (!validateEnterpriseBundlesPreviewParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.bundles.preview params: ${formatValidationErrors(validateEnterpriseBundlesPreviewParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const config = getRuntimeConfigSnapshot();
+    const outcome = previewWorkflowBundleImport({
+      content: params.content,
+      format: params.format,
+      ...(config ? { config } : {}),
+    });
+    const result: EnterpriseBundlesPreviewResult = outcome;
+    respond(true, result);
+  },
+  "enterprise.bundles.import": ({ params, respond }) => {
+    if (!validateEnterpriseBundlesImportParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.bundles.import params: ${formatValidationErrors(validateEnterpriseBundlesImportParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const config = getRuntimeConfigSnapshot();
+    const outcome = importWorkflowBundle({
+      content: params.content,
+      format: params.format,
+      reviewToken: params.reviewToken,
+      ...("createOnly" in params ? { createOnly: params.createOnly } : {}),
+      ...("expectedHash" in params ? { expectedHash: params.expectedHash } : {}),
+      ...(config ? { config } : {}),
+    });
+    const result: EnterpriseBundlesImportResult = outcome;
+    respond(true, result);
+  },
+  "enterprise.bundles.export": async ({ params, respond }) => {
+    if (!validateEnterpriseBundlesExportParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid enterprise.bundles.export params: ${formatValidationErrors(validateEnterpriseBundlesExportParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const config = getRuntimeConfigSnapshot();
+    const outcome = await exportWorkflowBundle({
+      treeId: params.treeId,
+      format: params.format,
+      ...(config ? { config } : {}),
+    });
+    const result: EnterpriseBundlesExportResult = outcome;
     respond(true, result);
   },
   "enterprise.trees.export": ({ params, respond }) => {
@@ -767,11 +911,23 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    const expectedHash = params.expectedHash;
+    const expectedInvalidFingerprint = params.expectedInvalidFingerprint;
+    // Protocol-v4 guards were additive. Accept an older request at the wire
+    // boundary, but never turn its missing precondition into an unguarded delete.
+    if ((expectedHash === undefined) === (expectedInvalidFingerprint === undefined)) {
+      respond(true, { removed: false, reason: "precondition-required" });
+      return;
+    }
     // Only imported rows are removable; a shadowed built-in reappears. The
     // append-only version history is retained as an audit trail.
-    const result: EnterpriseTreesRemoveResult = {
-      removed: removeImportedWorkflowTree(params.treeId),
-    };
+    const result: EnterpriseTreesRemoveResult =
+      expectedHash !== undefined
+        ? removeImportedWorkflowTreeIfUnchanged({ treeId: params.treeId, expectedHash })
+        : removeImportedWorkflowTreeIfUnchanged({
+            treeId: params.treeId,
+            expectedInvalidFingerprint: expectedInvalidFingerprint!,
+          });
     respond(true, result);
   },
   "enterprise.trees.history.list": ({ params, respond }) => {
@@ -898,7 +1054,18 @@ export const enterpriseHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const result = requestEnterpriseRunResume(params.executionId, {});
+    const record = getEnterpriseRunRecordByExecutionId(params.executionId);
+    // `sessionId` was added in protocol v4. A legacy caller cannot prove which
+    // transcript it saw, so refuse without arming a marker rather than guessing.
+    if (!params.sessionId) {
+      respond(true, { ok: false, reason: "transcript-rotated" });
+      return;
+    }
+    const activeSessionId = record ? loadEnterpriseRunActiveSessionId(record) : null;
+    const result = requestEnterpriseRunResume(params.executionId, {
+      expectedSessionId: params.sessionId,
+      activeSessionId,
+    });
     // A refusal is a state of the run, not a failed call: the operator gets the
     // specific reason so the UI can say "still running" rather than "error".
     respond(true, result.ok ? { ok: true } : { ok: false, reason: result.reason });

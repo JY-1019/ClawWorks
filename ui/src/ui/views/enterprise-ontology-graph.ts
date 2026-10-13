@@ -41,7 +41,7 @@ export function collectNodeOntologyGraph(
   tree: EnterpriseTreeDetail,
   nodeId: string,
 ): OntologyGraph {
-  return mergeOntologyNodes(nodePathTo(tree, nodeId));
+  return mergeOntologyNodes(nodePathTo(tree, nodeId), "node-scope");
 }
 
 /**
@@ -127,44 +127,10 @@ export function declaredExecutableEntityIds(tree: EnterpriseTreeDetail, nodeId: 
   return [...first].filter((id) => rest.every((scope) => scope.has(id)));
 }
 
-/**
- * Link type ids a declaration made at `nodeId` can relate over when it RUNS.
- *
- * The relationship mirror of `declaredExecutableEntityIds`, and the same
- * intersection for the same reason: a graph effect resolves against whichever
- * leaf is active, so a link type only one branch declares would come back
- * `relationship-not-found` on the others.
- */
-export function declaredExecutableRelationshipIds(
-  tree: EnterpriseTreeDetail,
-  nodeId: string,
-): string[] {
-  const subtree = new Set([nodeId]);
-  for (const candidate of tree.nodes) {
-    if (candidate.parentId && subtree.has(candidate.parentId)) {
-      subtree.add(candidate.id);
-    }
-  }
-  const hasChildren = new Set(
-    tree.nodes.map((candidate) => candidate.parentId).filter((id) => id !== null),
-  );
-  const leaves = [...subtree].filter((id) => !hasChildren.has(id));
-  const perLeaf = (leaves.length > 0 ? leaves : [nodeId]).map(
-    (id) =>
-      new Set(
-        nodePathTo(tree, id)
-          .flatMap((node) => node.ontology.relationships ?? [])
-          .map((relationship) => relationship.id),
-      ),
-  );
-  const [first, ...rest] = perLeaf;
-  if (!first) {
-    return [];
-  }
-  return [...first].filter((id) => rest.every((scope) => scope.has(id)));
-}
-
-function mergeOntologyNodes(nodes: readonly EnterpriseTreeNode[]): OntologyGraph {
+function mergeOntologyNodes(
+  nodes: readonly EnterpriseTreeNode[],
+  relationshipMode: "tree-union" | "node-scope" = "tree-union",
+): OntologyGraph {
   const entityById = new Map<string, OntologyEntity>();
   const relationshipByKey = new Map<string, OntologyRelationship>();
   for (const node of nodes) {
@@ -203,6 +169,12 @@ function mergeOntologyNodes(nodes: readonly EnterpriseTreeNode[]): OntologyGraph
       });
     }
     for (const relationship of node.ontology.relationships ?? []) {
+      if (relationshipMode === "node-scope") {
+        // Runtime scope walks the same root→node path and keys relationships by
+        // id, so the descendant's complete declaration replaces its ancestor.
+        relationshipByKey.set(relationship.id, relationship);
+        continue;
+      }
       // Link types are tree-scoped and may be re-declared: the schema lets a
       // deeper step fill in a cardinality or inverse the ancestor omitted (it
       // only forbids contradicting one). Keeping the first declaration outright

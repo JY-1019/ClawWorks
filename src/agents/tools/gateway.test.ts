@@ -5,7 +5,12 @@ import type { CallGatewayOptions } from "../../gateway/call.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { withGatewayToolCallerIdentity } from "./gateway-caller-context.js";
-import { callGatewayTool, readGatewayCallOptions, resolveGatewayOptions } from "./gateway.js";
+import {
+  callGatewayTool,
+  cancelPluginApprovalForRunAbort,
+  readGatewayCallOptions,
+  resolveGatewayOptions,
+} from "./gateway.js";
 
 const mocks = vi.hoisted(() => ({
   callGateway: vi.fn(),
@@ -123,6 +128,15 @@ describe("gateway tool defaults", () => {
     await callGatewayTool("health", readGatewayCallOptions({ timeoutMs: "5000" }), {});
 
     expect(capturedGatewayCall().timeoutMs).toBe(5000);
+  });
+
+  it("forwards an internal abort signal to the gateway request", async () => {
+    mocks.callGateway.mockResolvedValueOnce({ ok: true });
+    const controller = new AbortController();
+
+    await callGatewayTool("health", { signal: controller.signal }, {});
+
+    expect(capturedGatewayCall().signal).toBe(controller.signal);
   });
 
   it("uses OPENCLAW_GATEWAY_TOKEN for allowlisted local overrides", () => {
@@ -496,6 +510,19 @@ describe("gateway tool defaults", () => {
 
     const call = capturedGatewayCall();
     expect(call.method).toBe("exec.approval.resolve");
+    expect(call.scopes).toEqual(["operator.approvals"]);
+    expect(call.approvalRuntimeToken).toEqual(expect.any(String));
+    expect(call.deviceIdentity).toEqual(mocks.deviceIdentity);
+  });
+
+  it("cancels a plugin approval with runtime and persisted requester identity", async () => {
+    mocks.callGateway.mockResolvedValueOnce({ ok: true });
+
+    await cancelPluginApprovalForRunAbort("plugin:approval-id");
+
+    const call = capturedGatewayCall();
+    expect(call.method).toBe("plugin.approval.resolve");
+    expect(call.params).toEqual({ id: "plugin:approval-id", decision: "deny" });
     expect(call.scopes).toEqual(["operator.approvals"]);
     expect(call.approvalRuntimeToken).toEqual(expect.any(String));
     expect(call.deviceIdentity).toEqual(mocks.deviceIdentity);

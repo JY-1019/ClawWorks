@@ -106,6 +106,11 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "enterprise.trees.import", scope: "operator.admin" },
   { name: "enterprise.trees.export", scope: "operator.read" },
   { name: "enterprise.trees.remove", scope: "operator.admin" },
+  // Bundles contain the full inlined knowledge corpus, not just tree metadata.
+  // Preview also compares protected governance config, so all three are admin-only.
+  { name: "enterprise.bundles.preview", scope: "operator.admin" },
+  { name: "enterprise.bundles.import", scope: "operator.admin" },
+  { name: "enterprise.bundles.export", scope: "operator.admin" },
   { name: "enterprise.trees.history.list", scope: "operator.read" },
   { name: "enterprise.trees.history.get", scope: "operator.read" },
   { name: "enterprise.runs.list", scope: "operator.read" },

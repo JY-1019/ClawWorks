@@ -523,9 +523,56 @@ export type CodexHooksListParams = {
   cwds: string[];
 };
 
+export type CodexHookMetadata = {
+  key: string;
+  eventName:
+    | "preToolUse"
+    | "permissionRequest"
+    | "postToolUse"
+    | "preCompact"
+    | "postCompact"
+    | "sessionStart"
+    | "sessionEnd"
+    | "userPromptSubmit"
+    | "subagentStart"
+    | "subagentStop"
+    | "stop";
+  handlerType: "command" | "prompt" | "agent";
+  matcher: string | null;
+  command: string | null;
+  timeoutSec: number;
+  statusMessage: string | null;
+  additionalContextLimit: number | null;
+  sourcePath: string;
+  source:
+    | "system"
+    | "user"
+    | "project"
+    | "mdm"
+    | "sessionFlags"
+    | "plugin"
+    | "cloudRequirements"
+    | "cloudManagedConfig"
+    | "legacyManagedConfigFile"
+    | "legacyManagedConfigMdm"
+    | "unknown";
+  pluginId: string | null;
+  displayOrder: number;
+  enabled: boolean;
+  isManaged: boolean;
+  currentHash: string;
+  trustStatus: "managed" | "untrusted" | "trusted" | "modified";
+};
+
+export type CodexHooksListEntry = {
+  cwd: string;
+  hooks: CodexHookMetadata[];
+  warnings: string[];
+  errors: Array<{ path: string; message: string }>;
+};
+
 export type CodexHooksListResponse = {
-  data: JsonValue[];
-  nextCursor?: string | null;
+  data: CodexHooksListEntry[];
 };
 
 export type CodexMcpServerStatus = {

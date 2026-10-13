@@ -11,6 +11,7 @@ import type {
 } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
 import { ENTERPRISE_MODES, type EnterpriseMode } from "../controllers/enterprise-chat.ts";
+import { enterpriseResumeRefusalMessage } from "../enterprise-resume.ts";
 import { icons } from "../icons.ts";
 
 // <openclaw-chat-route-card> is registered by the chat VIEW, not here: this module
@@ -70,6 +71,50 @@ export function renderEnterpriseStepProgress(
   >`;
 }
 
+/** Continue or explain a stopped governed run beside the chat controls. */
+export function renderEnterpriseResumeControl(props: {
+  run: EnterpriseRunDetail | null;
+  busy: boolean;
+  disabled: boolean;
+  error: string | null;
+  onResume: (executionId: string) => void;
+}): TemplateResult | typeof nothing {
+  const run = props.run;
+  if (!run || run.status === "running") {
+    return nothing;
+  }
+  if (
+    run.resumeRefusalReason &&
+    !(run.status === "completed" && run.resumeRefusalReason === "route-complete")
+  ) {
+    return html`<span class="chat-enterprise-mode__error" role="status">
+      ${enterpriseResumeRefusalMessage(run.resumeRefusalReason)}
+    </span>`;
+  }
+  if (run.resumeRequested) {
+    return html`<span class="chip chip-ok" role="status">${t("enterprise.resumeRequested")}</span>`;
+  }
+  const error = props.error
+    ? html`<span class="chat-enterprise-mode__error" role="alert">${props.error}</span>`
+    : nothing;
+  if (!run.resumable || props.disabled) {
+    return error;
+  }
+  return html`
+    <button
+      type="button"
+      class="btn btn--sm"
+      title=${t("enterprise.resumeChatHint")}
+      ?disabled=${props.busy}
+      aria-busy=${props.busy ? "true" : "false"}
+      @click=${() => props.onResume(run.executionId)}
+    >
+      ${props.busy ? t("common.loading") : t("enterprise.resumeChat")}
+    </button>
+    ${error}
+  `;
+}
+
 /** Inline selector in the chat control row, mirroring the model/thinking picker. */
 export function renderEnterpriseModeSelect(
   props: EnterpriseChatControlsProps,
@@ -106,9 +151,6 @@ export function renderEnterpriseModeSelect(
         </span>
       </summary>
       <div class="chat-controls__inline-select-menu" aria-label=${t("enterprise.mode.label")}>
-        ${props.error
-          ? html`<div class="chat-enterprise-mode__error">${props.error}</div>`
-          : nothing}
         ${ENTERPRISE_MODES.map(
           (mode) => html`
             <button
@@ -136,6 +178,9 @@ export function renderEnterpriseModeSelect(
         )}
       </div>
     </details>
+    ${props.error
+      ? html`<div class="chat-enterprise-mode__error" role="alert">${props.error}</div>`
+      : nothing}
   `;
 }
 

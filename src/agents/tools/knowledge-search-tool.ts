@@ -41,19 +41,20 @@ const KnowledgeSearchToolSchema = Type.Object({
 });
 
 /**
- * Tool description with a glossary of the foundations this workflow references
- * (with a short summary each) so the model can route a `foundations` target.
- * Built once per run when the tool is assembled — after runtime plugins register
- * their foundations — so the summaries reflect the live registry and stay stable
- * for the run (prompt cache). Which foundations a given step is scoped to lives
- * in the step digest; retrieval enforces the active step's allow-list.
+ * Tool description with a glossary of the foundations this run can actually
+ * retrieve (with a short summary each) so the model can route a `foundations`
+ * target per query rather than searching every source blindly. Built once when
+ * the tool is assembled — after runtime plugins register their foundations — so
+ * the summaries reflect the live registry and stay stable for the run (prompt
+ * cache). Which of them a given step is scoped to lives in the step digest;
+ * retrieval enforces the active step's allow-list.
  */
 function knowledgeSearchDescription(runId: string): string {
   const glossary = formatFoundationGlossary(describeWorkflowKnowledgeFoundations(runId));
   return `Search the enterprise knowledge foundations available to the current workflow step.${glossary} When you use a returned snippet in your answer, cite the foundation it came from and its \`source\` when the snippet carries one.`;
 }
 
-/** Render the workflow's foundations as a routing glossary, or "" when it has none. */
+/** Render the run's retrievable foundations as a routing glossary, or "" when it has none. */
 function formatFoundationGlossary(foundations: readonly WorkflowKnowledgeFoundation[]): string {
   if (foundations.length === 0) {
     return "";
@@ -63,7 +64,7 @@ function formatFoundationGlossary(foundations: readonly WorkflowKnowledgeFoundat
       ? `${foundation.foundationId} (${foundation.description})`
       : foundation.foundationId,
   );
-  return ` Knowledge foundations used by this workflow: ${entries.join("; ")}. Target specific ones with the \`foundations\` argument; each step lists which are in scope.`;
+  return ` Knowledge foundations this run can reach: ${entries.join("; ")}. Target the ones a query needs with the \`foundations\` argument instead of searching them all; each step lists which of them are in scope for it.`;
 }
 
 export function createKnowledgeSearchTool(opts: { runId: string }): AnyAgentTool {
@@ -93,7 +94,14 @@ export function createKnowledgeSearchTool(opts: { runId: string }): AnyAgentTool
         ...(limit !== undefined ? { limit } : {}),
         ...(signal ? { signal } : {}),
       });
-      return jsonResult({ snippets: result.snippets, skipped: result.skipped });
+      // `searched` travels with the snippets: with several sources in scope, an
+      // empty result is only actionable when the model can see WHICH ones answered
+      // it — otherwise a second call re-targets the same source or gives up.
+      return jsonResult({
+        snippets: result.snippets,
+        searched: result.searched,
+        skipped: result.skipped,
+      });
     },
   };
 }

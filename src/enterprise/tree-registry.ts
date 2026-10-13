@@ -37,7 +37,7 @@ export type WorkflowTreeRegistrySnapshot = {
    * restrictions are lost, so enforce-mode mediation fails closed on these
    * instead of silently running permissive built-ins.
    */
-  importErrors: Array<{ treeId: string; message: string }>;
+  importErrors: Array<{ treeId: string; message: string; fingerprint: string }>;
   /**
    * Whole-store read failure (unreadable/legacy state DB). Imports may be
    * hidden behind it, so enforce-mode mediation also fails closed on this —
@@ -62,7 +62,7 @@ function loadRegistry(options: EnterpriseTreeStoreOptions): WorkflowTreeRegistry
   for (const tree of BUILTIN_WORKFLOW_TREES) {
     entries.set(tree.id, { tree, source: "builtin" });
   }
-  let importErrors: Array<{ treeId: string; message: string }> = [];
+  let importErrors: WorkflowTreeRegistrySnapshot["importErrors"] = [];
   let storeError: string | undefined;
   try {
     const read = listEnterpriseWorkflowTrees(options);

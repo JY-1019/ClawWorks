@@ -11,8 +11,17 @@
  */
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { evaluateKnowledgeRetrievalGovernance } from "./governance.js";
-import { enterpriseStepSequence, findPlanNode, resolvePlanNodePath } from "./plan.js";
-import { getEnterpriseActiveRun, type EnterpriseRunTraceSink } from "./runtime.js";
+import {
+  enterpriseStepSequence,
+  findPlanNode,
+  planTracksSteps,
+  resolvePlanNodePath,
+} from "./plan.js";
+import {
+  getEnterpriseActiveRun,
+  type EnterpriseActiveRun,
+  type EnterpriseRunTraceSink,
+} from "./runtime.js";
 import type {
   EnterprisePlanNode,
   KnowledgeDocumentRemovalOutcome,
@@ -108,12 +117,29 @@ function allFoundationIds(): string[] {
   return [...ids].toSorted();
 }
 
-/** Register (or replace) the adapter for one knowledge foundation id. */
+/**
+ * Register (or replace) the adapter for one knowledge foundation id.
+ *
+ * A replacement is warned about rather than refused: the registry is a plain
+ * last-write-wins map, and a collision has no single owner to reject it — two
+ * adapter plugins can each claim an id in good faith, and the loader's own
+ * snapshot/restore legitimately re-registers what is already there. What must not
+ * happen silently is the operator case: every step wired to that id now queries a
+ * different corpus than the one they scoped it to, and nothing downstream can
+ * tell, because both stores answer under the same name.
+ */
 export function registerEnterpriseKnowledgeFoundation(
   foundationId: string,
   adapter: KnowledgeFoundationAdapter,
 ): void {
-  foundations().set(foundationId, adapter);
+  const registry = foundations();
+  const previous = registry.get(foundationId);
+  if (previous && previous !== adapter) {
+    log.warn(
+      `enterprise knowledge foundation "${foundationId}" was registered twice; the later registration wins and every step scoped to that id now queries it`,
+    );
+  }
+  registry.set(foundationId, adapter);
 }
 
 /**
@@ -185,43 +211,49 @@ export type EnterpriseKnowledgeFoundationEntry = {
   foundationId: string;
   descriptor: KnowledgeFoundationDescriptor;
   /**
-   * Trees whose bundle owns this id, sorted. EMPTY means a plugin registered it —
-   * that registry is global, so every tree can retrieve it. Always populated here;
-   * omission is reserved for clients talking to a gateway too old to report it, so
-   * they can tell "global" from "unknown". Retrieval is tree-scoped
-   * (resolveRetrievalAdapter), so a caller reading the flat id list as
-   * deployment-wide would report another workflow's foundation as available here.
+   * The one tree whose bundle owns this row. EMPTY means a plugin registered the
+   * id — that registry is global, so every tree can retrieve it. The same id can
+   * therefore have several bundle rows with different descriptors, one per tree.
+   * Always populated here; omission is reserved for old gateway clients so they
+   * can tell "global" from "unknown".
    */
   ownerTreeIds: string[];
 };
 
-/** Trees whose bundle registry holds `foundationId`, sorted. */
-function bundleOwnerTreeIds(foundationId: string): string[] {
-  const treeIds: string[] = [];
-  for (const [treeId, perTree] of bundleFoundationsByTree()) {
-    if (perTree.has(foundationId)) {
-      treeIds.push(treeId);
-    }
-  }
-  return treeIds.toSorted();
-}
-
 /**
- * Every registered foundation with a descriptor, in the same sorted order as
- * `listEnterpriseKnowledgeFoundationIds`. Adapters written against the
- * retrieval-only contract (no `describe`) get a neutral fallback, so the
- * inspector lists them rather than hiding what it cannot introspect.
+ * Every registered foundation with a descriptor, sorted by id then owning tree.
+ * Bundle rows stay separate because two trees may reuse an id for different
+ * corpora and descriptors. A global plugin registration outranks all bundle rows
+ * for the same id, matching retrieval. Adapters written against the retrieval-only
+ * contract (no `describe`) get a neutral fallback.
  */
 export function listEnterpriseKnowledgeFoundationDescriptors(): EnterpriseKnowledgeFoundationEntry[] {
-  return listEnterpriseKnowledgeFoundationIds().map((foundationId) => {
-    // A plugin registration is global and outranks any bundle for the same id
-    // (resolveRetrievalAdapter checks it first), so it reports no owning tree.
-    return {
-      foundationId,
-      descriptor: describeFoundation(foundationId),
-      ownerTreeIds: foundations().has(foundationId) ? [] : bundleOwnerTreeIds(foundationId),
-    };
-  });
+  const entries: EnterpriseKnowledgeFoundationEntry[] = [];
+  const bundleTrees = [...bundleFoundationsByTree()].toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  for (const foundationId of listEnterpriseKnowledgeFoundationIds()) {
+    const plugin = foundations().get(foundationId);
+    if (plugin) {
+      entries.push({
+        foundationId,
+        descriptor: describeFoundation(foundationId, plugin),
+        ownerTreeIds: [],
+      });
+      continue;
+    }
+    for (const [treeId, perTree] of bundleTrees) {
+      const adapter = perTree.get(foundationId);
+      if (adapter) {
+        entries.push({
+          foundationId,
+          descriptor: describeFoundation(foundationId, adapter),
+          ownerTreeIds: [treeId],
+        });
+      }
+    }
+  }
+  return entries;
 }
 
 // The adapter defaults to the global lookup (inspector view); callers with a
@@ -378,46 +410,55 @@ export async function snapshotEnterpriseKnowledgeFoundation(
 }
 
 /**
- * Whether a run's tree can retrieve any foundation (a live plugin foundation or a
- * bundle one it owns). Gates whether `knowledge_search` is exposed to the model,
- * so an unrelated workflow does not receive a dead tool after a bundle import for
- * some other tree.
+ * The foundations this run can actually retrieve, sorted: registered for its tree
+ * (a live plugin foundation, or a bundle one it owns) AND admitted by some path
+ * the run can be active on.
  *
- * A work-map that grants knowledge explicitly narrows this too: with no granted
- * foundation anywhere in the PLAN, every retrieval would come back empty, and a
- * tool that can only fail is worse than an absent one. Plan-wide rather than
- * per-step on purpose — the model-visible tool list has to stay stable for the
- * whole run (prompt cache), and the per-call scope still decides each retrieval.
+ * ONE list answers the two model-facing questions that must never disagree —
+ * whether to expose `knowledge_search` at all, and which sources to name in its
+ * routing glossary. Deriving them apart let a run advertise a source it could
+ * never query, and hid every source from a run whose steps declare no allow-list.
+ *
+ * The paths are the ones the CURSOR can occupy, decided the same way the plan
+ * decides where to open it (planTracksSteps): a step-tracking plan visits its
+ * LEAVES and is never active on the root, while a plan with no steps to track
+ * spends its whole life on the root. Asking the same question both ways — root
+ * OR leaves, never both — keeps this from advertising a source only an
+ * unreachable scope admits; interior nodes are excluded either way, which is
+ * what makes an interior-only grant correctly read as unusable.
+ *
+ * Whichever branch applies, the answer stays STABLE for the whole run, because
+ * it decides a model-visible tool and its description and a list that changes
+ * between turns costs the prompt cache. The per-call scope still refuses
+ * anything the active path denies.
+ */
+function routableFoundationIds(run: EnterpriseActiveRun): string[] {
+  const grantsExplicitly = run.plan.capabilityGrants === "explicit";
+  // A childless root is its own single leaf (leafNodeIds), so the step branch
+  // already covers the one-node plan; this only picks the root for a multi-node
+  // plan whose nodes carry nothing to step through.
+  const cursorNodeIds = planTracksSteps(run.plan)
+    ? enterpriseStepSequence(run.plan)
+    : [run.plan.nodes[0]?.nodeId];
+  const paths = cursorNodeIds
+    .filter((nodeId): nodeId is string => typeof nodeId === "string")
+    .map((nodeId) => resolvePlanNodePath(run.plan, nodeId));
+  // retrievalFoundationIds is sorted and filter preserves order, so the glossary
+  // and the gate stay deterministic without re-sorting.
+  return retrievalFoundationIds(run.plan.treeId).filter((foundationId) =>
+    paths.some((path) => foundationAllowedByPath(path, foundationId, grantsExplicitly)),
+  );
+}
+
+/**
+ * Whether a run can retrieve any foundation. Gates whether `knowledge_search` is
+ * exposed to the model, so an unrelated workflow does not receive a dead tool
+ * after a bundle import for some other tree, and a work-map whose every step
+ * excludes what is registered does not receive one that can only come back empty.
  */
 export function runHasRetrievableKnowledgeFoundations(runId: string): boolean {
   const run = getEnterpriseActiveRun(runId);
-  if (!run) {
-    return false;
-  }
-  const retrievable = retrievalFoundationIds(run.plan.treeId);
-  if (retrievable.length === 0) {
-    return false;
-  }
-  if (run.plan.capabilityGrants !== "explicit") {
-    return true;
-  }
-  // The paths a run can execute: the ROOT, where a non-advancing runtime (CLI,
-  // Codex, ACP) spends its whole life, and each LEAF the embedded step loop can
-  // reach. Interior nodes are excluded — no run stops there — which is what makes
-  // an interior-only grant correctly read as unusable.
-  //
-  // Root AND leaves, not one or the other: which runtime this plan gets is not
-  // known here, and the answer must stay STABLE for the whole run because it
-  // decides a model-visible tool (a list that changes between turns costs the
-  // prompt cache). Erring toward exposure keeps a tool a root-scoped run can
-  // really use; the per-call scope still refuses anything the active path denies.
-  const executable = [run.plan.nodes[0]?.nodeId, ...enterpriseStepSequence(run.plan)].filter(
-    (nodeId): nodeId is string => typeof nodeId === "string",
-  );
-  return executable.some((nodeId) => {
-    const path = resolvePlanNodePath(run.plan, nodeId);
-    return retrievable.some((foundationId) => foundationAllowedByPath(path, foundationId, true));
-  });
+  return run ? routableFoundationIds(run).length > 0 : false;
 }
 
 /** List the documents a foundation holds, for the operator inspector. */
@@ -483,32 +524,31 @@ export type WorkflowKnowledgeFoundation = {
 };
 
 /**
- * The foundations this workflow's tree references (the union of every step's
- * `knowledgeFoundations`), each with a short summary of what it covers. Feeds the
- * `knowledge_search` tool description as a glossary so the model can route a
- * `foundations` target; which foundation a given step is scoped to stays in the
- * step digest, and retrieval enforces the active step's allow-list.
+ * The foundations this run can route to, each with a short summary of what it
+ * covers. Feeds the `knowledge_search` tool description as a glossary so the
+ * model can pick a `foundations` target per query; which of them a given step is
+ * scoped to stays in the step digest, and retrieval enforces the active step's
+ * allow-list.
  *
- * Two deliberate choices: (1) the union over ALL steps — not the active node —
- * keeps the list stable for the run (the active node advances per turn while the
- * tool description is frozen at assembly) and scoped to this workflow rather than
- * the whole registry (no cross-tree id leak); (2) only the descriptor's
- * `description` is surfaced — `displayName` is an operator-facing label that
- * adapters were never asked to keep model-safe. Read at tool-assembly time,
- * after runtime plugins register, so the summaries are populated.
+ * The ROUTABLE set (registry ∩ what some executable path admits), not the union
+ * of what the steps name. Naming is not the same as reaching: a step that
+ * declares no allow-list can query every registered foundation, so reading the
+ * declarations alone left a multi-store deployment with an empty glossary and no
+ * way for the model to target anything — while a declaration nobody registered
+ * advertised a source every call would come back empty from. Same list the tool
+ * gate uses, so the model is never shown a source the run cannot query.
+ *
+ * Only the descriptor's `description` is surfaced — `displayName` is an
+ * operator-facing label adapters were never asked to keep model-safe. Read at
+ * tool-assembly time, after runtime plugins register, so the summaries are
+ * populated and stay frozen for the run (prompt cache).
  */
 export function describeWorkflowKnowledgeFoundations(runId: string): WorkflowKnowledgeFoundation[] {
   const run = getEnterpriseActiveRun(runId);
   if (!run) {
     return [];
   }
-  const referenced = new Set<string>();
-  for (const node of run.plan.nodes) {
-    for (const foundationId of node.ontology.knowledgeFoundations ?? []) {
-      referenced.add(foundationId);
-    }
-  }
-  return [...referenced].toSorted().map((foundationId) => {
+  return routableFoundationIds(run).map((foundationId) => {
     // Tree-scoped adapter so the model-facing glossary never shows another
     // workflow's description for a reused foundation id.
     const { description } = describeFoundation(
@@ -527,6 +567,14 @@ export type SkippedKnowledgeFoundation = {
 
 export type KnowledgeRetrievalResult = {
   snippets: KnowledgeSnippet[];
+  /**
+   * Foundations that were queried and answered, sorted. Empty snippets alone are
+   * ambiguous once a run has several sources: the model cannot tell a source it
+   * searched that holds nothing from one it never reached, so it either retries
+   * the same target or stops looking. Naming what was searched is what makes a
+   * second, differently-targeted call the obvious next move.
+   */
+  searched: string[];
   /** Foundations denied/blocked by governance (not queried). */
   skipped: SkippedKnowledgeFoundation[];
   /** True when the run is enterprise-mediated; false means no scoping was applied. */
@@ -556,11 +604,11 @@ export async function resolveEnterpriseKnowledge(params: {
   params.signal?.throwIfAborted();
   const run = getEnterpriseActiveRun(params.runId);
   if (!run) {
-    return { snippets: [], skipped: [], mediated: false };
+    return { snippets: [], searched: [], skipped: [], mediated: false };
   }
   const node = findPlanNode(run.plan, run.plan.activeNodeId);
   if (!node) {
-    return { snippets: [], skipped: [], mediated: true };
+    return { snippets: [], searched: [], skipped: [], mediated: true };
   }
   const path = resolvePlanNodePath(run.plan, node.nodeId);
   const limit = params.limit && params.limit > 0 ? params.limit : DEFAULT_KNOWLEDGE_LIMIT;
@@ -585,6 +633,7 @@ export async function resolveEnterpriseKnowledge(params: {
   const grantsExplicitly = run.plan.capabilityGrants === "explicit";
 
   const snippets: KnowledgeSnippet[] = [];
+  const searched: string[] = [];
   const skipped: SkippedKnowledgeFoundation[] = [];
   // Include authored sources even when their adapter is missing: unavailable
   // knowledge must not look like a successful search with no matching facts.
@@ -644,6 +693,9 @@ export async function resolveEnterpriseKnowledge(params: {
       // Adapters may ignore cancellation. Do not publish their late results or
       // start another foundation's retrieval after the caller has cancelled.
       params.signal?.throwIfAborted();
+      // Recorded only once the adapter ANSWERED: a foundation whose retrieval threw
+      // lands in `skipped` below, so the two lists never both claim it.
+      searched.push(foundationId);
       // Cap at the host boundary: a misbehaving adapter must not exceed the
       // advertised per-foundation limit in the model-facing output.
       snippets.push(...results.slice(0, limit));
@@ -663,7 +715,7 @@ export async function resolveEnterpriseKnowledge(params: {
     }
   }
   // Candidate ids are sorted, including unavailable and explicitly requested ids.
-  return { snippets, skipped, mediated: true };
+  return { snippets, searched, skipped, mediated: true };
 }
 
 function recordKnowledgeDecision(

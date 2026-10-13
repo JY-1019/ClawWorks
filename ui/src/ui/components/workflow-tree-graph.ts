@@ -7,42 +7,10 @@
 // every ancestor's tool/knowledge scope.
 import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
+import type { EnterpriseTreeNode } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
 
-export type WorkflowTreeOntology = {
-  entities?: {
-    id: string;
-    title?: string;
-    description?: string;
-    properties?: { id: string; type: string; primaryKey?: boolean; required?: boolean }[];
-  }[];
-  relationships?: {
-    id: string;
-    from: string;
-    to: string;
-    cardinality?: string;
-    inverse?: string;
-    description?: string;
-  }[];
-  actions?: {
-    id: string;
-    title?: string;
-    description?: string;
-    tools?: string[];
-    parameters?: { id: string; type: string; required?: boolean }[];
-    preconditions?: string[];
-    effects?: { entity: string; kind: string; description?: string }[];
-  }[];
-  constraints?: { id?: string; description: string }[];
-  allowedTools?: string[];
-  deniedTools?: string[];
-  knowledgeFoundations?: string[];
-  contextHints?: string[];
-  guidance?: string;
-  skills?: string[];
-  expectedOutput?: string;
-  audit?: boolean;
-};
+export type WorkflowTreeOntology = EnterpriseTreeNode["ontology"];
 
 export type WorkflowTreeNode = {
   id: string;
@@ -319,19 +287,22 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
 
   /**
    * Toggle selection and tell the parent. The parent owns the id (it loads that
-   * node's object instances), so we emit the new value; the optimistic local set
-   * keeps uncontrolled callers highlighting without a round-trip. null clears.
+   * node's object instances), so we emit the new value. A parent may cancel the
+   * event when navigation would discard a draft; only accepted selections stick.
    */
   private selectNode(nodeId: string): void {
     const next = this.selected === nodeId ? null : nodeId;
-    this.selected = next;
-    this.dispatchEvent(
+    const accepted = this.dispatchEvent(
       new CustomEvent<{ nodeId: string | null }>("node-select", {
         detail: { nodeId: next },
         bubbles: true,
         composed: true,
+        cancelable: true,
       }),
     );
+    if (accepted) {
+      this.selected = next;
+    }
   }
 
   override willUpdate(changed: Map<string, unknown>) {
@@ -365,7 +336,7 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
           height=${height}
           viewBox="0 0 ${width} ${height}"
           style="min-width: ${width}px;"
-          role="tree"
+          role="list"
           aria-label=${t("enterprise.structureTitle")}
         >
           <g transform="translate(${PADDING}, ${PADDING})">
@@ -426,11 +397,8 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
       <g
         class="node-box"
         opacity=${onRoute ? 1 : 0.28}
-        role="treeitem"
-        tabindex="0"
+        role="listitem"
         aria-level=${node.depth + 1}
-        aria-selected=${selected}
-        aria-label=${node.description ? `${node.title}: ${node.description}` : node.title}
         @click=${() => {
           this.selectNode(node.id);
         }}
@@ -442,6 +410,7 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
         }}
       >
         <rect
+          class="node-action"
           x=${node.x}
           y=${node.y}
           width=${NODE_WIDTH}
@@ -450,6 +419,10 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
           fill=${selected ? "var(--accent-subtle)" : "var(--bg-hover, var(--panel-strong))"}
           stroke=${selected ? "var(--accent)" : isRoot ? "var(--accent-2, var(--accent))" : "var(--border-strong)"}
           stroke-width=${selected || isRoot ? 2 : 1.5}
+          role="button"
+          tabindex="0"
+          aria-pressed=${selected}
+          aria-label=${node.description ? `${node.title}: ${node.description}` : node.title}
         >
           <title>${node.title}${node.description ? ` — ${node.description}` : ""}</title>
         </rect>
@@ -507,6 +480,9 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     if (ontology.skills?.length) {
       rows.push(row(t("enterprise.skills", { ids: ontology.skills.join(", ") })));
     }
+    if (ontology.mcpServers?.length) {
+      rows.push(row(t("enterprise.mcpServers", { ids: ontology.mcpServers.join(", ") })));
+    }
     // Actions get a block each, not a comma-joined id list: the parameters,
     // preconditions, and write effects ARE the action type, and an operator
     // reviewing a governed step needs to see what it is allowed to write.
@@ -516,19 +492,30 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
         .join(", ");
       const writes = (action.effects ?? [])
         .filter((effect) => effect.kind !== "read")
-        .map((effect) => `${effect.kind} ${effect.entity}`)
+        .map((effect) => {
+          const target =
+            "entity" in effect
+              ? effect.entity
+              : effect.kind === "call"
+                ? effect.tool
+                : effect.relationship;
+          return `${effect.kind} ${target}`;
+        })
         .join(", ");
       const reads = (action.effects ?? [])
-        .filter((effect) => effect.kind === "read")
-        .map((effect) => effect.entity)
+        .flatMap((effect) => (effect.kind === "read" ? [effect.entity] : []))
         .join(", ");
       rows.push(html`
         <div class="action">
           <div class="action-title">
             ${action.title ?? action.id}
-            ${action.tools?.length
-              ? html`<span class="action-tools">${action.tools.join(", ")}</span>`
-              : nothing}
+            <span class="action-tools">
+              ${action.tools === undefined
+                ? t("enterprise.ontologyEditor.toolsMode.all")
+                : action.tools.length === 0
+                  ? t("enterprise.ontologyEditor.toolsMode.none")
+                  : action.tools.join(", ")}
+            </span>
           </div>
           ${action.description
             ? html`<div class="action-sub">${action.description}</div>`

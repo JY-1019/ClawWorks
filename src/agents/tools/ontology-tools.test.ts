@@ -21,7 +21,11 @@ import {
 } from "../../enterprise/runtime.js";
 import { importWorkflowTreeContent } from "../../enterprise/tree-io.js";
 import { invalidateWorkflowTreeRegistry } from "../../enterprise/tree-registry.js";
-import type { EnterprisePlanNode, EnterpriseRunPlan } from "../../enterprise/types.js";
+import type {
+  EnterprisePlanNode,
+  EnterpriseRunPlan,
+  OntologyValue,
+} from "../../enterprise/types.js";
 import { closeOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../../test-utils/env.js";
 import {
@@ -138,7 +142,11 @@ beforeAll(() => {
   // the stored row legitimately carries it — and a run on the claims branch must
   // still not be able to read it.
   runOntologyObjectWrite((database) => {
-    for (const object of [
+    const objects: Array<{
+      entity: string;
+      objectId: string;
+      properties: Record<string, OntologyValue>;
+    }> = [
       {
         entity: "claim",
         objectId: "C-1",
@@ -151,7 +159,8 @@ beforeAll(() => {
       },
       { entity: "policy", objectId: "P-1", properties: { "policy-id": "P-1" } },
       { entity: "payroll-record", objectId: "PR-1", properties: { "run-id": "PR-1" } },
-    ]) {
+    ];
+    for (const object of objects) {
       upsertOntologyObject(database, { treeId: TREE_ID, ...object });
     }
     for (const link of [

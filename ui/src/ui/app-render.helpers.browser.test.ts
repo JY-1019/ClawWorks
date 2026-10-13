@@ -1,6 +1,7 @@
 // Control UI tests cover app render behavior.
 import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
+import type { EnterpriseRunDetail } from "../../../packages/gateway-protocol/src/index.js";
 import { t } from "../i18n/index.ts";
 import {
   renderChatControls,
@@ -176,6 +177,189 @@ describe("chat header controls (browser)", () => {
     await Promise.resolve();
 
     expect(container.querySelector('[data-chat-provider-usage="true"]')).toBeNull();
+  });
+
+  it("keeps an enterprise mode failure visible after the menu closes", async () => {
+    const container = document.createElement("div");
+    render(
+      renderChatControls(
+        createState({
+          enterpriseChatMode: "enforce",
+          enterpriseChatModeBusy: false,
+          enterpriseChatModeError: "Could not save mode",
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Could not save mode");
+    expect(alert?.closest("details")).toBeNull();
+  });
+
+  it("continues a stopped enterprise run beside the chat controls", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true });
+    const run: EnterpriseRunDetail = {
+      executionId: "exec-1",
+      runId: "run-1",
+      sessionKey: "main",
+      sessionId: "transcript-current",
+      agentId: "main",
+      treeId: "support",
+      treeVersion: "1.0.0",
+      treeName: "Support",
+      mode: "enforce",
+      // A run can finish its answer after step A while step B remains unfinished.
+      // The backend reports that terminal execution as completed + resumable.
+      status: "completed",
+      resumable: true,
+      matchedBy: "planner",
+      requestSummary: "help",
+      activeNodeId: "support.resolve",
+      nodes: [],
+      events: [],
+      executionCount: 1,
+      createdAt: 1,
+      updatedAt: 2,
+      endedAt: 2,
+    };
+    const state = createState({
+      client: { request } as unknown as AppViewState["client"],
+      currentSessionId: "transcript-current",
+      enterpriseChatRun: run,
+      enterpriseChatResumeBusy: false,
+      enterpriseChatResumeError: null,
+    });
+    const container = document.createElement("div");
+    render(renderChatControls(state), container);
+    await Promise.resolve();
+
+    requireButton(
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+        button.textContent?.includes("Continue from unfinished step"),
+      ),
+      "enterprise continue",
+    ).click();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(state.enterpriseChatRun?.resumeRequested).toBe(true));
+  });
+
+  it("keeps a resume transport error visible after disconnect", async () => {
+    const run = {
+      executionId: "exec-1",
+      runId: "run-1",
+      sessionKey: "main",
+      sessionId: "transcript-current",
+      agentId: "main",
+      treeId: "support",
+      treeVersion: "1.0.0",
+      treeName: "Support",
+      mode: "enforce",
+      status: "completed",
+      resumable: true,
+      matchedBy: "planner",
+      requestSummary: "help",
+      activeNodeId: "support.resolve",
+      nodes: [],
+      events: [],
+      executionCount: 1,
+      createdAt: 1,
+      updatedAt: 2,
+      endedAt: 2,
+    } satisfies EnterpriseRunDetail;
+    const container = document.createElement("div");
+
+    render(
+      renderChatControls(
+        createState({
+          connected: false,
+          currentSessionId: "transcript-current",
+          enterpriseChatRun: run,
+          enterpriseChatResumeError: "Resume failed",
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Resume failed");
+    expect(container.textContent).not.toContain("Continue from unfinished step");
+  });
+
+  it("hides Continue when reset kept the session key but rotated the transcript", async () => {
+    const run = {
+      executionId: "exec-before-reset",
+      runId: "run-before-reset",
+      sessionKey: "main",
+      sessionId: "transcript-before-reset",
+      agentId: "main",
+      treeId: "support",
+      treeVersion: "1.0.0",
+      treeName: "Support",
+      mode: "enforce",
+      status: "completed",
+      resumable: true,
+      matchedBy: "planner",
+      requestSummary: "help",
+      activeNodeId: "support.resolve",
+      nodes: [],
+      events: [],
+      executionCount: 1,
+      createdAt: 1,
+      updatedAt: 2,
+      endedAt: 2,
+    } satisfies EnterpriseRunDetail;
+    const container = document.createElement("div");
+    render(
+      renderChatControls(
+        createState({
+          currentSessionId: "transcript-after-reset",
+          enterpriseChatRun: run,
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.textContent).not.toContain("Continue from unfinished step");
+  });
+
+  it("hides Continue when an older gateway omits the run transcript id", async () => {
+    const run = {
+      executionId: "exec-legacy",
+      runId: "run-legacy",
+      sessionKey: "main",
+      agentId: "main",
+      treeId: "support",
+      treeVersion: "1.0.0",
+      treeName: "Support",
+      mode: "enforce",
+      status: "completed",
+      resumable: true,
+      matchedBy: "planner",
+      requestSummary: "help",
+      activeNodeId: "support.resolve",
+      nodes: [],
+      events: [],
+      executionCount: 1,
+      createdAt: 1,
+      updatedAt: 2,
+      endedAt: 2,
+    } satisfies EnterpriseRunDetail;
+    const container = document.createElement("div");
+    render(
+      renderChatControls(
+        createState({
+          currentSessionId: "transcript-current",
+          enterpriseChatRun: run,
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.textContent).not.toContain("Continue from unfinished step");
   });
 
   it("renders explicit hover tooltip metadata for the color mode buttons", async () => {

@@ -95,6 +95,8 @@ trees:
                   specific incident, read it and call compute_function with
                   incident-priority and its exact objectId. Do not estimate its
                   priority from prose or claim that computing it changed the record.
+                contextHints:
+                  - Elapsed minutes are a supplied snapshot, not a running timer.
                 functions:
                   - id: incident-priority
                     title: Incident priority

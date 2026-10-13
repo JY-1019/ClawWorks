@@ -2,6 +2,7 @@
 import {
   buildAgentHookContextChannelFields,
   embeddedAgentLog,
+  finalizeNativeHookRelayExecutedTool,
   formatErrorMessage,
   resolveAgentDir,
   resolveAttemptSpawnWorkspaceDir,
@@ -20,6 +21,7 @@ import {
 import { loadExecApprovals } from "openclaw/plugin-sdk/exec-approvals-runtime";
 import { resolveCodexAppServerForModelProvider } from "./app-server-policy.js";
 import { handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
+import { readCodexNotificationItem } from "./attempt-notifications.js";
 import { refreshCodexAppServerAuthTokens } from "./auth-bridge.js";
 import { isCodexAppServerApprovalRequest, type CodexAppServerClient } from "./client.js";
 import {
@@ -47,9 +49,13 @@ import {
 import { createCodexDynamicToolBridge, type CodexDynamicToolBridge } from "./dynamic-tools.js";
 import { handleCodexAppServerElicitationRequest } from "./elicitation-bridge.js";
 import {
+  assertCodexNativePreToolUseIsolation,
   buildCodexNativeHookRelayConfig,
   buildCodexNativeHookRelayDisabledConfig,
-  CODEX_NATIVE_HOOK_RELAY_EVENTS,
+  CodexNativeToolResultTracker,
+  isCodexNativeHookRelayToolItem,
+  resolveCodexNativeHookRelayEvents,
+  type CodexNativeToolResultRecord,
 } from "./native-hook-relay.js";
 import {
   readCodexNotificationThreadId,
@@ -68,6 +74,7 @@ import {
   type CodexDynamicToolCallResponse,
   type CodexServerNotification,
   type CodexThreadForkParams,
+  type CodexThreadItem,
   type CodexTurn,
   type JsonObject,
   type JsonValue,
@@ -104,8 +111,6 @@ const SIDE_QUESTION_COMPLETION_TIMEOUT_MS = 600_000;
 const CODEX_SIDE_NATIVE_HOOK_RELAY_MIN_TTL_MS = 30 * 60_000;
 const CODEX_SIDE_NATIVE_HOOK_RELAY_TTL_GRACE_MS = 5 * 60_000;
 const CODEX_SIDE_NATIVE_HOOK_RELAY_STARTUP_REQUEST_COUNT = 3;
-const CODEX_SIDE_NATIVE_HOOK_RELAY_EVENTS_WITH_APP_SERVER_APPROVALS =
-  CODEX_NATIVE_HOOK_RELAY_EVENTS.filter((event) => event !== "permission_request");
 const SIDE_BOUNDARY_PROMPT = `Side conversation boundary.
 
 Everything before this boundary is inherited history from the parent thread. It is reference context only. It is not your current task.
@@ -228,7 +233,11 @@ export async function runCodexAppServerSideQuestion(
     agentDir: params.agentDir,
     config: params.cfg,
   });
-  const collector = new CodexSideQuestionCollector(params);
+  let childThreadId: string | undefined;
+  let turnId: string | undefined;
+  let removeRequestHandler: (() => void) | undefined;
+  let nativeHookRelay: NativeHookRelayRegistrationHandle | undefined;
+  const collector = new CodexSideQuestionCollector(params, () => nativeHookRelay);
   const removeNotificationHandler = client.addNotificationHandler((notification) =>
     collector.handleNotification(notification),
   );
@@ -240,10 +249,6 @@ export async function runCodexAppServerSideQuestion(
   } else {
     params.opts?.abortSignal?.addEventListener("abort", abortFromUpstream, { once: true });
   }
-  let childThreadId: string | undefined;
-  let turnId: string | undefined;
-  let removeRequestHandler: (() => void) | undefined;
-  let nativeHookRelay: NativeHookRelayRegistrationHandle | undefined;
 
   try {
     const modelScopedAppServer = resolveCodexAppServerForModelProvider({
@@ -310,9 +315,12 @@ export async function runCodexAppServerSideQuestion(
         });
       }
       if (request.method === "item/tool/requestUserInput") {
-        return isSideUserInputRequest(request.params, childThreadId, turnId)
-          ? emptySideUserInputResponse()
-          : undefined;
+        if (!isSideUserInputRequest(request.params, childThreadId, turnId)) {
+          return undefined;
+        }
+        const response = emptySideUserInputResponse();
+        collector.recordLegacyMcpApprovalResult(request.params, response);
+        return response;
       }
       if (isCodexAppServerApprovalRequest(request.method)) {
         return handleCodexAppServerApprovalRequest({
@@ -458,6 +466,17 @@ export async function runCodexAppServerSideQuestion(
     );
 
     const effort = resolveReasoningEffort(params.resolvedThinkLevel ?? "off", modelSelection.model);
+    if (
+      nativeHookRelay?.allowedEvents.includes("pre_tool_use") &&
+      nativeHookRelay.shouldRelayEvent("pre_tool_use")
+    ) {
+      await assertCodexNativePreToolUseIsolation({
+        client,
+        cwd,
+        timeoutMs: appServer.requestTimeoutMs,
+        signal: runAbortController.signal,
+      });
+    }
     const turnResponse = assertCodexTurnStartResponse(
       await client.request(
         "turn/start",
@@ -498,6 +517,7 @@ export async function runCodexAppServerSideQuestion(
     return { text: trimmed };
   } finally {
     try {
+      collector.finalizeCompletedNativeTools();
       params.opts?.abortSignal?.removeEventListener("abort", abortFromUpstream);
       if (!runAbortController.signal.aborted) {
         runAbortController.abort("codex_side_question_finished");
@@ -521,12 +541,10 @@ function resolveCodexSideNativeHookRelayEvents(params: {
   configuredEvents?: readonly NativeHookRelayEvent[];
   approvalPolicy: CodexAppServerRuntimeOptions["approvalPolicy"];
 }): readonly NativeHookRelayEvent[] {
-  if (params.configuredEvents?.length) {
-    return params.configuredEvents;
-  }
-  return params.approvalPolicy === "never"
-    ? CODEX_NATIVE_HOOK_RELAY_EVENTS
-    : CODEX_SIDE_NATIVE_HOOK_RELAY_EVENTS_WITH_APP_SERVER_APPROVALS;
+  return resolveCodexNativeHookRelayEvents({
+    configuredEvents: params.configuredEvents,
+    appServer: { approvalPolicy: params.approvalPolicy },
+  });
 }
 
 function registerCodexSideNativeHookRelay(params: {
@@ -995,6 +1013,7 @@ class CodexSideQuestionCollector {
   private threadId: string | undefined;
   private turnId: string | undefined;
   private pendingNotifications: CodexServerNotification[] = [];
+  private readonly nativeToolResultTracker = new CodexNativeToolResultTracker();
   private assistantStarted = false;
   private assistantText = "";
   private finalText: string | undefined;
@@ -1008,7 +1027,10 @@ class CodexSideQuestionCollector {
     | undefined;
   completed = false;
 
-  constructor(private readonly params: AgentHarnessSideQuestionParams) {}
+  constructor(
+    private readonly params: AgentHarnessSideQuestionParams,
+    private readonly getNativeHookRelay: () => NativeHookRelayRegistrationHandle | undefined,
+  ) {}
 
   setTurn(threadId: string, turnId: string): void {
     this.threadId = threadId;
@@ -1035,6 +1057,16 @@ class CodexSideQuestionCollector {
       return;
     }
     if (!isNotificationForTurn(params, this.threadId, this.turnId)) {
+      return;
+    }
+    if (notification.method === "item/started") {
+      return;
+    }
+    if (notification.method === "item/completed") {
+      const item = readCodexNotificationItem(notification.params);
+      if (item && isCodexNativeHookRelayToolItem(item)) {
+        this.recordNativeToolResult(item);
+      }
       return;
     }
     if (notification.method === "item/agentMessage/delta") {
@@ -1117,6 +1149,7 @@ class CodexSideQuestionCollector {
     if (!turn || turn.id !== this.turnId) {
       return;
     }
+    this.flushNativeToolResults(turn);
     this.completed = true;
     if (turn.status === "failed") {
       this.reject(
@@ -1136,6 +1169,64 @@ class CodexSideQuestionCollector {
     }
     const finalText = collectAssistantText(turn) || this.assistantText;
     this.resolve(finalText);
+  }
+
+  private flushNativeToolResults(turn: CodexTurn): void {
+    this.finalizeCompletedNativeTools();
+    for (const item of turn.items ?? []) {
+      if (!isCodexNativeHookRelayToolItem(item)) {
+        continue;
+      }
+      this.recordNativeToolResult(item, true);
+    }
+  }
+
+  private recordNativeToolResult(item: CodexThreadItem, allowPostToolUseFallback = false): void {
+    const relay = this.getNativeHookRelay();
+    if (!relay) {
+      return;
+    }
+    const result = this.nativeToolResultTracker.take(item, {
+      nativePostToolUseRelayEnabled:
+        relay.allowedEvents.includes("post_tool_use") && relay.shouldRelayEvent("post_tool_use"),
+      allowPostToolUseFallback,
+    });
+    if (!result) {
+      return;
+    }
+    this.finalizeNativeToolResult(result);
+  }
+
+  finalizeCompletedNativeTools(): void {
+    for (const result of this.nativeToolResultTracker.flushDeferred()) {
+      this.finalizeNativeToolResult(result);
+    }
+  }
+
+  recordLegacyMcpApprovalResult(
+    requestParams: JsonValue | undefined,
+    response: JsonValue | undefined,
+  ): void {
+    this.nativeToolResultTracker.recordLegacyMcpApprovalResult(requestParams, response);
+  }
+
+  private finalizeNativeToolResult(result: CodexNativeToolResultRecord): void {
+    const relay = this.getNativeHookRelay();
+    if (!relay) {
+      return;
+    }
+    const releaseError = finalizeNativeHookRelayExecutedTool({
+      relayId: relay.relayId,
+      toolUseId: result.toolCallId,
+      generation: relay.generation,
+      released: result.released,
+      ...(result.toolInput ? { toolInput: result.toolInput } : {}),
+    });
+    if (releaseError) {
+      embeddedAgentLog.warn("codex /btw native tool relay finalization failed", {
+        error: releaseError,
+      });
+    }
   }
 
   private resolve(text: string): void {

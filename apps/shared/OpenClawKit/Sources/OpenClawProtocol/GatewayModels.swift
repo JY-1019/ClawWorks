@@ -6502,22 +6502,26 @@ public struct EnterpriseTreesListParams: Codable, Sendable {}
 
 public struct EnterpriseTreesListResult: Codable, Sendable {
     public let trees: [EnterpriseTreeSummary]
-    public let importerrors: [[String: AnyCodable]]
+    public let importerrors: [EnterpriseTreeImportError]
+    public let historyonlytreeids: [String]?
     public let storeerror: String?
 
     public init(
         trees: [EnterpriseTreeSummary],
-        importerrors: [[String: AnyCodable]],
+        importerrors: [EnterpriseTreeImportError],
+        historyonlytreeids: [String]? = nil,
         storeerror: String?)
     {
         self.trees = trees
         self.importerrors = importerrors
+        self.historyonlytreeids = historyonlytreeids
         self.storeerror = storeerror
     }
 
     private enum CodingKeys: String, CodingKey {
         case trees
         case importerrors = "importErrors"
+        case historyonlytreeids = "historyOnlyTreeIds"
         case storeerror = "storeError"
     }
 }
@@ -6688,6 +6692,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
     public let executionid: String
     public let runid: String
     public let sessionkey: AnyCodable
+    public let sessionid: String?
     public let agentid: AnyCodable
     public let treeid: String
     public let treeversion: String
@@ -6698,6 +6703,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
     public let locallyactive: Bool?
     public let resumerequested: Bool?
     public let resumable: Bool?
+    public let resumerefusalreason: AnyCodable?
     public let matchedby: String
     public let requestsummary: String
     public let activenodeid: String
@@ -6713,6 +6719,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         executionid: String,
         runid: String,
         sessionkey: AnyCodable,
+        sessionid: String? = nil,
         agentid: AnyCodable,
         treeid: String,
         treeversion: String,
@@ -6723,6 +6730,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         locallyactive: Bool? = nil,
         resumerequested: Bool? = nil,
         resumable: Bool? = nil,
+        resumerefusalreason: AnyCodable? = nil,
         matchedby: String,
         requestsummary: String,
         activenodeid: String,
@@ -6737,6 +6745,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         self.executionid = executionid
         self.runid = runid
         self.sessionkey = sessionkey
+        self.sessionid = sessionid
         self.agentid = agentid
         self.treeid = treeid
         self.treeversion = treeversion
@@ -6747,6 +6756,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         self.locallyactive = locallyactive
         self.resumerequested = resumerequested
         self.resumable = resumable
+        self.resumerefusalreason = resumerefusalreason
         self.matchedby = matchedby
         self.requestsummary = requestsummary
         self.activenodeid = activenodeid
@@ -6763,6 +6773,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         case executionid = "executionId"
         case runid = "runId"
         case sessionkey = "sessionKey"
+        case sessionid = "sessionId"
         case agentid = "agentId"
         case treeid = "treeId"
         case treeversion = "treeVersion"
@@ -6773,6 +6784,7 @@ public struct EnterpriseRunDetail: Codable, Sendable {
         case locallyactive = "locallyActive"
         case resumerequested = "resumeRequested"
         case resumable
+        case resumerefusalreason = "resumeRefusalReason"
         case matchedby = "matchedBy"
         case requestsummary = "requestSummary"
         case activenodeid = "activeNodeId"
@@ -6894,15 +6906,19 @@ public struct EnterpriseRunsGetResult: Codable, Sendable {
 
 public struct EnterpriseRunsResumeParams: Codable, Sendable {
     public let executionid: String
+    public let sessionid: String?
 
     public init(
-        executionid: String)
+        executionid: String,
+        sessionid: String? = nil)
     {
         self.executionid = executionid
+        self.sessionid = sessionid
     }
 
     private enum CodingKeys: String, CodingKey {
         case executionid = "executionId"
+        case sessionid = "sessionId"
     }
 }
 
@@ -7086,22 +7102,30 @@ public struct EnterpriseTreesGetParams: Codable, Sendable {
 
 public struct EnterpriseTreesGetResult: Codable, Sendable {
     public let tree: AnyCodable
+    public let warnings: [EnterpriseTreeImportIssue]?
     public let importerror: String?
+    public let importerrorfingerprint: String?
     public let storeerror: String?
 
     public init(
         tree: AnyCodable,
-        importerror: String?,
+        warnings: [EnterpriseTreeImportIssue]? = nil,
+        importerror: String? = nil,
+        importerrorfingerprint: String? = nil,
         storeerror: String?)
     {
         self.tree = tree
+        self.warnings = warnings
         self.importerror = importerror
+        self.importerrorfingerprint = importerrorfingerprint
         self.storeerror = storeerror
     }
 
     private enum CodingKeys: String, CodingKey {
         case tree
+        case warnings
         case importerror = "importError"
+        case importerrorfingerprint = "importErrorFingerprint"
         case storeerror = "storeError"
     }
 }
@@ -7109,25 +7133,21 @@ public struct EnterpriseTreesGetResult: Codable, Sendable {
 public struct EnterpriseOntologyObject: Codable, Sendable {
     public let objectid: String
     public let properties: [String: AnyCodable]
-    public let provenance: AnyCodable
     public let updatedat: Int
 
     public init(
         objectid: String,
         properties: [String: AnyCodable],
-        provenance: AnyCodable,
         updatedat: Int)
     {
         self.objectid = objectid
         self.properties = properties
-        self.provenance = provenance
         self.updatedat = updatedat
     }
 
     private enum CodingKeys: String, CodingKey {
         case objectid = "objectId"
         case properties
-        case provenance
         case updatedat = "updatedAt"
     }
 }
@@ -7172,6 +7192,364 @@ public struct EnterpriseObjectsListResult: Codable, Sendable {
     }
 }
 
+public struct EnterpriseBundlesPreviewParams: Codable, Sendable {
+    public let content: String
+    public let format: AnyCodable
+
+    public init(
+        content: String,
+        format: AnyCodable)
+    {
+        self.content = content
+        self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case content
+        case format
+    }
+}
+
+public struct EnterpriseBundlesPreviewResult: Codable, Sendable {
+    public let ok: Bool
+    public let reviewtoken: String?
+    public let trees: [EnterpriseBundlePreviewTree]?
+    public let foundations: [String]?
+    public let missingfoundations: [String]?
+    public let removedfoundations: [String]?
+    public let replacedfoundations: [String]?
+    public let shadowedfoundations: [String]?
+    public let requiredtools: [String]?
+    public let requiredskills: [String]?
+    public let requiredmcpservers: [String]?
+    public let missingmcpservers: [String]?
+    public let warnings: [EnterpriseTreeImportIssue]?
+    public let missinggovernancepolicies: [String]?
+    public let conflictinggovernancepolicies: [String]?
+    public let governancemodedowngrade: EnterpriseBundleModeDowngrade?
+    public let issues: [EnterpriseTreeImportIssue]?
+
+    public init(
+        ok: Bool,
+        reviewtoken: String? = nil,
+        trees: [EnterpriseBundlePreviewTree]?,
+        foundations: [String]?,
+        missingfoundations: [String]?,
+        removedfoundations: [String]?,
+        replacedfoundations: [String]?,
+        shadowedfoundations: [String]?,
+        requiredtools: [String]?,
+        requiredskills: [String]?,
+        requiredmcpservers: [String]?,
+        missingmcpservers: [String]?,
+        warnings: [EnterpriseTreeImportIssue]?,
+        missinggovernancepolicies: [String]?,
+        conflictinggovernancepolicies: [String]?,
+        governancemodedowngrade: EnterpriseBundleModeDowngrade?,
+        issues: [EnterpriseTreeImportIssue]?)
+    {
+        self.ok = ok
+        self.reviewtoken = reviewtoken
+        self.trees = trees
+        self.foundations = foundations
+        self.missingfoundations = missingfoundations
+        self.removedfoundations = removedfoundations
+        self.replacedfoundations = replacedfoundations
+        self.shadowedfoundations = shadowedfoundations
+        self.requiredtools = requiredtools
+        self.requiredskills = requiredskills
+        self.requiredmcpservers = requiredmcpservers
+        self.missingmcpservers = missingmcpservers
+        self.warnings = warnings
+        self.missinggovernancepolicies = missinggovernancepolicies
+        self.conflictinggovernancepolicies = conflictinggovernancepolicies
+        self.governancemodedowngrade = governancemodedowngrade
+        self.issues = issues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case reviewtoken = "reviewToken"
+        case trees
+        case foundations
+        case missingfoundations = "missingFoundations"
+        case removedfoundations = "removedFoundations"
+        case replacedfoundations = "replacedFoundations"
+        case shadowedfoundations = "shadowedFoundations"
+        case requiredtools = "requiredTools"
+        case requiredskills = "requiredSkills"
+        case requiredmcpservers = "requiredMcpServers"
+        case missingmcpservers = "missingMcpServers"
+        case warnings
+        case missinggovernancepolicies = "missingGovernancePolicies"
+        case conflictinggovernancepolicies = "conflictingGovernancePolicies"
+        case governancemodedowngrade = "governanceModeDowngrade"
+        case issues
+    }
+}
+
+public struct EnterpriseBundleTree: Codable, Sendable {
+    public let id: String
+    public let replaced: AnyCodable
+
+    public init(
+        id: String,
+        replaced: AnyCodable)
+    {
+        self.id = id
+        self.replaced = replaced
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case replaced
+    }
+}
+
+public struct EnterpriseBundlePreviewTree: Codable, Sendable {
+    public let id: String
+    public let version: String
+    public let replaced: AnyCodable
+    public let currentversion: AnyCodable
+    public let currenthash: AnyCodable
+
+    public init(
+        id: String,
+        version: String,
+        replaced: AnyCodable,
+        currentversion: AnyCodable,
+        currenthash: AnyCodable)
+    {
+        self.id = id
+        self.version = version
+        self.replaced = replaced
+        self.currentversion = currentversion
+        self.currenthash = currenthash
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case version
+        case replaced
+        case currentversion = "currentVersion"
+        case currenthash = "currentHash"
+    }
+}
+
+public struct EnterpriseBundleModeDowngrade: Codable, Sendable {
+    public let from: AnyCodable
+    public let to: AnyCodable
+
+    public init(
+        from: AnyCodable,
+        to: AnyCodable)
+    {
+        self.from = from
+        self.to = to
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case from
+        case to
+    }
+}
+
+public struct EnterpriseBundleSkippedFoundation: Codable, Sendable {
+    public let id: String
+    public let reason: String
+
+    public init(
+        id: String,
+        reason: String)
+    {
+        self.id = id
+        self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case reason
+    }
+}
+
+public struct EnterpriseTreeImportError: Codable, Sendable {
+    public let treeid: String
+    public let message: String
+    public let fingerprint: String?
+
+    public init(
+        treeid: String,
+        message: String,
+        fingerprint: String? = nil)
+    {
+        self.treeid = treeid
+        self.message = message
+        self.fingerprint = fingerprint
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+        case message
+        case fingerprint
+    }
+}
+
+public struct EnterpriseBundlesImportParams: Codable, Sendable {
+    public let content: String
+    public let format: AnyCodable
+    public let reviewtoken: String
+    public let createonly: Bool?
+    public let expectedhash: String?
+
+    public init(
+        content: String,
+        format: AnyCodable,
+        reviewtoken: String,
+        createonly: Bool? = nil,
+        expectedhash: String? = nil)
+    {
+        self.content = content
+        self.format = format
+        self.reviewtoken = reviewtoken
+        self.createonly = createonly
+        self.expectedhash = expectedhash
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case content
+        case format
+        case reviewtoken = "reviewToken"
+        case createonly = "createOnly"
+        case expectedhash = "expectedHash"
+    }
+}
+
+public struct EnterpriseBundlesImportResult: Codable, Sendable {
+    public let ok: Bool
+    public let trees: [EnterpriseBundleTree]?
+    public let foundations: [String]?
+    public let missingfoundations: [String]?
+    public let removedfoundations: [String]?
+    public let replacedfoundations: [String]?
+    public let shadowedfoundations: [String]?
+    public let requiredtools: [String]?
+    public let requiredskills: [String]?
+    public let requiredmcpservers: [String]?
+    public let missingmcpservers: [String]?
+    public let warnings: [EnterpriseTreeImportIssue]?
+    public let missinggovernancepolicies: [String]?
+    public let conflictinggovernancepolicies: [String]?
+    public let governancemodedowngrade: EnterpriseBundleModeDowngrade?
+    public let issues: [EnterpriseTreeImportIssue]?
+
+    public init(
+        ok: Bool,
+        trees: [EnterpriseBundleTree]?,
+        foundations: [String]?,
+        missingfoundations: [String]?,
+        removedfoundations: [String]?,
+        replacedfoundations: [String]?,
+        shadowedfoundations: [String]?,
+        requiredtools: [String]?,
+        requiredskills: [String]?,
+        requiredmcpservers: [String]?,
+        missingmcpservers: [String]?,
+        warnings: [EnterpriseTreeImportIssue]?,
+        missinggovernancepolicies: [String]?,
+        conflictinggovernancepolicies: [String]?,
+        governancemodedowngrade: EnterpriseBundleModeDowngrade?,
+        issues: [EnterpriseTreeImportIssue]?)
+    {
+        self.ok = ok
+        self.trees = trees
+        self.foundations = foundations
+        self.missingfoundations = missingfoundations
+        self.removedfoundations = removedfoundations
+        self.replacedfoundations = replacedfoundations
+        self.shadowedfoundations = shadowedfoundations
+        self.requiredtools = requiredtools
+        self.requiredskills = requiredskills
+        self.requiredmcpservers = requiredmcpservers
+        self.missingmcpservers = missingmcpservers
+        self.warnings = warnings
+        self.missinggovernancepolicies = missinggovernancepolicies
+        self.conflictinggovernancepolicies = conflictinggovernancepolicies
+        self.governancemodedowngrade = governancemodedowngrade
+        self.issues = issues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case trees
+        case foundations
+        case missingfoundations = "missingFoundations"
+        case removedfoundations = "removedFoundations"
+        case replacedfoundations = "replacedFoundations"
+        case shadowedfoundations = "shadowedFoundations"
+        case requiredtools = "requiredTools"
+        case requiredskills = "requiredSkills"
+        case requiredmcpservers = "requiredMcpServers"
+        case missingmcpservers = "missingMcpServers"
+        case warnings
+        case missinggovernancepolicies = "missingGovernancePolicies"
+        case conflictinggovernancepolicies = "conflictingGovernancePolicies"
+        case governancemodedowngrade = "governanceModeDowngrade"
+        case issues
+    }
+}
+
+public struct EnterpriseBundlesExportParams: Codable, Sendable {
+    public let treeid: String
+    public let format: AnyCodable
+
+    public init(
+        treeid: String,
+        format: AnyCodable)
+    {
+        self.treeid = treeid
+        self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case treeid = "treeId"
+        case format
+    }
+}
+
+public struct EnterpriseBundlesExportResult: Codable, Sendable {
+    public let ok: Bool
+    public let content: String?
+    public let source: AnyCodable?
+    public let skippedfoundations: [EnterpriseBundleSkippedFoundation]?
+    public let impliedallowallknowledge: Bool?
+    public let reason: String?
+
+    public init(
+        ok: Bool,
+        content: String?,
+        source: AnyCodable?,
+        skippedfoundations: [EnterpriseBundleSkippedFoundation]?,
+        impliedallowallknowledge: Bool?,
+        reason: String?)
+    {
+        self.ok = ok
+        self.content = content
+        self.source = source
+        self.skippedfoundations = skippedfoundations
+        self.impliedallowallknowledge = impliedallowallknowledge
+        self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case content
+        case source
+        case skippedfoundations = "skippedFoundations"
+        case impliedallowallknowledge = "impliedAllowAllKnowledge"
+        case reason
+    }
+}
+
 public struct EnterpriseTreeImportIssue: Codable, Sendable {
     public let path: String
     public let message: String
@@ -7193,18 +7571,26 @@ public struct EnterpriseTreeImportIssue: Codable, Sendable {
 public struct EnterpriseTreesImportParams: Codable, Sendable {
     public let content: String
     public let format: AnyCodable
+    public let createonly: Bool?
+    public let expectedhash: String?
 
     public init(
         content: String,
-        format: AnyCodable)
+        format: AnyCodable,
+        createonly: Bool? = nil,
+        expectedhash: String? = nil)
     {
         self.content = content
         self.format = format
+        self.createonly = createonly
+        self.expectedhash = expectedhash
     }
 
     private enum CodingKeys: String, CodingKey {
         case content
         case format
+        case createonly = "createOnly"
+        case expectedhash = "expectedHash"
     }
 }
 
@@ -7213,17 +7599,20 @@ public struct EnterpriseTreesImportResult: Codable, Sendable {
     public let treeid: String?
     public let replaced: AnyCodable?
     public let issues: [EnterpriseTreeImportIssue]?
+    public let warnings: [EnterpriseTreeImportIssue]?
 
     public init(
         ok: Bool,
         treeid: String?,
         replaced: AnyCodable?,
-        issues: [EnterpriseTreeImportIssue]?)
+        issues: [EnterpriseTreeImportIssue]?,
+        warnings: [EnterpriseTreeImportIssue]? = nil)
     {
         self.ok = ok
         self.treeid = treeid
         self.replaced = replaced
         self.issues = issues
+        self.warnings = warnings
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7231,6 +7620,7 @@ public struct EnterpriseTreesImportResult: Codable, Sendable {
         case treeid = "treeId"
         case replaced
         case issues
+        case warnings
     }
 }
 
@@ -7276,29 +7666,41 @@ public struct EnterpriseTreesExportResult: Codable, Sendable {
 
 public struct EnterpriseTreesRemoveParams: Codable, Sendable {
     public let treeid: String
+    public let expectedhash: String?
+    public let expectedinvalidfingerprint: String?
 
     public init(
-        treeid: String)
+        treeid: String,
+        expectedhash: String? = nil,
+        expectedinvalidfingerprint: String? = nil)
     {
         self.treeid = treeid
+        self.expectedhash = expectedhash
+        self.expectedinvalidfingerprint = expectedinvalidfingerprint
     }
 
     private enum CodingKeys: String, CodingKey {
         case treeid = "treeId"
+        case expectedhash = "expectedHash"
+        case expectedinvalidfingerprint = "expectedInvalidFingerprint"
     }
 }
 
 public struct EnterpriseTreesRemoveResult: Codable, Sendable {
     public let removed: Bool
+    public let reason: String?
 
     public init(
-        removed: Bool)
+        removed: Bool,
+        reason: String? = nil)
     {
         self.removed = removed
+        self.reason = reason
     }
 
     private enum CodingKeys: String, CodingKey {
         case removed
+        case reason
     }
 }
 
