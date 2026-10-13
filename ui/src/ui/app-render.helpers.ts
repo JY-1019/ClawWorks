@@ -14,6 +14,7 @@ import type { AppViewState } from "./app-view-state.ts";
 import { persistChatComposerState, restoreChatComposerState } from "./chat/composer-persistence.ts";
 import {
   renderEnterpriseModeSelect,
+  renderRoutingModelSelect,
   renderEnterpriseResumeControl,
   renderEnterpriseStepProgress,
 } from "./chat/enterprise-controls.ts";
@@ -439,6 +440,18 @@ export function renderChatControls(state: AppViewState) {
         !state.connected || state.onboarding || !hasOperatorAdminAccess(state.hello?.auth ?? null),
       error: state.enterpriseChatModeError,
       onSelect: (mode) => void state.setEnterpriseChatMode(mode),
+    })}
+    ${renderRoutingModelSelect({
+      value: state.chatRouteModels?.[state.sessionKey] ?? "",
+      models: state.chatModelCatalog,
+      disabled:
+        !state.connected ||
+        state.onboarding ||
+        state.enterpriseChatMode === "off" ||
+        !hasOperatorAdminAccess(state.hello?.auth ?? null),
+      onChange: (value) => {
+        state.chatRouteModels = { ...state.chatRouteModels, [state.sessionKey]: value };
+      },
     })}
     ${renderEnterpriseStepProgress(state.enterpriseChatStep)}
     ${renderEnterpriseResumeControl({

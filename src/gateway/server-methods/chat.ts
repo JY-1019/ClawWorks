@@ -63,6 +63,7 @@ import { resolveSessionFilePath, updateSessionStoreEntry } from "../../config/se
 import { resolveMirroredTranscriptText } from "../../config/sessions/transcript-mirror.js";
 import { CURRENT_SESSION_VERSION } from "../../config/sessions/version.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { RoutePlannerModelSchema } from "../../config/zod-schema.enterprise.js";
 import {
   claimAgentRunContext,
   clearAgentRunContext,
@@ -672,6 +673,7 @@ function buildActiveChatSendDedupeKey(params: {
   originatingChannel: string;
   sessionKey: string;
   systemScope?: string;
+  routeModel?: string;
 }): string | null {
   const message = params.message.trim();
   if (
@@ -683,9 +685,8 @@ function buildActiveChatSendDedupeKey(params: {
   ) {
     return null;
   }
-  const dedupeParts = params.systemScope?.trim()
-    ? [params.sessionKey, message, params.systemScope.trim()]
-    : [params.sessionKey, message];
+  // Identical text sent to different routing providers is a different request.
+  const dedupeParts = [params.sessionKey, message, params.systemScope?.trim(), params.routeModel];
   const digest = createHash("sha256")
     .update(JSON.stringify(dedupeParts))
     .digest("hex")
@@ -3364,6 +3365,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       sessionId?: string;
       message: string;
       thinking?: string;
+      routeModel?: string;
       fastMode?: FastMode;
       fastAutoOnSeconds?: number;
       deliver?: boolean;
@@ -3383,6 +3385,25 @@ export const chatHandlers: GatewayRequestHandlers = {
       suppressCommandInterpretation?: boolean;
       idempotencyKey: string;
     };
+    if (p.routeModel !== undefined && !canInjectSystemProvenance(client)) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "routeModel override requires operator.admin."),
+      );
+      return;
+    }
+    if (p.routeModel !== undefined && !RoutePlannerModelSchema.safeParse(p.routeModel).success) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "routeModel must be a qualified provider/model reference.",
+        ),
+      );
+      return;
+    }
     const suppressCommandInterpretation = p.suppressCommandInterpretation === true;
     const explicitOriginResult = normalizeExplicitChatSendOrigin({
       originatingChannel: p.originatingChannel,
@@ -3627,6 +3648,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       originatingChannel: originatingRoute.originatingChannel,
       sessionKey: activeRunScopeKey,
       systemScope: systemDedupeScope,
+      routeModel: p.routeModel,
     });
     if (activeChatSendDedupeKey) {
       const activeRunId = resolveActiveChatSendRunId(
@@ -3919,6 +3941,7 @@ export const chatHandlers: GatewayRequestHandlers = {
               body: commandBody,
             },
         MessageSid: clientRunId,
+        EnterpriseRouteModel: p.routeModel,
         ApprovalReviewerDeviceId: normalizeOptionalText(client?.connect?.device?.id),
         ...(!isOperatorUiClient(clientInfo)
           ? {

@@ -120,6 +120,7 @@ export type FollowupRun = {
     skillsSnapshot?: SkillSnapshot;
     provider: string;
     model: string;
+    routeModel?: string;
     hasSessionModelOverride?: boolean;
     modelOverrideSource?: "auto" | "user";
     hasAutoFallbackProvenance?: boolean;

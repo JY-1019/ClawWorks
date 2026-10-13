@@ -1362,6 +1362,7 @@ export async function runPreparedReply(
       workspaceDir,
       cwd: normalizeOptionalString(sessionEntry?.spawnedCwd),
       config: cfg,
+      routeModel: ctx.EnterpriseRouteModel,
       skillsSnapshot,
       provider,
       model,

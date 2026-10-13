@@ -2199,6 +2199,12 @@
   overflow-y: auto;
 }
 
+.chat-controls__inline-select-menu--routing {
+  left: auto;
+  right: 0;
+  width: min(280px, calc(100vw - 32px));
+}
+
 .chat-controls__inline-select-option {
   display: flex;
   align-items: center;

@@ -58,7 +58,7 @@ current shape.
 By default the router plans with the model the run itself dispatches to. That is
 the right default — it keeps the routing prompt on a provider the run already
 chose — but it ties two unlike workloads together. The turn can be long and
-tool-heavy; the router makes **one** small structured call, capped at 400 output
+tool-heavy; the text router makes one small structured call, capped at 400 output
 tokens, before the tool loop starts. More importantly, the router goes through the
 direct completion API, while a CLI backend runs the turn by handing it to a binary
 that authenticates itself. Such a run has no API credential to lend the router, so
@@ -82,8 +82,20 @@ A plain `provider/model` ref, and the provider half is required — a bare
 agent's default provider happens to be and this setting exists to say where routing
 may send the prompt. Gateway providers route slash-bearing ids, so
 `openrouter/mistralai/mistral-medium-3.1` is fine: only the first segment is the
-provider. The router makes one bounded call and owns its own deadline, so there is
-no fallback list or timeout to set here.
+provider. The router owns its deadline and has no model fallback list. Text providers make
+one completion; structured classifiers such as [Jev](/providers/jev) select the
+work-map and its operations in two sequential requests.
+
+In the Control UI, set the saved default under **Settings → Enterprise → Route
+Planner Model**. The chat **Routing model** control accepts a `provider/model`
+reference for that query. Choose **Default** to use the saved router, or the
+turn's model if the setting is absent. A queued query keeps the selection it had
+when sent; later picker changes do not rewrite it. Query overrides require
+`operator.admin`, as changing the provider determines where the prompt is sent.
+
+External [Ollama](/providers/ollama) servers use their existing provider `baseUrl`
+and credentials. [Mistral](/providers/mistral) uses its existing provider plugin.
+A routing override changes neither the execution model nor stored session settings.
 
 Three consequences worth knowing:
 

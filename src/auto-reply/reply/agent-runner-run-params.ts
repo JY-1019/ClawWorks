@@ -103,6 +103,7 @@ export function buildEmbeddedRunBaseParams(params: {
     sourceReplyDeliveryMode: params.run.sourceReplyDeliveryMode,
     provider: params.provider,
     model: params.model,
+    routeModel: params.run.routeModel,
     modelFallbacksOverride,
     ...params.authProfile,
     thinkLevel: params.run.thinkLevel,

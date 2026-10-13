@@ -1018,3 +1018,22 @@ providers:
 - [Plugin SDK setup](/plugins/sdk-setup)
 - [Building plugins](/plugins/building-plugins)
 - [Building channel plugins](/plugins/sdk-channel-plugins)
+
+## Structured classification
+
+A provider may expose `ProviderPlugin.classify` without a chat model catalog. This
+optional hook receives `modelId`, the resolved `apiKey`, a serialized `state`,
+`questions`, and an abort `signal`. Questions are either `choice` (with a map of
+allowed `choices`) or `binary`. Return one matching answer per key: a bounded
+`choice`, or a `probability` from 0 to 1. Validate vendor responses and honor the
+signal through response-body reads. Do not synthesize chat-completion messages.
+
+The enterprise router owns tree selection and multi-branch routing policy. It
+resolves the provider through normal activation and auth, including disablement
+and explicit profile selection. The provider owns only its request format and
+response validation. The bundled [Jev plugin](/providers/jev) implements this
+contract for TypeSafe Choice and Noul questions.
+
+Classification adapters preserve credential rejection as an `Error` with numeric
+`status: 401`. The router treats this as unavailable, while malformed answers and
+transient provider failures keep the normal fail-closed routing behavior.

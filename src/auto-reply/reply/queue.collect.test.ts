@@ -65,6 +65,43 @@ describe("followup queue collect routing", () => {
     expect(calls[1]?.prompt).toBe("two");
   });
 
+  it("keeps distinct routing models separate in collect and overflow summaries", async () => {
+    for (const cap of [50, 1]) {
+      const key = `test-route-model-${cap}`;
+      const calls: FollowupRun[] = [];
+      const done = createDeferred<void>();
+      const settings: QueueSettings = {
+        mode: "collect",
+        debounceMs: 0,
+        cap,
+        dropPolicy: "summarize",
+      };
+      for (const [prompt, routeModel] of [
+        ["local", "ollama/local"],
+        ["cloud", "jev/jev-latest"],
+        ["default", undefined],
+      ] as const) {
+        const item = createRun({ prompt, originatingChannel: "webchat", originatingTo: "main" });
+        enqueueFollowupRun(key, { ...item, run: { ...item.run, routeModel } }, settings);
+      }
+      scheduleFollowupDrain(key, async (run) => {
+        calls.push(run);
+        if (calls.length === 3) done.resolve();
+      });
+      await done.promise;
+      expect(calls.map((call) => call.run.routeModel)).toEqual([
+        "ollama/local",
+        "jev/jev-latest",
+        undefined,
+      ]);
+      if (cap === 50) {
+        expect(calls[0].prompt).toContain("local");
+      }
+      expect(calls[0].prompt).not.toContain("cloud");
+      clearFollowupQueue(key);
+    }
+  });
+
   it("collects when channel+destination match", async () => {
     const key = `test-collect-same-to-${Date.now()}`;
     const calls: FollowupRun[] = [];

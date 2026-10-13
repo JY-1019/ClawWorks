@@ -3,7 +3,7 @@ import type { WorkflowPlanDecision, WorkflowPlanner } from "@openclaw/enterprise
  * Model-backed workflow planner: given the candidate trees and a request, pick
  * the tree that governs it and the smallest set of nodes that answers it.
  *
- * This is the only place enterprise mediation talks to a provider. It lives in
+ * This and the structured-classification planner talk to providers. They live in
  * src/agents (not src/enterprise) so the enterprise core stays provider-free and
  * unit-testable; @openclaw/enterprise-planner owns the prompt inputs, the parsing
  * contract, and route→node resolution.
@@ -24,6 +24,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { redactSecrets } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { classifyFailoverReason } from "./embedded-agent-helpers/errors.js";
+import { tryClassificationWorkflowPlan } from "./enterprise-classification-planner.runtime.js";
 import {
   completeWithPreparedSimpleCompletionModel,
   prepareSimpleCompletionModelForAgent,
@@ -285,7 +286,8 @@ export function createModelWorkflowPlanner(params: {
     params.deps?.completeWithPreparedSimpleCompletionModel ??
     completeWithPreparedSimpleCompletionModel;
 
-  return async ({ requestText, candidates, signal }) => {
+  return async (input) => {
+    const { requestText, candidates, signal } = input;
     // A run cancelled before planning starts must never reach a provider. The
     // run is being torn down, so this verdict is never actually bound.
     if (signal?.aborted) {
@@ -297,6 +299,25 @@ export function createModelWorkflowPlanner(params: {
     const totalDeadline = AbortSignal.timeout(ROUTE_PLANNER_TOTAL_BUDGET_MS);
     const budget = signal ? AbortSignal.any([signal, totalDeadline]) : totalDeadline;
     try {
+      const classified = await raceBudget(
+        tryClassificationWorkflowPlan({
+          cfg,
+          agentId,
+          modelRef,
+          literalModelRef,
+          authProfileId,
+          input,
+          signal: budget,
+          completionTimeoutMs: ROUTE_PLANNER_COMPLETION_TIMEOUT_MS,
+        }),
+        budget,
+      );
+      if (classified === PLANNER_BUDGET_SPENT) {
+        return budgetExhausted([totalDeadline]);
+      }
+      if (classified !== undefined) {
+        return classified;
+      }
       const prepared = await raceBudget(
         prepareModel({
           cfg,

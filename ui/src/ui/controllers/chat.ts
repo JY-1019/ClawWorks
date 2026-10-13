@@ -381,6 +381,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export type ChatState = {
+  chatRouteModels?: Record<string, string>;
   client: GatewayBrowserClient | null;
   connected: boolean;
   sessionKey: string;
@@ -962,6 +963,7 @@ export async function requestChatSend(
     message: string;
     attachments?: ChatAttachment[];
     runId: string;
+    routeModel?: string | null;
     sessionKey?: string;
     agentId?: string;
   },
@@ -970,7 +972,12 @@ export async function requestChatSend(
   const controlUiReconnectResume = Boolean(
     routing.sessionId && state.reconnectResumeSessionId === routing.sessionId,
   );
+  const routeModel =
+    params.routeModel === undefined
+      ? state.chatRouteModels?.[routing.sessionKey]
+      : params.routeModel;
   const payload = await state.client!.request("chat.send", {
+    ...(routeModel ? { routeModel } : {}),
     sessionKey: routing.sessionKey,
     ...(isGlobalSessionKey(routing.sessionKey) && routing.selectedAgentId
       ? { agentId: routing.selectedAgentId }

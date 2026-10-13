@@ -28,35 +28,39 @@ afterEach(() => {
 });
 
 describe("chat composer persistence", () => {
-  it("restores draft text and queued messages for the same gateway session", () => {
-    const queue: ChatQueueItem[] = [
-      {
-        id: "queued-1",
-        text: "follow up after tools finish",
-        createdAt: 1,
-        attachments: [
-          {
-            id: "att-1",
-            mimeType: "image/png",
-            fileName: "screen.png",
-            dataUrl: "data:image/png;base64,AAA",
-          },
-        ],
-      },
-    ];
-    persistChatComposerState(
-      createState({
-        chatMessage: "unsent draft",
-        chatQueue: queue,
-      }),
-    );
+  it.each(["jev/jev-latest", null])(
+    "restores draft, queue and routing selection %s",
+    (routeModel) => {
+      const queue: ChatQueueItem[] = [
+        {
+          id: "queued-1",
+          text: "follow up after tools finish",
+          routeModel,
+          createdAt: 1,
+          attachments: [
+            {
+              id: "att-1",
+              mimeType: "image/png",
+              fileName: "screen.png",
+              dataUrl: "data:image/png;base64,AAA",
+            },
+          ],
+        },
+      ];
+      persistChatComposerState(
+        createState({
+          chatMessage: "unsent draft",
+          chatQueue: queue,
+        }),
+      );
 
-    const restored = createState();
-    expect(restoreChatComposerState(restored)).toBe(true);
+      const restored = createState();
+      expect(restoreChatComposerState(restored)).toBe(true);
 
-    expect(restored.chatMessage).toBe("unsent draft");
-    expect(restored.chatQueue).toEqual(queue);
-  });
+      expect(restored.chatMessage).toBe("unsent draft");
+      expect(restored.chatQueue).toEqual(queue);
+    },
+  );
 
   it("preserves Skill Workshop revision metadata on queued sends", () => {
     persistChatComposerState(

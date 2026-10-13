@@ -881,6 +881,10 @@ export const tr: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "İzlenen rota",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "Rota görünümü",
     routeViewRoute: "Yalnızca rota",
     routeViewTree: "Tüm ağaç",

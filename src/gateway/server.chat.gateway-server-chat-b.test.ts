@@ -1262,7 +1262,10 @@ describe("gateway server chat", () => {
     },
   );
 
-  test("chat.send reuses only active WebChat text sends with the same system context", async () => {
+  test.each([
+    { systemProvenanceReceipt: "proposal=support-file-sampler-b" },
+    { routeModel: "ollama/local" },
+  ])("chat.send dedupes by routing and system context: %j", async (changedContext) => {
     const sessionDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gw-"));
     const dispatchRelease = createDeferred();
     try {
@@ -1305,7 +1308,11 @@ describe("gateway server chat", () => {
       dispatchInboundMessageMock.mockImplementation(async () => dispatchRelease.promise);
 
       const { chatHandlers } = await import("./server-methods/chat.js");
-      const callSend = (id: string, idempotencyKey: string, systemProvenanceReceipt?: string) =>
+      const callSend = (
+        id: string,
+        idempotencyKey: string,
+        overrides: { systemProvenanceReceipt?: string; routeModel?: string } = {},
+      ) =>
         chatHandlers["chat.send"]({
           req: {
             type: "req",
@@ -1315,14 +1322,14 @@ describe("gateway server chat", () => {
               sessionKey: "main",
               message: "?",
               idempotencyKey,
-              ...(systemProvenanceReceipt ? { systemProvenanceReceipt } : {}),
+              ...overrides,
             },
           },
           params: {
             sessionKey: "main",
             message: "?",
             idempotencyKey,
-            ...(systemProvenanceReceipt ? { systemProvenanceReceipt } : {}),
+            ...overrides,
           },
           client: {
             connect: {
@@ -1389,7 +1396,7 @@ describe("gateway server chat", () => {
       expect(context.addChatRun).toHaveBeenCalledTimes(1);
 
       const withSystemContext = Promise.resolve(
-        callSend("system-context", "idem-active-c", "proposal=support-file-sampler-b"),
+        callSend("system-context", "idem-active-c", changedContext),
       );
 
       await vi.waitFor(

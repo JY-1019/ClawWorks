@@ -877,6 +877,10 @@ export const ko: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "선택된 경로",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "경로 보기",
     routeViewRoute: "경로만",
     routeViewTree: "전체 트리",

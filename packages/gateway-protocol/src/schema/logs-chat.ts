@@ -83,6 +83,9 @@ export const ChatSendParamsSchema = Type.Object(
     sessionId: Type.Optional(NonEmptyString),
     message: Type.String(),
     thinking: Type.Optional(Type.String()),
+    routeModel: Type.Optional(
+      Type.String({ minLength: 3, maxLength: 512, pattern: "^[^\\s/]+/\\S+$" }),
+    ),
     fastMode: Type.Optional(Type.Union([Type.Boolean(), Type.Literal("auto")])),
     // One-turn override for auto fast-mode cutoff seconds.
     fastAutoOnSeconds: Type.Optional(Type.Integer({ minimum: 1 })),

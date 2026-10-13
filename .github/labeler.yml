@@ -570,6 +570,11 @@
   - changed-files:
       - any-glob-to-any-file:
           - "extensions/google/**"
+"extensions: jev":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/jev/**"
+          - "docs/providers/jev.md"
 "extensions: microsoft":
   - changed-files:
       - any-glob-to-any-file:

@@ -311,6 +311,9 @@
     "enterprise.resumeRefusedRouteComplete",
     "enterprise.resumeRefusedRunning",
     "enterprise.resumeRequested",
+    "enterprise.routingDefault",
+    "enterprise.routingModel",
+    "enterprise.routingModelHint",
     "enterprise.saveContinuesNavigation",
     "enterprise.structureEditRefused",
     "enterprise.treeSettingsButton",
@@ -372,12 +375,12 @@
     "knowledge.statSources",
     "workboard.dispatch"
   ],
-  "generatedAt": "2026-10-13T00:32:05.187Z",
+  "generatedAt": "2026-10-13T00:58:16.615Z",
   "locale": "pt-BR",
   "model": "claude-opus-4-6",
   "provider": "anthropic",
-  "sourceHash": "a3a2b4b53936a7e5fb3af4eec8d67ba6b509b7a91523cb9b15a5fcd345deca98",
-  "totalKeys": 2054,
+  "sourceHash": "170bff83d2f7612dd28dd05b819d38980232623f9fcc7547936b73120a087365",
+  "totalKeys": 2057,
   "translatedKeys": 1683,
   "workflow": 1
 }

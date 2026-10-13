@@ -1036,6 +1036,7 @@ export function createFollowupRunner(params: {
                           })
                       : undefined,
                   runParams: {
+                    routeModel: run.routeModel,
                     replyOperation,
                     sessionId: run.sessionId,
                     sessionKey: replySessionKey,

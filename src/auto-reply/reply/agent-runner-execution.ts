@@ -2384,6 +2384,7 @@ export async function runAgentTurnWithFallback(params: {
                     workspaceDir: params.followupRun.run.workspaceDir,
                     cwd: params.followupRun.run.cwd,
                     config: runtimeConfig,
+                    routeModel: params.followupRun.run.routeModel,
                     prompt: params.commandBody,
                     transcriptPrompt: params.transcriptCommandBody,
                     suppressNextUserMessagePersistence: suppressQueuedUserPersistenceForCandidate,

@@ -889,6 +889,10 @@ export const en: TranslationMap = {
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
 
     routeTitle: "Route taken",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "Route view",
     routeViewRoute: "Route only",
     routeViewTree: "Whole tree",

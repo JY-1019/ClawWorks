@@ -885,6 +885,10 @@ export const ja_JP: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "選択されたルート",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "ルート表示",
     routeViewRoute: "ルートのみ",
     routeViewTree: "ツリー全体",

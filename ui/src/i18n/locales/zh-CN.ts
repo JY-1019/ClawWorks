@@ -865,6 +865,10 @@ export const zh_CN: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "已采用的路径",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "路由视图",
     routeViewRoute: "仅路由",
     routeViewTree: "完整树",

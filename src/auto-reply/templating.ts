@@ -129,6 +129,8 @@ export type MsgContext = {
    * forking or parent-session lifecycle behavior.
    */
   ModelParentSessionKey?: string;
+  /** Trusted per-turn router override; never persists as a session/default model. */
+  EnterpriseRouteModel?: string;
   MessageSid?: string;
   /** Provider-specific full message id when MessageSid is a shortened alias. */
   MessageSidFull?: string;

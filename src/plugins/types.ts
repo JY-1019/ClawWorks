@@ -1267,6 +1267,23 @@ export type ProviderPlugin = {
    */
   envVars?: string[];
   auth: ProviderAuthMethod[];
+  /** Structured classification for routing without pretending to generate chat text.
+   * Providers must return every requested key, validate probabilities and choices,
+   * and honor the shared signal across network and response-body reads.
+   * Credential rejection throws an Error with numeric status 401. */
+  classify?: (context: {
+    modelId: string;
+    apiKey?: string;
+    state: string;
+    questions: Record<
+      string,
+      | { type: "choice"; instructions: string; choices: Record<string, string> }
+      | { type: "binary"; instructions: string }
+    >;
+    signal: AbortSignal;
+  }) => Promise<
+    Record<string, { type: "choice"; choice: string } | { type: "binary"; probability: number }>
+  >;
   /**
    * Legacy text-provider catalog hook.
    *

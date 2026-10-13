@@ -1,0 +1,9 @@
+{
+  "id": "jev",
+  "enabledByDefault": true,
+  "activation": { "onStartup": false },
+  "providers": ["jev"],
+  "providerEndpoints": [{ "endpointClass": "typesafe-public", "hosts": ["api.typesafe.ai"] }],
+  "setup": { "providers": [{ "id": "jev", "envVars": ["TYPESAFE_API_KEY"] }] },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

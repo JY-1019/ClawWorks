@@ -14,6 +14,8 @@ export type ChatQueueSkillWorkshopRevision = {
 };
 
 export type ChatQueueItem = {
+  /** Null snapshots the Settings default; later picker changes do not change queued turns. */
+  routeModel?: string | null;
   id: string;
   text: string;
   createdAt: number;

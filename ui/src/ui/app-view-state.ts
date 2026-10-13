@@ -142,6 +142,7 @@ export type AppViewState = {
   chatModelOverrides: Record<string, ChatModelOverride | null>;
   chatModelSwitchPromises: Record<string, Promise<boolean>>;
   chatModelsLoading: boolean;
+  chatRouteModels?: Record<string, string>;
   chatModelCatalog: ModelCatalogEntry[];
   sessionSwitchNotice: { id: number; text: string } | null;
   sessionSwitchFlashKey: string | null;

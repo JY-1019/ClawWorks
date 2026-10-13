@@ -2690,6 +2690,7 @@ describe("handleSendChat", () => {
       assistantAgentId: "work",
       agentsList: { defaultId: "main" },
       chatMessage: "send to work later",
+      chatRouteModels: { global: "jev/jev-latest" },
     });
 
     await handleSendChat(host);
@@ -2698,10 +2699,12 @@ describe("handleSendChat", () => {
       text: "send to work later",
       sessionKey: "global",
       agentId: "work",
+      routeModel: "jev/jev-latest",
       sendState: "waiting-reconnect",
     });
 
     host.assistantAgentId = "main";
+    host.chatRouteModels = { global: "mistral/other" };
     host.client = { request } as unknown as ChatHost["client"];
     host.connected = true;
     await retryReconnectableQueuedChatSends(host);
@@ -2713,6 +2716,7 @@ describe("handleSendChat", () => {
     );
     expect(payload.sessionKey).toBe("global");
     expect(payload.agentId).toBe("work");
+    expect(payload.routeModel).toBe("jev/jev-latest");
     expect(host.chatMessages).toStrictEqual([]);
     expect(host.chatRunId).toBeNull();
     expect(host.chatStream).toBeNull();

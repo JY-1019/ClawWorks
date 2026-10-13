@@ -146,6 +146,7 @@ export type RunEmbeddedAgentParams = {
   disableTools?: boolean;
   provider?: string;
   model?: string;
+  routeModel?: string;
   /** Effective model fallback chain for this session attempt. Undefined uses config defaults. */
   modelFallbacksOverride?: string[];
   /** Session-pinned embedded harness id. Prevents runtime hot-switching. */

@@ -64,16 +64,15 @@ function isQualifiedRoutePlannerModelRef(raw: string): boolean {
  * ids (`openrouter/anthropic/claude-sonnet-4-6`), so only the FIRST segment is the
  * provider and the rest is the model.
  */
+export const RoutePlannerModelSchema = z
+  .string()
+  .refine(
+    isQualifiedRoutePlannerModelRef,
+    'Route planner model must be a qualified "provider/model" ref, for example "mistral/mistral-medium-3-5".',
+  );
+
 const EnterpriseRoutePlannerSchema = z
-  .object({
-    model: z
-      .string()
-      .refine(
-        isQualifiedRoutePlannerModelRef,
-        'Route planner model must be a qualified "provider/model" ref, for example "mistral/mistral-medium-3-5".',
-      )
-      .optional(),
-  })
+  .object({ model: RoutePlannerModelSchema.optional() })
   .strict()
   .optional();
 

@@ -805,6 +805,44 @@ async function runNonStreamingChatSend(params: {
 }
 
 describe("chat directive tag stripping for non-streaming final payloads", () => {
+  it("dispatches routeModel as turn context without mutating saved config", async () => {
+    createTranscriptFixture("openclaw-chat-route-model-");
+    mockState.config = { enterprise: { routePlanner: { model: "mistral/default" } } };
+    const context = createChatContext();
+    await runNonStreamingChatSend({
+      context,
+      respond: vi.fn(),
+      idempotencyKey: "routing-override",
+      client: createScopedCliClient(["operator.admin"]),
+      requestParams: { routeModel: "ollama/llama3" },
+    });
+    expect(mockState.lastDispatchCtx?.EnterpriseRouteModel).toBe("ollama/llama3");
+    expect(mockState.config).toEqual({
+      enterprise: { routePlanner: { model: "mistral/default" } },
+    });
+  });
+
+  it.each([
+    { routeModel: "jev/jev-latest", scopes: ["operator.write"] },
+    { routeModel: "mistral/@profile", scopes: ["operator.admin"] },
+    { routeModel: "bare-model", scopes: ["operator.admin"] },
+  ])("rejects unauthorized or malformed routeModel $routeModel", async ({ routeModel, scopes }) => {
+    const respond = vi.fn();
+    await runNonStreamingChatSend({
+      context: createChatContext(),
+      respond,
+      idempotencyKey: "routing-rejected",
+      client: createScopedCliClient(scopes),
+      requestParams: { routeModel },
+      waitFor: "none",
+    });
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: ErrorCodes.INVALID_REQUEST }),
+    );
+  });
+
   afterEach(() => {
     mockState.config = {};
     mockState.finalText = "[[reply_to_current]]";

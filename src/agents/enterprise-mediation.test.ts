@@ -311,6 +311,30 @@ describe("finishEnterpriseMediation", () => {
   });
 });
 
+describe("query routing model", () => {
+  it.each(["ollama/llama3", "mistral/mistral-medium-3-5", "jev/jev-latest"])(
+    "overrides the saved router with %s without changing execution",
+    (routeModel) => {
+      const params = makeParams({
+        provider: "openai",
+        model: "gpt-5.5",
+        routeModel,
+        authProfileId: "openai:work",
+        authProfileIdSource: "user",
+      });
+      const config = { enterprise: { routePlanner: { model: "openai/gpt-5.5" } } };
+      expect(resolveRouteModelRefForTest(params, { config })).toEqual({
+        kind: "ref",
+        ref: routeModel,
+        literal: true,
+      });
+      expect(resolveRoutePlannerAuthProfileIdForTest(params, config)).toBeUndefined();
+      expect(params.model).toBe("gpt-5.5");
+      expect(config.enterprise.routePlanner.model).toBe("openai/gpt-5.5");
+    },
+  );
+});
+
 describe("a configured router model", () => {
   // A Mistral key costs a fraction of the turn's model and, unlike a CLI or
   // subscription backend, it is something the direct completion API accepts —

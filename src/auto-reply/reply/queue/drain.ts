@@ -139,6 +139,8 @@ export function resolveFollowupDeliveryContextKey(run: FollowupRun): string {
     normalizeChatType(run.originatingChatType) ?? "",
     resolveFollowupAuthorizationKey(execution),
     normalizeOptionalString(execution.runtimePolicySessionKey ?? execution.sessionKey) ?? "",
+    // Routing is a per-request provider boundary, including overflow summaries.
+    execution.routeModel ?? "",
     execution.messageProvider ?? "",
     execution.chatType ?? "",
     execution.agentAccountId ?? "",

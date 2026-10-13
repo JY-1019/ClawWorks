@@ -1450,6 +1450,7 @@
                   "providers/huggingface",
                   "providers/inferrs",
                   "providers/inworld",
+                  "providers/jev",
                   "providers/kilocode",
                   "providers/litellm",
                   "providers/lmstudio",

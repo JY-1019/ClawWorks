@@ -223,6 +223,7 @@ function serializeQueueItem(item: ChatQueueItem): ChatQueueItem | null {
     ...(item.localCommandName ? { localCommandName: item.localCommandName } : {}),
     ...(item.sessionKey ? { sessionKey: item.sessionKey } : {}),
     ...(item.agentId ? { agentId: item.agentId } : {}),
+    ...(item.routeModel !== undefined ? { routeModel: item.routeModel } : {}),
     ...(skillWorkshopRevision ? { skillWorkshopRevision } : {}),
     ...(sendState ? { sendState } : {}),
     ...(item.sendError ? { sendError: item.sendError } : {}),
@@ -253,6 +254,9 @@ function normalizeQueueItem(value: unknown): ChatQueueItem | null {
         .filter((item): item is ChatAttachment => item !== null)
     : [];
   const item: ChatQueueItem = { id, text, createdAt };
+  if (entry.routeModel === null || typeof entry.routeModel === "string") {
+    item.routeModel = entry.routeModel;
+  }
   if (entry.kind === "queued" || entry.kind === "steered") {
     item.kind = entry.kind;
   }

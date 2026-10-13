@@ -1477,6 +1477,7 @@ function renderGuardedChatControls(state: AppViewState) {
       state.chatModelSwitchPromises,
       state.chatModelsLoading,
       state.chatModelCatalog,
+      state.chatRouteModels,
       // Provider usage windows arrive async after auth status loads; without this the guarded
       // composer controls never re-render and the quota pill stays absent/stale (#93041).
       state.modelAuthStatusResult,

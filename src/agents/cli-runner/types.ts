@@ -64,6 +64,7 @@ export type RunCliAgentParams = {
   inputProvenance?: InputProvenance;
   provider: string;
   model?: string;
+  routeModel?: string;
   thinkLevel?: ThinkLevel;
   fastMode?: FastMode;
   /** Stable outer-run start time for auto fast-mode cutoff across retries/fallbacks. */

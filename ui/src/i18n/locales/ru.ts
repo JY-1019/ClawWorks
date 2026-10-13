@@ -883,6 +883,10 @@ export const ru: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "Пройденный маршрут",
+    routingModel: "Routing model",
+    routingDefault: "По умолчанию",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "Вид маршрута",
     routeViewRoute: "Только маршрут",
     routeViewTree: "Всё дерево",

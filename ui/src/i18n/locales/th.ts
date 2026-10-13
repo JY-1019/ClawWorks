@@ -869,6 +869,10 @@ export const th: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "เส้นทางที่ใช้",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "มุมมองเส้นทาง",
     routeViewRoute: "เฉพาะเส้นทาง",
     routeViewTree: "ทั้งต้นไม้",

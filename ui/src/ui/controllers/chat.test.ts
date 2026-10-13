@@ -1911,6 +1911,24 @@ describe("sendChatMessage", () => {
     expect(sendParams.message).toBe("continue");
   });
 
+  it("keeps a queued routing choice and lets Default omit the override", async () => {
+    const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
+    const state = createState({
+      client: { request } as unknown as ChatState["client"],
+      chatRouteModels: { main: "ollama/current" },
+    });
+    await requestChatSend(state, {
+      message: "queued",
+      runId: "run-1",
+      routeModel: "mistral/saved",
+    });
+    expect(request.mock.calls[0][1].routeModel).toBe("mistral/saved");
+    await requestChatSend(state, { message: "default", runId: "run-2", routeModel: null });
+    expect(request.mock.calls[1][1]).not.toHaveProperty("routeModel");
+    await requestChatSend(state, { message: "current", runId: "run-3" });
+    expect(request.mock.calls[2][1].routeModel).toBe("ollama/current");
+  });
+
   it("sends reconnect resume once when the current session matches the reconnect marker", async () => {
     const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
     const state = createState({

@@ -875,6 +875,10 @@ export const hi: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "अपनाया गया मार्ग",
+    routingModel: "Routing model",
+    routingDefault: "डिफ़ॉल्ट",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "रूट दृश्य",
     routeViewRoute: "केवल रूट",
     routeViewTree: "पूरा ट्री",

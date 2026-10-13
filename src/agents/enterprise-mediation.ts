@@ -116,6 +116,8 @@ export type EnterpriseMediatedRunParams = {
    * is exactly the leak this is here to prevent.
    */
   provider?: string;
+  /** Qualified per-turn router override, ahead of the saved routing default. */
+  routeModel?: string;
   /**
    * The turn is dispatched to a backend OpenClaw does not pick the model for
    * (ACP). Route planning must not run: it would send the prompt to OpenClaw's
@@ -203,7 +205,7 @@ export function resolveRouteModelRef(
   // from the run — but only the branches deciding WHICH model routes. The gates
   // deciding whether this run plans AT ALL still go first, so a turn that was never
   // going to reach a backend does not start paying for a routing call.
-  const routerModel = resolveConfiguredRouteModelRef(deps.config);
+  const routerModel = params.routeModel ?? resolveConfiguredRouteModelRef(deps.config);
   // A before_model_resolve hook can swap the run onto a different (often local
   // or private) provider AFTER mediation runs. We would be routing on the
   // pre-hook model, i.e. possibly the very cloud default the hook exists to
@@ -277,7 +279,7 @@ function resolveRoutePlannerAuthProfileId(
   // the SAME provider the pin is still an account/tenant boundary the router has to
   // reproduce, or a cheaper same-provider router would quietly route through
   // whichever account the provider's order happens to reach first.
-  const routerModel = resolveConfiguredRouteModelRef(config);
+  const routerModel = params.routeModel ?? resolveConfiguredRouteModelRef(config);
   if (routerModel && !routerSharesRunProvider(routerModel, params, config)) {
     return undefined;
   }

@@ -99,6 +99,7 @@ export type ChatHost = ChatInputHistoryState & {
   chatStream: string | null;
   connected: boolean;
   chatAttachments: ChatAttachment[];
+  chatRouteModels?: Record<string, string>;
   chatQueue: ChatQueueItem[];
   chatQueueBySession?: Record<string, ChatQueueItem[]>;
   chatMessagesBySession?: ChatMessageCache;
@@ -427,6 +428,7 @@ function enqueueChatMessage(
     localCommandName: localCommand?.name,
     sessionKey: host.sessionKey,
     agentId: scopedAgentIdForSession(host, host.sessionKey),
+    routeModel: host.chatRouteModels?.[host.sessionKey] || null,
   };
   host.chatQueue = [...host.chatQueue, item];
   return item;
@@ -484,6 +486,7 @@ function enqueuePendingSendMessage(
     sendSubmittedAtMs: submittedAtMs,
     sessionKey: host.sessionKey,
     agentId: scopedAgentIdForSession(host, host.sessionKey),
+    routeModel: host.chatRouteModels?.[host.sessionKey] || null,
     ...(skillWorkshopRevision ? { skillWorkshopRevision } : {}),
   };
   host.chatQueue = [...host.chatQueue, pending];
@@ -1101,6 +1104,7 @@ async function sendQueuedChatMessage(
           runId,
           sessionKey,
           agentId: prepared.agentId,
+          routeModel: prepared.routeModel ?? null,
         });
     updateChatSendAckTiming(host, runId, ack, sendingItem, requestStartedAtMs);
     recordChatSendTiming(host, sendingItem, "ack", sendingItem.sendSubmittedAtMs, {

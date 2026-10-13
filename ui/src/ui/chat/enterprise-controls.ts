@@ -198,3 +198,48 @@ export function renderEnterpriseRouteCard(
   }
   return html` <openclaw-chat-route-card .run=${run} .tree=${tree}></openclaw-chat-route-card> `;
 }
+
+/** Request-only selection; an empty value delegates to the saved routing default. */
+export function renderRoutingModelSelect(props: {
+  value: string;
+  models: Array<{ provider: string; id: string }>;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}): TemplateResult {
+  return html`<details class="chat-controls__session chat-controls__inline-select">
+    <summary
+      class="chat-controls__inline-select-trigger"
+      aria-label=${t("enterprise.routingModel")}
+    >
+      ${t("enterprise.routingModel")}: ${props.value || t("enterprise.routingDefault")}
+    </summary>
+    <div class="chat-controls__inline-select-menu chat-controls__inline-select-menu--routing">
+      <label class="field"
+        >${t("enterprise.routingModel")}
+        <input
+          list="enterprise-route-models"
+          aria-label=${t("enterprise.routingModel")}
+          placeholder=${t("enterprise.routingDefault")}
+          .value=${props.value}
+          ?disabled=${props.disabled}
+          @change=${(event: Event) =>
+            props.onChange((event.target as HTMLInputElement).value.trim())}
+        />
+      </label>
+      <datalist id="enterprise-route-models">
+        ${props.models.map(
+          (model) => html`<option value=${`${model.provider}/${model.id}`}></option>`,
+        )}
+      </datalist>
+      <div class="muted">${t("enterprise.routingModelHint")}</div>
+      <button
+        type="button"
+        class="btn btn--sm"
+        ?disabled=${props.disabled}
+        @click=${() => props.onChange("")}
+      >
+        ${t("enterprise.routingDefault")}
+      </button>
+    </div>
+  </details>`;
+}

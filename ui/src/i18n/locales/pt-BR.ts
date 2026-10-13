@@ -881,6 +881,10 @@ export const pt_BR: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "Rota percorrida",
+    routingModel: "Routing model",
+    routingDefault: "Default",
+    routingModelHint:
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
     routeViewLabel: "Visualização de rota",
     routeViewRoute: "Somente rota",
     routeViewTree: "Árvore completa",
