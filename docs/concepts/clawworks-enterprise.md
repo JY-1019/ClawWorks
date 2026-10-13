@@ -123,6 +123,34 @@ Pick for routing judgment, not context size: the prompt is small, and what matte
 is whether the model picks the deepest node covering a request instead of hedging
 up to its parent.
 
+### Work-map execution model
+
+In **Enterprise → Work maps → Tree settings**, set **Execution model** to a
+configured `provider/model`, for example `ollama/qwen3:8b` or
+`mistral/mistral-small-latest`. Clear the field to use the conversation's model.
+The same optional top-level `executionModel` field is preserved by tree
+import/export and version history:
+
+```yaml
+executionModel: ollama/qwen3:8b
+```
+
+Routing and execution are separate choices. Routing uses the query's **Routing
+model**, then the saved **Route Planner Model**, then the conversation model.
+After routing selects a work-map, its execution model takes priority over the
+conversation selection for that turn. An unbound work-map keeps the conversation
+model and its normal fallback policy. Choosing **Default** in chat uses those
+saved defaults; it does not remove a work-map's binding.
+
+A bound work-map never falls back to another execution model. Missing models,
+auth failures, and unavailable providers fail that run. The binding does not
+change the session's saved model; live session switches apply to later turns.
+Model-changing hooks cannot override the binding. External ACP backends that do
+not support managed model selection and CLI backends without a model flag reject
+bound work-maps. Use a configured completion model here: Jev is a routing
+classifier, not an execution model. Auth-profile suffixes (`@profile`) are not
+accepted in `executionModel`.
+
 ## Workflow trees
 
 A workflow tree is a versioned, importable definition. Each node is a step; leaf

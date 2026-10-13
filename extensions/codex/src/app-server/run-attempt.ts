@@ -2568,6 +2568,19 @@ async function runCodexAppServerAttemptInternal(
   const startCodexTurn = async (): Promise<CodexTurnStartResponse> => {
     const turnAppServer = withCodexAppServerFastModeServiceTier(pluginAppServer, params);
     pluginAppServer = turnAppServer;
+    const requestedModel = resolveCodexAppServerThreadModelSelection({
+      provider: params.provider,
+      model: params.modelId,
+      binding: {
+        threadId: thread.threadId,
+        model: thread.model,
+        modelProvider: thread.modelProvider,
+      },
+      authProfileId: params.authProfileId,
+      authProfileStore: params.authProfileStore,
+      agentDir: params.agentDir,
+      config: params.config,
+    });
     const turnStartParams = buildTurnStartParams(params, {
       threadId: thread.threadId,
       cwd: codexExecutionCwd,
@@ -2575,7 +2588,9 @@ async function runCodexAppServerAttemptInternal(
       promptText: codexTurnPromptText,
       sandboxPolicy: codexSandboxPolicy,
       environmentSelection: codexEnvironmentSelection,
-      model: thread.model,
+      // thread/resume may return the previous model for an already-loaded
+      // thread. turn/start is the authoritative per-turn override (Codex v2).
+      model: requestedModel.model,
       modelProvider: thread.modelProvider,
       turnScopedDeveloperInstructions: workspaceBootstrapContext.turnScopedDeveloperInstructions,
       skillsCollaborationInstructions,

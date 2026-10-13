@@ -30,6 +30,19 @@ function validTree(): Record<string, unknown> {
 }
 
 describe("validateWorkflowTreeDefinition", () => {
+  it.each(["ollama/qwen3:8b", "openrouter/mistralai/mistral-small"])(
+    "accepts a qualified execution model %s",
+    (executionModel) => {
+      const result = validateWorkflowTreeDefinition({ ...validTree(), executionModel });
+      expect(result.ok && result.tree.executionModel).toBe(executionModel);
+    },
+  );
+  it.each(["", "qwen3", "ollama/", "ollama/qwen3 @account", "ollama/qwen3@account"])(
+    "rejects invalid execution model %s",
+    (executionModel) => {
+      expect(validateWorkflowTreeDefinition({ ...validTree(), executionModel }).ok).toBe(false);
+    },
+  );
   it("accepts a valid tree", () => {
     const result = validateWorkflowTreeDefinition(validTree());
     expect(result.ok).toBe(true);

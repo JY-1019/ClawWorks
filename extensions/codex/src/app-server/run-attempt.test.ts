@@ -2292,6 +2292,23 @@ describe("runCodexAppServerAttempt", () => {
     expect(inputText).toContain("prior visible context");
   });
 
+  it("applies the requested model even when loaded-thread resume returns the old model", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    await writeExistingBinding(sessionFile, workspaceDir, { dynamicToolsFingerprint: "[]" });
+    const harness = createResumeHarness();
+    const params = createParams(sessionFile, workspaceDir);
+    params.modelId = "gpt-5.5";
+    params.model = { ...params.model, id: "gpt-5.5" };
+    const run = runCodexAppServerAttempt(params);
+    await harness.waitForMethod("turn/start");
+    const turn = harness.requests.find((request) => request.method === "turn/start");
+    expect(turn?.params).toMatchObject({ model: "gpt-5.5" });
+    await harness.completeTurn({ threadId: "thread-existing", turnId: "turn-1" });
+    await run;
+    expectResumeRequest(harness.requests, { model: "gpt-5.5" });
+  });
+
   it("does not replay mirrored history already covered by an existing Codex binding", async () => {
     const sessionFile = path.join(tempDir, "session.jsonl");
     const workspaceDir = path.join(tempDir, "workspace");

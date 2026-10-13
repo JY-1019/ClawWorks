@@ -133,6 +133,16 @@ describe("built-in support example tree", () => {
 });
 
 describe("buildEnterpriseRunPlan", () => {
+  it("carries the selected tree's execution model into its run plan", () => {
+    const plan = buildEnterpriseRunPlan({
+      runId: "pinned",
+      requestText: "refund",
+      mode: "enforce",
+      tree: { ...REFUND_TREE, executionModel: "ollama/qwen3:8b" },
+      matchedBy: "planner",
+    });
+    expect(plan.executionModel).toBe("ollama/qwen3:8b");
+  });
   it("flattens the subtree depth-first and starts on the root scope", () => {
     const plan = buildEnterpriseRunPlan({
       runId: "run-1",

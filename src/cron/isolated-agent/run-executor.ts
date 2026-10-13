@@ -284,6 +284,20 @@ export function createCronPromptExecutor(params: {
       ? `${promptText}\n\n${deliveryTargetRuntimeContext}`.trim()
       : promptText;
     const fallbackResult = await runWithModelFallback({
+      enterpriseRun: {
+        runId: params.cronSession.sessionEntry.sessionId,
+        sessionId: params.cronSession.sessionEntry.sessionId,
+        sessionKey: params.runSessionKey,
+        agentId: params.agentId,
+        prompt: modelPrompt,
+        timeoutMs: params.timeoutMs,
+        trigger: "cron",
+        onExecutionStarted: params.onExecutionStarted,
+        onLaneWait: params.onLaneWait,
+        authProfileId: params.liveSelection.authProfileId,
+        authProfileIdSource: params.liveSelection.authProfileIdSource,
+        skillsSnapshot: params.skillsSnapshot,
+      },
       cfg: params.cfgWithAgentDefaults,
       provider: params.liveSelection.provider,
       model: params.liveSelection.model,

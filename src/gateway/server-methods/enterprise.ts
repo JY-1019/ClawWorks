@@ -466,6 +466,7 @@ function buildTreeDetail(entry: WorkflowTreeRegistryEntry): EnterpriseTreeDetail
     hash: hashWorkflowTree(entry.tree),
     name: entry.tree.name,
     description: entry.tree.description,
+    ...(entry.tree.executionModel ? { executionModel: entry.tree.executionModel } : {}),
     source: entry.source,
     nodes: flattenTreeNodes(entry.tree.root),
   };

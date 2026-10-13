@@ -1261,7 +1261,7 @@ function resolveCooldownDecision(params: {
   };
 }
 
-type RunWithModelFallbackParams<T> = {
+export type RunWithModelFallbackParams<T> = {
   cfg: OpenClawConfig | undefined;
   provider: string;
   model: string;

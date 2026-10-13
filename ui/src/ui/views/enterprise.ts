@@ -3042,6 +3042,7 @@ function treeDraftErrorMessage(error: EnterpriseTreeDraftError): string {
     "name-empty": t("enterprise.newTreeErrorNameEmpty"),
     "triggers-empty": t("enterprise.treeSettingsErrorTriggersEmpty"),
     "priority-invalid": t("enterprise.treeSettingsErrorPriorityInvalid"),
+    "execution-model-invalid": t("enterprise.treeSettingsErrorExecutionModelInvalid"),
     "root-id-empty": t("enterprise.newTreeErrorRootIdEmpty"),
     "root-id-pattern": t("enterprise.newTreeErrorRootIdPattern"),
     "root-title-empty": t("enterprise.newTreeErrorRootTitleEmpty"),
@@ -3054,21 +3055,24 @@ function renderNewTreeForm(props: EnterpriseProps): TemplateResult {
   if (!draft) {
     return html``;
   }
-  const invalidField = draft.error?.startsWith("id-")
-    ? "id"
-    : draft.error === "version-empty"
-      ? "version"
-      : draft.error === "name-empty"
-        ? "name"
-        : draft.error === "triggers-empty"
-          ? "triggers"
-          : draft.error === "priority-invalid"
-            ? "priority"
-            : draft.error?.startsWith("root-id-")
-              ? "rootId"
-              : draft.error === "root-title-empty"
-                ? "rootTitle"
-                : null;
+  const invalidField =
+    draft.error === "execution-model-invalid"
+      ? "executionModel"
+      : draft.error?.startsWith("id-")
+        ? "id"
+        : draft.error === "version-empty"
+          ? "version"
+          : draft.error === "name-empty"
+            ? "name"
+            : draft.error === "triggers-empty"
+              ? "triggers"
+              : draft.error === "priority-invalid"
+                ? "priority"
+                : draft.error?.startsWith("root-id-")
+                  ? "rootId"
+                  : draft.error === "root-title-empty"
+                    ? "rootTitle"
+                    : null;
   const errorId = "enterprise-new-tree-error";
   return html`
     <section class="card" data-enterprise-new-tree style="margin-top: 16px;">
@@ -3160,6 +3164,19 @@ function renderNewTreeForm(props: EnterpriseProps): TemplateResult {
                 @input=${(event: Event) =>
                   props.onEditNew({ description: (event.target as HTMLTextAreaElement).value })}
               ></textarea>
+            </label>
+            <label class="field" style="grid-column: 1 / -1;">
+              <span>${t("enterprise.treeExecutionModel")}</span>
+              <input
+                class="input"
+                .value=${draft.executionModel ?? ""}
+                placeholder=${t("enterprise.routingDefault")}
+                aria-invalid=${invalidField === "executionModel" ? "true" : nothing}
+                aria-describedby=${invalidField === "executionModel" ? errorId : nothing}
+                @input=${(event: Event) =>
+                  props.onEditNew({ executionModel: (event.target as HTMLInputElement).value })}
+              />
+              <span class="muted">${t("enterprise.treeExecutionModelHint")}</span>
             </label>
             <fieldset
               class="field"

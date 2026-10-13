@@ -250,6 +250,7 @@ export function buildEnterpriseRunPlan(params: {
     treeId: tree.id,
     treeVersion: tree.version,
     treeName: tree.name,
+    ...(tree.executionModel ? { executionModel: tree.executionModel } : {}),
     matchedBy: params.matchedBy,
     // Model text about the request, so it gets the same redaction as the route
     // rationale: it is persisted to the trace and rendered to operators.

@@ -273,6 +273,7 @@ vi.mock("./internal-session-effects.js", () => ({
 }));
 
 vi.mock("../infra/agent-events.js", () => ({
+  getAgentRunContext: () => undefined,
   assertAgentRunLifecycleGenerationCurrent: (...args: unknown[]) =>
     state.assertLifecycleCurrentMock(...args),
   captureAgentRunLifecycleGeneration: () => "test-generation",
@@ -730,6 +731,7 @@ vi.mock("./provider-auth-aliases.js", () => ({
 }));
 
 vi.mock("../skills/discovery/agent-filter.js", () => ({
+  resolveEffectiveAgentSkillsLimits: () => undefined,
   resolveEffectiveAgentSkillFilter: (_cfg: unknown, agentId: string) =>
     state.resolveAgentSkillsFilterMock(_cfg, agentId),
 }));

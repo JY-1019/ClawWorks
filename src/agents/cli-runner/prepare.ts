@@ -10,6 +10,7 @@ import {
 } from "../../context-engine/host-compat.js";
 import { ensureContextEnginesInitialized } from "../../context-engine/init.js";
 import { resolveContextEngine } from "../../context-engine/registry.js";
+import { getEnterpriseActiveRun } from "../../enterprise/runtime.js";
 import { ensureMcpLoopbackServer } from "../../gateway/mcp-http.js";
 import {
   createMcpLoopbackServerConfig,
@@ -284,6 +285,13 @@ export async function prepareCliRunContext(
   });
   if (!backendResolved) {
     throw new Error(`Unknown CLI backend: ${params.provider}`);
+  }
+  // A backend without a model flag silently uses its own default, violating a map pin.
+  if (
+    getEnterpriseActiveRun(params.runId)?.plan.executionModel &&
+    !backendResolved.config.modelArg
+  ) {
+    throw new Error(`CLI backend ${backendResolved.id} cannot select the work-map execution model`);
   }
   if (params.toolsAllow !== undefined) {
     throw new Error(

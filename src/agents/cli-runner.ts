@@ -34,6 +34,7 @@ import { classifyFailoverReason, isFailoverErrorMessage } from "./embedded-agent
 import type { EmbeddedAgentRunResult } from "./embedded-agent-runner.js";
 import { waitForDeferredTurnMaintenanceForSession } from "./embedded-agent-runner/context-engine-maintenance.js";
 import { buildEmbeddedRunPayloads } from "./embedded-agent-runner/run/payloads.js";
+import { getEnterpriseDispatchContext } from "./enterprise-dispatch-context.js";
 import { applyEnterpriseMediation, finishEnterpriseMediation } from "./enterprise-mediation.js";
 import { FailoverError, isFailoverError, resolveFailoverStatus } from "./failover-error.js";
 import {
@@ -52,6 +53,11 @@ import {
   runAgentHarnessLlmInputHook,
   runAgentHarnessLlmOutputHook,
 } from "./harness/lifecycle-hook-helpers.js";
+import {
+  isCliRuntimeAliasForProvider,
+  resolveCliRuntimeExecutionProvider,
+} from "./model-runtime-aliases.js";
+import { isCliProvider } from "./model-selection.js";
 import type { AgentMessage } from "./runtime/index.js";
 import { SessionManager } from "./sessions/session-manager.js";
 import { buildAssistantMessage, buildUsageWithNoCost } from "./stream-message-shared.js";
@@ -390,12 +396,23 @@ async function finalizeCliContextEngineTurn(params: {
 }
 
 /** Prepares and runs one CLI-backed agent turn. */
-export async function runCliAgent(paramsInput: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
+export async function runCliAgent(input: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
+  const dispatchSignal = getEnterpriseDispatchContext(input.runId)?.abortSignal;
+  const paramsInput = dispatchSignal
+    ? {
+        ...input,
+        abortSignal: input.abortSignal
+          ? AbortSignal.any([input.abortSignal, dispatchSignal])
+          : dispatchSignal,
+      }
+    : input;
+  paramsInput.abortSignal?.throwIfAborted();
   // Enterprise mediation covers CLI-backed runtimes too: run-level governance
   // and traces apply to every agent runtime, not only the embedded loop. It is
   // awaited because route selection may consult a model before the run starts.
   const mediation = await applyEnterpriseMediation(paramsInput);
   if (mediation.blockedResult) {
+    finishEnterpriseMediation(paramsInput.runId, { result: mediation.blockedResult });
     return mediation.blockedResult;
   }
   // Mediation can await a model call (route planning). A Stop that lands in that
@@ -405,7 +422,28 @@ export async function runCliAgent(paramsInput: RunCliAgentParams): Promise<Embed
     const reason = paramsInput.abortSignal.reason;
     throw reason instanceof Error ? reason : new Error("aborted");
   }
-  const params = mediation.params;
+  let params = mediation.params;
+  if (params.provider !== paramsInput.provider) {
+    // A canonical provider pin still uses its selected CLI transport/account.
+    const provider = isCliRuntimeAliasForProvider({
+      provider: params.provider,
+      runtime: paramsInput.provider,
+      cfg: params.config,
+    })
+      ? paramsInput.provider
+      : (resolveCliRuntimeExecutionProvider({
+          provider: params.provider,
+          modelId: params.model,
+          cfg: params.config,
+          agentId: params.agentId,
+          authProfileId: params.authProfileId,
+        }) ?? params.provider);
+    params = { ...params, provider };
+    if (!isCliProvider(provider, params.config)) {
+      const { runEmbeddedAgent } = await import("./embedded-agent.runtime.js");
+      return runEmbeddedAgent({ ...params, extraSystemPrompt: paramsInput.extraSystemPrompt });
+    }
+  }
   const lifecycleGeneration =
     params.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(params.runId);
   const runPromise = withAgentRunLifecycleGeneration(lifecycleGeneration, () =>

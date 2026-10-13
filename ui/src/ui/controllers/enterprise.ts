@@ -128,6 +128,7 @@ export type EnterpriseTreeDraftError =
   | "name-empty"
   | "triggers-empty"
   | "priority-invalid"
+  | "execution-model-invalid"
   | "root-id-empty"
   | "root-id-pattern"
   | "root-title-empty";
@@ -141,6 +142,7 @@ export type EnterpriseTreeDraft = {
   version: string;
   name: string;
   description: string;
+  executionModel?: string;
   triggers: EnterpriseTreeTrigger[];
   priority: string;
   rootId: string;
@@ -1845,6 +1847,7 @@ export function beginNewEnterpriseTree(state: EnterpriseState) {
   clearEnterpriseNodeSelection(state);
   state.enterpriseTreeDraft = {
     mode: "create",
+    executionModel: "",
     expectedHash: null,
     id: "",
     version: "1.0.0",
@@ -1876,6 +1879,7 @@ export function beginEditEnterpriseTreeSettings(state: EnterpriseState) {
     version: tree.version,
     name: tree.name,
     description: tree.description ?? "",
+    executionModel: tree.executionModel ?? "",
     triggers: triggers.length > 0 ? triggers : ["user"],
     priority: tree.match?.priority === undefined ? "" : String(tree.match.priority),
     rootId: "",
@@ -1913,6 +1917,7 @@ export async function submitEnterpriseTreeDraft(state: EnterpriseState) {
   const version = draft.version.trim();
   const name = draft.name.trim();
   const description = draft.description.trim();
+  const executionModel = (draft.executionModel ?? "").trim();
   const priorityText = draft.priority.trim();
   const priority = priorityText ? Number(priorityText) : undefined;
   const rootId = draft.rootId.trim();
@@ -1937,6 +1942,13 @@ export async function submitEnterpriseTreeDraft(state: EnterpriseState) {
     fail("name-empty");
     return;
   }
+  if (
+    executionModel &&
+    (executionModel.length > 512 || !/^[^\s/@]+\/[^\s@]+$/.test(executionModel))
+  ) {
+    fail("execution-model-invalid");
+    return;
+  }
   if (draft.triggers.length === 0) {
     fail("triggers-empty");
     return;
@@ -1953,6 +1965,7 @@ export async function submitEnterpriseTreeDraft(state: EnterpriseState) {
           version,
           name,
           description,
+          executionModel,
           triggers: draft.triggers,
           priority,
         }),
@@ -1984,6 +1997,7 @@ export async function submitEnterpriseTreeDraft(state: EnterpriseState) {
     version,
     name,
     ...(description ? { description } : {}),
+    ...(executionModel ? { executionModel } : {}),
     match: {
       triggers: draft.triggers,
       ...(priority !== undefined ? { priority } : {}),
@@ -3202,6 +3216,8 @@ function stageEnterpriseTreeDefinition(state: EnterpriseState, definition: Edita
   visit(definition.root, null, 0);
   state.enterpriseTreeDetail = {
     ...original,
+    executionModel:
+      typeof definition.executionModel === "string" ? definition.executionModel : undefined,
     capabilityGrants: definition.capabilityGrants === "explicit" ? "explicit" : undefined,
     nodes,
   };

@@ -18,6 +18,7 @@ import {
   resolveContextEngineOwnerPluginId,
 } from "../../context-engine/registry.js";
 import { buildContextEngineRuntimeSettings } from "../../context-engine/runtime-settings.js";
+import { getEnterpriseActiveRun } from "../../enterprise/runtime.js";
 import {
   assertAgentRunLifecycleGenerationCurrent,
   captureAgentRunLifecycleGeneration,
@@ -85,8 +86,13 @@ import {
   pickFallbackThinkingLevel,
 } from "../embedded-agent-helpers.js";
 import {
+  isEnterpriseDispatchManaged,
+  getEnterpriseDispatchContext,
+} from "../enterprise-dispatch-context.js";
+import {
   adoptEnterpriseRunSessionId,
   applyEnterpriseMediation,
+  assertEnterpriseExecutionModel,
   finishEnterpriseMediation,
 } from "../enterprise-mediation.js";
 import { narrowRunSkillsSnapshot } from "../enterprise-skill-snapshot.js";
@@ -164,7 +170,13 @@ import {
   hasOutboundDeliveryEvidence,
 } from "./delivery-evidence.js";
 import { resolveEmbeddedRunFailureSignal } from "./failure-signal.js";
-import { resolveGlobalLane, resolveSessionLane } from "./lanes.js";
+import {
+  resolveGlobalLane,
+  resolveSessionLane,
+  resolveRunSessionQueuePriority,
+  resolveEmbeddedRunLaneTimeoutMs,
+  EMBEDDED_RUN_LANE_TIMEOUT_GRACE_MS,
+} from "./lanes.js";
 import { log } from "./logger.js";
 import { resolveModelAsync } from "./model.js";
 import {
@@ -255,7 +267,6 @@ import { createUsageAccumulator, mergeUsageIntoAccumulator } from "./usage-accum
 type ApiKeyInfo = ResolvedProviderAuth;
 
 const MAX_SAME_MODEL_IDLE_TIMEOUT_RETRIES = 1;
-const EMBEDDED_RUN_LANE_TIMEOUT_GRACE_MS = 30_000;
 const EMBEDDED_RUN_LANE_HEARTBEAT_MS = EMBEDDED_RUN_LANE_TIMEOUT_GRACE_MS / 2;
 const MID_TURN_PRECHECK_CONTINUATION_PROMPT =
   "Continue from the current transcript after the latest tool result. Do not repeat the original user request, and do not rerun completed tools unless the transcript shows they are still needed.";
@@ -357,13 +368,6 @@ function buildBeforeAgentFinalizeRetryPrompt(reason: string): string {
   return `${BEFORE_AGENT_FINALIZE_RETRY_PROMPT_PREFIX}\n\n${reason}`;
 }
 
-function resolveEmbeddedRunLaneTimeoutMs(timeoutMs: number): number | undefined {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return undefined;
-  }
-  return Math.floor(timeoutMs) + EMBEDDED_RUN_LANE_TIMEOUT_GRACE_MS;
-}
-
 function withEmbeddedRunLaneTimeout(
   opts: CommandQueueEnqueueOptions | undefined,
   laneTaskTimeoutMs: number | undefined,
@@ -372,23 +376,6 @@ function withEmbeddedRunLaneTimeout(
     return opts;
   }
   return { ...opts, taskTimeoutMs: laneTaskTimeoutMs };
-}
-
-function resolveEmbeddedRunSessionQueuePriority(
-  trigger: RunEmbeddedAgentParams["trigger"],
-): CommandQueueEnqueueOptions["priority"] {
-  switch (trigger) {
-    case "user":
-    case "manual":
-      return "foreground";
-    case "cron":
-    case "heartbeat":
-    case "memory":
-    case "overflow":
-      return "background";
-    default:
-      return "normal";
-  }
 }
 
 function normalizeEmbeddedRunAttemptResult(
@@ -608,9 +595,16 @@ function resolveInitialEmbeddedRunModel(params: {
 
 const POST_RUN_AUTH_PROFILE_SUCCESS_SLOW_MS = 1_000;
 
-export function runEmbeddedAgent(
-  paramsInput: RunEmbeddedAgentParams,
-): Promise<EmbeddedAgentRunResult> {
+export function runEmbeddedAgent(input: RunEmbeddedAgentParams): Promise<EmbeddedAgentRunResult> {
+  const dispatchSignal = getEnterpriseDispatchContext(input.runId)?.abortSignal;
+  const paramsInput = dispatchSignal
+    ? {
+        ...input,
+        abortSignal: input.abortSignal
+          ? AbortSignal.any([input.abortSignal, dispatchSignal])
+          : dispatchSignal,
+      }
+    : input;
   const requestedProvider = normalizeOptionalString(paramsInput.provider);
   const requestedModel = normalizeOptionalString(paramsInput.model);
   const needsConfiguredDefault = !paramsInput.config && !requestedProvider && !requestedModel;
@@ -677,7 +671,7 @@ async function runEmbeddedAgentInternal(
     }
     void suspendSession(suspension);
   };
-  const sessionQueuePriority = resolveEmbeddedRunSessionQueuePriority(params.trigger);
+  const sessionQueuePriority = resolveRunSessionQueuePriority(params.trigger);
   const laneTaskTimeoutMs = resolveEmbeddedRunLaneTimeoutMs(params.timeoutMs);
   const laneTaskAbortController = new AbortController();
   const laneTaskReleaseController = new AbortController();
@@ -785,6 +779,9 @@ async function runEmbeddedAgentInternal(
       params.onLaneWait?.({ waitMs: 0, queuedAhead: 0, waiting: false });
       return task();
     };
+    if (isEnterpriseDispatchManaged(params.runId)) {
+      return taskWithLaneAdmission();
+    }
     if (params.enqueue) {
       return params.enqueue(taskWithLaneAdmission, withRunLaneWait(sessionOpts));
     }
@@ -1085,6 +1082,7 @@ async function runEmbeddedAgentInternal(
       });
       provider = hookSelection.provider;
       modelId = hookSelection.modelId;
+      assertEnterpriseExecutionModel(params.runId, provider, modelId);
       const requestedModelId = modelId;
       const beforeAgentStartResult = hookSelection.beforeAgentStartResult;
       startupStages.mark("hooks");
@@ -2491,17 +2489,20 @@ async function runEmbeddedAgentInternal(
             }
             continue;
           }
-          const requestedSelection = shouldSwitchToLiveModel({
-            cfg: params.config,
-            sessionKey: resolvedSessionKey,
-            agentId: params.agentId,
-            defaultProvider: DEFAULT_PROVIDER,
-            defaultModel: DEFAULT_MODEL,
-            currentProvider: provider,
-            currentModel: modelId,
-            currentAuthProfileId: preferredProfileId,
-            currentAuthProfileIdSource: params.authProfileIdSource,
-          });
+          // A live session switch applies to later turns; this map owns its model.
+          const requestedSelection = getEnterpriseActiveRun(params.runId)?.plan.executionModel
+            ? undefined
+            : shouldSwitchToLiveModel({
+                cfg: params.config,
+                sessionKey: resolvedSessionKey,
+                agentId: params.agentId,
+                defaultProvider: DEFAULT_PROVIDER,
+                defaultModel: DEFAULT_MODEL,
+                currentProvider: provider,
+                currentModel: modelId,
+                currentAuthProfileId: preferredProfileId,
+                currentAuthProfileIdSource: params.authProfileIdSource,
+              });
           if (requestedSelection && canRestartForLiveSwitch) {
             await clearLiveModelSwitchPending({
               cfg: params.config,

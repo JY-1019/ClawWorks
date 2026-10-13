@@ -296,6 +296,14 @@ export const WorkflowTreeDefinitionSchema = z
     name: z.string().min(1),
     description: z.string().optional(),
     match: WorkflowTreeMatchSchema.optional(),
+    executionModel: z
+      .string()
+      .max(512)
+      .regex(
+        /^[^\s/@]+\/[^\s@]+$/,
+        "Execution model must be a qualified provider/model reference without an auth-profile suffix.",
+      )
+      .optional(),
     // One value, and deliberately not a boolean: the inherited semantics this
     // opts out of are a mode of their own, so the field has room to name them
     // (or a third) without a second flag contradicting the first.

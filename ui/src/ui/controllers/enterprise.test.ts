@@ -1809,6 +1809,7 @@ describe("enterprise tree editing", () => {
     editEnterpriseTreeDraft(state, {
       version: "2.0.0",
       name: "Support operations",
+      executionModel: "ollama/qwen3:8b",
       description: "Current settings",
       triggers: ["user", "subagent"],
       priority: "0",
@@ -1822,6 +1823,7 @@ describe("enterprise tree editing", () => {
     expect(saved).toMatchObject({
       version: "2.0.0",
       name: "Support operations",
+      executionModel: "ollama/qwen3:8b",
       description: "Current settings",
       match: { keywords: ["legacy"], triggers: ["user", "subagent"], priority: 0 },
     });

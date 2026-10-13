@@ -83,7 +83,11 @@ describe("enterprise workflow tree store", () => {
 
   it("upserts, reads back, and lists trees in id order", () => {
     upsertEnterpriseWorkflowTree(
-      { tree: makeTree("acme.b"), sourceFormat: "yaml", now: 100 },
+      {
+        tree: { ...makeTree("acme.b"), executionModel: "ollama/qwen3:8b" },
+        sourceFormat: "yaml",
+        now: 100,
+      },
       storeOptions,
     );
     upsertEnterpriseWorkflowTree(
@@ -91,6 +95,9 @@ describe("enterprise workflow tree store", () => {
       storeOptions,
     );
 
+    expect(getEnterpriseWorkflowTree("acme.b", storeOptions)?.tree.executionModel).toBe(
+      "ollama/qwen3:8b",
+    );
     const record = getEnterpriseWorkflowTree("acme.a", storeOptions);
     expect(record?.tree.name).toBe("Tree acme.a");
     expect(record?.sourceFormat).toBe("json");

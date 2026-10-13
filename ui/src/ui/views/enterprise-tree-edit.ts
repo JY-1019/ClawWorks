@@ -103,6 +103,7 @@ export function setTreeSettings(
     version: string;
     name: string;
     description: string;
+    executionModel?: string;
     triggers: readonly EditableTreeTrigger[];
     priority?: number;
   },
@@ -116,6 +117,15 @@ export function setTreeSettings(
     next.description = description;
   } else {
     delete next.description;
+  }
+
+  if (settings.executionModel !== undefined) {
+    const model = settings.executionModel.trim();
+    if (model) {
+      next.executionModel = model;
+    } else {
+      delete next.executionModel;
+    }
   }
 
   const currentMatch =

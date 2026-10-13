@@ -9,9 +9,9 @@ import {
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 import { estimateMessagesTokens } from "../../agents/compaction.js";
 import { classifyCompactionReason } from "../../agents/embedded-agent-runner/compact-reasons.js";
+import { runWithEnterpriseModelFallback as runWithModelFallback } from "../../agents/enterprise-model-dispatch.js";
 import { resolveAgentHarnessPolicy } from "../../agents/harness/policy.js";
 import { ensureSelectedAgentHarnessPlugin } from "../../agents/harness/runtime-plugin.js";
-import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliRuntimeAliasForProvider } from "../../agents/model-runtime-aliases.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { resolveContextConfigProviderForRuntime } from "../../agents/openai-routing.js";
@@ -1307,6 +1307,14 @@ export async function runMemoryFlushIfNeeded(params: {
   let postCompactionSessionFile: string | undefined;
   try {
     await memoryDeps.runWithModelFallback({
+      enterpriseRun: {
+        ...params.followupRun.run,
+        runId: flushRunId,
+        sessionId: activeSessionEntry?.sessionId ?? params.followupRun.run.sessionId,
+        prompt: activeMemoryFlushPlan.prompt,
+        trigger: "memory",
+        silentExpected: true,
+      },
       ...resolveMemoryFlushModelFallbackOptions(
         params.followupRun.run,
         activeMemoryFlushPlan.model,

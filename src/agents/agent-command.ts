@@ -107,6 +107,7 @@ import {
   mergeEmbeddedAgentRunResultForModelFallbackExhaustion,
 } from "./embedded-agent-runner/result-fallback-classifier.js";
 import { applyEnterpriseMediation, finishEnterpriseMediation } from "./enterprise-mediation.js";
+import { runWithEnterpriseModelFallback as runWithModelFallback } from "./enterprise-model-dispatch.js";
 import { resolveFastModeState } from "./fast-mode.js";
 import { ensureSelectedAgentHarnessPlugin } from "./harness/runtime-plugin.js";
 import { resolveAvailableAgentHarnessPolicy } from "./harness/selection.js";
@@ -114,7 +115,6 @@ import { prepareInternalSessionEffectsTranscript } from "./internal-session-effe
 import { AGENT_LANE_SUBAGENT } from "./lanes.js";
 import { LiveSessionModelSwitchError } from "./live-model-switch.js";
 import { loadManifestModelCatalog } from "./model-catalog.js";
-import { runWithModelFallback } from "./model-fallback.js";
 import { normalizeConfiguredProviderCatalogModelId } from "./model-ref-shared.js";
 import type { ModelManifestNormalizationContext } from "./model-selection-normalize.js";
 import {
@@ -1877,7 +1877,22 @@ async function agentCommandInternal(
 
         let fallbackAttemptIndex = 0;
         attemptLifecycleState.currentTurnUserMessagePersisted = false;
-        const fallbackResult = await runWithModelFallback<AgentAttemptResult>({
+        const fallbackResult = await runWithModelFallback({
+          enterpriseRun: {
+            runId,
+            sessionId,
+            sessionKey,
+            agentId: sessionAgentId,
+            prompt: body,
+            timeoutMs,
+            trigger: "user",
+            spawnedBy,
+            skillsSnapshot,
+            authProfileId: sessionEntryForAttempt?.authProfileOverride,
+            authProfileIdSource: sessionEntryForAttempt?.authProfileOverrideSource,
+            modelRun: opts.modelRun,
+            promptMode: opts.promptMode,
+          },
           cfg,
           provider,
           model,
@@ -1887,6 +1902,7 @@ async function agentCommandInternal(
           agentId: sessionAgentId,
           sessionId,
           sessionKey: sessionKey ?? sessionId,
+          lane: opts.lane,
           prepareAgentHarnessRuntime: async ({
             provider: providerValue,
             model: modelValue,
@@ -2012,6 +2028,7 @@ async function agentCommandInternal(
         fallbackExhausted = fallbackResult.outcome === "exhausted";
         if (
           !fallbackExhausted &&
+          !fallbackResult.executionModel &&
           autoFallbackPrimaryProbe &&
           !autoFallbackPrimaryProbeInterruptedByLiveSwitch &&
           sessionEntry &&

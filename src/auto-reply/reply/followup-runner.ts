@@ -13,9 +13,9 @@ import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { mergeEmbeddedAgentRunResultForModelFallbackExhaustion } from "../../agents/embedded-agent-runner/result-fallback-classifier.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
+import { runWithEnterpriseModelFallback as runWithModelFallback } from "../../agents/enterprise-model-dispatch.js";
 import type { FastModeAutoProgressState } from "../../agents/fast-mode.js";
 import { ensureSelectedAgentHarnessPlugin } from "../../agents/harness/runtime-plugin.js";
-import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { resolveCliRuntimeExecutionProvider } from "../../agents/model-runtime-aliases.js";
 import { isCliProvider } from "../../agents/model-selection-cli.js";
 import {
@@ -96,8 +96,6 @@ import { isRoutableChannel, routeReply } from "./route-reply.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
-
-type EmbeddedAgentRunResult = Awaited<ReturnType<typeof runEmbeddedAgent>>;
 
 type FollowupAgentEvent = { stream: string; data: Record<string, unknown> };
 
@@ -855,7 +853,8 @@ export function createFollowupRunner(params: {
       };
       try {
         const outcomePlan = buildAgentRuntimeOutcomePlan();
-        const fallbackResult = await runWithModelFallback<EmbeddedAgentRunResult>({
+        const fallbackResult = await runWithModelFallback({
+          enterpriseRun: { ...run, runId, prompt: queued.prompt, trigger: "user" },
           ...resolveModelFallbackOptions(run, runtimeConfig),
           cfg: runtimeConfig,
           runId,
@@ -1322,7 +1321,7 @@ export function createFollowupRunner(params: {
         } else {
           settledLifecycleTerminal?.emit("end", runResult);
         }
-        if (!fallbackExhausted) {
+        if (!fallbackExhausted && !fallbackResult.executionModel) {
           await clearRecoveredAutoFallbackPrimaryProbe({
             provider: fallbackProvider,
             model: fallbackModel,

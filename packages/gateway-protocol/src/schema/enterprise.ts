@@ -261,6 +261,7 @@ export const EnterpriseTreeDetailSchema = Type.Object(
     hash: Type.Optional(Type.String()),
     name: Type.String(),
     description: Type.Optional(Type.String()),
+    executionModel: Type.Optional(Type.String()),
     source: EnterpriseTreeSourceSchema,
     match: Type.Optional(EnterpriseTreeMatchSchema),
     /**

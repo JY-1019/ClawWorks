@@ -885,6 +885,11 @@ export const fr: TranslationMap = {
     graphZoomOut: "Zoom out",
     graphNavigationHint: "Scroll to zoom · drag the background to pan",
     routeTitle: "Route empruntée",
+    treeExecutionModel: "Execution model",
+    treeExecutionModelHint:
+      "Enter provider/model to use only that model for this work-map. Leave empty to use the conversation model. Routing uses its separate setting.",
+    treeSettingsErrorExecutionModelInvalid:
+      "Use provider/model without an auth-profile suffix, or leave empty for Default.",
     routingModel: "Routing model",
     routingDefault: "Default",
     routingModelHint:

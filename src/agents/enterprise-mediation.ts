@@ -12,7 +12,7 @@ import {
   beginEnterpriseRun,
   endEnterpriseRun,
 } from "../enterprise/run-mediation.js";
-import { resolveEnterpriseMode } from "../enterprise/runtime.js";
+import { getEnterpriseActiveRun, resolveEnterpriseMode } from "../enterprise/runtime.js";
 import type { EnterpriseRunStatus } from "../enterprise/types.js";
 import { getAgentRunContext } from "../infra/agent-events.js";
 import { hasGlobalHooks } from "../plugins/hook-runner-global.js";
@@ -24,6 +24,8 @@ import {
 } from "../skills/limits-defaults.js";
 import { buildAgentRunTerminalOutcome } from "./agent-run-terminal-outcome.js";
 import type { EmbeddedAgentRunResult } from "./embedded-agent-runner/types.js";
+import { isEnterpriseDispatchManaged } from "./enterprise-dispatch-context.js";
+import { parseModelRef } from "./model-selection.js";
 import { resolveProviderIdForAuth } from "./provider-auth-aliases.js";
 
 /**
@@ -118,6 +120,8 @@ export type EnterpriseMediatedRunParams = {
   provider?: string;
   /** Qualified per-turn router override, ahead of the saved routing default. */
   routeModel?: string;
+  modelFallbacksOverride?: string[];
+  agentHarnessRuntimeOverride?: string;
   /**
    * The turn is dispatched to a backend OpenClaw does not pick the model for
    * (ACP). Route planning must not run: it would send the prompt to OpenClaw's
@@ -332,8 +336,10 @@ export type EnterpriseMediationOutcome<T extends EnterpriseMediatedRunParams> = 
  * trace attributes the run correctly.
  */
 export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunParams>(
-  params: T,
+  paramsInput: T,
 ): Promise<EnterpriseMediationOutcome<T>> {
+  let params = paramsInput;
+  params.abortSignal?.throwIfAborted();
   // Raw model runs (one-shot probes, promptMode "none") are runtime
   // machinery outside agent mediation, matching isRawModelRun semantics.
   if (params.modelRun || params.promptMode === "none") {
@@ -413,7 +419,7 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
     ...(params.spawnedBy !== undefined ? { spawnedBy: params.spawnedBy } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-    ...(resolveChatVisible(params) === false ? { chatVisible: false } : {}),
+    ...(!resolveChatVisible(params) ? { chatVisible: false } : {}),
     ...(params.agentId ? { agentId: params.agentId } : {}),
     ...(config ? { config } : {}),
     ...(routePlanner ? { routePlanner } : {}),
@@ -455,6 +461,50 @@ export async function applyEnterpriseMediation<T extends EnterpriseMediatedRunPa
       },
     };
   }
+  const executionModel = mediation.plan.executionModel;
+  if (executionModel) {
+    if (params.externalDispatch) {
+      return {
+        params,
+        mediated: true,
+        blockedResult: {
+          payloads: [
+            {
+              text: `Work-map ${mediation.plan.treeName} requires ${executionModel}; this external backend does not support managed model selection.`,
+              isError: true,
+            },
+          ],
+          meta: {
+            durationMs: 0,
+            error: {
+              kind: "hook_block",
+              message: "Work-map execution model cannot be selected on this backend.",
+            },
+          },
+        },
+      };
+    }
+    const binding = parseModelRef(executionModel, "");
+    if (!binding) {
+      throw new Error(`Invalid work-map execution model: ${executionModel}`);
+    }
+    const sameProvider =
+      providerOfRef(params.provider, config ? { config } : undefined) ===
+      providerOfRef(binding.provider, config ? { config } : undefined);
+    params = {
+      ...params,
+      provider: binding.provider,
+      model: binding.model,
+      modelFallbacksOverride: [],
+      ...(!sameProvider
+        ? {
+            authProfileId: undefined,
+            authProfileIdSource: undefined,
+            agentHarnessRuntimeOverride: undefined,
+          }
+        : {}),
+    };
+  }
   if (!mediation.promptSection) {
     return { params, mediated: true };
   }
@@ -477,6 +527,10 @@ export function finishEnterpriseMediation(
   runId: string,
   outcome: { result?: EmbeddedAgentRunResult; error?: unknown },
 ): void {
+  // The dispatch wrapper finalizes once, after all attempts release their context.
+  if (isEnterpriseDispatchManaged(runId)) {
+    return;
+  }
   endEnterpriseRun({ runId, status: resolveEnterpriseRunStatus(outcome) });
 }
 
@@ -542,4 +596,21 @@ export { resolveRoutePlannerAuthProfileId as resolveRoutePlannerAuthProfileIdFor
  */
 export function adoptEnterpriseRunSessionId(runId: string, sessionId: string): void {
   adoptEnterpriseRunTranscript(runId, sessionId);
+}
+
+/** Hooks may enrich a turn but must not redirect a work-map's execution pin. */
+export function assertEnterpriseExecutionModel(
+  runId: string,
+  provider: string,
+  model: string,
+): void {
+  const ref = getEnterpriseActiveRun(runId)?.plan.executionModel;
+  if (!ref) {
+    return;
+  }
+  const binding = parseModelRef(ref, "");
+  const selected = parseModelRef(`${provider}/${model}`, "");
+  if (!binding || binding.provider !== selected?.provider || binding.model !== selected.model) {
+    throw new Error(`Work-map requires execution model ${ref}; refusing ${provider}/${model}.`);
+  }
 }

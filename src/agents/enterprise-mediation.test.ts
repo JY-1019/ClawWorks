@@ -8,6 +8,8 @@ import {
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { BUILTIN_ASSIST_TREE } from "../enterprise/builtin-trees.js";
+import { buildEnterpriseRunPlan } from "../enterprise/plan.js";
 import * as enterpriseMediation from "../enterprise/run-mediation.js";
 import { clearEnterpriseRunMediationForTest } from "../enterprise/run-mediation.js";
 import { getEnterpriseActiveRun } from "../enterprise/runtime.js";
@@ -52,6 +54,40 @@ afterAll(() => {
 });
 
 describe("applyEnterpriseMediation", () => {
+  it("applies a tree model before runtime resolution and clears another provider's credentials", async () => {
+    const plan = buildEnterpriseRunPlan({
+      runId: "bound",
+      requestText: "hi",
+      mode: "enforce",
+      tree: { ...BUILTIN_ASSIST_TREE, executionModel: "ollama/qwen3:8b" },
+      matchedBy: "planner",
+    });
+    const begin = vi
+      .spyOn(enterpriseMediation, "beginEnterpriseRun")
+      .mockResolvedValue({ kind: "mediated", plan, promptSection: "" });
+    try {
+      const outcome = await applyEnterpriseMediation(
+        makeParams({
+          provider: "openai",
+          model: "gpt-5.5",
+          authProfileId: "openai:private",
+          authProfileIdSource: "user",
+          agentHarnessRuntimeOverride: "codex",
+        }),
+      );
+      expect(outcome.params).toMatchObject({
+        provider: "ollama",
+        model: "qwen3:8b",
+        modelFallbacksOverride: [],
+      });
+      expect(outcome.params.authProfileId).toBeUndefined();
+      expect(outcome.params.agentHarnessRuntimeOverride).toBeUndefined();
+      const blocked = await applyEnterpriseMediation(makeParams({ externalDispatch: true }));
+      expect(blocked.blockedResult?.meta.error?.kind).toBe("hook_block");
+    } finally {
+      begin.mockRestore();
+    }
+  });
   it("returns clarification as a normal reply without starting the agent", async () => {
     const begin = vi.spyOn(enterpriseMediation, "beginEnterpriseRun").mockResolvedValue({
       kind: "clarification",

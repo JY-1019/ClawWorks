@@ -151,6 +151,28 @@ describe("ONTOLOGY_CARDINALITIES", () => {
 });
 
 describe("setTreeSettings", () => {
+  it("sets, preserves, and clears the optional execution model", () => {
+    const fields = {
+      version: "1.0.0",
+      name: "Support",
+      description: "",
+      triggers: ["user"] as const,
+    };
+    const bound = setTreeSettings(definition(), {
+      ...fields,
+      triggers: [...fields.triggers],
+      executionModel: " ollama/qwen3:8b ",
+    }).definition;
+    expect(bound.executionModel).toBe("ollama/qwen3:8b");
+    expect(
+      setTreeSettings(bound, { ...fields, triggers: [...fields.triggers] }).definition
+        .executionModel,
+    ).toBe("ollama/qwen3:8b");
+    expect(
+      setTreeSettings(bound, { ...fields, triggers: [...fields.triggers], executionModel: "" })
+        .definition,
+    ).not.toHaveProperty("executionModel");
+  });
   it("updates guided fields while preserving the envelope, root, and legacy match keys", () => {
     const original = definition();
     original.description = "Old description";

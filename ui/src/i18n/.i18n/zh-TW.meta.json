@@ -316,7 +316,10 @@
     "enterprise.routingModelHint",
     "enterprise.saveContinuesNavigation",
     "enterprise.structureEditRefused",
+    "enterprise.treeExecutionModel",
+    "enterprise.treeExecutionModelHint",
     "enterprise.treeSettingsButton",
+    "enterprise.treeSettingsErrorExecutionModelInvalid",
     "enterprise.treeSettingsErrorPriorityInvalid",
     "enterprise.treeSettingsErrorTriggersEmpty",
     "enterprise.treeSettingsErrorVersionEmpty",
@@ -375,12 +378,12 @@
     "knowledge.statSources",
     "workboard.dispatch"
   ],
-  "generatedAt": "2026-10-13T00:58:16.500Z",
+  "generatedAt": "2026-10-13T01:31:07.774Z",
   "locale": "zh-TW",
   "model": "claude-opus-4-6",
   "provider": "anthropic",
-  "sourceHash": "170bff83d2f7612dd28dd05b819d38980232623f9fcc7547936b73120a087365",
-  "totalKeys": 2057,
+  "sourceHash": "7b2c5146a864a4698988e6a90946e8b4ff0a770a75492523d616d51107dfae23",
+  "totalKeys": 2060,
   "translatedKeys": 1683,
   "workflow": 1
 }

@@ -314,6 +314,8 @@ export type WorkflowCapabilityGrants = "explicit";
 
 /** Versioned, importable/exportable workflow tree definition. */
 export type WorkflowTreeDefinition = {
+  /** Optional qualified execution model. A bound run never falls back to another model. */
+  executionModel?: string;
   schema: typeof WORKFLOW_TREE_SCHEMA;
   schemaVersion: typeof WORKFLOW_TREE_SCHEMA_VERSION;
   /** Dotted stable id (e.g. "clawworks.assist"). */
@@ -490,6 +492,8 @@ export type EnterpriseRoutePlan = {
 
 /** Prepared execution plan for one enterprise-mode run. */
 export type EnterpriseRunPlan = {
+  /** Execution pin from the exact tree definition used by this plan. */
+  executionModel?: string;
   runId: string;
   treeId: EnterpriseId;
   treeVersion: string;

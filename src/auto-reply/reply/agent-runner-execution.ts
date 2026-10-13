@@ -44,13 +44,18 @@ import { isMessagingToolSendAction } from "../../agents/embedded-agent-messaging
 import { mergeEmbeddedAgentRunResultForModelFallbackExhaustion } from "../../agents/embedded-agent-runner/result-fallback-classifier.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
+import {
+  runWithEnterpriseModelFallback as runWithModelFallback,
+  getEnterpriseExecutionModel,
+  EnterpriseModelExecutionError,
+} from "../../agents/enterprise-model-dispatch.js";
 import { isFailoverError } from "../../agents/failover-error.js";
 import type { FastModeAutoProgressState } from "../../agents/fast-mode.js";
 import { resolveAgentHarnessPolicy } from "../../agents/harness/policy.js";
 import { ensureSelectedAgentHarnessPlugin } from "../../agents/harness/runtime-plugin.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { isMissingProviderAuthError } from "../../agents/model-auth.js";
-import { runWithModelFallback, isFallbackSummaryError } from "../../agents/model-fallback.js";
+import { isFallbackSummaryError } from "../../agents/model-fallback.js";
 import {
   isCliRuntimeAliasForProvider,
   resolveCliRuntimeExecutionProvider,
@@ -424,8 +429,6 @@ export type AgentRunLoopResult =
       directlySentBlockPayloads?: ReplyPayload[];
     }
   | { kind: "final"; payload: ReplyPayload };
-
-type EmbeddedAgentRunResult = Awaited<ReturnType<typeof runEmbeddedAgent>>;
 
 type FallbackSelectionState = Pick<
   SessionEntry,
@@ -1848,6 +1851,7 @@ export async function runAgentTurnWithFallback(params: {
       !params.sessionKey ||
       !params.activeSessionStore ||
       preserveUserFacingSessionState ||
+      Boolean(getEnterpriseExecutionModel(runId)) ||
       (provider === effectiveRun.provider && model === effectiveRun.model)
     ) {
       return undefined;
@@ -2129,7 +2133,13 @@ export async function runAgentTurnWithFallback(params: {
         milestone: "before_model_fallback",
       });
       const fallbackResult = await agentTurnTiming.measure("model_fallback", () =>
-        runWithModelFallback<EmbeddedAgentRunResult>({
+        runWithModelFallback({
+          enterpriseRun: {
+            ...params.followupRun.run,
+            runId,
+            prompt: params.commandBody,
+            trigger: params.isHeartbeat ? "heartbeat" : "user",
+          },
           ...resolveModelFallbackOptions(effectiveRun, runtimeConfig),
           runId,
           sessionId: params.followupRun.run.sessionId,
@@ -2975,7 +2985,7 @@ export async function runAgentTurnWithFallback(params: {
             code: attempt.code || undefined,
           }))
         : [];
-      if (!fallbackExhausted) {
+      if (!fallbackExhausted && !fallbackResult.executionModel) {
         await clearRecoveredAutoFallbackPrimaryProbe({
           provider: fallbackProvider,
           model: fallbackModel,
@@ -3134,7 +3144,8 @@ export async function runAgentTurnWithFallback(params: {
       const isCompactionFailure = !isBilling && isCompactionFailureError(message);
       const providerRequestError =
         !isBilling && !shouldSurfaceToControlUi ? classifyProviderRequestError(err) : undefined;
-      const isTransientHttp = isTransientHttpError(message);
+      const isTransientHttp =
+        !(err instanceof EnterpriseModelExecutionError) && isTransientHttpError(message);
 
       // Drain/restart aborts stay silent and defer to post-restart
       // main-session recovery, which resumes the interrupted turn (or emits its
