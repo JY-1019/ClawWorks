@@ -33,7 +33,7 @@ const TREE: PlannableTree = {
 const DEFAULT_TREE: PlannableTree = {
   id: "clawworks.assist",
   name: "General assistance",
-  root: node("assist", "Assist with the request", [node("assist.do", "Carry out the work")]),
+  root: node("assist", "Assist with the request"),
 };
 
 const CANDIDATES = [TREE, DEFAULT_TREE];
@@ -53,22 +53,17 @@ const planFor = (requestText: string, planner?: WorkflowPlanner) =>
   });
 
 describe("resolveRouteNodeIds", () => {
-  it("expands a cut point into its subtree plus every ancestor", () => {
+  it("selects predecessors and stops at the requested endpoint", () => {
     const { nodeIds, invalid } = resolveRouteNodeIds(TREE, ["ops.claims"]);
     expect(invalid).toEqual([]);
     // Ancestors (root) + the cut point + its whole subtree — and nothing from risk.
-    expect([...nodeIds].toSorted()).toEqual([
-      "ops",
-      "ops.claims",
-      "ops.claims.intake",
-      "ops.claims.payout",
-    ]);
+    expect([...nodeIds].toSorted()).toEqual(["ops", "ops.claims"]);
   });
 
   it("reports unknown routes instead of silently dropping them", () => {
     const { nodeIds, invalid } = resolveRouteNodeIds(TREE, ["ops.claims", "ops.nope"]);
     expect(invalid).toEqual(["ops.nope"]);
-    expect(nodeIds.has("ops.claims.intake")).toBe(true);
+    expect(nodeIds.has("ops.claims.intake")).toBe(false);
   });
 
   it("unions several routes", () => {
@@ -104,7 +99,7 @@ describe("workflow clarification", () => {
       question: "Which one?",
     }));
     expect(selection.treeSource).toBe("fallback");
-    expect(selection.next).toEqual({ kind: "execute" });
+    expect(selection.next.kind).toBe("blocked");
   });
 });
 
@@ -126,7 +121,7 @@ describe("buildPlanCandidateDigest", () => {
     expect(digest).toContain("# acme.ops — Ops");
     expect(digest).toContain("# clawworks.assist — General assistance");
     expect(digest).toContain("    ops.claims.payout — Claim payout");
-    expect(digest).toContain("  assist.do — Carry out the work");
+    expect(digest).toContain("assist — Assist with the request");
   });
 
   it("renders each tree's description, the domain cue selection depends on", () => {
@@ -292,27 +287,25 @@ describe("selectWorkflowPlan", () => {
     expect(selection.treeSource).toBe("only-candidate");
   });
 
-  it("plans the chosen tree whole when every route is a hallucination", async () => {
+  it("blocks execution when every route is a hallucination", async () => {
     const selection = await planFor("x", plannerReturning("acme.ops", ["ops.nonexistent"]));
     expect(selection.tree.id).toBe("acme.ops");
     expect(selection.route.source).toBe("whole-tree");
-    expect(selection.route.invalidRoutes).toEqual(["ops.nonexistent"]);
+    expect(selection.next.kind).toBe("blocked");
   });
 
-  it("keeps valid routes and reports the hallucinated ones alongside", async () => {
+  it("blocks the entire selection when any route is invalid", async () => {
     const selection = await planFor(
       "x",
       plannerReturning("acme.ops", ["ops.risk.filing", "ops.ghost"]),
     );
-    expect(selection.route.source).toBe("planner");
-    expect(selection.route.routes).toEqual(["ops.risk.filing"]);
-    expect(selection.route.invalidRoutes).toEqual(["ops.ghost"]);
+    expect(selection.next.kind).toBe("blocked");
   });
 
-  it("reports selecting the root as whole-tree, not as a narrowing", async () => {
+  it("stops at the root when only the root is requested", async () => {
     const selection = await planFor("x", plannerReturning("acme.ops", ["ops"]));
-    expect(selection.route.source).toBe("whole-tree");
-    expect(selection.route.nodeIds).toBeNull();
+    expect(selection.route.source).toBe("planner");
+    expect([...selection.route.nodeIds!]).toEqual(["ops"]);
   });
 
   it("honors a selected route even when the chosen tree is small", async () => {

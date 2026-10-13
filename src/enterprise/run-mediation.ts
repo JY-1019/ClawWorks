@@ -250,17 +250,7 @@ async function beginEnterpriseRunInternal(
     });
   };
 
-  // Evaluate run-start governance BEFORE any model contact. Planning sends the
-  // request text to a provider, so a run a policy denies must be blocked first —
-  // otherwise a denied prompt still leaves the machine, and the block is delayed
-  // behind a model round-trip.
-  //
-  // Choosing the tree is ITSELF a model call now, so this check can no longer be
-  // scoped to "the" tree — it has to cover every tree the request could bind to.
-  // If any candidate denies the run at start, nothing is sent and selection stays
-  // deterministic. The decision that actually blocks and gets traced is still the
-  // one for the tree finally bound, evaluated below on the real plan.
-  const anyCandidateDenied = candidates.some((tree) => {
+  const deniedCandidate = candidates.find((tree) => {
     const decision = evaluateRunStartGovernance({
       plan: buildPlanFor({ tree, matchedBy: "fallback" }),
       policies,
@@ -272,15 +262,15 @@ async function beginEnterpriseRunInternal(
   // re-evaluated below against the bound plan, and binding the permissive default
   // here would make the very policy that withheld the planner miss and let the
   // run through. This is deliberately not treated as planner unavailability.
-  const plannerWithheldByGovernance = anyCandidateDenied && mode === "enforce";
+  const plannerWithheldByGovernance = deniedCandidate !== undefined && mode === "enforce";
   // Only consult (and trace) the planner when one is actually wired. With no
   // planner there is no decision to record, and emitting a route event would make
   // every stock run write trace rows it never wrote before.
   const plannerConsulted = Boolean(params.routePlanner) && !plannerWithheldByGovernance;
   const selection = plannerWithheldByGovernance
     ? failClosedWorkflowSelection({
-        trees: candidates,
-        defaultTree,
+        trees: [deniedCandidate],
+        defaultTree: deniedCandidate,
         reason: "run-start governance denied a candidate before planning",
       })
     : await selectWorkflowPlan({
@@ -290,6 +280,10 @@ async function beginEnterpriseRunInternal(
         ...(params.routePlanner ? { planner: params.routePlanner } : {}),
         ...(params.signal ? { signal: params.signal } : {}),
       });
+
+  if (selection.next.kind === "blocked" && !plannerWithheldByGovernance) {
+    return { kind: "blocked", reason: selection.next.reason };
+  }
 
   // A clarification is a reply, not an executable plan. Return before registering
   // a run so ambiguous intent cannot read records or gain a step's capabilities.
@@ -338,11 +332,6 @@ async function beginEnterpriseRunInternal(
           : {}),
       });
 
-  // Those reads awaited, so a Stop can have arrived since the guard above. Bail
-  // before anything is persisted or registered: the CLI runner throws at its own
-  // post-mediation abort check before installing its finish handler, which would
-  // otherwise leave this run active and its trace stuck on "running" — and a
-  // later reuse of the same run id would inherit the stale plan.
   if (params.signal?.aborted) {
     return { kind: "off" };
   }
@@ -476,23 +465,6 @@ async function beginEnterpriseRunInternal(
   // not have.
   const tracksSteps = enterpriseRunTracksSteps(params.runId);
   const steps = enterpriseStepSequence(plan);
-  // Put the cursor on step 1 whenever the RUN tracks steps. buildEnterpriseRunPlan
-  // can only see the plan, so a tree tracked solely by a node-scoped policy — no
-  // guidance, no descriptions, no audit flag — is left on the root there while the
-  // digest built below tells the model it starts on step 1. That gap is not
-  // cosmetic: calls made on the first step would be judged against the ROOT rather
-  // than the leaf the policy targets, and the first complete_step would merely
-  // enter step 1 instead of finishing it.
-  // An operator's pending request to continue an earlier execution, consumed
-  // once. Resume is never inferred: same session, same work-map, same revision
-  // and a previous run left aborted still cannot separate "carry on with that"
-  // from "a new request that routes the same way", and guessing wrong opens a
-  // run partway through a governed route. Someone has to say so.
-  // Only a run the operator could have meant. A work-map whose triggers include
-  // `system` also binds to heartbeats and memory flushes in the same session, and
-  // one of those arriving first would consume the marker and open mid-route — then
-  // the user's actual request, the one the operator queued this for, would start
-  // the work-map over. Same for an internal run borrowing a visible session.
   const resumeSessionKey = params.sessionKey;
   const resumeSessionId = params.sessionId;
   const resume =
@@ -537,10 +509,6 @@ async function beginEnterpriseRunInternal(
       });
     });
   }
-  // A run that tracks no steps must NOT open one. `enterpriseStepSequence` calls a
-  // childless root its own single leaf, so a one-node work-map would otherwise be
-  // entered here and never completed — nothing can advance it — and every
-  // successful single-node run would read as an abandoned step in the trace.
   const openingStep =
     tracksSteps && steps.includes(plan.activeNodeId)
       ? findPlanNode(plan, plan.activeNodeId)
@@ -657,8 +625,7 @@ export function clearEnterpriseRunMediationForTest(): void {
  * Publish one step transition to live surfaces.
  *
  * Ordinal/total come from the plan rather than the event payload: the payload
- * carries `seq`, which counts scope containers too, while an operator watching a
- * run wants "step 2 of 4" among the steps it actually executes.
+ * carries zero-based `seq`, while the operator sees one-based step ordinals.
  */
 function publishStepEvent(
   run: MediatedRunState,

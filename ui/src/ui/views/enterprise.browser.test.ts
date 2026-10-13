@@ -100,7 +100,7 @@ function treeWith(
   } as EnterpriseTreeDetail;
 }
 
-/** A work-map whose child step declares both AIP verbs over an inherited type. */
+/** A work-map whose child step declares both AIP verbs over a locally declared type. */
 const VERB_TREE: EnterpriseTreeDetail = {
   ...TREE,
   nodes: [
@@ -122,6 +122,15 @@ const VERB_TREE: EnterpriseTreeDetail = {
     {
       ...TREE.nodes[1],
       ontology: {
+        entities: [
+          {
+            id: "claim",
+            properties: [
+              { id: "claim-id", type: "id", primaryKey: true },
+              { id: "amount", type: "number" },
+            ],
+          },
+        ],
         actions: [
           {
             id: "approve",
@@ -1229,9 +1238,8 @@ describe("enterprise Tools tab (browser)", () => {
     expect(text).toContain("support.investigate");
   });
 
-  it("does not chip a step for a tool an ancestor's allowlist denies it", () => {
-    // Governance gates on every node from the root down, so a step listing
-    // memory_search under a root that allows only message can never call it.
+  it("chips a tool granted on the step independently of its predecessor", () => {
+    // A preceding step does not restrict this step's explicit declaration.
     // Chipping it would tell the operator a binding works that is denied at run.
     const container = renderInto(
       createProps({
@@ -1261,7 +1269,7 @@ describe("enterprise Tools tab (browser)", () => {
     );
     const text = container.textContent ?? "";
     expect(text).toContain("memory_search");
-    expect(text).not.toContain("leaf");
+    expect(text).toContain("leaf");
   });
 
   it("does not claim a wildcard allowlist grants ontology writes", () => {
@@ -1478,7 +1486,7 @@ describe("enterprise capability grants (browser)", () => {
       createProps({ section: "worktree", selectedTreeId: TREE.id, treeDetail: TREE }),
     );
     const text = container.textContent ?? "";
-    expect(text).toContain("Inherited scopes");
+    expect(text).toContain("Permissive scopes");
     expect(text).toContain("Grant explicitly");
   });
 
@@ -1492,7 +1500,7 @@ describe("enterprise capability grants (browser)", () => {
       }),
     );
     const text = container.textContent ?? "";
-    expect(text).toContain("Inherited scopes");
+    expect(text).toContain("Permissive scopes");
     expect(text).not.toContain("Grant explicitly");
   });
 
@@ -1508,7 +1516,7 @@ describe("enterprise capability grants (browser)", () => {
       }),
     );
     const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent?.trim() === "Use inherited scopes",
+      (button) => button.textContent?.trim() === "Use permissive scopes",
     );
 
     toggle?.click();
@@ -1556,9 +1564,7 @@ describe("enterprise capability grants (browser)", () => {
     expect(text).not.toContain("it allows every tool except any it denies");
   });
 
-  it("does not claim a step has no knowledge when an ancestor granted one", () => {
-    // support.triage lists a foundation itself; a child of a granting step would
-    // inherit it, so the ungranted warning must not fire on inheritance.
+  it("does not grant a preceding step's knowledge to an empty step", () => {
     const inheritingTree = {
       ...EXPLICIT_TREE,
       nodes: [
@@ -1581,7 +1587,7 @@ describe("enterprise capability grants (browser)", () => {
       }),
     );
 
-    expect(container.textContent ?? "").not.toContain("queries no foundation until one is listed");
+    expect(container.textContent ?? "").toContain("queries no foundation until one is listed");
   });
 
   it("warns about knowledge in observe mode too, where that grant still applies", () => {
@@ -1637,10 +1643,7 @@ describe("enterprise capability grants (browser)", () => {
     expect(container.textContent ?? "").toContain("queries no foundation until one is listed");
   });
 
-  it("marks a step's own knowledge source that an ancestor's list excludes", () => {
-    // The lists intersect down the path, so a leaf naming what the root omits
-    // retrieves nothing — and the run reports nothing skipped, which reads like
-    // an empty corpus. The operator has to see it here, while authoring.
+  it("does not exclude local knowledge because a predecessor names another source", () => {
     const excludedTree = {
       ...EXPLICIT_TREE,
       nodes: [
@@ -1666,7 +1669,7 @@ describe("enterprise capability grants (browser)", () => {
         ],
       }),
     );
-    expect(container.textContent ?? "").toContain("excluded by a parent step's own list");
+    expect(container.textContent ?? "").not.toContain("excluded by a parent step's own list");
   });
 
   it("leaves a step's knowledge source unmarked when its ancestors allow it", () => {
@@ -1840,7 +1843,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(text).not.toContain("not retrievable by this work-map");
   });
 
-  it("shows the ancestor gate when a parent step carries its own allowlist", () => {
+  it("does not show a predecessor as a local capability gate", () => {
     const container = renderInto(
       createProps({
         section: "worktree",
@@ -1849,8 +1852,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
         selectedNodeId: "support.triage",
       }),
     );
-    // The root declares allowedTools, so a grant on the child is still gated by it.
-    expect(container.textContent ?? "").toContain("Parent steps (support)");
+    expect(container.textContent ?? "").not.toContain("Parent steps (support)");
   });
 
   it("confirms before removing the last inherited-mode tool restriction", () => {
@@ -1876,7 +1878,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     confirm.mockRestore();
   });
 
-  it("confirms before an explicit child widens to broader ancestor tool grants", () => {
+  it("removes the last explicit allowedTools entry without inheriting a predecessor grant", () => {
     const tree = {
       ...treeWith({ allowedTools: ["exec", "browser"] }, { allowedTools: ["exec"] }),
       capabilityGrants: "explicit",
@@ -1897,8 +1899,8 @@ describe("enterprise Worktree step bindings (browser)", () => {
     );
 
     chip?.querySelector<HTMLButtonElement>(".chip-remove")?.click();
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("last local tool restriction"));
-    expect(onRemoveBinding).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onRemoveBinding).toHaveBeenCalledWith("support.triage", "allowedTools", "exec");
     confirm.mockRestore();
   });
 
@@ -2019,7 +2021,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "knowledgeFoundations",
           entry: "acme.kb",
-          origin: "step",
         },
       }),
     );
@@ -2032,7 +2033,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     confirm.mockRestore();
   });
 
-  it("confirms before an explicit child widens to broader ancestor knowledge grants", () => {
+  it("removes the last explicit knowledgeFoundations entry without inheriting a predecessor grant", () => {
     const tree = {
       ...treeWith(
         { knowledgeFoundations: ["acme.kb", "acme.policy"] },
@@ -2056,10 +2057,12 @@ describe("enterprise Worktree step bindings (browser)", () => {
     );
 
     chip?.querySelector<HTMLButtonElement>(".chip-remove")?.click();
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("last local knowledge restriction"),
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onRemoveBinding).toHaveBeenCalledWith(
+      "support.triage",
+      "knowledgeFoundations",
+      "acme.kb",
     );
-    expect(onRemoveBinding).not.toHaveBeenCalled();
     confirm.mockRestore();
   });
 
@@ -2442,7 +2445,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(container.textContent ?? "").toContain("cannot be called yet");
   });
 
-  it("checks an ancestor action only on leaves where that declaration wins", () => {
+  it("requires the root action to declare its own object type", () => {
     const tree = {
       ...TREE,
       nodes: [
@@ -2492,7 +2495,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
       }),
     );
 
-    expect(container.textContent ?? "").not.toContain("cannot be called yet");
+    expect(container.textContent ?? "").toContain("cannot be called yet");
   });
 
   it("flags an effect on a type only a sibling branch declares", () => {
@@ -2861,7 +2864,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
         selectedNodeId: "support.triage",
       }),
     );
-    const scopeNote = "A step can address the types declared here";
+    const scopeNote = "A step can address only the types declared here";
     const text = container.textContent ?? "";
     expect(text.split(scopeNote).length - 1).toBe(1);
   });
@@ -2880,9 +2883,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     const chip = container.querySelector(".chip-open") as HTMLButtonElement | null;
     expect(chip).not.toBeNull();
     chip?.click();
-    expect(opened).toEqual([
-      { nodeId: "support.triage", field: "skills", entry: "ticket-triage", origin: "step" },
-    ]);
+    expect(opened).toEqual([{ nodeId: "support.triage", field: "skills", entry: "ticket-triage" }]);
   });
 
   it("shows a failed catalog load inside the dialog, not a forever-loading line", () => {
@@ -2901,7 +2902,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "skills",
           entry: "ticket-triage",
-          origin: "step",
         },
       }),
     );
@@ -2924,7 +2924,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "skills",
           entry: "detached-elsewhere",
-          origin: "step",
         },
       }),
     );
@@ -2945,7 +2944,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "allowedTools",
           entry: "message",
-          origin: "step",
         },
       }),
     );
@@ -2974,7 +2972,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "allowedTools",
           entry: "read",
-          origin: "step",
         },
       }),
     );
@@ -2990,7 +2987,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "allowedTools",
           entry: "group:enterprise",
-          origin: "step",
         },
       }),
     );
@@ -3064,7 +3060,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "knowledgeFoundations",
           entry: "acme.kb",
-          origin: "step",
         },
       }),
     );
@@ -3100,7 +3095,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "skills",
           entry: "summarize",
-          origin: "step",
         },
       }),
     );
@@ -3137,7 +3131,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "mcpServers",
           entry: "jira",
-          origin: "step",
         },
       }),
     );
@@ -3145,9 +3138,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(text).toContain("sse");
   });
 
-  it("offers no Detach on an inherited entry, since it belongs to the ancestor", () => {
-    // Denials are one of the two rows that render inherited chips at all, so an
-    // ancestor denial is what an operator can actually click here.
+  it("does not display a preceding step's denial as a local binding", () => {
     const tree = treeWith({ deniedTools: ["exec"] }, {});
     const container = renderInto(
       createProps({
@@ -3160,13 +3151,11 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "deniedTools",
           entry: "exec",
-          origin: "inherited",
         },
       }),
     );
     const card = container.querySelector(".binding-detail");
-    expect(card?.querySelector("button.danger")).toBeNull();
-    expect(card?.textContent ?? "").toContain("A parent step");
+    expect(card).toBeNull();
   });
 
   it("drops a detail card left open for another work-map", () => {
@@ -3181,7 +3170,6 @@ describe("enterprise Worktree step bindings (browser)", () => {
           nodeId: "support.triage",
           field: "skills",
           entry: "ticket-triage",
-          origin: "step",
         },
       }),
     );
@@ -3306,10 +3294,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     expect(container.querySelector("openclaw-modal-dialog")).toBeNull();
   });
 
-  it("credits an ancestor's MCP attachment on the selected leaf", () => {
-    // Governance grants an attachment down the branch, so a leaf with no local
-    // mcpServers is not server-less — saying it can call none would contradict
-    // what the run allows.
+  it("requires a local MCP attachment on the selected step", () => {
     const container = renderInto(
       createProps({
         section: "worktree",
@@ -3325,9 +3310,9 @@ describe("enterprise Worktree step bindings (browser)", () => {
       }),
     );
     const text = container.textContent ?? "";
-    expect(text).toContain("Inherited from a parent step:");
-    expect(text).toContain("acme-tracker");
-    expect(text).not.toContain("no MCP server attached");
+    expect(text).not.toContain("Inherited from a parent step:");
+    expect(text).not.toContain("acme-tracker");
+    expect(text).toContain("no MCP server attached");
   });
 
   it("shows the MCP picker as loading until config arrives", () => {
@@ -4182,7 +4167,16 @@ describe("authoring the two effects that are not object writes", () => {
               ],
             },
           }
-        : { ...node, ontology: { ...node.ontology, actions: [{ id: "approve" }] } },
+        : {
+            ...node,
+            ontology: {
+              ...node.ontology,
+              relationships: [
+                { id: "claim-of-case", from: "claim", to: "claim", cardinality: "one-to-many" },
+              ],
+              actions: [{ id: "approve" }],
+            },
+          },
     ),
   } as EnterpriseTreeDetail;
 
@@ -4391,6 +4385,9 @@ describe("the inspector renders the two effects that are not object writes", () 
         ...VERB_TREE.nodes[1],
         ontology: {
           ...VERB_TREE.nodes[1]?.ontology,
+          relationships: [
+            { id: "claim-of-case", from: "claim", to: "claim", cardinality: "one-to-many" },
+          ],
           actions: [
             {
               id: "approve",

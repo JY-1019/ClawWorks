@@ -5,7 +5,7 @@ import { ONTOLOGY_EDIT_REASONS_REPORTED } from "../controllers/enterprise.ts";
 import {
   collectNodeOntologyGraph,
   collectOntologyGraph,
-  declaredExecutableEntityIds,
+  declaredNodeEntityIds,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
 
@@ -248,18 +248,18 @@ describe("ontology editor refusal strings", () => {
   });
 });
 
-describe("declaredExecutableEntityIds", () => {
-  it("offers a type a descendant declares when it is the only leaf", () => {
+describe("declaredNodeEntityIds", () => {
+  it("does not offer a type declared only by a later step", () => {
     const detail = tree([
       node("root", {}),
       node("root.settle", {}, 1),
       { ...node("root.settle.pay", { entities: [{ id: "payment" }] }, 2), parentId: "root.settle" },
       { ...node("root.other", { entities: [{ id: "audit" }] }, 1), parentId: "root" },
     ] as TreeNode[]);
-    expect(declaredExecutableEntityIds(detail, "root.settle")).toEqual(["payment"]);
+    expect(declaredNodeEntityIds(detail, "root.settle")).toEqual([]);
   });
 
-  it("intersects across leaves, since a one-branch type fails on the others", () => {
+  it("offers only types locally declared on the selected step", () => {
     // The declaration is inherited into every leaf, so a type only one branch
     // declares resolves there and is refused everywhere else — offering it would
     // hand the operator a choice guaranteed to come back entity-not-found.
@@ -272,7 +272,7 @@ describe("declaredExecutableEntityIds", () => {
       },
       { ...node("root.settle.recover", {}, 2), parentId: "root.settle" },
     ] as TreeNode[]);
-    expect(declaredExecutableEntityIds(detail, "root.settle")).toEqual(["claim"]);
+    expect(declaredNodeEntityIds(detail, "root.settle")).toEqual([]);
   });
 
   it("omits a sibling branch's type, which no scope below this node contains", () => {
@@ -281,8 +281,8 @@ describe("declaredExecutableEntityIds", () => {
       { ...node("root.settle", {}, 1), parentId: "root" },
       { ...node("root.other", { entities: [{ id: "audit" }] }, 1), parentId: "root" },
     ] as TreeNode[]);
-    const ids = declaredExecutableEntityIds(detail, "root.settle");
-    expect(ids).toContain("claim");
+    const ids = declaredNodeEntityIds(detail, "root.settle");
+    expect(ids).not.toContain("claim");
     expect(ids).not.toContain("audit");
   });
 });

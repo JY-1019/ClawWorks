@@ -265,11 +265,9 @@ export const EnterpriseTreeDetailSchema = Type.Object(
     source: EnterpriseTreeSourceSchema,
     match: Type.Optional(EnterpriseTreeMatchSchema),
     /**
-     * `"explicit"` when the work-map grants capabilities instead of inheriting
-     * open scope. Tools, MCP servers, and knowledge foundations follow the active
-     * root→step path. Skills are narrowed once for the run to those declared on
+     * `"explicit"` requires local declarations for each executable step. Skills are narrowed once for the run to those declared on
      * its planned route; each step still identifies which of them applies there.
-     * Absent for the inherited semantics every older tree carries.
+     * Absent for permissive local scopes.
      *
      * Tool, skill-catalog, and MCP grants apply under `enterprise.mode:
      * "enforce"`; knowledge remains scoped while observing as well.

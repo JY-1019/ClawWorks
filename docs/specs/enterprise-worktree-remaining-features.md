@@ -62,26 +62,18 @@ consolidation in this change. Grouped by what they moved:
 
 ### Limits with no current seam
 
-Two boundaries behave correctly and cost real capability, and neither has a
-narrower option today. Both were found building the consolidated example; record
-them here so a future change does not read them as bugs and "fix" them open.
+Native launch exposure remains a separate constraint from per-step execution.
 
-**The ontology write opt-in fights the root-superset rule.** `allowedTools` is an
-intersection gate down the root-to-step path, so an ancestor's list must be a
-superset of every step's. But `invoke_action` is an EXISTENTIAL write opt-in over
-that same path (`explicitlyAllowsOntologyWrites`), so naming it on the root to
-satisfy the first rule hands write consent to every step in the tree. Under
-`capabilityGrants: explicit` the only escape is to grant nothing at the root and
-let each step name what it needs, which costs a step-less runtime (ACP) everything
-above its opening step. A seam that separated "may be reached from below" from
-"consents to writes here" would remove the trade.
+**Resolved by sequential steps (2026-10-13):** the root and intermediate nodes
+execute as predecessors. Tool scope and ontology write opt-in are local to the
+active step, so a parent neither grants writes to its child nor narrows that
+child's tool list. Common restrictions use tree-scoped governance policies.
 
-**A hookless runtime's MCP ceiling is far tighter than the per-call gate.** On
-Codex or the Claude CLI the server is handed to the subprocess once, before it
-connects, and nothing judges its calls afterwards, so `ceilingAdmitsMcpServer`
-fails closed twice: a server is admitted only when EVERY executable path in the
+**A hookless runtime's MCP ceiling is far tighter than the per-call gate.** A native server is handed to the subprocess once, before it
+connects. A hookless backend cannot judge its calls afterwards, so `ceilingAdmitsMcpServer`
+fails closed twice: a server is admitted only when EVERY selected step in the
 plan grants it whole, and a server carrying ANY per-operation `deniedTools` entry
-is never handed over at all (denials are collected tree-wide, and a native harness
+is never handed over at all (denials are collected from the selected route, and a native harness
 renames tools by rules OpenClaw cannot invert). In practice a realistic multi-step
 route through a governed work-map reaches no MCP server on those backends, and one
 `server__destructive_op` denial costs that server everywhere. Per-step MCP
@@ -253,10 +245,10 @@ and Knowledge and show edges from each node to its resources.
 
 The minimum useful GUI shows:
 
-- assigned, inherited, denied, missing, and effective states separately;
+- assigned, denied, missing, and effective local states separately;
 - resource type, owner plugin, risk/capability group, and availability;
 - drag/drop or explicit multi-select assignment from a browsable palette;
-- ancestor restrictions before save;
+- local and tree-policy restrictions before save;
 - bulk assignment to a branch;
 - the selected node's effective resource scope;
 - effective-scope preview in enforce and observe modes.

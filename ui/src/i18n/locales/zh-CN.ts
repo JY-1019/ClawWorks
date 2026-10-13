@@ -323,7 +323,7 @@ export const zh_CN: TranslationMap = {
       attachHint:
         "这是工具目录。要让某个步骤调用工具，请打开工作树，选择该步骤，然后在步骤绑定下添加。",
       attachHintGrantedGated:
-        "此工作地图显式授予工具。每个步骤应使用其自身或上级步骤中列出的工具。使用其他工具将触发一次性审批而非直接运行，若无人响应则会被拒绝。回复和读取工具（message、read、memory_search）在每个步骤中始终可用，除非某个步骤或治理策略明确拒绝。",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "此 Gateway 上没有可用的工具。",
       toolCount: "{count} 个工具",
       optionalBadge: "可选",
@@ -473,25 +473,21 @@ export const zh_CN: TranslationMap = {
       cancel: "Cancel",
       removeTitle: "从此步骤中分离 {entry}",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "尚未声明。",
       scopeNarrowingApproval:
         "此步骤尚未设置工具白名单，因此除被拒绝的工具外，允许使用所有工具。添加第一个条目后，它将变为白名单模式。列出的工具可自由运行，其他工具则需要逐次审批。",
       scopeUngrantedGated:
-        "此工作地图显式授予工具。在工具被列入此处或上级步骤之前，使用该工具需要一次性审批——回复和读取工具（message、read、memory_search）除外，它们始终可用，除非某个步骤或治理策略明确拒绝。",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "此步骤尚未设置知识允许列表，因此可以查询所有已注册的知识基础。添加第一个条目后，将仅限于列出的知识基础。",
       knowledgeUngranted:
-        "此工作地图明确授予知识。在此处或其上方的步骤中列出知识库之前，该步骤不会查询任何知识库。",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid: "请使用有效的 Skill 名称：仅限小写字母、数字和单个连字符，最多 64 个字符。",
       foundationIdInvalid: "请使用知识基础 ID：小写点分段格式，例如 acme.runbooks。",
-      ancestorGateApproval:
-        "父级步骤（{nodeIds}）对此有各自的允许列表。治理会从根节点逐步检查每个步骤，因此此处添加的条目只有在那些步骤也允许的情况下才会无需确认直接运行；否则需要一次性审批。请同时将其添加到那些步骤中，或使用拒绝工具直接拒绝。",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "请先输入一个值。",
       duplicate: "该条目已在此步骤中声明。",
       nodeMissing: "该步骤已不在树中，请重新加载后重试。",
@@ -522,7 +518,7 @@ export const zh_CN: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "移除",
@@ -650,7 +646,7 @@ export const zh_CN: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "Description",
       fieldLabel: "Instructions for step {nodeId}",
@@ -665,26 +661,26 @@ export const zh_CN: TranslationMap = {
       save: "Save behavior",
       revert: "还原",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "工具",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "Skills",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "知识库",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -697,7 +693,6 @@ export const zh_CN: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -740,17 +735,15 @@ export const zh_CN: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "拒绝始终优先。它适用于此步骤及其下的所有内容，分支中更深层的授权无法将其撤销。",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "企业管控处于观察模式，因此拒绝会被记录但不会生效。一旦切换为强制执行，拒绝将应用于此步骤及其下的所有内容，且分支下游的任何授权都无法撤销该拒绝。",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "企业管控已关闭，因此拒绝既不会生效也不会被记录。请开启管控以使其生效或显示在运行追踪中。",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "未在 mcp.servers 中注册",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "继承自父步骤：",
     },
     skillsTab: {
       title: "Skills",
@@ -813,24 +806,26 @@ export const zh_CN: TranslationMap = {
     treeUnavailable: "树定义已不再可用。",
     capabilityGrants: {
       explicit: "显式授权",
-      inherited: "继承的范围",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "This work-map grants capabilities explicitly, but enterprise mode is not enforcing. Tool, skill and MCP grants are recorded rather than applied. Knowledge grants still scope retrieval in every mode.",
       explicitHintOff:
         "This work-map grants capabilities explicitly, but enterprise mediation is not active, so no grant applies. The grants below are saved and take effect once mediation is enabled.",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "显式授权",
-      turnOff: "使用继承的权限范围",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "结构",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "本体",
     wholeTreeOverviewTitle: "全树概览",
     action: "操作：{id}",
@@ -856,7 +851,7 @@ export const zh_CN: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "拖动节点 · 滚动缩放",
     graphExpand: "Open whole work-map",

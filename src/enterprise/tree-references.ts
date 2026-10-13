@@ -29,26 +29,16 @@ export function collectReferencedFoundationIds(tree: WorkflowTreeDefinition): st
   return [...ids].toSorted();
 }
 
-/**
- * Whether the tree can retrieve ANY registered foundation, not just the ids it
- * names. A per-node `knowledgeFoundations` allow-list is a path gate ANDed down
- * root→node (see foundationAllowedByPath): an empty or omitted list is
- * unrestricted (allow-all). The root sits on every path, so it is the upper
- * bound — if the root omits its allow-list, retrieval at the root reads as
- * allow-all and the whole tree is unbounded, however its descendants scope. Used
- * to warn that a bundle export cannot capture the implicit set.
- *
- * A work-map that grants capabilities explicitly is never unbounded: silence
- * denies there — in every mode, since knowledge scope is not something observe
- * relaxes — so the ids it names ARE the whole retrievable set and the export
- * captures them. Warning about a missing root list would tell the operator to
- * widen a scope the switch already closed.
- */
+/** Any permissive step without a local list can retrieve unlisted foundations. */
 export function treeHasUnboundedKnowledgeScope(tree: WorkflowTreeDefinition): boolean {
   if (tree.capabilityGrants === "explicit") {
     return false;
   }
-  return !tree.root.ontology?.knowledgeFoundations?.length;
+  let unbounded = false;
+  walkWorkflowNodes(tree.root, (node) => {
+    unbounded ||= !node.ontology?.knowledgeFoundations?.length;
+  });
+  return unbounded;
 }
 
 /**

@@ -18,30 +18,15 @@ export function collectOntologyGraph(tree: EnterpriseTreeDetail): OntologyGraph 
   return mergeOntologyNodes(tree.nodes);
 }
 
-/** Nodes on the root→node path, ancestors first. Empty when the id is unknown. */
-export function nodePathTo(tree: EnterpriseTreeDetail, nodeId: string): EnterpriseTreeNode[] {
-  const byId = new Map(tree.nodes.map((node) => [node.id, node]));
-  const path: EnterpriseTreeNode[] = [];
-  let current = byId.get(nodeId);
-  // Bounded by the node count so a malformed parentId cycle cannot spin.
-  while (current && path.length <= tree.nodes.length) {
-    path.push(current);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  return path.toReversed();
-}
-
-/**
- * The ontology graph for ONE node's scope: its root→node path merged, the same
- * way governance merges the path. This is what an agent AT that node can address,
- * so the operator's node view mirrors the model's — the predictability story
- * P2/P3 built, made inspectable.
- */
+/** The ontology declared by this executable step; predecessors grant no scope. */
 export function collectNodeOntologyGraph(
   tree: EnterpriseTreeDetail,
   nodeId: string,
 ): OntologyGraph {
-  return mergeOntologyNodes(nodePathTo(tree, nodeId), "node-scope");
+  return mergeOntologyNodes(
+    tree.nodes.filter((node) => node.id === nodeId),
+    "node-scope",
+  );
 }
 
 /**
@@ -60,7 +45,7 @@ export function nodeObjectEntityIds(tree: EnterpriseTreeDetail, nodeId: string):
 }
 
 /**
- * Object type ids a node's path actually DECLARES, in path order.
+ * Object type ids this step declares, in declaration order.
  *
  * Not `collectNodeOntologyGraph(...).entities`: that synthesizes an entity for a
  * relationship endpoint nothing declares, so a legacy work-map renders its links
@@ -68,63 +53,9 @@ export function nodeObjectEntityIds(tree: EnterpriseTreeDetail, nodeId: string):
  * as a link endpoint produces a save the splicer rejects, because only declared
  * types are in scope.
  */
-export function declaredNodePathEntityIds(tree: EnterpriseTreeDetail, nodeId: string): string[] {
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const node of nodePathTo(tree, nodeId)) {
-    for (const entity of node.ontology.entities ?? []) {
-      if (!seen.has(entity.id)) {
-        seen.add(entity.id);
-        ids.push(entity.id);
-      }
-    }
-  }
-  return ids;
-}
-
-/**
- * Object types a declaration made at `nodeId` can address when it RUNS.
- *
- * The INTERSECTION across every executable leaf below this node, because the
- * declaration is inherited into all of them and `resolveActiveOntologyScope`
- * merges the path of whichever one is active. A type only one branch declares
- * therefore resolves on that branch and fails on the others, which is exactly
- * what the splicers refuse — offering it here would hand the operator a choice
- * guaranteed to come back `entity-not-found`.
- *
- * DECLARED ones only, matching `declaredNodePathEntityIds`: the graph
- * synthesizes endpoints for a legacy link that names an undeclared type, and
- * offering one would produce a save the splicer refuses.
- */
-export function declaredExecutableEntityIds(tree: EnterpriseTreeDetail, nodeId: string): string[] {
-  const subtree = new Set([nodeId]);
-  // Parents precede children in the flat list, so one forward pass closes it.
-  for (const candidate of tree.nodes) {
-    if (candidate.parentId && subtree.has(candidate.parentId)) {
-      subtree.add(candidate.id);
-    }
-  }
-  const hasChildren = new Set(
-    tree.nodes.map((candidate) => candidate.parentId).filter((id) => id !== null),
-  );
-  // A node with no children below it IS the leaf; that keeps a leaf step's own
-  // picker working rather than collapsing to nothing.
-  const leaves = [...subtree].filter((id) => !hasChildren.has(id));
-  const perLeaf = (leaves.length > 0 ? leaves : [nodeId]).map(
-    (id) =>
-      new Set(
-        nodePathTo(tree, id)
-          .flatMap((node) => node.ontology.entities ?? [])
-          .map((entity) => entity.id),
-      ),
-  );
-  const [first, ...rest] = perLeaf;
-  if (!first) {
-    return [];
-  }
-  // Ordered by the first leaf's path — ancestors before its own declarations —
-  // so the picker reads outside-in rather than in set order.
-  return [...first].filter((id) => rest.every((scope) => scope.has(id)));
+export function declaredNodeEntityIds(tree: EnterpriseTreeDetail, nodeId: string): string[] {
+  const node = tree.nodes.find((candidate) => candidate.id === nodeId);
+  return [...new Set((node?.ontology.entities ?? []).map((entity) => entity.id))];
 }
 
 function mergeOntologyNodes(
@@ -170,8 +101,7 @@ function mergeOntologyNodes(
     }
     for (const relationship of node.ontology.relationships ?? []) {
       if (relationshipMode === "node-scope") {
-        // Runtime scope walks the same root→node path and keys relationships by
-        // id, so the descendant's complete declaration replaces its ancestor.
+        // Step scope keys relationships by id, matching the runtime resolver.
         relationshipByKey.set(relationship.id, relationship);
         continue;
       }

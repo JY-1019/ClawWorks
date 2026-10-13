@@ -17,7 +17,7 @@ const expectation = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("execute"),
     treeId: z.string(),
-    leaves: z.array(z.string()).min(1).optional(),
+    steps: z.array(z.string()).min(1).optional(),
   }),
 ]);
 const suiteSchema = z.object({
@@ -72,15 +72,15 @@ if (new Set(trees.map((tree) => tree.id)).size !== trees.length) {
 if (new Set(suite.cases.map((entry) => entry.id)).size !== suite.cases.length) {
   throw new Error("Case ids must be unique.");
 }
-// Reject a stale answer key before spending any model calls. Evaluate leaves,
-// not cut-point spelling: selecting a parent and its entire leaf set are equivalent.
+// Reject a stale answer key before spending any model calls. Evaluate steps,
+// not endpoint spelling: all required predecessors must be included.
 for (const entry of suite.cases) {
   const expected = entry.expected;
   const tree = trees.find((candidate) => candidate.id === expected.treeId);
   if (!tree) {
     throw new Error(`${entry.id}: unknown expected tree ${expected.treeId}`);
   }
-  if (expected.kind === "execute" && expected.leaves) {
+  if (expected.kind === "execute" && expected.steps) {
     const plan = buildEnterpriseRunPlan({
       runId: "validate",
       requestText: entry.request,
@@ -88,10 +88,16 @@ for (const entry of suite.cases) {
       tree,
       matchedBy: "planner",
     });
-    const expectedLeaves = expected.leaves;
-    const leaves = enterpriseStepSequence(plan).filter((id) => expectedLeaves.includes(id));
-    if (JSON.stringify(leaves) !== JSON.stringify(expected.leaves)) {
-      throw new Error(`${entry.id}: expected leaves must be unique, real, and in tree order`);
+    const expectedSteps = expected.steps;
+    const steps = enterpriseStepSequence(plan).filter((id) => expectedSteps.includes(id));
+    const ids = new Set(expectedSteps);
+    if (
+      plan.nodes.some((node) => ids.has(node.nodeId) && node.parentId && !ids.has(node.parentId))
+    ) {
+      throw new Error(`${entry.id}: expected steps omit a predecessor`);
+    }
+    if (JSON.stringify(steps) !== JSON.stringify(expected.steps)) {
+      throw new Error(`${entry.id}: expected steps must be unique, real, and in tree order`);
     }
   }
 }
@@ -131,8 +137,8 @@ for (let round = 1; round <= repeat; round += 1) {
       planner,
     });
     const elapsedMs = performance.now() - start;
-    const leaves =
-      selection.next.kind === "clarify"
+    const steps =
+      selection.next.kind !== "execute"
         ? []
         : enterpriseStepSequence(
             buildEnterpriseRunPlan({
@@ -149,7 +155,9 @@ for (let round = 1; round <= repeat; round += 1) {
     const actual =
       selection.next.kind === "clarify"
         ? { kind: "clarify", treeId: selection.tree.id }
-        : { kind: "execute", treeId: selection.tree.id, leaves };
+        : selection.next.kind === "blocked"
+          ? { kind: "blocked", treeId: selection.tree.id }
+          : { kind: "execute", treeId: selection.tree.id, steps };
     const modelAnswered = selection.treeSource === "planner" || selection.treeSource === "no-match";
     const passed =
       modelAnswered &&
@@ -157,9 +165,9 @@ for (let round = 1; round <= repeat; round += 1) {
       actual.kind === entry.expected.kind &&
       actual.treeId === entry.expected.treeId &&
       (entry.expected.kind !== "execute" ||
-        !entry.expected.leaves ||
-        ("leaves" in actual &&
-          JSON.stringify(actual.leaves) === JSON.stringify(entry.expected.leaves)));
+        !entry.expected.steps ||
+        ("steps" in actual &&
+          JSON.stringify(actual.steps) === JSON.stringify(entry.expected.steps)));
     if (!passed) {
       failures += 1;
     }

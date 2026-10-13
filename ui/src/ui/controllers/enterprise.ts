@@ -251,9 +251,7 @@ export type EnterpriseBindingPicker = {
  * operator reading a governed step needs the thing BEHIND it: what the tool
  * actually is, whether the skill is installed, how the server launches, who owns
  * the foundation. That answer lives in catalogs the screen already holds, so this
- * is pure view state: which entry to describe, and whether it belongs to this
- * step or an ancestor (an inherited one has no Detach here — it is edited on the
- * step that declared it).
+ * is pure view state: which local entry to describe.
  *
  * Bound to `treeId` + `nodeId` like the picker: node ids repeat across work-maps,
  * so an unbound one would resurface over a same-named step after a tree switch.
@@ -263,8 +261,6 @@ export type EnterpriseBindingDetail = {
   nodeId: string;
   field: NodeOntologyListField;
   entry: string;
-  /** Declared on this step, or granted by an ancestor and only shown here. */
-  origin: "step" | "inherited";
 };
 
 /**
@@ -1584,7 +1580,7 @@ function dropEnterpriseNodeSelection(state: EnterpriseState) {
  */
 function reconcileNodeSelectionAfterReload(state: EnterpriseState, tree: EnterpriseTreeDetail) {
   // The binding detail card describes ONE entry of the pre-reload tree, and the
-  // reload may have detached it or moved it between local and inherited scope.
+  // reload may have detached it from this step.
   // Closed rather than re-validated here: it is a read-out with nothing to lose,
   // and re-deriving "is this entry still declared, at this origin" would put a
   // second copy of the view's inheritance rules in the controller to drift from.

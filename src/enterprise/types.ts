@@ -192,8 +192,7 @@ export type OntologyBinding = {
   /**
    * Tool name globs allowed for this node. Empty/omitted = allow all (repo
    * tool-policy semantics), except under `capabilityGrants: "explicit"`, where
-   * this list IS the grant: a call needs one node on the root→step path to name
-   * it.
+   * this list IS the grant: the active step must name it.
    *
    * A list that simply does not mention a tool is an OMISSION, not a refusal: the
    * call raises a one-off human approval rather than failing, and fails closed if
@@ -207,7 +206,7 @@ export type OntologyBinding = {
   /**
    * Knowledge foundation ids this node may query. Empty/omitted = all configured
    * foundations, except under `capabilityGrants: "explicit"`, where this list IS
-   * the grant: a step queries only what it or an ancestor names.
+   * the grant: a step queries only what it names locally.
    */
   knowledgeFoundations?: string[];
   /**
@@ -217,8 +216,7 @@ export type OntologyBinding = {
    * nothing. A configured MCP server reaches the model as an ordinary tool, so
    * without an explicit grant a work-map that carefully scopes `allowedTools`
    * would still leave every registered server callable from every step. The
-   * grant is inherited down the branch (attaching on the root covers its
-   * subtree), and it IS the grant for that server's tools — a step does not have
+   * grant is local to this executable step, and it IS the grant for that server's tools — a step does not have
    * to also list them in `allowedTools`, which would make attaching in the UI
    * insufficient and unguessable. `deniedTools` still wins, so a step can take
    * one back.
@@ -295,20 +293,9 @@ export const WORKFLOW_TREE_SCHEMA = "clawworks.workflow-tree" as const;
 export const WORKFLOW_TREE_SCHEMA_VERSION = 1 as const;
 
 /**
- * How a work-map hands capabilities to its steps.
- *
- * `"explicit"` makes every family deny-by-default. Tools, MCP servers, and
- * knowledge foundations follow the active root→step path. Skills are narrowed
- * once for the run to those declared anywhere on its planned route; each step's
- * declaration says which of that run-scoped set applies there. Omitted keeps the
- * inherited semantics older trees carry.
- *
- * An opt-in rather than the default because both fields PREDATE it: a stored
- * tree that scopes one leaf means "narrow that leaf", and reading it as "deny
- * everywhere else" would break an imported work-map on upgrade with no
- * migration. `mcpServers` is new, so it governs on presence alone (see
- * EnterpriseRunPlan.mcpGoverned) — explicit grants also imply it, or a work-map
- * that attached no server would still reach every registered one.
+ * Explicit grants require each step to declare its tools, knowledge and MCP.
+ * Omission leaves tool/knowledge scope permissive unless a local list narrows it.
+ * Skills are exposed once for the run from the selected steps' declarations.
  */
 export type WorkflowCapabilityGrants = "explicit";
 
@@ -325,7 +312,7 @@ export type WorkflowTreeDefinition = {
   name: string;
   description?: string;
   match?: WorkflowTreeMatch;
-  /** Deny-by-default capabilities for this work-map. Omitted = inherited scopes. */
+  /** Deny-by-default capabilities for this work-map. Omitted = permissive local scopes. */
   capabilityGrants?: WorkflowCapabilityGrants;
   root: WorkflowNodeDefinition;
 };
@@ -474,8 +461,8 @@ export type EnterprisePlanNode = {
 };
 
 /**
- * Which part of the tree this run actually plans. `routes` are the cut points a
- * planner chose; the plan holds their subtrees plus the ancestors above them.
+ * Which part of the tree this run actually plans. `routes` are the endpoints a
+ * planner chose; the plan executes their ancestors first, then each endpoint.
  * Coverage is the score that makes route selection measurable: a correct route
  * is a small fraction of the tree, a confused one is most of it.
  */
@@ -532,9 +519,8 @@ export type EnterpriseRunPlan = {
   route?: EnterpriseRoutePlan;
   /**
    * Node whose step the run is currently executing. Starts at the subtree root
-   * and advances through the depth-first leaf sequence as turns progress.
-   * Governance scopes the tool call with this node's ontology merged down the
-   * root→node path (see resolvePlanNodePath), so the root scope always holds.
+   * and advances through every selected node, parent before child.
+   * Governance reads only this node's ontology; predecessor scope does not carry over.
    */
   activeNodeId: EnterpriseId;
   /**
@@ -545,10 +531,8 @@ export type EnterpriseRunPlan = {
    */
   mcpGoverned?: boolean;
   /**
-   * Every MCP attachment and every tool denial in the TREE, before a route pruned
-   * anything. Native runtimes are handed their servers once, at launch, for the
-   * whole run — so the decision has to see the whole work-map, not the branch the
-   * planner happened to pick. Absent when the tree declares no attachment.
+   * Every MCP attachment and tool denial in the selected route. Native runtimes are handed their servers once, at launch, for the
+   * whole run, so hookless exposure must satisfy every selected step. Absent when the tree declares no attachment.
    */
   mcpAttachments?: string[];
   mcpDeniedTools?: string[];

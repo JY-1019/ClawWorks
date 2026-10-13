@@ -1,27 +1,10 @@
-# The finished work-map from the ClawWorks enterprise tutorial
-# (docs/concepts/clawworks-enterprise-tutorial.md).
-#
-# The tutorial builds this in the Control UI, step by step. This file is the
-# answer key: compare it against what you built, or import it directly with
-#
-#   openclaw enterprise trees import examples/enterprise/tutorial/acme-returns.worktree.yaml
-#   openclaw gateway restart
-#
-# The restart is only needed for a CLI import — a running gateway holds its tree
-# registry for the life of the process. Saving from the Control UI refreshes it
-# in place.
-#
-# The MCP server and the knowledge foundation are deployment configuration, so
-# they are NOT in here: register `acme-tracker` under `mcp.servers` and
-# `acme.returns-kb` under the LightRAG plugin first, or the attachments below
-# resolve to nothing.
-#
-# No `capabilityGrants: explicit` on purpose. This map teaches the DEFAULT,
-# inherited semantics: an allowlist is what a step runs without asking, an
-# omission raises a one-off approval, and only `deniedTools` refuses outright.
-# Turning grants explicit is the next lesson, not this one — it makes skills, MCP
-# servers and knowledge foundations deny-by-default, and on a native harness it
-# also requires the root to grant an attached server's tool globs whole.
+# Finished tutorial work-map. Import it with:
+# openclaw enterprise trees import examples/enterprise/tutorial/acme-returns.worktree.yaml
+# openclaw gateway restart
+# Register acme-tracker and acme.returns-kb before using their bindings.
+# All selected nodes execute: request check, then the requested operation steps.
+# Permissions are local. Denials are repeated because they apply to every step.
+# This example uses permissive grants and the embedded per-call MCP runtime.
 schema: clawworks.workflow-tree
 schemaVersion: 1
 id: acme.returns
@@ -33,12 +16,10 @@ name: Returns desk
 # a description that covered "refund an order" but not "the orders" loses
 # "where is my order" to the permissive default tree.
 description: >-
-  Acme customer orders, returns, refunds, replacements and parcel delivery:
-  order records and totals, delivery dates, carrier tracking and shipment scans,
-  the returns policy handbook (30-day window, restocking fees, refund
-  thresholds), shipping service levels, and the support escalation matrix.
-  Handles "can I return this", "where is my order", refund eligibility, late or
-  lost parcels, damaged items, and who a case escalates to.
+  Acme customer orders, returns, refunds, replacements and parcel delivery: order records and totals, delivery
+  dates, carrier tracking and shipment scans, the returns policy handbook (30-day window, restocking fees,
+  refund thresholds), shipping service levels, and the support escalation matrix. Handles "can I return this",
+  "where is my order", refund eligibility, late or lost parcels, damaged items, and who a case escalates to.
 
 match:
   triggers: [user]
@@ -47,17 +28,16 @@ match:
 root:
   id: returns
   title: Returns desk
-  description: Answer a customer's return, refund, or delivery question.
+  description: Check the request and prerequisites for returns desk.
   ontology:
-    # A denial is the wall. Leaving a tool out only means "ask" — these three
-    # must never run from a customer reply, so they are named here, where the
-    # refusal reaches every step below.
-    deniedTools: [exec, write, edit]
+    deniedTools: &deniedTools_1 [exec, write, edit]
     # Advisory, and typed straight into the Control UI's "Role prompt" box. It
     # teaches; it never widens. Enforcement wins on conflict.
     guidance: >-
-      Name the order id in every reply, and quote the policy rule the outcome
-      rests on.
+      Confirm the requested operation, supplied record ids, and explicit exclusions. Ask for missing context;
+      do not perform a downstream action. Complete this step before entering the selected next step.
+    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+    allowedTools: &allowedTools_3 [message]
   children:
     - id: returns.triage
       title: Read the policy
@@ -69,40 +49,21 @@ root:
         knowledgeFoundations: [acme.returns-kb]
         # Trace every tool decision under this step, including default allows.
         audit: true
-
+        deniedTools: *deniedTools_1
     - id: returns.lookup
       title: Look up the order
       description: Fetch the order and its shipment from the tracker.
       ontology:
-        # The first MCP attachment anywhere in a work-map switches the WHOLE
-        # work-map to deny-by-default for MCP: every step without an attachment
-        # now reaches no server at all.
-        #
-        # No allowedTools here on purpose: on the embedded runtime the
-        # attachment already grants this server's tools.
-        #
-        # This map is written for that runtime. A Claude CLI or Codex-backed run
-        # is handed its servers ONCE, at launch, and the ceiling is computed
-        # across every executable path in the plan — so the allowlists on
-        # returns.triage and returns.decide, which have nothing to do with the
-        # tracker, are each enough to withhold it from the whole run. To run this
-        # on a native harness, add the server's globs to THOSE two steps as well,
-        # in every spelling each harness may report:
-        #   allowedTools:
-        #     - knowledge_search        # or message, on returns.decide
-        #     - "acme-tracker__*"
-        #     - "mcp__acme-tracker__*"
-        #     - "acme_tracker__*"
-        #     - "mcp__acme_tracker__*"
         mcpServers: [acme-tracker]
         audit: true
-
+        deniedTools: *deniedTools_1
     - id: returns.decide
       title: Decide and reply
       description: Apply the rule to the order and write the answer.
       ontology:
-        allowedTools: [message]
+        allowedTools: *allowedTools_3
         # Advisory: the skill's SKILL.md body is inlined into this step's digest
         # at run start. It never grants a tool the step withholds.
         skills: [refund-reply]
         expectedOutput: The decision, the rule it rests on, and the order id.
+        deniedTools: *deniedTools_1

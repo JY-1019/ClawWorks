@@ -100,20 +100,19 @@ afterAll(() => {
 
 describe("enterprise.trees.get", () => {
   it("flattens a built-in tree with parent ids and depth", () => {
-    const { ok, payload } = invoke({ treeId: "clawworks.assist" });
+    const { ok, payload } = invoke({ treeId: "clawworks.support" });
     expect(ok).toBe(true);
     const { tree } = payload as { tree: Record<string, unknown> | null };
     expect(tree).not.toBeNull();
     expect(tree?.source).toBe("builtin");
     const nodes = tree?.nodes as Array<{ id: string; parentId: string | null; depth: number }>;
-    expect(nodes[0]).toMatchObject({ id: "assist", parentId: null, depth: 0 });
-    // Children flatten depth-first under their parent.
-    expect(nodes.filter((node) => node.parentId === "assist").map((node) => node.id)).toEqual([
-      "assist.understand",
-      "assist.execute",
-      "assist.respond",
+    expect(nodes.map(({ id, parentId, depth }) => ({ id, parentId, depth }))).toEqual([
+      { id: "support", parentId: null, depth: 0 },
+      { id: "support.triage", parentId: "support", depth: 1 },
+      { id: "support.investigate", parentId: "support.triage", depth: 2 },
+      { id: "support.resolve", parentId: "support.investigate", depth: 3 },
+      { id: "support.escalate", parentId: "support.investigate", depth: 3 },
     ]);
-    expect(nodes.every((node) => node.depth === (node.parentId === null ? 0 : 1))).toBe(true);
   });
 
   it("projects the full ontology (entities, relationships, actions, functions, constraints, scopes)", () => {
@@ -164,6 +163,7 @@ describe("enterprise.trees.get", () => {
 
     expect(warnings?.map((warning) => warning.path)).toEqual([
       "node.root.child.ontology.actions.act.effects",
+      "node.root.child.ontology.functions.hot",
     ]);
   });
 

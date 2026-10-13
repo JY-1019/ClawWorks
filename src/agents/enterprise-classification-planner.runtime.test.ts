@@ -51,9 +51,11 @@ function run(answers: Record<string, { type: "binary"; probability: number }>) {
   return { result, classify };
 }
 describe("structured workflow routing", () => {
-  it("selects several deep leaves without including the excluded sibling", async () => {
+  it("selects several endpoints without including the excluded sibling", async () => {
     const { result, classify } = run({
       $clarify: { type: "binary", probability: 0 },
+      root: { type: "binary", probability: 0 },
+      returns: { type: "binary", probability: 0 },
       assess: { type: "binary", probability: 0.99 },
       submit: { type: "binary", probability: 0.01 },
       shipping: { type: "binary", probability: 0.9 },
@@ -66,11 +68,13 @@ describe("structured workflow routing", () => {
     expect(classify.mock.calls[1][0].questions.assess.instructions).toContain(
       "Operations / Operations / Returns / Assess return eligibility",
     );
-    expect(classify.mock.calls[1][0].questions).not.toHaveProperty("returns");
+    expect(classify.mock.calls[1][0].questions).toHaveProperty("returns");
   });
   it("asks instead of executing an ambiguous operation", async () => {
     const { result } = run({
       $clarify: { type: "binary", probability: 0.9 },
+      root: { type: "binary", probability: 0 },
+      returns: { type: "binary", probability: 0 },
       assess: { type: "binary", probability: 0.5 },
       submit: { type: "binary", probability: 0.5 },
       shipping: { type: "binary", probability: 0 },

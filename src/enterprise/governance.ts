@@ -45,18 +45,12 @@ function hasSubjectSelectors(policy: GovernancePolicy): boolean {
   return Boolean(policy.tools?.length || policy.actions?.length || policy.knowledge?.length);
 }
 
-/** Whether a policy's tree selector matches (or is unset for) the given tree. */
-/**
- * Whether a policy's NODE selector matches (or is unset for) the given node id.
- *
- * Paired with `policyTargetsTree` for callers that need to know whether a policy
- * can ever apply to a definition — an export deciding what to carry, say. The
- * runtime path checks use the same matcher against the whole root→node path.
- */
+/** Node selectors match the active step only; omit them for tree-wide policy. */
 export function policyTargetsNode(policy: GovernancePolicy, nodeId: string): boolean {
   return matchesSelector(nodeId, policy.nodes);
 }
 
+/** Whether a policy applies to this workflow. */
 export function policyTargetsTree(policy: GovernancePolicy, treeId: string): boolean {
   return matchesSelector(treeId, policy.trees);
 }
@@ -79,25 +73,7 @@ export type GovernanceScope = {
   actionIds: readonly string[];
 };
 
-/**
- * Can this policy ever produce a decision anywhere in the given scope?
- *
- * `policyAppliesToCall` requires EVERY selector a policy sets to match, so one
- * naming a tree, node, or action the scope does not contain can never fire.
- * Callers pass the ids their own shape declares — a tree definition when
- * exporting, a run plan when deciding whether to track steps — so an exporter's
- * idea of a relevant policy and the runtime's cannot drift apart. They did once:
- * a bundle that dropped a policy the runtime still counted silently changed
- * whether the imported work-map advanced through its steps at all.
- *
- * The ids are the whole scope's, which for a tree or a full plan is a superset
- * of any single root→node path. Sound only in that direction — "matches nothing
- * in the scope" implies "matches nothing on any path", never the reverse, so a
- * path-wise check here would discard policies that do govern some steps.
- *
- * `knowledge` selectors are deliberately not part of this: they gate retrieval
- * rather than the tool calls these callers reason about.
- */
+/** Export uses a conservative superset; per-call evaluation still matches one step. */
 export function policyCanFireInScope(policy: GovernancePolicy, scope: GovernanceScope): boolean {
   return (
     policyTargetsTree(policy, scope.treeId) &&
@@ -107,12 +83,6 @@ export function policyCanFireInScope(policy: GovernancePolicy, scope: Governance
   );
 }
 
-/**
- * Ontology actions across the active step's root→node path that cover the
- * called tool. An omitted `tools` list means the action covers every tool; an
- * empty list (which the schema rejects, but guard programmatic policies)
- * covers nothing rather than widening to match-all via the empty-globs matcher.
- */
 /**
  * Every way this one call can be named, for judging a selector an operator wrote
  * against some other runtime's spelling of it.
@@ -223,29 +193,9 @@ function actionContractViolation(
   return null;
 }
 
-/**
- * The outward lane: an ontology action's contract applied to a call that leaves
- * the process, rather than to a write into our own object store.
- *
- * Our runtime cannot make that call itself — the ontology tools are built before
- * any MCP session materializes, and a run on the CLI/ACP surfaces resolves tools
- * somewhere we never reach — so the MODEL calls the external tool and this gate
- * holds it to the same contract invoke_action enforces locally: the action's
- * declared parameters, checked before anything leaves.
- *
- * Two clauses, and only the first applies to non-MCP tools:
- *   1. A call an outward action COVERS must satisfy that action.
- *   2. Once a step declares outward actions ON A SERVER, that server's other
- *      tools are no longer reachable from it. Attaching a server otherwise grants
- *      every tool on it, so a step that carefully declared "freeze an account"
- *      would still leave "close an account" one call away.
- *
- * Clause 2 is scoped to the server the declaration names, not to every server the
- * path attaches: an ancestor may attach a tracker for free use, and a leaf
- * declaring an outward action on the core banking service must not silently take
- * that tracker away. A step that declares no outward action for a server keeps
- * the plain attachment behavior on it.
- */
+// Outward calls cannot join our object-store transaction. Validate declared inputs
+// here, and restrict other operations on a server with an outward action so an
+// attachment cannot bypass the action contract. Other servers stay independent.
 function outwardActionDecision(params: {
   path: readonly EnterprisePlanNode[];
   call: McpCallIdentity;
@@ -366,7 +316,7 @@ function actionSelectorMatches(
     coveringActions: readonly OntologyAction[];
     actionId?: string;
     carriesAction?: boolean;
-    /** Action ids the active root→node path declares. */
+
     declaredActions: ReadonlySet<string>;
   },
 ): boolean {
@@ -434,13 +384,6 @@ type OntologyScopeViolation = {
   kind: "denied" | "scope" | "ungranted";
 };
 
-/**
- * The node whose ontology tool scope rejects the call, or null when the path
- * allows it. Each level is an independent gate: a tool must satisfy the
- * allow/deny lists of every ancestor, so a leaf cannot widen past the scope its
- * root declared. Levels without tool lists don't constrain — unless the work-map
- * grants explicitly, where nothing is allowed until some level names it.
- */
 function ontologyScopeViolation(params: {
   path: readonly EnterprisePlanNode[];
   toolName: string;
@@ -546,9 +489,7 @@ function ontologyScopeViolation(params: {
         isToolAllowedByPolicyName(toolName, { allow: [...allow] })
       );
     });
-    // The ACTIVE step is reported, not the root: it is where an operator attaches
-    // the tool (or on any step above it), and the root may be the one level that
-    // deliberately grants nothing.
+    // Report the active step: its local declaration is the grant boundary.
     const active = path[path.length - 1];
     if (!granted && active) {
       return { node: active, kind: "ungranted" };
@@ -568,25 +509,9 @@ function foldNative(value: string): string {
   return Array.from(value, (char) => (/[A-Za-z0-9_*]/.test(char) ? char : "_")).join("");
 }
 
-/**
- * Does this denial name an operation on this server under a name Codex rewrote?
- *
- * Two rewrites, one hash. On the NAMESPACE it says which of two servers that
- * sanitize alike was meant — unknowable here, so the denial is read as naming ours
- * and compared tool to tool. On the TOOL it replaces the operation itself, either
- * because two collided or because the callable name had to be cut to 64 characters,
- * and in the tightest case the tool part is the hash alone (append_hash_suffix and
- * fit_callable_parts_with_hash, ../codex/codex-rs/codex-mcp/src/tools.rs:190-194,269-287).
- * Nothing can map that back, so the server is the smallest scope that is certainly
- * right.
- *
- * The hash is a sha1 over Codex-internal identity and its hook reports only the
- * flattened name (McpHandler::hook_tool_name,
- * ../codex/codex-rs/core/src/tools/handlers/mcp.rs:47-68), so the match is made
- * against namespaces derived from the stamped server rather than by splitting the
- * entry at its first `__`: a server key may contain `__` itself, and a
- * punctuation-only key leaves no base in front of the hash at all.
- */
+// Codex may replace either callable part with a SHA-1 suffix (codex-mcp/src/tools.rs).
+// Its hook exposes only the flattened name; unresolved aliases must deny at server
+// scope, or truncation/collisions would bypass a configured denial.
 function rewrittenNameReachesCall(
   entry: string,
   namespaces: readonly string[],
@@ -635,7 +560,6 @@ function rewrittenNameReachesCall(
  */
 function hashSlotShapes(namespace: string, toolParts: readonly string[]): [string, string][] {
   return toolParts.flatMap((tool): [string, string][] => [
-    // One underscore, or the two an all-underscore namespace leaves behind.
     [`${namespace}_`, `__${tool}`],
     [`${namespace}__`, `__${tool}`],
     // Nothing of the operation left: once the prefixed namespace fills the budget,
@@ -763,7 +687,7 @@ function policyAppliesToToolCall(
     actionId?: string;
     /** This tool's subject is an action carried in its params (invoke_action). */
     carriesAction?: boolean;
-    /** Action ids the active root→node path declares. */
+
     declaredActions: ReadonlySet<string>;
   },
 ): boolean {
@@ -784,10 +708,7 @@ function policyAppliesToToolCall(
   if (actionScoped && !actionSelectorMatches(policy, params)) {
     return false;
   }
-  // Node-scoped policies match any node on the active step's root→active path,
-  // so a policy pinned to the workflow root keeps applying after the run
-  // advances into a leaf (it would otherwise silently stop covering deeper
-  // steps).
+  // Node selectors target the active step. Omit nodes for a tree-wide rule.
   const nodeMatches = params.path.some((node) => matchesSelector(node.nodeId, policy.nodes));
   return matchesSelector(params.treeId, policy.trees) && nodeMatches;
 }
@@ -804,22 +725,13 @@ function policyAppliesToRun(
   );
 }
 
-/**
- * Evaluate governance for one tool call under the active plan node. `path` is
- * the root→active chain (defaults to the node alone) so ontology tool scope and
- * covering actions compose down the branch; policy tree/node selectors still
- * match the active node itself.
- */
+/** Judge the active step's local declarations and matching shared policies. */
 export function evaluateToolCallGovernance(params: {
   plan: EnterpriseRunPlan;
   node: EnterprisePlanNode;
   toolName: string;
   policies: readonly GovernancePolicy[];
-  path?: readonly EnterprisePlanNode[];
-  /**
-   * The ontology action the call names (invoke_action). Present only for calls
-   * that carry one; every other tool leaves it undefined.
-   */
+
   actionId?: string;
   /**
    * This tool takes its action from its PARAMS rather than its name. Such a call
@@ -841,14 +753,6 @@ export function evaluateToolCallGovernance(params: {
    */
   mcpServers?: readonly string[];
   /**
-   * Which nodes an MCP attachment is read from. `"path"` is the root→active chain,
-   * the same gate every other scope uses. `"plan"` is for runtimes that never
-   * advance (CLI, Codex, ACP): they stay pinned at the root for the whole run, so
-   * a path check would deny every leaf attachment an operator wrote — and it would
-   * contradict what those runtimes were already handed, which is plan-wide.
-   */
-  attachmentScope?: "path" | "plan";
-  /**
    * This run walks steps, so the core step-advance tool was built for it. Also the
    * proof that a call by that name is OURS rather than a plugin's: the tool only
    * exists on a step-tracking run.
@@ -861,19 +765,8 @@ export function evaluateToolCallGovernance(params: {
    */
   toolParams?: unknown;
 }): GovernanceDecision {
-  // Advancing the run is not a capability a work-map grants — it is how the
-  // work-map gets executed at all, so it is decided BEFORE both lanes below.
-  // Scoping it would force an operator to name complete_step on every step just
-  // to let the run walk its own route; a policy reaching it (`tools: ["*"]` with
-  // effect deny, say) would strand the run on step 1 with every later step's
-  // scope and every later policy permanently unreachable — including the very
-  // policy that made the run step-tracking. There is no legitimate "refuse to
-  // advance": a work-map that wants no steps declares a single leaf.
-  // Gated on the run actually walking steps, because that is what proves the CORE
-  // tool exists: `createOpenClawTools` only builds complete_step for a
-  // step-tracking run, so on any other run a PLUGIN tool may legitimately own that
-  // name — and exempting it would hand a plugin call a free pass through the
-  // work-map's allow-lists and even a catch-all deny.
+  // Only a proven core control tool may bypass capability policy. Otherwise a
+  // catch-all denial strands the workflow, or a plugin namesake gains a free pass.
   if (
     params.tracksSteps === true &&
     isWorkflowControlTool({
@@ -888,7 +781,7 @@ export function evaluateToolCallGovernance(params: {
       reason: "workflow step advancement is not a governed capability",
     };
   }
-  const path = params.path ?? [params.node];
+  const path = [params.node];
   // MCP first, and it decides how the tool scope below reads this call: an
   // attachment grants the server's tools, so asking "is it attached" before "is
   // it in the allow-list" is what makes attaching in the UI sufficient.
@@ -898,7 +791,7 @@ export function evaluateToolCallGovernance(params: {
     ...(params.mcpTool ? { mcpTool: params.mcpTool } : {}),
     registered: params.mcpServers ?? [],
   });
-  const attachmentNodes = params.attachmentScope === "plan" ? params.plan.nodes : path;
+  const attachmentNodes = path;
   // Deny-by-default applies only to a work-map that uses the field. A tree written
   // before it existed (the built-ins promise stock behavior) would otherwise lose
   // every configured MCP server on upgrade, with no migration and nothing to opt
@@ -913,12 +806,9 @@ export function evaluateToolCallGovernance(params: {
       effect: "deny",
       policyId: null,
       source: "ontology",
-      reason: `MCP server "${ownership.name}" is not attached to workflow step "${params.node.nodeId}"; a step (or one of its ancestors) must name it in ontology.mcpServers`,
+      reason: `MCP server "${ownership.name}" is not attached to workflow step "${params.node.nodeId}"; the step must name it in ontology.mcpServers`,
     };
   }
-  // Every spelling of THIS call, built once. `identities` leaves out the bare
-  // server name: unlike `deniedTools`, a policy or action selector is judged
-  // against real call names, so `github` there must not swallow `github__read`.
   const call: McpCallIdentity = {
     identities: ownership ? mcpToolAliases(params.toolName, ownership, false) : [params.toolName],
     namespaces: ownership ? codexHookNamespaces(ownership.namespaces) : [],
@@ -977,19 +867,8 @@ export function evaluateToolCallGovernance(params: {
   const approvableOmission: GovernanceDecision | null =
     violation && !satisfiedOutwardAction
       ? {
-          // ASK rather than dead-end. A work-map cannot anticipate every tool a real
-          // request needs, and a silent refusal leaves the operator with a run that
-          // failed for reasons only the trace explains. Escalating to a human keeps
-          // the boundary — nothing runs unapproved — while making the boundary
-          // negotiable at the moment it actually binds.
-          //
-          // This is the SCOPE lane only. A `deny` an operator wrote in
-          // enterprise.governance.policies stays a hard block below: escalating that
-          // would make writing a deny rule mean nothing.
-          //
-          // Fails closed by construction: severity/timeout default to deny, and a run
-          // with no interactive channel (cron, headless) resolves the approval as a
-          // veto rather than passing it — see applyEnterpriseApproval.
+          // Scope omissions can ask a human once; explicit policy denials stay hard
+          // blocks. Headless and unanswered approvals resolve to deny.
           effect: "require_approval",
           approval: { severity: "warning", timeoutBehavior: "deny" },
           policyId: null,
@@ -1003,7 +882,7 @@ export function evaluateToolCallGovernance(params: {
           // decide AND where the lasting fix belongs.
           reason:
             violation.kind === "ungranted"
-              ? `tool "${params.toolName}" is not granted to workflow step "${violation.node.nodeId}". This work-map grants capabilities explicitly, so allowing it here is a one-off; to grant it for good, name it in that step's ontology.allowedTools (or an ancestor's).`
+              ? `tool "${params.toolName}" is not granted to workflow step "${violation.node.nodeId}". This work-map grants capabilities explicitly, so allowing it here is a one-off; to grant it for good, name it in that step's ontology.allowedTools.`
               : `tool "${params.toolName}" is outside the ontology tool scope of workflow step "${violation.node.nodeId}". Allowing it here is a one-off; to change it for good, widen that step's ontology.allowedTools.`,
         }
       : null;
@@ -1079,26 +958,17 @@ function policyAppliesToKnowledge(
     // present selectors must match", so such a policy never gates retrieval.
     return false;
   }
-  // Node selector matches any node on the active step's root→active path, so a
-  // policy pinned to the workflow root keeps covering knowledge from leaves.
   const nodeMatches = params.path.some((node) => matchesSelector(node.nodeId, policy.nodes));
   return matchesSelector(params.treeId, policy.trees) && nodeMatches;
 }
 
-/**
- * Evaluate governance for retrieving from one knowledge foundation under the
- * active plan node. `path` is the root→active chain (defaults to the node
- * alone). Which foundations a step may query at all is an ontology allow-list
- * enforced before this call; here config policies gate the foundations in scope.
- */
 export function evaluateKnowledgeRetrievalGovernance(params: {
   plan: EnterpriseRunPlan;
   node: EnterprisePlanNode;
   foundationId: string;
   policies: readonly GovernancePolicy[];
-  path?: readonly EnterprisePlanNode[];
 }): GovernanceDecision {
-  const path = params.path ?? [params.node];
+  const path = [params.node];
   const matching = params.policies.filter((policy) =>
     policyAppliesToKnowledge(policy, {
       treeId: params.plan.treeId,
@@ -1162,9 +1032,6 @@ export function evaluateRunStartGovernance(params: {
   plan: EnterpriseRunPlan;
   policies: readonly GovernancePolicy[];
 }): GovernanceDecision {
-  // Run-level policies target the tree as a whole, so match their node selector
-  // against the workflow root (nodes[0]) — not the first leaf the run starts
-  // execution on, which would drop root-scoped run-start policies.
   const rootNodeId = params.plan.nodes[0]?.nodeId ?? params.plan.activeNodeId;
   const runScope = { treeId: params.plan.treeId, rootNodeId };
   const matching = params.policies.filter((policy) => policyAppliesToRun(policy, runScope));

@@ -49,7 +49,7 @@ describe("collectWorkflowTreeWarnings", () => {
     ).toEqual([]);
   });
 
-  it("flags a leaf whose ANCESTOR narrows invoke_action away", () => {
+  it("does not restrict a local write grant by preceding tool lists", () => {
     // The gate intersects allow-lists across the whole root→step path, so a leaf
     // that grants the tool is still closed by an ancestor that does not. A check
     // that only read the leaf would call this tree healthy.
@@ -70,7 +70,7 @@ describe("collectWorkflowTreeWarnings", () => {
         ],
       }),
     );
-    expect(warnings.map((w) => w.path)).toEqual(["node.root.leaf.ontology.actions"]);
+    expect(warnings.map((w) => w.path)).toEqual([]);
   });
 
   it("lets an unnarrowed ancestor pass the leaf's own grant through", () => {
@@ -138,82 +138,7 @@ describe("collectWorkflowTreeWarnings", () => {
     expect(warnings.map((w) => w.path)).toEqual(["node.root.ontology.knowledgeFoundations"]);
   });
 
-  it("flags a step whose knowledge sources an ancestor's own list excludes", () => {
-    // The allow-list intersects down the path, so a leaf naming what the root
-    // does not retrieves nothing — and reports nothing skipped, which reads
-    // exactly like an empty corpus.
-    const warnings = collectWorkflowTreeWarnings(
-      tree({
-        id: "root",
-        title: "Root",
-        ontology: { knowledgeFoundations: ["acme.handbook"] },
-        children: [
-          {
-            id: "billing",
-            title: "Billing",
-            ontology: { knowledgeFoundations: ["acme.invoices"] },
-          },
-        ],
-      }),
-    );
-    // BOTH declarations are flagged, and symmetrically so: the leaf cannot reach
-    // what the root allows and the root allows nothing the leaf attaches, so
-    // either side can be the one the author meant to change.
-    expect(warnings.map((w) => w.path)).toEqual([
-      "node.root.ontology.knowledgeFoundations",
-      "node.billing.ontology.knowledgeFoundations",
-    ]);
-    expect(warnings[1]?.message).toContain("acme.invoices");
-    expect(warnings[1]?.message).toContain("intersect");
-  });
-
-  it("flags the ancestor source excluded by every executable leaf", () => {
-    const warnings = collectWorkflowTreeWarnings(
-      tree({
-        id: "root",
-        title: "Root",
-        ontology: { knowledgeFoundations: ["acme.handbook", "acme.invoices"] },
-        children: [
-          {
-            id: "billing",
-            title: "Billing",
-            ontology: { knowledgeFoundations: ["acme.invoices"] },
-          },
-        ],
-      }),
-    );
-
-    expect(warnings.map((warning) => warning.path)).toEqual([
-      "node.root.ontology.knowledgeFoundations",
-    ]);
-    expect(warnings[0]?.message).toContain('"acme.handbook"');
-    expect(warnings[0]?.message).not.toContain('"acme.invoices"');
-  });
-
-  it("flags only the leaf source excluded by an ancestor when a sibling source is reachable", () => {
-    const warnings = collectWorkflowTreeWarnings(
-      tree({
-        id: "root",
-        title: "Root",
-        ontology: { knowledgeFoundations: ["acme.shared"] },
-        children: [
-          {
-            id: "billing",
-            title: "Billing",
-            ontology: { knowledgeFoundations: ["acme.shared", "acme.invoices"] },
-          },
-        ],
-      }),
-    );
-
-    expect(warnings.map((warning) => warning.path)).toEqual([
-      "node.billing.ontology.knowledgeFoundations",
-    ]);
-    expect(warnings[0]?.message).toContain('"acme.invoices"');
-    expect(warnings[0]?.message).not.toContain('"acme.shared"');
-  });
-
-  it("requires tool and foundation access on the same executable path", () => {
+  it("requires tool and foundation access on the same step", () => {
     const warnings = collectWorkflowTreeWarnings(
       tree({
         id: "root",
@@ -241,7 +166,7 @@ describe("collectWorkflowTreeWarnings", () => {
     );
 
     expect(warnings.map((warning) => warning.path)).toContain(
-      "node.root.ontology.knowledgeFoundations",
+      "node.foundation-only.ontology.knowledgeFoundations",
     );
   });
 
@@ -294,7 +219,7 @@ describe("collectWorkflowTreeWarnings", () => {
     expect(warnings[0]?.message).toContain('"id" parameter');
   });
 
-  it("accepts a create action that takes the primary key, declared by an ancestor", () => {
+  it("warns when an action only has its object type on a preceding step", () => {
     // Entities are declared by the domain that owns them, so the key a leaf's
     // action needs usually comes from an ancestor's scope, not its own.
     expect(
@@ -325,10 +250,10 @@ describe("collectWorkflowTreeWarnings", () => {
           ],
         }),
       ),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
-  it("keeps an inherited primary key when a child only extends the object type", () => {
+  it("requires the identity field on the step declaring the action", () => {
     expect(
       collectWorkflowTreeWarnings(
         tree({
@@ -356,7 +281,7 @@ describe("collectWorkflowTreeWarnings", () => {
           ],
         }),
       ),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
   it("warns when a primary key cannot carry a runtime object identity", () => {
@@ -418,7 +343,7 @@ describe("collectWorkflowTreeWarnings", () => {
     ).toEqual([]);
   });
 
-  it("does not warn when a DESCENDANT leaf supplies the write opt-in", () => {
+  it("requires the declaring step itself to opt into writes", () => {
     // Declarations inherit down and runs execute on leaves, so an action on an
     // interior node is reachable from any leaf beneath it that opts in. Judging
     // the declaring node's own path alone reported working work-maps as broken.
@@ -449,10 +374,10 @@ describe("collectWorkflowTreeWarnings", () => {
           { capabilityGrants: "explicit" },
         ),
       ),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
-  it("requires the write grant and keyed object type on the same executable path", () => {
+  it("requires the write grant and keyed object type on the same step", () => {
     const warnings = collectWorkflowTreeWarnings(
       tree({
         id: "orders",
@@ -484,10 +409,8 @@ describe("collectWorkflowTreeWarnings", () => {
       }),
     );
 
-    expect(warnings.map((warning) => warning.path)).toEqual([
-      "node.orders.ontology.actions.create-order.effects",
-    ]);
-    expect(warnings[0]?.message).toContain("same root-to-leaf path");
+    expect(warnings.map((warning) => warning.path)).toEqual(["node.orders.ontology.actions"]);
+    expect(warnings[0]?.message).toContain("this step's ontology.allowedTools");
   });
 
   it("warns when NO leaf beneath the declaring node opts in", () => {
@@ -750,7 +673,7 @@ describe("collectWorkflowTreeWarnings", () => {
     ]);
   });
 
-  it("ignores an invalid action declaration shadowed on every executable leaf", () => {
+  it("checks an invalid parent action even when a child reuses its id", () => {
     expect(
       collectWorkflowTreeWarnings(
         tree({
@@ -768,6 +691,6 @@ describe("collectWorkflowTreeWarnings", () => {
           ],
         }),
       ),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 });

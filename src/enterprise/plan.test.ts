@@ -14,7 +14,6 @@ import {
   firstUnfinishedStep,
   ontologyHasGuidance,
   planTracksSteps,
-  resolvePlanNodePath,
 } from "./plan.js";
 import { validateWorkflowTreeDefinition } from "./schema.js";
 import type { WorkflowTreeDefinition } from "./types.js";
@@ -162,7 +161,7 @@ describe("buildEnterpriseRunPlan", () => {
     expect(plan.nodes[1].parentId).toBe("refunds");
     // A step-tracking plan opens ON its first step: the cursor moves by tool call
     // now, so no runtime needs the root as a holding scope.
-    expect(plan.activeNodeId).toBe("refunds.verify");
+    expect(plan.activeNodeId).toBe("refunds");
     expect(plan.createdAt).toBe(1000);
   });
 
@@ -226,7 +225,7 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     // tool ceiling it declares.
     expect(plan.nodes[0].ontology.deniedTools).toEqual(["exec"]);
     // The cursor opens on the first step OF THE ROUTE, not the tree's first leaf.
-    expect(plan.activeNodeId).toBe("refunds.payout.issue");
+    expect(plan.activeNodeId).toBe("refunds");
     expect(plan.route).toMatchObject({
       routes: ["refunds.payout"],
       source: "planner",
@@ -275,26 +274,25 @@ describe("buildEnterpriseRunPlan route pruning", () => {
     expect(plan.route?.selectedNodes).toBe(plan.route?.totalNodes);
   });
 
-  it("ignores a route resolved against a different tree rather than planning nothing", () => {
+  it("rejects a foreign route without widening execution", () => {
     // Defensive: a stale/foreign node set must not produce an empty (ungoverned)
     // plan. Planning everything is the safe read.
-    const plan = buildEnterpriseRunPlan({
-      runId: "run-foreign",
-      requestText: "refund",
-      mode: "enforce",
-      tree: REFUND_TREE,
-      matchedBy: "planner",
-      route: {
-        routes: ["other.tree.node"],
-        nodeIds: new Set(["other.tree.node"]),
-        rationale: "stale",
-        source: "planner",
-        invalidRoutes: [],
-      },
-    });
-    expect(plan.nodes.length).toBeGreaterThan(0);
-    expect(plan.route?.source).toBe("whole-tree");
-    expect(plan.route?.routes).toEqual([]);
+    expect(() =>
+      buildEnterpriseRunPlan({
+        runId: "run-foreign",
+        requestText: "refund",
+        mode: "enforce",
+        tree: REFUND_TREE,
+        matchedBy: "planner",
+        route: {
+          routes: ["other.tree.node"],
+          nodeIds: new Set(["other.tree.node"]),
+          rationale: "stale",
+          source: "planner",
+          invalidRoutes: [],
+        },
+      }),
+    ).toThrow("Workflow route does not include its root step");
   });
 });
 
@@ -331,7 +329,7 @@ describe("firstUnfinishedStep", () => {
 });
 
 describe("buildEnterprisePromptSection", () => {
-  it("preserves a single-scope node's description without inventing step tracking", () => {
+  it("tracks a described single step", () => {
     const description = "Ask for the order id before explaining the refund policy.";
     const plan = buildEnterpriseRunPlan({
       runId: "run-description",
@@ -344,10 +342,10 @@ describe("buildEnterprisePromptSection", () => {
       matchedBy: "planner",
     });
 
-    expect(planTracksSteps(plan)).toBe(false);
+    expect(planTracksSteps(plan)).toBe(true);
     const section = buildEnterprisePromptSection(plan);
     expect(section).toContain(description);
-    expect(section).not.toContain("Call complete_step");
+    expect(section).toContain("Call complete_step");
   });
 
   it("returns an empty string for guidance-free built-in trees (prompt-neutral default)", () => {
@@ -390,10 +388,10 @@ describe("buildEnterprisePromptSection", () => {
       matchedBy: "planner",
     });
     // Guidance-free: without the caller's answer this plan renders nothing.
-    expect(buildEnterprisePromptSection(plan)).toBe("");
+    expect(buildEnterprisePromptSection(plan)).toContain("complete_step");
     const section = buildEnterprisePromptSection(plan, [], true);
     expect(section).toContain("complete_step");
-    expect(section).toContain("[step 1 of 2 · id: bare.one]");
+    expect(section).toContain("[step 1 of 3 · id: bare]");
   });
 
   it("words advancement for observe mode without promising a denial", () => {
@@ -518,7 +516,7 @@ describe("buildEnterprisePromptSection", () => {
     const section = buildEnterprisePromptSection(plan);
     // Sorted, like every other list in the digest, for prompt-cache stability.
     expect(section).toContain("MCP servers: atlassian, github");
-    expect(section).toContain("only on the steps (or ancestors) that attach them");
+    expect(section).toContain("only on the steps that attach them");
   });
 
   it("carries tree denials on a tree that never mentions MCP", () => {
@@ -645,9 +643,7 @@ describe("buildEnterprisePromptSection", () => {
       },
     });
 
-    expect(buildEnterprisePromptSection(plan)).toContain(
-      "only on the steps (or ancestors) that attach them",
-    );
+    expect(buildEnterprisePromptSection(plan)).toContain("only on the steps that attach them");
   });
 
   it("carries explicit capability grants, the skills they cover, and the MCP rule", () => {
@@ -1252,27 +1248,16 @@ function planFor(tree: WorkflowTreeDefinition, keywords = "deploy") {
   });
 }
 
-describe("resolvePlanNodePath", () => {
-  it("returns the root→node chain inclusive", () => {
+describe("enterpriseStepSequence", () => {
+  it("lists every selected step, parents before children", () => {
     const plan = planFor(NESTED_TREE);
-    expect(resolvePlanNodePath(plan, "ops.phase.b").map((node) => node.nodeId)).toEqual([
+    expect(enterpriseStepSequence(plan)).toEqual([
       "ops",
       "ops.phase",
+      "ops.phase.a",
       "ops.phase.b",
+      "ops.wrap",
     ]);
-  });
-
-  it("returns just the root for the root node and [] for a missing node", () => {
-    const plan = planFor(NESTED_TREE);
-    expect(resolvePlanNodePath(plan, "ops").map((node) => node.nodeId)).toEqual(["ops"]);
-    expect(resolvePlanNodePath(plan, "nope")).toEqual([]);
-  });
-});
-
-describe("enterpriseStepSequence", () => {
-  it("lists the depth-first leaves, skipping interior parents", () => {
-    const plan = planFor(NESTED_TREE);
-    expect(enterpriseStepSequence(plan)).toEqual(["ops.phase.a", "ops.phase.b", "ops.wrap"]);
   });
 
   it("yields a single-step sequence for a childless root", () => {
@@ -1310,11 +1295,32 @@ describe("ontologyHasGuidance / planTracksSteps", () => {
     expect(ontologyHasGuidance({ skills: [] })).toBe(false);
   });
 
-  it("tracks steps only for governed trees with a leaf to advance into", () => {
+  it("tracks authored steps and keeps exact stock defaults quiet", () => {
     expect(planTracksSteps(planFor(NESTED_TREE))).toBe(true);
     expect(planTracksSteps(planFor(REFUND_TREE, "refund"))).toBe(true);
     // Guidance-free built-in trees stay step-quiet (stock path adds no writes).
     expect(planTracksSteps(planFor(BUILTIN_ASSIST_TREE, "hello"))).toBe(false);
+  });
+
+  it("tracks bare custom defaults and replacements of the stock definition", () => {
+    for (const tree of [
+      { ...BUILTIN_ASSIST_TREE, id: "custom.single" },
+      { ...BUILTIN_ASSIST_TREE, root: { ...BUILTIN_ASSIST_TREE.root, title: "Custom intake" } },
+      {
+        ...BUILTIN_ASSIST_TREE,
+        root: { ...BUILTIN_ASSIST_TREE.root, ontology: { mcpServers: [] } },
+      },
+    ]) {
+      const plan = buildEnterpriseRunPlan({
+        runId: "single",
+        requestText: "hello",
+        mode: "enforce",
+        tree,
+        matchedBy: "unavailable",
+      });
+      expect(planTracksSteps(plan)).toBe(true);
+      expect(buildEnterprisePromptSection(plan)).toContain("Call complete_step");
+    }
   });
 
   it("tracks a root with a single guidance-bearing leaf step", () => {

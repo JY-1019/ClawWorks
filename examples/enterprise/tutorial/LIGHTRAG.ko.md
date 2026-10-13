@@ -71,7 +71,7 @@ curl --fail --silent --show-error --max-time 120 \
 
 [반품 work-map](acme-returns.worktree.yaml)을 **Enterprise → Worktree → Import file**에서 검토·저장하고 `enforce` 모드를 사용합니다. 다른 설치 트리와 함께 쓰는 경우 History에서 실제 `treeId=acme.returns`와 활성 노드를 확인하세요. 기존 트리/운영 설정을 검증표에 맞추려고 덮어쓰지 마세요.
 
-정책 검색은 `returns.triage`의 `knowledgeFoundations: [acme.returns-kb]`와 `knowledge_search` 허용으로 제한됩니다. 이 예제는 inherited grants이므로 lookup/decide의 foundation 목록 생략만으로 검색 금지라고 간주하지 마세요. 도구 허용·승인과 foundation 범위는 별개입니다. LR10은 목록이 명시된 triage의 범위 차단을 검사합니다. 해당 노드에 진입하지 않았다면 그 노드의 차단 검사를 통과로 세지 않습니다. Chat이 도구 호출 전에 거절한 경우에도 실제 gate 검증과 구별합니다.
+정책 검색은 `returns.triage`의 `knowledgeFoundations: [acme.returns-kb]`와 `knowledge_search` 허용으로 제한됩니다. 이 예제는 permissive local grants이므로 lookup/decide의 foundation 목록 생략만으로 검색 금지라고 간주하지 마세요. 도구 허용·승인과 foundation 범위는 별개입니다. LR10은 목록이 명시된 triage의 범위 차단을 검사합니다. 해당 노드에 진입하지 않았다면 그 노드의 차단 검사를 통과로 세지 않습니다. Chat이 도구 호출 전에 거절한 경우에도 실제 gate 검증과 구별합니다.
 
 이 work-map은 embedded 런타임용 예제입니다. 현재 런타임에서 도구가 노출되지 않으면 준비 미완료로 기록하고 [원본의 런타임 주의사항](acme-returns.worktree.yaml)을 확인하세요. 통과를 위해 다른 노드의 권한을 넓히지 마세요. MCP·skill까지 이어지는 통합 검사는 [RET01–RET06](../golden/MANUAL_MATRIX.ko.md#ret01ret06-실제-반품-tracker와-skill)에서 별도로 수행합니다.
 

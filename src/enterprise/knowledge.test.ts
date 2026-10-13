@@ -504,7 +504,7 @@ describe("resolveEnterpriseKnowledge", () => {
     });
   });
 
-  it("traces default-allowed retrievals when an ancestor step opts into audit", async () => {
+  it("does not inherit the preceding step audit option", async () => {
     const events: SinkEvent[] = [];
     const plan: EnterpriseRunPlan = {
       runId: "run-k",
@@ -527,11 +527,7 @@ describe("resolveEnterpriseKnowledge", () => {
     const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
     expect(result.snippets).toHaveLength(1); // default-allow still retrieves
     const decision = events.find((event) => event.payload.subject === "knowledge");
-    expect(decision?.payload).toMatchObject({
-      foundationId: "acme.kb",
-      effect: "allow",
-      enforced: false,
-    });
+    expect(decision).toBeUndefined();
   });
 
   it("caps results at the limit even when an adapter ignores it", async () => {
@@ -889,7 +885,7 @@ describe("multi-store scoping and routing", () => {
     expect(legal.searched).toEqual(["acme.legal-kb"]);
   });
 
-  it("leaves a step nothing when an ancestor's own list excludes what it attaches", async () => {
+  it("retrieves a locally attached source independently of preceding steps", async () => {
     registerThree();
     // Root allows only HR; the billing leaf attaches only billing. Each level is
     // an independent gate, so the intersection is empty — the shape
@@ -898,8 +894,8 @@ describe("multi-store scoping and routing", () => {
       branchedRun({ activeNodeId: "billing", rootFoundations: ["acme.hr-kb"] }),
     );
     const result = await resolveEnterpriseKnowledge({ runId: "run-k", query: "refund" });
-    expect(result.snippets).toEqual([]);
-    expect(result.searched).toEqual([]);
+    expect(result.snippets).toHaveLength(1);
+    expect(result.searched).toEqual(["acme.billing-kb"]);
   });
 
   it("names the stores it searched, so an empty result is not read as an empty scope", async () => {
@@ -925,15 +921,15 @@ describe("multi-store scoping and routing", () => {
     expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
   });
 
-  it("judges a step-tracking plan by its leaves, not by its unnarrowed root", () => {
+  it("includes the executable root when exposing available knowledge", () => {
     // The root's own path admits every registered store, but a step-tracking plan
     // opens on a leaf and is never active on the root, so a store only the root
     // would admit is neither retrievable nor worth a tool. Judging it root-first
     // advertised a source no reachable step could query.
     registerEnterpriseKnowledgeFoundation("acme.hr-kb", foundation("refund travel"));
     registerEnterpriseActiveRun(branchedRun({ activeNodeId: "billing" }));
-    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(false);
-    expect(describeWorkflowKnowledgeFoundations("run-k")).toEqual([]);
+    expect(runHasRetrievableKnowledgeFoundations("run-k")).toBe(true);
+    expect(describeWorkflowKnowledgeFoundations("run-k")).toHaveLength(1);
   });
 
   it("judges a plan with no steps to track by its root, where the cursor stays", () => {

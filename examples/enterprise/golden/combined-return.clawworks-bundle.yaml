@@ -10,97 +10,101 @@ trees:
     version: 1.0.0
     name: Customer operations — combined return assessment
     description: >-
-      Fictional Acme customer operations: order tracking, delivery questions,
-      returns policy, and evidence-backed return assessments. A complete return
-      assessment fetches an order from MCP, retrieves the return policy, records
-      a local case with linked evidence, and computes eligibility in one step.
+      Fictional Acme customer operations: order tracking, delivery questions, returns policy, and
+      evidence-backed return assessments. A complete return assessment fetches an order from MCP, retrieves
+      the return policy, records a local case with linked evidence, and computes eligibility in one step.
     capabilityGrants: explicit
     root:
       id: operations
       title: Customer operations
       ontology:
         audit: true
-        allowedTools:
-          - knowledge_search
-          - search_objects
-          - invoke_action
-          - compute_function
-          - get_neighbors
-          - acme-tracker__*
-          - acme_tracker__*
-          - mcp__acme-tracker__*
-          - mcp__acme_tracker__*
+        allowedTools: &allowedTools_11 [message]
         deniedTools:
-          [exec, process, browser, web_fetch, web_search, write, edit, apply_patch, message]
+          &deniedTools_1 [
+            exec,
+            process,
+            browser,
+            web_fetch,
+            web_search,
+            write,
+            edit,
+            apply_patch,
+            message,
+          ]
         guidance: >-
-          This exercise uses fictional orders and local case records. Never
-          claim a refund, shipment, or customer message was issued. Ask for any
-          missing ids. Use real tool results, and state when a dependency fails.
+          Confirm the requested operation, supplied record ids, and explicit exclusions. Ask for missing
+          context; do not perform a downstream action. Complete this step before entering the selected next
+          step.
+        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
       children:
         - id: operations.accounts
           title: Account help
           description: Explain account support options; no order assessment.
+          ontology:
+            deniedTools: *deniedTools_1
         - id: operations.orders
           title: Order operations
-          description: Delivery tracking, order records, and returns.
+          description: Check the request and prerequisites for order operations.
           children:
             - id: operations.orders.delivery
               title: Delivery tracking
               description: Read shipment scans only; no return eligibility assessment.
               ontology:
-                mcpServers: [acme-tracker]
+                mcpServers: &mcpServers_4 [acme-tracker]
                 guidance: Use shipment_track for the supplied order id.
+                deniedTools: *deniedTools_1
+                allowedTools:
+                  [acme-tracker__*, acme_tracker__*, mcp__acme-tracker__*, mcp__acme_tracker__*]
             - id: operations.orders.returns
               title: Returns
-              description: Policy questions and evidence-backed return case assessments.
+              description: Check the request and prerequisites for returns.
               children:
                 - id: operations.orders.returns.policy
                   title: Explain the return policy
                   description: Policy-only questions; no order lookup or case creation.
                   ontology:
-                    allowedTools: [knowledge_search]
-                    knowledgeFoundations: [demo.return-policy]
+                    allowedTools: &allowedTools_7 [knowledge_search]
+                    knowledgeFoundations: &knowledgeFoundations_5 [demo.return-policy]
+                    deniedTools: *deniedTools_1
                 - id: operations.orders.returns.cases
                   title: Return case work
-                  description: Assess a specific order and retain the actual evidence.
+                  description: Check the request and prerequisites for return case work.
                   children:
                     - id: operations.orders.returns.cases.assess
                       title: Assess and record a return
                       description: >-
-                        Complete one return assessment by combining MCP order
-                        lookup, knowledge search, local ontology actions,
-                        eligibility computation, and linked evidence verification.
+                        Complete one return assessment by combining MCP order lookup, knowledge search, local
+                        ontology actions, eligibility computation, and linked evidence verification.
                       ontology:
-                        mcpServers: [acme-tracker]
-                        knowledgeFoundations: [demo.return-policy]
+                        audit: true
+                        mcpServers: *mcpServers_4
+                        knowledgeFoundations: *knowledgeFoundations_5
                         allowedTools:
-                          - knowledge_search
-                          - search_objects
-                          - invoke_action
-                          - compute_function
-                          - get_neighbors
-                          - acme-tracker__*
-                          - acme_tracker__*
-                          - mcp__acme-tracker__*
-                          - mcp__acme_tracker__*
+                          [
+                            knowledge_search,
+                            search_objects,
+                            invoke_action,
+                            compute_function,
+                            get_neighbors,
+                            acme-tracker__*,
+                            acme_tracker__*,
+                            mcp__acme-tracker__*,
+                            mcp__acme_tracker__*,
+                          ]
                         guidance: >-
-                          Require an order id and fresh case-id and evidence-id.
-                          First call order_status on acme-tracker. Search the
-                          bundled return policy for "return eligibility".
-                          Stop if the order is unknown, not delivered, or either
-                          lookup fails. Read case and evidence ids to prevent
-                          replacing existing records. Record only the returned
-                          order id, daysSinceDelivery, and total, plus the actual
-                          policy source and a factual evidence summary. Call
-                          record-return-assessment once. Then compute
-                          return-eligible for the stored case objectId, and get its
-                          return-has-evidence neighbors. Report the computed
-                          value, retrieved source, and persisted evidence. Stay
-                          on this one step for the entire assessment.
+                          Require an order id and fresh case-id and evidence-id. First call order_status on
+                          acme-tracker. Search the bundled return policy for "return eligibility". Stop if the
+                          order is unknown, not delivered, or either lookup fails. Read case and evidence ids
+                          to prevent replacing existing records. Record only the returned order id,
+                          daysSinceDelivery, and total, plus the actual policy source and a factual evidence
+                          summary. Call record-return-assessment once. Then compute return-eligible for the
+                          stored case objectId, and get its return-has-evidence neighbors. Report the computed
+                          value, retrieved source, and persisted evidence. Stay on this one step for the
+                          entire assessment.
                         expectedOutput: >-
-                          Order facts, cited policy, computed eligibility, case
-                          id, and linked evidence. This is a local assessment;
-                          it does not authorize or execute a refund.
+                          Order facts, cited policy, computed eligibility, case id, and linked evidence. This
+                          is a local assessment; it does not authorize or execute a refund.
                         entities:
                           - id: return-case
                             title: Return assessment
@@ -142,18 +146,48 @@ trees:
                             entity: return-case
                             expression: "$days-since-delivery >= 0 && $days-since-delivery <= 30 && $total <= 200"
                             returns: boolean
+                        deniedTools: *deniedTools_1
                     - id: operations.orders.returns.cases.escalate
                       title: Explain manual review
                       description: Explain escalation for exceptional returns; never create an assessment.
                       ontology:
-                        allowedTools: [knowledge_search]
-                        knowledgeFoundations: [demo.return-policy]
+                        allowedTools: *allowedTools_7
+                        knowledgeFoundations: *knowledgeFoundations_5
+                        deniedTools: *deniedTools_1
+                  ontology:
+                    deniedTools: *deniedTools_1
+                    guidance:
+                      Confirm the context and required inputs for return case work. Use supplied facts and prior step
+                      results; do not execute a child action here. Complete this step before entering the
+                      selected next step.
+                    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                    allowedTools: *allowedTools_11
+              ontology:
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for returns. Use supplied facts and prior step results; do
+                  not execute a child action here. Complete this step before entering the selected next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_11
             - id: operations.orders.billing
               title: Billing questions
               description: Explain billing support; no return eligibility assessment.
+              ontology:
+                deniedTools: *deniedTools_1
+          ontology:
+            deniedTools: *deniedTools_1
+            guidance:
+              Confirm the context and required inputs for order operations. Use supplied facts and prior step
+              results; do not execute a child action here. Complete this step before entering the selected
+              next step.
+            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            allowedTools: *allowedTools_11
         - id: operations.catalog
           title: Product questions
           description: Product information requests; no order lookup or return assessment.
+          ontology:
+            deniedTools: *deniedTools_1
+      description: Check the request and prerequisites for customer operations.
 knowledgeFoundations:
   - id: demo.return-policy
     descriptor:
@@ -166,12 +200,10 @@ knowledgeFoundations:
         title: Return eligibility
         source: returns/eligibility.md
         text: >-
-          Return eligibility in this fictional exercise requires a delivered
-          order, 0 through 30 days since delivery inclusive, and a total no
-          greater than USD 200. Orders outside those limits need manual review.
-          Save retrieved facts and the policy source in a local case, compute
-          return-eligible, and verify linked evidence. A local eligible result
-          neither approves nor executes a refund.
+          Return eligibility in this fictional exercise requires a delivered order, 0 through 30 days since
+          delivery inclusive, and a total no greater than USD 200. Orders outside those limits need manual
+          review. Save retrieved facts and the policy source in a local case, compute return-eligible, and
+          verify linked evidence. A local eligible result neither approves nor executes a refund.
 requiredTools:
   - compute_function
   - get_neighbors

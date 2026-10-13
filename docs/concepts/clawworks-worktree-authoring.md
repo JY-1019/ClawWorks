@@ -174,9 +174,8 @@ match:
 | `keywords` | array of strings                      | Retired. Still accepted so older files load; nothing reads it.                            |
 
 `triggers` is a hard gate: a cron or heartbeat run classes as `system` and can
-never bind a `user`-only work-map, whatever its text says. `priority` matters
-mostly at the edges: the candidate list is what a planner failure falls closed
-onto, and the first candidate is what binds.
+never bind a `user`-only work-map, whatever its text says. `priority` orders candidates presented to the planner. A failed or invalid
+selection blocks execution; priority never authorizes a fallback operation.
 
 **The `description` is the routing signal.** It is the only thing that decides
 whether a request enters this work-map at all, and it is rendered into the
@@ -199,51 +198,57 @@ descriptions inside 120.
 root:
   id: expenses
   title: Expense claims
-  description: Root scope for expense claim work.
+  description: Confirm the expense request and supplied claim id.
   ontology: {}
   children: []
 ```
 
-| Field         | Required | Type             | Notes                                                                        |
-| ------------- | -------- | ---------------- | ---------------------------------------------------------------------------- |
-| `id`          | yes      | dotted id        | Unique across the tree.                                                      |
-| `title`       | yes      | non-empty string | Shown in the UI, the planner prompt, and the step digest.                    |
-| `description` | no       | string           | Planner signal for this step, and one of the things that make a run advance. |
-| `ontology`    | no       | object           | The step's bindings. See [The ontology block](#the-ontology-block).          |
-| `children`    | no       | array of nodes   | Omit or leave empty to make this node a leaf.                                |
+| Field         | Required | Type             | Notes                                                               |
+| ------------- | -------- | ---------------- | ------------------------------------------------------------------- |
+| `id`          | yes      | dotted id        | Unique across the tree.                                             |
+| `title`       | yes      | non-empty string | Shown in the UI, the planner prompt, and the step digest.           |
+| `description` | no       | string           | Planner signal describing the work performed by this step.          |
+| `ontology`    | no       | object           | The step's bindings. See [The ontology block](#the-ontology-block). |
+| `children`    | no       | array of nodes   | Possible next steps after this step completes.                      |
 
 Structure rules worth knowing before you draw the tree:
 
-- **Leaves execute.** A run is active on a leaf; interior nodes contribute
-  inherited scope.
-- **Order is the tree's, not the planner's.** The plan is a depth-first
-  flattening of the chosen subtree. The planner picks _which_ leaves a run
-  visits; the file decides the order it visits them in.
-- **Scope is inherited down the root-to-active path**, and every node on that
-  path is an independent gate. A leaf can narrow what an ancestor allowed; it
-  can never widen it.
-- **A run opens on the first step of its route, not on the root**, and advances
-  only when the model calls `complete_step`.
-- **A tree with fewer than 5 nodes is never route-planned** — it is cheaper to
-  run whole than to ask a model which branch to take. Small trees therefore
-  always plan every node.
+- **Every selected node executes.** Root and intermediate nodes are prerequisite
+  steps. Write meaningful work and completion criteria for each one.
+- **Selection names endpoints.** Each endpoint brings its ancestors into the
+  route, but never implicitly selects its children. An intermediate step can be
+  the stopping point.
+- **Order follows the definition.** Selected nodes run parent first, depth first,
+  in file order. Shared predecessors run once when several branches are selected.
+- **Capabilities are local.** Tools, knowledge, MCP servers, ontology types,
+  actions, and functions must be declared on the step that uses them. Parent
+  grants and denials do not carry into a child.
+- **Advancement is explicit.** The run starts on the root and moves only when
+  `complete_step` completes the active step. A failed or invalid routing result
+  starts no business execution.
+
+### Update an existing containment-style map
+
+Review existing imported definitions before running them with sequential steps.
+The file shape is unchanged, but a parent now performs work and its bindings no
+longer apply to children. Replace grouping-only descriptions with prerequisite
+work and completion criteria. Redeclare the ontology types, tools, foundations,
+and MCP servers on each step that uses them. Put common restrictions in a
+`trees`-selected governance policy with no `nodes` selector, or declare the
+restriction on every relevant step. A root-only denial does not protect a child.
+
+Re-import the reviewed definition and inspect a fresh run from its root. Stored
+ontology records remain in the tree's store; sharing a record does not share
+permission to read or change it. YAML aliases, as used by the financial example,
+can reuse authored declarations while keeping runtime scope local.
 
 ### Make the run advance
 
-A run only tracks steps (and only then is `complete_step` offered) when **both**
-hold:
-
-1. The plan has more than one node, and
-2. at least one node carries `description`, `audit: true`, or any of these
-   `ontology` fields: `allowedTools`, `deniedTools`, `skills`, `mcpServers`,
-   `knowledgeFoundations`, `actions`, `constraints`, `contextHints`, `guidance`,
-   `expectedOutput`, `entities`, `relationships`, `functions`, `objects`,
-   `links`.
-
-A tree of bare `id`/`title` nodes imports cleanly and then never advances: the
-run stays on the step it opened on for its whole life, and every later step's
-scope is out of reach. Giving each node a `description` is the cheapest way to
-satisfy this, and it doubles as the planner's per-node signal.
+A plan with multiple selected nodes tracks all of them. A single step carrying
+behavior, a description, audit, or bindings also exposes `complete_step`.
+The bare, guidance-free default assistant does not need a completion cursor.
+Give every authored step a description and expected result so the model can tell
+when its work is complete. Parent work cannot be skipped by selecting its child.
 
 ## The ontology block
 
@@ -278,16 +283,16 @@ policies:
 - Blank entries are rejected: the matcher normalizes whitespace away, so a blank
   string would silently widen a scoped list into match-everything.
 
-How they compose along the root-to-active path:
+The active step owns its tool scope:
 
-1. **Deny wins, from anywhere on the path** — including from a step _below_ the
-   active one when it is on the planned route. `deniedTools` is the hard wall.
-2. **Allow-lists intersect.** A node with no list narrows nothing; a node with
-   one narrows everything beneath it. A leaf that lists a tool its root's list
-   excludes can never call that tool.
-3. **An omission asks, it does not refuse.** A tool no list on the path names
-   raises a one-off _Allow once / Deny_ approval rather than failing, and fails
-   closed when nobody answers.
+1. **Deny wins locally.** `deniedTools` overrides that step's grants.
+2. **Allow-lists are independent.** A parent's list applies while the parent is
+   active; the next step uses its own list. A work-map-wide rule belongs in a
+   governance policy with a tree selector and no node selector.
+3. **An omission asks when the step is scoped.** A tool outside the step's
+   approval-free set raises a one-off _Allow once / Deny_ approval and fails
+   closed when nobody answers. In permissive mode, an omitted tool list narrows
+   nothing; `capabilityGrants: explicit` makes omission ungranted.
 
 That third point is the one to design around: **if a step must never touch
 something, deny it.** Leaving it out only means "ask".
@@ -298,8 +303,9 @@ MCP server or hosted tool withheld at launch. See
 [ClawWorks Enterprise](/concepts/clawworks-enterprise#mcp-servers) for the
 launch-time ceiling.
 
-Because allow-lists intersect, **the root's list is the ceiling for the whole
-tree**. Write it as the union of what every leaf needs, then narrow per leaf.
+A native runtime that cannot withdraw capabilities between steps uses a stricter
+launch ceiling: every selected step must admit the exposed MCP server or hosted
+tool. This does not grant a parent's capabilities to a child.
 
 ### Skills, MCP servers, and knowledge
 
@@ -319,17 +325,16 @@ ontology:
   server anywhere and every step is governed, so a step with no attachment can
   call none. A tree that never mentions the field keeps the ungoverned behavior.
   On a native harness (Claude CLI, Codex) the attachment alone is not enough to
-  call the server; the root must also list the server's tool globs in every
-  spelling.
+  call the server; every selected step must attach it and admit its tool globs
+  in every spelling before it is exposed at launch.
 - `knowledgeFoundations` scopes `knowledge_search`. Empty or omitted means every
   configured foundation — except under explicit grants, where the list _is_ the
   grant. Ids must be registered by an adapter (for example the
   [LightRAG plugin](/plugins/reference/lightrag)) or inlined by a
   [bundle](#bundles-carry-knowledge); a tree cannot carry knowledge on its own.
   Wiring one step to one store and its sibling to another is the point of the
-  field, but the lists **intersect down the path**: each level that declares one
-  narrows again, so a leaf naming a store its root omits reaches nothing. Give
-  the root the union (or no list at all) and let the leaves narrow.
+  field. Each step's list stands alone; a foundation attached to a parent is not
+  available to its child unless the child attaches it too.
 
 ### Advisory text
 
@@ -381,8 +386,9 @@ entities:
 Object types are **tree-scoped**: declaring `claim` on two nodes adds to the same
 type rather than creating a second one, so declarations must agree across the
 tree (same property types, one primary key). Visibility is narrower than scope —
-a node only addresses the types on its own root-to-node path, so a sibling
-branch's types are never reachable from the current step.
+a node only addresses the types and properties declared locally. To read a
+record created by a preceding step, redeclare its type and required fields on
+the reader. The stored record remains shared by the tree.
 
 Only a type with a `primaryKey` has addressable instances. Without one it cannot
 be written by an action and cannot be looked up.
@@ -582,18 +588,16 @@ Some definitions parse, import, and run, and still cannot do what they say.
 already-imported work-map has to keep loading, and only the author can decide
 whether the fix is to grant the capability or drop the declaration.
 
-Each check asks whether **any executable leaf path through the node** admits the
-capability, because declarations inherit downward while the gate judges the
-root-to-active path.
+Each check compares a step's own declarations with its own grants. A parent or
+child declaration cannot repair a missing capability on the current step.
 
-| Warning                                                | Cause                                                                                                                  | Fix                                                                                                        |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Step declares actions but no step under it can write   | No step on any path names `invoke_action` or `group:enterprise-write` literally.                                       | Name one of them in `allowedTools` here or beneath. A glob like `invoke_*` does **not** opt into writes.   |
-| Action declares no write effects                       | Every effect is `kind: read`.                                                                                          | Give it a `create`/`update`/`delete` effect, or describe the work in the step description instead.         |
-| Action writes a type with no `primaryKey`              | The target object type has no identity.                                                                                | Add a `primaryKey` property to that type.                                                                  |
-| Action takes no parameter for the target's primary key | No call could name the object it writes.                                                                               | Add `{ id: <primaryKey>, type: id, required: true }` to `parameters`.                                      |
-| Step attaches a knowledge foundation it cannot query   | No path under the step can reach `knowledge_search`.                                                                   | Grant `knowledge_search` on the step or an ancestor, and check no ancestor allow-list excludes it.         |
-| Step's knowledge sources are excluded by an ancestor   | `knowledgeFoundations` allow-lists intersect down the path, and no id attached here survives the ancestors' own lists. | Add the id to the ancestor's `knowledgeFoundations`, or attach here only what the ancestor already allows. |
+| Warning                                                | Cause                                                                                   | Fix                                                                                                   |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Step declares actions but cannot write                 | The declaring step does not name `invoke_action` or `group:enterprise-write` literally. | Name one of them in `allowedTools` on this step. A glob like `invoke_*` does **not** opt into writes. |
+| Action declares no write effects                       | Every effect is `kind: read`.                                                           | Give it a `create`/`update`/`delete` effect, or describe the work in the step description instead.    |
+| Action writes a type with no `primaryKey`              | The target object type has no identity.                                                 | Add a `primaryKey` property to that type.                                                             |
+| Action takes no parameter for the target's primary key | No call could name the object it writes.                                                | Add `{ id: <primaryKey>, type: id, required: true }` to `parameters`.                                 |
+| Step attaches a knowledge foundation it cannot query   | This step cannot reach `knowledge_search`.                                              | Grant `knowledge_search` on this step and remove any conflicting local denial.                        |
 
 These are worth treating as errors in practice. A declared-but-unreachable
 capability is advertised to the model in the digest and then refused by the
@@ -612,7 +616,7 @@ capabilityGrants: explicit
 
 One optional value, and deliberately not a boolean. With `explicit`, tools, MCP
 servers, and knowledge foundations are **deny-by-default** on the active
-root-to-step path. Skills are deny-by-default for the run as a whole: only skills
+step. Skills are deny-by-default for the run as a whole: only skills
 declared somewhere on its planned route are included, and each step's Skills line
 says which of that run-scoped set applies there.
 
@@ -621,10 +625,9 @@ Three core tools stay available whatever the grants say — `message`, `read`, a
 look at things. `exec`, `write` and `edit` are deliberately not on that floor,
 and `deniedTools` overrules the floor.
 
-Omit the field for the inherited semantics: a scope narrows what an ancestor
-allowed, and a branch that scopes nothing may use anything. That stays the
-default because `allowedTools` predates the switch, and silently rereading an
-old file as "deny everywhere else" would break imports on upgrade.
+Omit the field for permissive grants: a step without a tool list narrows nothing,
+and omitted knowledge lists permit configured foundations. Both modes use local
+step declarations; neither mode inherits a parent's bindings.
 
 The full boundary, including what it does not cover (ACP turns, process-scoped
 skill credentials, native harness MCP handling), is documented in
@@ -632,108 +635,77 @@ skill credentials, native harness MCP handling), is documented in
 
 ## A complete example
 
-A four-node work-map that validates with no warnings. Every leaf's tools are a
-subset of the root's, the write opt-in is on the root and narrowed to the one
-leaf that writes, and the action carries its target's primary key.
+A work-map with a request-check step followed by the requested operation branches.
+Each branch declares its own capabilities and object model. Actions carry their
+target's primary key, and only the steps that write opt into `invoke_action`.
 
 ```yaml
-# Import with:
-#   openclaw enterprise trees import acme-expenses.yaml
-#   openclaw gateway restart
 schema: clawworks.workflow-tree
 schemaVersion: 1
 id: acme.expenses
 version: 1.0.0
 name: Expense claims
-# The routing signal. Names the DATA this work-map owns, not only the tasks, so a
-# request phrased as "list the expense files" cannot escape into the default tree.
-description: >-
-  Review, approve, or reject an employee EXPENSE CLAIM, and answer questions
-  about expense policy: what a claim is worth, whether it clears the automatic
-  limit, who submitted it, and what the handbook says about it. The claims live
-  in this work-map's own object store, never in files or a shell, so a request to
-  list or check claims belongs here even when it is phrased as reading a file or
-  running a command. Not for payroll, invoices, or vendor contracts.
+description: "Review, approve, or reject an employee EXPENSE CLAIM, and answer questions about
+  expense policy: what a claim is worth, whether it clears the automatic limit, who submitted it,
+  and what the handbook says about it. The claims live in this work-map's own object store, never in
+  files or a shell, so a request to list or check claims belongs here even when it is phrased as
+  reading a file or running a command. Not for payroll, invoices, or vendor contracts."
 match:
-  triggers: [user]
+  triggers:
+    - user
   priority: 10
 capabilityGrants: explicit
-
 root:
   id: expenses
   title: Expense claims
-  description: Root scope for expense claim work.
+  description: Confirm the expense request and supplied claim id.
   ontology:
-    # Root denials are inherited by every step, so no leaf can widen them.
-    deniedTools: [exec, process, browser]
-    # Allow-lists INTERSECT down the path, so the root list is the ceiling for
-    # the whole tree: it must be the union of what every leaf needs.
     allowedTools:
       - message
-      - search_objects
-      - get_neighbors
-      - compute_function
-      - knowledge_search
-      # Literal, not a glob: this is the ontology write opt-in.
-      - invoke_action
-    contextHints:
-      - Always name the claim id you acted on.
-    entities:
-      - id: employee
-        title: Employee
-        properties:
-          - { id: id, type: id, primaryKey: true }
-          - { id: name, type: string, required: true }
-      - id: claim
-        title: Expense claim
-        properties:
-          - { id: id, type: id, primaryKey: true }
-          - { id: employee-id, type: id, required: true }
-          - { id: amount, type: number, required: true }
-          - { id: status, type: string, required: true }
-          - { id: submitted-on, type: date }
-    relationships:
-      - id: submitted
-        from: employee
-        to: claim
-        cardinality: one-to-many
-        inverse: submitted-by
-        description: The employee who submitted the claim.
-    functions:
-      - id: auto-approvable-amount
-        entity: claim
-        returns: number
-        # Capped at the approval limit, so the value itself says how much can be
-        # approved without a human.
-        expression: min($amount, 100)
-        description: What this claim can be approved without a human.
-
+    deniedTools: &a1
+      - exec
+      - process
+      - browser
+    guidance: Confirm the requested operation and exact claim id. Do not create or update a claim in
+      this step.
+    expectedOutput: The requested operation and known claim id.
   children:
     - id: expenses.intake
       title: File the claim
       description: Open the claim record and attach it to the employee who submitted it.
       ontology:
-        allowedTools: [invoke_action, message]
+        allowedTools:
+          - invoke_action
+          - message
         actions:
-          # The claim is born here. Nothing else creates one, and an update is not
-          # an upsert, so without this step the two below have no row to work on.
           - id: file-claim
             title: File a claim
             parameters:
-              - { id: id, type: id, required: true }
-              - { id: employee-id, type: id, required: true }
-              - { id: amount, type: number, required: true }
-              - { id: status, type: string, required: true }
+              - id: id
+                type: id
+                required: true
+              - id: employee-id
+                type: id
+                required: true
+              - id: amount
+                type: number
+                required: true
+              - id: status
+                type: string
+                required: true
             effects:
-              - { entity: claim, kind: create, description: Opens the claim record. }
-          # A GRAPH effect: each end resolves from the parameter named after that
-          # type's primary key. This is the only way the edge comes into being, so
-          # without it get_neighbors has nothing to walk in the step below.
+              - entity: claim
+                kind: create
+                description: Opens the claim record.
           - id: attach-claim-to-employee
             title: Attach the claim to its employee
             parameters:
-              - { id: id, type: id, required: true }
-              - { id: employee-id, type: id, required: true }
+              - id: id
+                type: id
+                required: true
+              - id: employee-id
+                type: id
+                required: true
             effects:
               - kind: link
                 relationship: submitted
@@ -742,50 +714,107 @@ root:
                 description: Relates the employee to the claim they submitted.
         expectedOutput: The claim id it opened, and the employee it belongs to.
         audit: true
-
+        deniedTools: *a1
+        entities: &a2
+          - id: employee
+            title: Employee
+            properties:
+              - id: id
+                type: id
+                primaryKey: true
+              - id: name
+                type: string
+                required: true
+          - id: claim
+            title: Expense claim
+            properties:
+              - id: id
+                type: id
+                primaryKey: true
+              - id: employee-id
+                type: id
+                required: true
+              - id: amount
+                type: number
+                required: true
+              - id: status
+                type: string
+                required: true
+              - id: submitted-on
+                type: date
+        relationships: &a3
+          - id: submitted
+            from: employee
+            to: claim
+            cardinality: one-to-many
+            inverse: submitted-by
+            description: The employee who submitted the claim.
     - id: expenses.check
       title: Check the claim
       description: Find the claim, read who submitted it, and work out what it is worth.
       ontology:
-        allowedTools: [search_objects, get_neighbors, compute_function]
+        allowedTools:
+          - search_objects
+          - get_neighbors
+          - compute_function
         expectedOutput: The claim id, the employee, the amount, and the auto-approvable amount.
         audit: true
-
+        deniedTools: *a1
+        entities: *a2
+        relationships: *a3
+        functions: &a4
+          - id: auto-approvable-amount
+            entity: claim
+            returns: number
+            expression: min($amount, 100)
+            description: What this claim can be approved without a human.
     - id: expenses.policy
       title: Check the policy
       description: Answer what the expense handbook says about this kind of claim.
       ontology:
-        allowedTools: [knowledge_search, message]
-        # Must be a registered foundation id, or one a bundle inlines.
-        knowledgeFoundations: [acme.expense-policy]
+        allowedTools:
+          - knowledge_search
+          - message
+        knowledgeFoundations:
+          - acme.expense-policy
         expectedOutput: The handbook rule that applies, cited.
-
+        deniedTools: *a1
     - id: expenses.decide
       title: Approve or reject
       description: Approve the claim within the limit, or reject it with a reason.
       ontology:
-        # Reads AND the write: the planner may cut straight to this leaf, so a
-        # step has to be able to honor its own constraint. get_neighbors is
-        # deliberately absent — walking the graph is the check step's job.
-        allowedTools: [search_objects, compute_function, invoke_action, message]
+        allowedTools:
+          - search_objects
+          - compute_function
+          - invoke_action
+          - message
         actions:
           - id: approve-claim
             title: Approve a claim
-            tools: [invoke_action]
+            tools:
+              - invoke_action
             parameters:
-              # The target's primary key. Without it no call can name the object
-              # it writes and every invocation fails validation.
-              - { id: id, type: id, required: true }
-              - { id: status, type: string, required: true }
+              - id: id
+                type: id
+                required: true
+              - id: status
+                type: string
+                required: true
             preconditions:
               - The claim is still in submitted status.
             effects:
-              - { entity: claim, kind: update, description: Records the decision. }
+              - entity: claim
+                kind: update
+                description: Records the decision.
         constraints:
           - id: claim-cap
             description: Claims above 100 need a human approver.
         expectedOutput: The claim id and the decision, or the reason none was made.
         audit: true
+        deniedTools: *a1
+        entities: *a2
+        relationships: *a3
+        functions: *a4
 ```
 
 ### The same tree as JSON
@@ -800,63 +829,20 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
   "version": "1.0.0",
   "name": "Expense claims",
   "description": "Review, approve, or reject an employee EXPENSE CLAIM, and answer questions about expense policy: what a claim is worth, whether it clears the automatic limit, who submitted it, and what the handbook says about it. The claims live in this work-map's own object store, never in files or a shell, so a request to list or check claims belongs here even when it is phrased as reading a file or running a command. Not for payroll, invoices, or vendor contracts.",
-  "match": { "triggers": ["user"], "priority": 10 },
+  "match": {
+    "triggers": ["user"],
+    "priority": 10
+  },
   "capabilityGrants": "explicit",
   "root": {
     "id": "expenses",
     "title": "Expense claims",
-    "description": "Root scope for expense claim work.",
+    "description": "Confirm the expense request and supplied claim id.",
     "ontology": {
+      "allowedTools": ["message"],
       "deniedTools": ["exec", "process", "browser"],
-      "allowedTools": [
-        "message",
-        "search_objects",
-        "get_neighbors",
-        "compute_function",
-        "knowledge_search",
-        "invoke_action"
-      ],
-      "contextHints": ["Always name the claim id you acted on."],
-      "entities": [
-        {
-          "id": "employee",
-          "title": "Employee",
-          "properties": [
-            { "id": "id", "type": "id", "primaryKey": true },
-            { "id": "name", "type": "string", "required": true }
-          ]
-        },
-        {
-          "id": "claim",
-          "title": "Expense claim",
-          "properties": [
-            { "id": "id", "type": "id", "primaryKey": true },
-            { "id": "employee-id", "type": "id", "required": true },
-            { "id": "amount", "type": "number", "required": true },
-            { "id": "status", "type": "string", "required": true },
-            { "id": "submitted-on", "type": "date" }
-          ]
-        }
-      ],
-      "relationships": [
-        {
-          "id": "submitted",
-          "from": "employee",
-          "to": "claim",
-          "cardinality": "one-to-many",
-          "inverse": "submitted-by",
-          "description": "The employee who submitted the claim."
-        }
-      ],
-      "functions": [
-        {
-          "id": "auto-approvable-amount",
-          "entity": "claim",
-          "returns": "number",
-          "expression": "min($amount, 100)",
-          "description": "What this claim can be approved without a human."
-        }
-      ]
+      "guidance": "Confirm the requested operation and exact claim id. Do not create or update a claim in this step.",
+      "expectedOutput": "The requested operation and known claim id."
     },
     "children": [
       {
@@ -870,21 +856,49 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
               "id": "file-claim",
               "title": "File a claim",
               "parameters": [
-                { "id": "id", "type": "id", "required": true },
-                { "id": "employee-id", "type": "id", "required": true },
-                { "id": "amount", "type": "number", "required": true },
-                { "id": "status", "type": "string", "required": true }
+                {
+                  "id": "id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "employee-id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "amount",
+                  "type": "number",
+                  "required": true
+                },
+                {
+                  "id": "status",
+                  "type": "string",
+                  "required": true
+                }
               ],
               "effects": [
-                { "entity": "claim", "kind": "create", "description": "Opens the claim record." }
+                {
+                  "entity": "claim",
+                  "kind": "create",
+                  "description": "Opens the claim record."
+                }
               ]
             },
             {
               "id": "attach-claim-to-employee",
               "title": "Attach the claim to its employee",
               "parameters": [
-                { "id": "id", "type": "id", "required": true },
-                { "id": "employee-id", "type": "id", "required": true }
+                {
+                  "id": "id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "employee-id",
+                  "type": "id",
+                  "required": true
+                }
               ],
               "effects": [
                 {
@@ -898,7 +912,66 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
             }
           ],
           "expectedOutput": "The claim id it opened, and the employee it belongs to.",
-          "audit": true
+          "audit": true,
+          "deniedTools": ["exec", "process", "browser"],
+          "entities": [
+            {
+              "id": "employee",
+              "title": "Employee",
+              "properties": [
+                {
+                  "id": "id",
+                  "type": "id",
+                  "primaryKey": true
+                },
+                {
+                  "id": "name",
+                  "type": "string",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "claim",
+              "title": "Expense claim",
+              "properties": [
+                {
+                  "id": "id",
+                  "type": "id",
+                  "primaryKey": true
+                },
+                {
+                  "id": "employee-id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "amount",
+                  "type": "number",
+                  "required": true
+                },
+                {
+                  "id": "status",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "id": "submitted-on",
+                  "type": "date"
+                }
+              ]
+            }
+          ],
+          "relationships": [
+            {
+              "id": "submitted",
+              "from": "employee",
+              "to": "claim",
+              "cardinality": "one-to-many",
+              "inverse": "submitted-by",
+              "description": "The employee who submitted the claim."
+            }
+          ]
         }
       },
       {
@@ -908,7 +981,75 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
         "ontology": {
           "allowedTools": ["search_objects", "get_neighbors", "compute_function"],
           "expectedOutput": "The claim id, the employee, the amount, and the auto-approvable amount.",
-          "audit": true
+          "audit": true,
+          "deniedTools": ["exec", "process", "browser"],
+          "entities": [
+            {
+              "id": "employee",
+              "title": "Employee",
+              "properties": [
+                {
+                  "id": "id",
+                  "type": "id",
+                  "primaryKey": true
+                },
+                {
+                  "id": "name",
+                  "type": "string",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "claim",
+              "title": "Expense claim",
+              "properties": [
+                {
+                  "id": "id",
+                  "type": "id",
+                  "primaryKey": true
+                },
+                {
+                  "id": "employee-id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "amount",
+                  "type": "number",
+                  "required": true
+                },
+                {
+                  "id": "status",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "id": "submitted-on",
+                  "type": "date"
+                }
+              ]
+            }
+          ],
+          "relationships": [
+            {
+              "id": "submitted",
+              "from": "employee",
+              "to": "claim",
+              "cardinality": "one-to-many",
+              "inverse": "submitted-by",
+              "description": "The employee who submitted the claim."
+            }
+          ],
+          "functions": [
+            {
+              "id": "auto-approvable-amount",
+              "entity": "claim",
+              "returns": "number",
+              "expression": "min($amount, 100)",
+              "description": "What this claim can be approved without a human."
+            }
+          ]
         }
       },
       {
@@ -918,7 +1059,8 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
         "ontology": {
           "allowedTools": ["knowledge_search", "message"],
           "knowledgeFoundations": ["acme.expense-policy"],
-          "expectedOutput": "The handbook rule that applies, cited."
+          "expectedOutput": "The handbook rule that applies, cited.",
+          "deniedTools": ["exec", "process", "browser"]
         }
       },
       {
@@ -933,20 +1075,103 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
               "title": "Approve a claim",
               "tools": ["invoke_action"],
               "parameters": [
-                { "id": "id", "type": "id", "required": true },
-                { "id": "status", "type": "string", "required": true }
+                {
+                  "id": "id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "status",
+                  "type": "string",
+                  "required": true
+                }
               ],
               "preconditions": ["The claim is still in submitted status."],
               "effects": [
-                { "entity": "claim", "kind": "update", "description": "Records the decision." }
+                {
+                  "entity": "claim",
+                  "kind": "update",
+                  "description": "Records the decision."
+                }
               ]
             }
           ],
           "constraints": [
-            { "id": "claim-cap", "description": "Claims above 100 need a human approver." }
+            {
+              "id": "claim-cap",
+              "description": "Claims above 100 need a human approver."
+            }
           ],
           "expectedOutput": "The claim id and the decision, or the reason none was made.",
-          "audit": true
+          "audit": true,
+          "deniedTools": ["exec", "process", "browser"],
+          "entities": [
+            {
+              "id": "employee",
+              "title": "Employee",
+              "properties": [
+                {
+                  "id": "id",
+                  "type": "id",
+                  "primaryKey": true
+                },
+                {
+                  "id": "name",
+                  "type": "string",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "claim",
+              "title": "Expense claim",
+              "properties": [
+                {
+                  "id": "id",
+                  "type": "id",
+                  "primaryKey": true
+                },
+                {
+                  "id": "employee-id",
+                  "type": "id",
+                  "required": true
+                },
+                {
+                  "id": "amount",
+                  "type": "number",
+                  "required": true
+                },
+                {
+                  "id": "status",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "id": "submitted-on",
+                  "type": "date"
+                }
+              ]
+            }
+          ],
+          "relationships": [
+            {
+              "id": "submitted",
+              "from": "employee",
+              "to": "claim",
+              "cardinality": "one-to-many",
+              "inverse": "submitted-by",
+              "description": "The employee who submitted the claim."
+            }
+          ],
+          "functions": [
+            {
+              "id": "auto-approvable-amount",
+              "entity": "claim",
+              "returns": "number",
+              "expression": "min($amount, 100)",
+              "description": "What this claim can be approved without a human."
+            }
+          ]
         }
       }
     ]
@@ -1060,8 +1285,8 @@ as long as you export before editing the file again.
 
 One shipped example lives in the source repository, at
 `examples/enterprise/financial-operations.clawworks-bundle.yaml`. It is a bundle,
-with 46 nodes across four domains — 30 of them
-executable steps — an object model per domain, six inlined knowledge corpora,
+with 46 executable nodes across four domains — 16 prerequisite checks and 30
+operation endpoints — an object model declared per step, six inlined knowledge corpora,
 five MCP server references, ten steps that declare actions, and `capabilityGrants:
 explicit` throughout. Read it for the shape of a
 real work-map rather than for a minimal one — every binding in it is load-bearing,
@@ -1075,18 +1300,14 @@ for record-dependent and external-operation checks.
 
 - `schemaVersion` is the number `1`, not `"1"`.
 - Every node id is unique, dotted, and lowercase.
-- Every ancestor's `allowedTools` is a superset of what its leaves need, because
-  allow-lists intersect down the path. Under `capabilityGrants: explicit` this
-  pulls against write isolation: `invoke_action` on a node is consent for every
-  step beneath it, so a root that lists it lets the whole tree write. Either put
-  the union on the root and accept that, or grant nothing there and let each step
-  name what it needs — which is what the shipped example does, at the cost of a
-  step-less runtime (ACP) reaching only its opening step's grants.
+- Every step declares the tools, foundations, MCP servers, and ontology it uses.
+  Parents perform prerequisite work; their permissions do not carry into children.
+  Use a tree-scoped policy without a node selector for common restrictions.
 - Anything a step must never touch is in `deniedTools`, not merely left out.
 - `invoke_action` (or `group:enterprise-write`) is named literally wherever an
   action must run, and every writing action takes its target's primary key as a
   parameter.
-- Each node has a `description`, so the run advances and the planner can tell
+- Each node has a `description`, so the planner can tell
   the steps apart.
 - The tree `description` names the domain's nouns and fits in 600 characters.
 - Every `knowledgeFoundations` id is registered somewhere, or the work-map ships

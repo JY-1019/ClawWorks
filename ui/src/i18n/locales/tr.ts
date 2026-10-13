@@ -330,7 +330,7 @@ export const tr: TranslationMap = {
       attachHint:
         "Bu katalogdur. Bir adımın birini çağırmasına izin vermek için Worktree'yi açın, adımı seçin ve Step bindings altına ekleyin.",
       attachHintGrantedGated:
-        "Bu iş haritası araçları açıkça tanımlar. Bir adım, listelediği veya üstündeki bir adımın listelediği araçları kullanmalıdır. Bunların dışındaki her şey çalıştırılmak yerine tek seferlik onay gerektirir ve kimse yanıt vermezse reddedilir. Yanıtlama ve okuma (message, read, memory_search), bir adım veya yönetişim politikası tarafından engellenmedikçe her adımda kullanılabilir kalır.",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "Bu gateway üzerinde kullanılabilir araç yok.",
       toolCount: "{count} araç",
       optionalBadge: "isteğe bağlı",
@@ -482,27 +482,23 @@ export const tr: TranslationMap = {
       cancel: "Cancel",
       removeTitle: "{entry} öğesini bu adımdan ayır",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "Henüz tanımlanmış bir şey yok.",
       scopeNarrowingApproval:
         "Bu adımın henüz bir araç izin listesi yok, bu nedenle reddettiği araçlar dışında her araca izin verir. İlk girişin eklenmesi bunu bir izin listesine dönüştürür. Listelenen araçlar serbestçe çalışır ve diğer her şey tek seferlik bir onay gerektirir.",
       scopeUngrantedGated:
-        "Bu iş haritası araçları açıkça tanımlar. Bir araç burada veya üstündeki bir adımda listelenmediği sürece kullanımı tek seferlik onay gerektirir — yanıtlama ve okuma (message, read, memory_search) hariç; bunlar bir adım veya yönetişim politikası tarafından engellenmedikçe kullanılabilir kalır.",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "Bu adımın henüz bir bilgi izin listesi yok, bu nedenle kayıtlı tüm temelleri sorgulayabilir. İlk girişi eklemek, sorgulamayı listelenen temellerle sınırlar.",
       knowledgeUngranted:
-        "Bu iş haritası bilgiyi açıkça verir. Adım, burada veya üstündeki bir adımda listelenene kadar hiçbir temeli sorgulamaz.",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid:
         "Bir skill adı kullanın: küçük harfler, rakamlar ve tek tireler, en fazla 64 karakter.",
       foundationIdInvalid:
         "Bir temel kimliği kullanın: noktalı küçük harf segmentleri, örneğin acme.runbooks.",
-      ancestorGateApproval:
-        "Üst adımların ({nodeIds}) bunun için kendi izin listeleri var. Governance her adımı kökten itibaren kontrol eder, bu nedenle buraya eklenen bir giriş yalnızca o adımlar da izin veriyorsa sormadan çalışır; aksi takdirde tek seferlik bir onay gerekir. Bunu o adımlara da ekleyin veya doğrudan reddetmek için Denied tools kullanın.",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "Önce bir değer girin.",
       duplicate: "Bu giriş zaten bu adımda tanımlanmış.",
       nodeMissing: "Bu adım artık ağaçta yok; yeniden yükleyip tekrar deneyin.",
@@ -537,7 +533,7 @@ export const tr: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "Kaldır",
@@ -665,7 +661,7 @@ export const tr: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "Description",
       fieldLabel: "Instructions for step {nodeId}",
@@ -680,26 +676,26 @@ export const tr: TranslationMap = {
       save: "Save behavior",
       revert: "Geri al",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "Araçlar",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "Skills",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "Bilgi",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -712,7 +708,6 @@ export const tr: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -755,17 +750,15 @@ export const tr: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "Reddetme her zaman önceliklidir. Bu adıma ve altındaki her şeye uygulanır; dalın alt kısımlarındaki hiçbir yetki bunu geri alamaz.",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "Kurumsal aracılık gözlem modunda, bu nedenle redler kaydedilir ancak uygulanmaz. Zorlama moduna geçtiğinde, red bu adıma ve altındaki her şeye uygulanır ve dalın daha aşağısındaki hiçbir izin bunu geri alamaz.",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "Kurumsal aracılık kapalı, bu nedenle redler ne uygulanır ne de kaydedilir. Bunun geçerli olması veya çalıştırma izlemesinde görünmesi için aracılığı açın.",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "mcp.servers içinde kayıtlı değil",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "Bir üst adımdan devralındı:",
     },
     skillsTab: {
       title: "Skills",
@@ -829,24 +822,26 @@ export const tr: TranslationMap = {
     treeUnavailable: "Ağaç tanımı artık mevcut değil.",
     capabilityGrants: {
       explicit: "Açık izinler",
-      inherited: "Devralınan kapsamlar",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "Bu çalışma haritası yetkinlikleri açıkça tanımlar, ancak kurumsal mod zorunlu kılınmamaktadır. Tool, skill ve MCP yetkilendirmeleri uygulanmak yerine kaydedilir. Bilgi yetkilendirmeleri her modda erişim kapsamını belirlemeye devam eder.",
       explicitHintOff:
         "Bu çalışma haritası yetkinlikleri açıkça tanımlar, ancak kurumsal aracılık etkin olmadığından hiçbir yetki geçerli değildir. Aşağıdaki yetkiler kaydedilmiştir ve aracılık etkinleştirildiğinde geçerli olacaktır.",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "Açıkça ver",
-      turnOff: "Devralınan kapsamları kullan",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "Yapı",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "Ontoloji",
     wholeTreeOverviewTitle: "Tüm ağaç görünümü",
     action: "Eylem: {id}",
@@ -872,7 +867,7 @@ export const tr: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "Düğümü sürükleyin · yakınlaştırmak için kaydırın",
     graphExpand: "Open whole work-map",

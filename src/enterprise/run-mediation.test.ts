@@ -557,7 +557,7 @@ describe("enterprise step tracing", () => {
     vi.fn(async () => ({
       kind: "decided" as const,
       treeId: "acme.flow",
-      routes: [],
+      routes: ["flow.a", "flow.b"],
       rationale: "flow",
     }));
 
@@ -593,7 +593,7 @@ describe("enterprise step tracing", () => {
     }
   }
 
-  it("opens on step 1 when only a node-scoped policy makes the run track steps", async () => {
+  it("opens every selected parent before its child, even without guidance", async () => {
     const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
     const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
     // No guidance, no descriptions, no audit flag: the PLAN alone says "no steps",
@@ -638,11 +638,11 @@ describe("enterprise step tracing", () => {
         routePlanner: vi.fn(async () => ({
           kind: "decided" as const,
           treeId: "acme.bare",
-          routes: [],
+          routes: ["bare.one", "bare.two"],
           rationale: "bare",
         })),
       });
-      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("bare.one");
+      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("bare");
       endEnterpriseRun({ runId, status: "completed" });
     } finally {
       removeImportedWorkflowTree("acme.bare");
@@ -650,7 +650,7 @@ describe("enterprise step tracing", () => {
     }
   });
 
-  it("opens no step for a work-map that has none", async () => {
+  it("tracks a single guided executable step", async () => {
     const { importWorkflowTreeContent, removeImportedWorkflowTree } = await import("./tree-io.js");
     const { invalidateWorkflowTreeRegistry } = await import("./tree-registry.js");
     // A childless root IS its own single leaf as far as the step sequence is
@@ -678,12 +678,12 @@ describe("enterprise step tracing", () => {
         routePlanner: vi.fn(async () => ({
           kind: "decided" as const,
           treeId: "acme.single",
-          routes: [],
+          routes: ["single"],
           rationale: "single",
         })),
       });
       endEnterpriseRun({ runId, status: "completed" });
-      expect(latestEventKinds(runId)).not.toContain("node.entered");
+      expect(latestEventKinds(runId)).toContain("node.entered");
     } finally {
       removeImportedWorkflowTree("acme.single");
       invalidateWorkflowTreeRegistry();
@@ -715,10 +715,10 @@ describe("enterprise step tracing", () => {
       // The terminal event always fires, including for a route left mid-step: it
       // is the only close signal a client that does not own the run ever gets.
       expect(seen).toEqual([
-        "entered:flow.a:1/2",
-        "completed:flow.a:1/2",
-        "entered:flow.b:2/2",
-        "ended:flow.b:2/2",
+        "entered:flow:1/3",
+        "completed:flow:1/3",
+        "entered:flow.a:2/3",
+        "ended:flow.a:2/3",
       ]);
     } finally {
       unsub();
@@ -786,9 +786,9 @@ describe("enterprise step tracing", () => {
         "run.started:-",
         // Binding this work-map takes a planner, and consulting one is itself traced.
         "route.selected:-",
+        "node.entered:flow",
+        "node.completed:flow",
         "node.entered:flow.a",
-        "node.completed:flow.a",
-        "node.entered:flow.b",
         "run.ended:-",
       ]);
     });
@@ -803,12 +803,12 @@ describe("enterprise step tracing", () => {
         routePlanner: flowPlanner(),
       });
       // A step-tracking plan opens ON its first step, whatever runtime it runs on.
-      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.a");
+      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow");
       completeEnterpriseStep({ runId });
       // After advancement the persisted plan tracks the current step.
-      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.b");
+      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.a");
       endEnterpriseRun({ runId, status: "completed" });
-      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.b");
+      expect(getEnterpriseRunRecord(runId)?.plan.activeNodeId).toBe("flow.a");
     });
   });
 
@@ -846,7 +846,7 @@ describe("enterprise step tracing", () => {
         runtimeContinuation: true,
         routePlanner: flowPlanner(),
       });
-      expect(getEnterpriseRunRecord(followup)?.plan.activeNodeId).toBe("flow.a");
+      expect(getEnterpriseRunRecord(followup)?.plan.activeNodeId).toBe("flow");
       endEnterpriseRun({ runId: followup, status: "completed" });
 
       // The operator's own next request opens on step B, and says so in the trace.
@@ -859,11 +859,11 @@ describe("enterprise step tracing", () => {
         routePlanner: flowPlanner(),
       });
       const secondRecord = getEnterpriseRunRecord(second);
-      expect(secondRecord?.plan.activeNodeId).toBe("flow.b");
+      expect(secondRecord?.plan.activeNodeId).toBe("flow.a");
       const resumed = listEnterpriseRunEvents(secondRecord?.executionId ?? "").find(
         (event) => event.kind === "run.resumed",
       );
-      expect(resumed?.payload).toMatchObject({ openedOn: "flow.b", carriedSteps: ["flow.a"] });
+      expect(resumed?.payload).toMatchObject({ openedOn: "flow.a", carriedSteps: ["flow"] });
       endEnterpriseRun({ runId: second, status: "completed" });
     });
   });
@@ -883,7 +883,7 @@ describe("enterprise step tracing", () => {
       const record = getEnterpriseRunRecord(runId);
       const kinds = listEnterpriseRunEvents(record?.executionId ?? "").map((event) => event.kind);
       expect(kinds).toEqual(["run.started", "route.selected", "node.entered", "run.ended"]);
-      expect(record?.plan.activeNodeId).toBe("flow.a");
+      expect(record?.plan.activeNodeId).toBe("flow");
     });
   });
 });

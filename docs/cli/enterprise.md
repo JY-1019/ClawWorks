@@ -70,8 +70,9 @@ openclaw enterprise bundle import <file>
 
 - Bundles do not contain live ontology objects or links and cannot restore them
   after a tree is removed. Use a state backup to preserve runtime data.
-- Bundled knowledge is workflow-scoped: a run may only retrieve foundations its
-  own tree imported, so a bundle's knowledge never leaks into another workflow.
+- Bundled knowledge is step-scoped: a run may only retrieve foundations its
+  own tree imported and its active step permits, so a bundle's knowledge never
+  leaks into another workflow or grants access through a parent attachment.
 - Bundled knowledge is not versioned with tree-definition revision history.
   Restoring an older tree revision restores the definition, not that revision's
   bundled knowledge; re-import the bundle to restore its knowledge.

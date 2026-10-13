@@ -327,7 +327,7 @@ export const hi: TranslationMap = {
       attachHint:
         "यह कैटलॉग है। किसी स्टेप को कॉल करने देने के लिए, Worktree खोलें, स्टेप चुनें, और इसे Step bindings के अंतर्गत जोड़ें।",
       attachHintGrantedGated:
-        "यह वर्क-मैप टूल्स को स्पष्ट रूप से अनुमति देता है। एक स्टेप को उन टूल्स का उपयोग करना चाहिए जो उसमें सूचीबद्ध हैं, या जो उसके ऊपर के किसी स्टेप में सूचीबद्ध हैं। कुछ भी अन्य चलने के बजाय एक बार की स्वीकृति माँगता है, और यदि कोई जवाब नहीं देता तो अस्वीकार कर दिया जाता है। उत्तर देना और पढ़ना (message, read, memory_search) हर स्टेप पर उपलब्ध रहता है जब तक कोई स्टेप या governance नीति उन्हें अस्वीकार न करे।",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "इस Gateway पर कोई टूल उपलब्ध नहीं है।",
       toolCount: "{count} टूल",
       optionalBadge: "वैकल्पिक",
@@ -478,26 +478,22 @@ export const hi: TranslationMap = {
       cancel: "रद्द करें",
       removeTitle: "इस चरण से {entry} अलग करें",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "अभी तक कोई घोषित नहीं।",
       scopeNarrowingApproval:
         "इस चरण में अभी तक कोई टूल अनुमति सूची नहीं है, इसलिए यह अस्वीकृत टूल को छोड़कर हर टूल को अनुमति देता है। पहली प्रविष्टि जोड़ने से यह एक अनुमति सूची में बदल जाती है। सूचीबद्ध टूल स्वतंत्र रूप से चलते हैं और किसी भी अन्य टूल के लिए एकमुश्त अनुमोदन की आवश्यकता होती है।",
       scopeUngrantedGated:
-        "यह वर्क-मैप टूल्स को स्पष्ट रूप से अनुमति देता है। जब तक कोई टूल यहाँ या ऊपर के किसी स्टेप में सूचीबद्ध नहीं होता, उसका उपयोग करने के लिए एक बार की स्वीकृति आवश्यक है — सिवाय उत्तर देने और पढ़ने (message, read, memory_search) के, जो तब तक उपलब्ध रहते हैं जब तक कोई स्टेप या governance नीति उन्हें अस्वीकार न करे।",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "इस स्टेप में अभी तक कोई ज्ञान अनुमति सूची नहीं है, इसलिए यह हर पंजीकृत फाउंडेशन से क्वेरी कर सकता है। पहली प्रविष्टि जोड़ने पर यह केवल सूचीबद्ध फाउंडेशन तक सीमित हो जाएगा।",
       knowledgeUngranted:
-        "यह वर्क-मैप स्पष्ट रूप से ज्ञान प्रदान करता है। जब तक यहाँ या इसके ऊपर के किसी स्टेप पर कोई फाउंडेशन सूचीबद्ध नहीं होता, तब तक स्टेप कोई फाउंडेशन क्वेरी नहीं करता।",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid: "Skill नाम का उपयोग करें: छोटे अक्षर, अंक, और एकल हाइफ़न, अधिकतम 64 अक्षर।",
       foundationIdInvalid:
         "एक foundation id का उपयोग करें: डॉटेड लोअरकेस सेगमेंट, उदाहरण के लिए acme.runbooks.",
-      ancestorGateApproval:
-        "पैरेंट स्टेप्स ({nodeIds}) के पास इसके लिए अपनी अलग allowlist है। Governance रूट से प्रत्येक स्टेप की जाँच करता है, इसलिए यहाँ जोड़ी गई एंट्री केवल तभी बिना पूछे चलेगी जब वे स्टेप्स भी इसे अनुमति दें; अन्यथा इसे एक बार की अनुमति की आवश्यकता होगी। इसे उन स्टेप्स में भी जोड़ें, या इसे पूरी तरह से अस्वीकार करने के लिए Denied tools का उपयोग करें।",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "पहले एक मान दर्ज करें।",
       duplicate: "यह प्रविष्टि इस स्टेप पर पहले से घोषित है।",
       nodeMissing: "वह स्टेप अब ट्री में नहीं है; पुनः लोड करें और दोबारा प्रयास करें।",
@@ -531,7 +527,7 @@ export const hi: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "हटाएँ",
@@ -659,7 +655,7 @@ export const hi: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "विवरण",
       fieldLabel: "Instructions for step {nodeId}",
@@ -674,26 +670,26 @@ export const hi: TranslationMap = {
       save: "Save behavior",
       revert: "पूर्ववत करें",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "टूल्स",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "कौशल",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "नॉलेज",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -706,7 +702,6 @@ export const hi: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -750,17 +745,15 @@ export const hi: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "अस्वीकृति हमेशा जीतती है। यह इस चरण और इसके अंतर्गत सब पर लागू होती है, और शाखा में आगे कोई भी grant इसे वापस नहीं ले सकता।",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "Enterprise मीडिएशन निरीक्षण कर रहा है, इसलिए अस्वीकृतियाँ रिकॉर्ड की जाती हैं लेकिन लागू नहीं होतीं। जब यह लागू करेगा, तो अस्वीकृति इस चरण और इसके अंतर्गत सब कुछ पर लागू होगी, और शाखा में आगे कोई अनुमति इसे वापस नहीं ले सकती।",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "Enterprise मीडिएशन बंद है, इसलिए अस्वीकृतियाँ न लागू होती हैं न रिकॉर्ड। इसे प्रभावी करने या रन ट्रेस में दिखाने के लिए मीडिएशन चालू करें।",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "mcp.servers में पंजीकृत नहीं",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "पैरेंट स्टेप से इनहेरिट किया गया:",
     },
     skillsTab: {
       title: "कौशल",
@@ -823,24 +816,26 @@ export const hi: TranslationMap = {
     treeUnavailable: "ट्री परिभाषा अब उपलब्ध नहीं है।",
     capabilityGrants: {
       explicit: "स्पष्ट अनुदान",
-      inherited: "विरासत में मिले स्कोप",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "यह वर्क-मैप स्पष्ट रूप से क्षमताएँ प्रदान करता है, लेकिन एंटरप्राइज़ मोड लागू नहीं है। Tool, skill और MCP अनुदान लागू होने के बजाय रिकॉर्ड किए जाते हैं। Knowledge अनुदान हर मोड में रिट्रीवल को स्कोप करते हैं।",
       explicitHintOff:
         "यह वर्क-मैप स्पष्ट रूप से क्षमताएँ प्रदान करता है, लेकिन एंटरप्राइज़ मीडिएशन सक्रिय नहीं है, इसलिए कोई अनुदान लागू नहीं होता। नीचे दिए गए अनुदान सहेजे गए हैं और मीडिएशन सक्षम होने पर प्रभावी होंगे।",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "स्पष्ट रूप से अनुदान दें",
-      turnOff: "इनहेरिटेड स्कोप का उपयोग करें",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "संरचना",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "ऑन्टोलॉजी",
     wholeTreeOverviewTitle: "संपूर्ण ट्री अवलोकन",
     action: "क्रिया: {id}",
@@ -866,7 +861,7 @@ export const hi: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "नोड खींचें · ज़ूम करने के लिए स्क्रॉल करें",
     graphExpand: "Open whole work-map",

@@ -324,7 +324,7 @@ export const th: TranslationMap = {
       attachHint:
         "นี่คือแค็ตตาล็อก หากต้องการให้ขั้นตอนเรียกใช้เครื่องมือ ให้เปิด Worktree เลือกขั้นตอน แล้วเพิ่มภายใต้ Step bindings",
       attachHintGrantedGated:
-        "แผนงานนี้กำหนดเครื่องมือที่อนุญาตไว้อย่างชัดเจน แต่ละขั้นตอนควรใช้เครื่องมือที่ระบุไว้ในขั้นตอนนั้น หรือที่ระบุไว้ในขั้นตอนระดับบน สิ่งอื่นนอกเหนือจากนี้จะต้องขออนุมัติเป็นรายครั้งแทนที่จะทำงานทันที และจะถูกปฏิเสธหากไม่มีผู้ตอบ การตอบกลับและการอ่าน (message, read, memory_search) ยังคงใช้งานได้ในทุกขั้นตอน เว้นแต่ขั้นตอนนั้นจะปฏิเสธหรือนโยบายการกำกับดูแลจะปฏิเสธ",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "ไม่มีเครื่องมือที่พร้อมใช้งานบน Gateway นี้",
       toolCount: "{count} เครื่องมือ",
       optionalBadge: "ไม่บังคับ",
@@ -475,25 +475,21 @@ export const th: TranslationMap = {
       cancel: "Cancel",
       removeTitle: "ถอด {entry} ออกจากขั้นตอนนี้",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "ยังไม่มีการประกาศ",
       scopeNarrowingApproval:
         "ขั้นตอนนี้ยังไม่มีรายการเครื่องมือที่อนุญาต จึงอนุญาตเครื่องมือทั้งหมดยกเว้นที่ถูกปฏิเสธ การเพิ่มรายการแรกจะเปลี่ยนเป็นรายการอนุญาต เครื่องมือที่ระบุไว้จะทำงานได้อย่างอิสระ และเครื่องมืออื่น ๆ จะต้องได้รับการอนุมัติเป็นรายครั้ง",
       scopeUngrantedGated:
-        "แผนงานนี้กำหนดเครื่องมือที่อนุญาตไว้อย่างชัดเจน จนกว่าเครื่องมือจะถูกระบุไว้ที่นี่หรือในขั้นตอนระดับบน การใช้งานจะต้องขออนุมัติเป็นรายครั้ง — ยกเว้นการตอบกลับและการอ่าน (message, read, memory_search) ซึ่งยังคงใช้งานได้ เว้นแต่ขั้นตอนนั้นจะปฏิเสธหรือนโยบายการกำกับดูแลจะปฏิเสธ",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "ขั้นตอนนี้ยังไม่มีรายการอนุญาตความรู้ จึงสามารถสืบค้นทุก Foundation ที่ลงทะเบียนไว้ได้ การเพิ่มรายการแรกจะจำกัดให้เฉพาะ Foundation ที่ระบุไว้เท่านั้น",
       knowledgeUngranted:
-        "แผนงานนี้ให้สิทธิ์เข้าถึงความรู้อย่างชัดเจน ขั้นตอนจะไม่สืบค้นฐานความรู้ใดๆ จนกว่าจะมีการระบุไว้ที่นี่หรือในขั้นตอนด้านบน",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid: "ใช้ชื่อ Skill: ตัวอักษรพิมพ์เล็ก ตัวเลข และขีดกลางเดี่ยว ไม่เกิน 64 ตัวอักษร",
       foundationIdInvalid: "ใช้ ID ของ Foundation: ส่วนตัวอักษรพิมพ์เล็กคั่นด้วยจุด เช่น acme.runbooks",
-      ancestorGateApproval:
-        "ขั้นตอนหลัก ({nodeIds}) มีรายการอนุญาตของตนเองสำหรับสิ่งนี้ Governance จะตรวจสอบแต่ละขั้นตอนจากรากขึ้นไป ดังนั้นรายการที่เพิ่มที่นี่จะทำงานโดยไม่ต้องขออนุมัติก็ต่อเมื่อขั้นตอนเหล่านั้นอนุญาตด้วยเท่านั้น มิฉะนั้นจะต้องมีการอนุมัติแบบครั้งเดียว ให้เพิ่มรายการในขั้นตอนเหล่านั้นด้วย หรือใช้ Denied tools เพื่อปฏิเสธโดยตรง",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "กรุณากรอกค่าก่อน",
       duplicate: "รายการนี้ถูกประกาศในขั้นตอนนี้แล้ว",
       nodeMissing: "ขั้นตอนนั้นไม่อยู่ในทรีแล้ว กรุณาโหลดใหม่แล้วลองอีกครั้ง",
@@ -526,7 +522,7 @@ export const th: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "ลบ",
@@ -654,7 +650,7 @@ export const th: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "Description",
       fieldLabel: "Instructions for step {nodeId}",
@@ -669,26 +665,26 @@ export const th: TranslationMap = {
       save: "Save behavior",
       revert: "ย้อนกลับ",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "เครื่องมือ",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "Skills",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "ฐานความรู้",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -701,7 +697,6 @@ export const th: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -744,17 +739,15 @@ export const th: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "การปฏิเสธจะมีผลเหนือกว่าเสมอ โดยจะมีผลกับขั้นตอนนี้และทุกอย่างภายใต้ขั้นตอนนี้ และไม่มีการให้สิทธิ์ใดในสาขาย่อยที่จะเพิกถอนได้",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to this step and everything under it, and no grant further down the branch can take it back.",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "Enterprise mediation is off, so denials are neither applied nor recorded. Turn mediation on for this to take effect or appear in the run trace.",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "ไม่ได้ลงทะเบียนใน mcp.servers",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "สืบทอดมาจากขั้นตอนหลัก:",
     },
     skillsTab: {
       title: "Skills",
@@ -817,24 +810,26 @@ export const th: TranslationMap = {
     treeUnavailable: "คำจำกัดความของต้นไม้ไม่พร้อมใช้งานแล้ว",
     capabilityGrants: {
       explicit: "การให้สิทธิ์โดยตรง",
-      inherited: "ขอบเขตที่สืบทอด",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "แผนงานนี้ให้สิทธิ์ความสามารถอย่างชัดแจ้ง แต่โหมดองค์กรไม่ได้บังคับใช้ การให้สิทธิ์เครื่องมือ, Skills และ MCP จะถูกบันทึกไว้แต่ไม่ได้นำไปใช้งาน การให้สิทธิ์ความรู้ยังคงจำกัดขอบเขตการเรียกค้นในทุกโหมด",
       explicitHintOff:
         "แผนผังงานนี้มอบความสามารถอย่างชัดเจน แต่การไกล่เกลี่ยระดับองค์กรไม่ได้เปิดใช้งานอยู่ จึงไม่มีการมอบสิทธิ์ใดมีผลบังคับใช้ การมอบสิทธิ์ด้านล่างจะถูกบันทึกไว้และมีผลเมื่อเปิดใช้งานการไกล่เกลี่ย",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "ให้สิทธิ์อย่างชัดเจน",
-      turnOff: "ใช้ขอบเขตที่สืบทอดมา",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "โครงสร้าง",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "ออนโทโลยี",
     wholeTreeOverviewTitle: "ภาพรวมทั้งหมด",
     action: "แอคชัน: {id}",
@@ -860,7 +855,7 @@ export const th: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "ลากโหนด · เลื่อนเพื่อซูม",
     graphExpand: "Open whole work-map",

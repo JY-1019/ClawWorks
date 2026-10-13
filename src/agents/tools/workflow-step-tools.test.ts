@@ -69,7 +69,7 @@ describe("complete_step", () => {
     expect(payload).toMatchObject({
       routeComplete: false,
       completed: { nodeId: "desk.triage" },
-      step: { nodeId: "desk.answer", ordinal: 2, total: 2 },
+      step: { nodeId: "desk.answer", ordinal: 3, total: 3 },
     });
     // The message has to carry the step id: it is the name the model uses to
     // address the step, and the one every denial and trace event uses.
@@ -88,7 +88,7 @@ describe("complete_step", () => {
     // Refusing is not enough — the result has to say where the run actually is,
     // or the model has no way to recover.
     expect(String(payload.error)).toContain("desk.triage");
-    expect(payload.step).toMatchObject({ nodeId: "desk.triage", ordinal: 1 });
+    expect(payload.step).toMatchObject({ nodeId: "desk.triage", ordinal: 2 });
   });
 
   it("refuses an unmediated run as a result, not a throw", async () => {
@@ -96,13 +96,16 @@ describe("complete_step", () => {
     expect(String(payload.error)).toContain("not governed by a workflow tree");
   });
 
-  it("refuses a single-scope run that has no steps to walk", async () => {
+  it("completes a single authored step", async () => {
     makeRun({
       activeNodeId: "desk",
       nodes: [{ nodeId: "desk", parentId: null, seq: 0, title: "Desk", ontology: {} }],
     });
     const payload = await callCompleteStep(RUN_ID);
-    expect(String(payload.error)).toContain("no steps");
+    expect(payload).toMatchObject({
+      routeComplete: true,
+      completed: { nodeId: "desk", ordinal: 1, total: 1 },
+    });
   });
 
   it("anchors the completed step to the transcript row that closed it", async () => {

@@ -1,89 +1,3 @@
-# ClawWorks enterprise example — the one work-map that exercises every governed axis.
-#
-#   pnpm openclaw enterprise bundle import examples/enterprise/financial-operations.clawworks-bundle.yaml
-#   pnpm openclaw gateway restart
-#
-# The restart is not optional: a running gateway holds its tree registry for the
-# life of the process, so a CLI import is invisible to the Control UI and to runs
-# until it reloads.
-#
-# WHY THIS IS THE ONLY EXAMPLE
-# ----------------------------
-# There used to be six, and each demonstrated one axis with the others switched
-# off — a tree with preloaded objects and no knowledge, a bundle with knowledge and
-# no objects, a big tree nobody could run, a toy that granted one MCP server to
-# one step. Nothing showed the case an operator actually has: a regulated
-# operation where thirty steps, five MCP servers, six corpora and ten ontology
-# writes all constrain each other at once, and where getting one binding wrong is
-# a governance hole rather than a typo. That is what this file is.
-#
-# WHAT IT GOVERNS, AND WHERE TO LOOK
-# ----------------------------------
-#   route finding    46 nodes (30 of them executable steps), depth 5, four
-#                    domains with confusable siblings
-#                    (finops.risk.monitoring.alert-triage vs
-#                    finops.claims.intake.triage, finops.risk.underwriting.decision
-#                    vs finops.claims.adjudication.decision, and four more). A
-#                    correct route is a handful of nodes; a confused planner drags
-#                    in a whole domain.
-#   tools            deny-by-default: `capabilityGrants: explicit`. Every step
-#                    lists what it may call, and the ten steps that write name
-#                    `invoke_action` LITERALLY — that is the ontology write opt-in,
-#                    and it is existential over the root→step path, which is why
-#                    the root grants no tools at all (see the root comment).
-#   ontology         object types are declared by the DOMAIN that operates on
-#                    them, never at the root, so claims cannot address a `sar`
-#                    and risk cannot address a `payment`. No instances ship
-#                    below: the systems of record own the data (see below).
-#   knowledge        six corpora, inlined. One is reachable from two domains
-#                    (acme.aml-policy: risk and reporting), one from three
-#                    (acme.privacy-standard), two are locked to a single domain
-#                    (acme.regulatory-code, acme.credit-policy), and one step holds
-#                    a corpus AND the object store so the model has to choose.
-#   MCP              five servers, each attached to the steps that need it and
-#                    denied everywhere else. One server is attached in two
-#                    different domains; one step attaches a server and then takes
-#                    a single destructive operation back with `deniedTools`. On a
-#                    hookless runtime the launch ceiling is stricter still — see
-#                    finops.claims.settlement.payment.
-#   skills           two bundled skills, declared on four steps, each skill in two
-#                    different domains. Under explicit grants the run's skill
-#                    catalog is narrowed to whatever the ROUTE reaches.
-#   role prompts     `guidance` on fifteen steps — every one of the ten that
-#                    writes, plus the five where two sources or two sibling steps
-#                    could disagree. It is the field an operator types into the
-#                    node inspector, and the one thing here that GRANTS nothing:
-#                    it reaches the model as instruction in the step digest, and
-#                    where it and the tool scope conflict, the scope wins. Every
-#                    write step uses it for the same rule — say what has to be
-#                    gathered before the write, and stop rather than invent it.
-#
-# WHAT AN OPERATOR STILL HAS TO SUPPLY
-# ------------------------------------
-# The five MCP servers, and the data behind them. A bundle can carry a server's
-# NAME but never the server: its transport and credentials are deployment
-# configuration. Register them under `mcp.servers` (Enterprise -> MCP, or
-# `openclaw mcp add`) as `acme-screening`, `acme-ledger`, `acme-tracker`,
-# `acme-filing` and `acme-core-banking`; until then the MCP tab reports them
-# unregistered and the steps that attach them fall closed.
-#
-# There are no preloaded customers or accounts here, and that is the point. Core
-# banking owns them, so this work-map declares what a customer IS and which
-# operations a step may perform on one, and reads the values from the system that
-# holds them. The corpora and the two skills still resolve on a stock install.
-#
-# `governanceMode: enforce` at the bottom is what makes an import into an
-# `observe` or `off` deployment report a downgrade: everything above is written as
-# deny-by-default, and only enforce mode actually denies.
-#
-# WHAT IS ACTUALLY ENFORCED (do not read more into the fields than this):
-# `allowedTools`/`deniedTools` (an independent gate at every node on the
-# root→active path), `mcpServers`, `knowledgeFoundations`, `skills` (catalog
-# narrowing, under explicit grants), and `audit`. The semantic fields — property
-# types, primaryKey, cardinality, action `parameters`, `preconditions`, `effects`,
-# and `constraints` — are validated on import and rendered into the prompt digest
-# and the Enterprise tab, but only `effects` gates a call. Treat `preconditions`
-# and `constraints` as advice to the model, not invariants.
 schema: clawworks.workflow-bundle
 schemaVersion: 1
 trees:
@@ -99,14 +13,12 @@ trees:
     # whose cue was cut let an `ls`-phrased request about its own records escape
     # into the permissive default tree with exec wide open.
     description: >-
-      Customer lifecycle, financial-crime risk, claims handling, and regulatory
-      reporting for a retail financial-services operation. Owns the records —
-      customers, accounts, transactions, alerts, investigation cases, SARs,
-      policies, claims, payments, filings — and the rules over them: KYC evidence,
-      AML thresholds, claims authority, filing deadlines, and what data may leave.
-      A request naming one of those records, or asking the rule about one, belongs
-      here — including when phrased as reading a file, listing a directory, or
-      querying a database, because the records live in this work-map's own store.
+      Customer lifecycle, financial-crime risk, claims handling, and regulatory reporting for a retail
+      financial-services operation. Owns the records — customers, accounts, transactions, alerts,
+      investigation cases, SARs, policies, claims, payments, filings — and the rules over them: KYC evidence,
+      AML thresholds, claims authority, filing deadlines, and what data may leave. A request naming one of
+      those records, or asking the rule about one, belongs here — including when phrased as reading a file,
+      listing a directory, or querying a database, because the records live in this work-map's own store.
     match:
       # Whether THIS TREE is the right tree is a model judgement; picking the branch
       # inside it is the route planner's job. So the description above and the step
@@ -117,34 +29,14 @@ trees:
       # not listed here can never bind this tree, whatever the request says.
       triggers: [user, system]
       priority: 30
-    # The switch that makes every binding below load-bearing. Remove it and this
-    # work-map inverts: a step that lists nothing would reach EVERYTHING its
-    # ancestors allow, and four of the five families here would stop denying.
     capabilityGrants: explicit
     root:
       id: finops
       title: Financial operations
       description: >-
-        Root scope for regulated financial operations. Hard denials live here;
-        every grant is made further down.
+        Check the request and prerequisites for financial operations.
       ontology:
-        # The root grants NO tools, and that is a decision, not an omission.
-        #
-        # Two rules collide at this node. (1) `allowedTools` is an INTERSECTION
-        # gate: a non-empty list here would have to be a superset of every step's,
-        # or the step's own grant is refused by its own root. (2) The ontology
-        # write opt-in is EXISTENTIAL over the root→step path (runtime.ts
-        # explicitlyAllowsOntologyWrites): naming `invoke_action` here to satisfy
-        # rule 1 would hand write consent to all 30 steps, including those that
-        # must never write. Under explicit grants there is a third option — grant
-        # nothing here and let each step name what it needs — so the root carries
-        # only what must apply everywhere.
-        #
-        # The cost is honest and worth stating: a runtime that cannot advance
-        # steps (ACP) is judged on the FIRST step of its route and reaches only
-        # that step's grants plus the core floor. That is fail-closed, which is the
-        # right side to fail on for money movement and SAR filing.
-        deniedTools: [exec, process, browser]
+        deniedTools: &deniedTools_1 [exec, process, browser]
         constraints:
           - id: no-full-pan
             description: Never repeat a full payment card or account number; the last four digits identify it.
@@ -155,20 +47,20 @@ trees:
         contextHints:
           - Name every record id you read or wrote, and the corpus section any rule came from.
         audit: true
+        guidance:
+          Confirm the requested operation, supplied record ids, and explicit exclusions. Ask for missing
+          context; do not perform a downstream action. Complete this step before entering the selected next
+          step.
+        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+        allowedTools: [message]
       children:
-        # =====================================================================
-        # DOMAIN 1 — CUSTOMER LIFECYCLE
-        # =====================================================================
-        # Object types are declared HERE, not on the root. A type declared at the
-        # root is on every node's scope, which is the same as no scoping at all;
-        # declared on a domain, it is exactly what makes `finops.claims` unable to
-        # address an `account` and `finops.risk` unable to address a `policy`.
         - id: finops.customer
           title: Customer lifecycle
-          description: Onboard a customer, keep their records current, and close them out.
+          description: Check the request and prerequisites for customer lifecycle.
           ontology:
             entities:
-              - id: customer
+              - &entities_finops_customer_onboarding_customer
+                id: customer
                 title: Customer
                 properties:
                   - { id: customer-id, type: id, primaryKey: true }
@@ -176,7 +68,8 @@ trees:
                   - { id: tier, type: string }
                   - { id: risk-rating, type: string }
                   - { id: jurisdiction, type: string }
-              - id: account
+              - &entities_finops_customer_onboarding_account
+                id: account
                 title: Account
                 properties:
                   - { id: account-id, type: id, primaryKey: true }
@@ -184,7 +77,8 @@ trees:
                   - { id: product, type: string, required: true }
                   - { id: status, type: string, required: true }
                   - { id: balance, type: number }
-              - id: document
+              - &entities_finops_customer_onboarding_document
+                id: document
                 title: Onboarding document
                 properties:
                   - { id: document-id, type: id, primaryKey: true }
@@ -195,7 +89,8 @@ trees:
               # booking date monitoring needs to detect structuring. A type may be
               # re-declared as long as the property TYPES agree; narrowing is how a
               # domain says which fields are its business.
-              - id: transaction
+              - &entities_finops_customer_onboarding_transaction
+                id: transaction
                 title: Transaction
                 properties:
                   - { id: transaction-id, type: id, primaryKey: true }
@@ -203,56 +98,94 @@ trees:
                   - { id: amount, type: number, required: true }
                   - { id: counterparty, type: string }
             relationships:
-              - id: customer-holds-account
+              - &relationships_finops_customer_onboarding_customer_holds_account
+                id: customer-holds-account
                 from: customer
                 to: account
                 cardinality: one-to-many
                 description: The customer who owns the account.
-              - id: account-books-transaction
+              - &relationships_finops_customer_onboarding_account_books_transaction
+                id: account-books-transaction
                 from: account
                 to: transaction
                 cardinality: one-to-many
                 description: The account a transaction was booked against.
-              - id: customer-evidenced-by-document
+              - &relationships_finops_customer_onboarding_customer_evidenced_by_document
+                id: customer-evidenced-by-document
                 from: customer
                 to: document
                 cardinality: one-to-many
                 description: The identity evidence held for a customer.
             functions:
-              - id: account-in-good-standing
+              - &functions_finops_customer_onboarding_account_in_good_standing
+                id: account-in-good-standing
                 entity: account
                 returns: boolean
                 expression: $status == 'active'
                 description: Whether the account may transact today.
-            # The domain's corpora. Declared here rather than at the root for the
-            # same reason the object types are: a foundation named at the root
-            # would be queryable from all 30 steps. Each node with a non-empty list
-            # is an independent narrowing gate, so a child may drop one of these but
-            # can never add a sixth.
-            knowledgeFoundations: [acme.kyc-manual, acme.privacy-standard]
+            knowledgeFoundations: &knowledgeFoundations_2 [acme.kyc-manual, acme.privacy-standard]
+            deniedTools: *deniedTools_1
+            guidance:
+              Confirm the context and required inputs for customer lifecycle. Use supplied facts and prior step
+              results; do not execute a child action here. Complete this step before entering the selected
+              next step.
+            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            allowedTools:
+              &allowedTools_6 [message, search_objects, compute_function, knowledge_search]
           children:
             - id: finops.customer.onboarding
               title: Onboard a new customer
-              description: Verify identity, screen, rate the risk, and open the account.
+              description: Check the request and prerequisites for onboard a new customer.
               children:
                 - id: finops.customer.onboarding.identity-check
                   title: Check the identity evidence
                   description: Read the documents held for the applicant and say what is missing.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, knowledge_search, message]
-                    knowledgeFoundations: [acme.kyc-manual, acme.privacy-standard]
+                    allowedTools:
+                      &allowedTools_9 [search_objects, get_neighbors, knowledge_search, message]
+                    knowledgeFoundations: *knowledgeFoundations_2
                     expectedOutput: Which documents are held, which are verified, and what is still missing.
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
+                    deniedTools: *deniedTools_1
 
                 - id: finops.customer.onboarding.kyc-review
                   title: Review the applicant against sanctions and PEP lists
-                  description: Screen the applicant externally and record whether the review clears.
+                  description: Check the request and prerequisites for review the applicant against sanctions and pep lists.
                   ontology:
                     # Both corpora reach this branch, and the privacy one is not
                     # decoration: the leaf below sends a customer's name to an
                     # outside provider, which is the rule's own subject. The
                     # narrowing happens one level DOWN instead, on the sibling
                     # that never leaves the building.
-                    knowledgeFoundations: [acme.kyc-manual, acme.privacy-standard]
+                    knowledgeFoundations: *knowledgeFoundations_2
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
+                    deniedTools: *deniedTools_1
+                    guidance:
+                      Confirm the context and required inputs for review the applicant against sanctions and pep lists.
+                      Use supplied facts and prior step results; do not execute a child action here. Complete
+                      this step before entering the selected next step.
+                    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                    allowedTools: *allowedTools_6
                   children:
                     - id: finops.customer.onboarding.kyc-review.screening
                       title: Screen against the watchlists
@@ -281,17 +214,27 @@ trees:
                         # and finops.risk.monitoring.investigation.link-analysis —
                         # and denied on every other step, including its own
                         # sibling below.
-                        mcpServers: [acme-screening]
+                        mcpServers: &mcpServers_30 [acme-screening]
                         # The step that actually sends customer data outside, so it
                         # holds the standard that says how much may go.
-                        knowledgeFoundations: [acme.kyc-manual, acme.privacy-standard]
+                        knowledgeFoundations: *knowledgeFoundations_2
                         guidance: >-
-                          Send only what the privacy standard allows — the applicant's
-                          name and jurisdiction, never the whole record. The service
-                          returns candidate matches, not a verdict: report what came
-                          back and leave the judgement to the adjudication step beside
-                          this one.
+                          Send only what the privacy standard allows — the applicant's name and jurisdiction,
+                          never the whole record. The service returns candidate matches, not a verdict: report
+                          what came back and leave the judgement to the adjudication step beside this one.
                         expectedOutput: The screening verdict, the list version, and what was sent.
+                        entities:
+                          - *entities_finops_customer_onboarding_customer
+                          - *entities_finops_customer_onboarding_account
+                          - *entities_finops_customer_onboarding_document
+                          - *entities_finops_customer_onboarding_transaction
+                        relationships:
+                          - *relationships_finops_customer_onboarding_customer_holds_account
+                          - *relationships_finops_customer_onboarding_account_books_transaction
+                          - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                        functions:
+                          - *functions_finops_customer_onboarding_account_in_good_standing
+                        deniedTools: *deniedTools_1
                     - id: finops.customer.onboarding.kyc-review.adjudicate
                       title: Adjudicate the review
                       description: Decide whether the evidence and the screening result clear the applicant.
@@ -300,18 +243,30 @@ trees:
                         # screening returned, it does not re-run the service. The
                         # sibling's attachment does not reach here — that is what
                         # makes MCP the one family that denies by default.
-                        allowedTools: [search_objects, get_neighbors, knowledge_search, message]
+                        allowedTools: *allowedTools_9
                         # Narrower than its parent AND its sibling: adjudication
                         # reads what screening returned and judges it against the
                         # manual, so the disclosure standard is dropped here. Each
                         # node with a non-empty list is an independent gate, so this
                         # one alone puts acme.privacy-standard out of reach.
-                        knowledgeFoundations: [acme.kyc-manual]
+                        knowledgeFoundations: &knowledgeFoundations_11 [acme.kyc-manual]
                         constraints:
                           - id: two-forms-of-evidence
                             description: Clear an applicant only when the manual's evidence bar is met.
                         expectedOutput: Cleared or refused, naming the manual section that decided it.
                         audit: true
+                        entities:
+                          - *entities_finops_customer_onboarding_customer
+                          - *entities_finops_customer_onboarding_account
+                          - *entities_finops_customer_onboarding_document
+                          - *entities_finops_customer_onboarding_transaction
+                        relationships:
+                          - *relationships_finops_customer_onboarding_customer_holds_account
+                          - *relationships_finops_customer_onboarding_account_books_transaction
+                          - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                        functions:
+                          - *functions_finops_customer_onboarding_account_in_good_standing
+                        deniedTools: *deniedTools_1
 
                 - id: finops.customer.onboarding.risk-rating
                   title: Rate the applicant's risk
@@ -321,21 +276,39 @@ trees:
                     # evidence and the only way to that fact is the customer's own
                     # document links. A step cannot rate on evidence it cannot walk to.
                     allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.kyc-manual]
+                      &allowedTools_26 [
+                        search_objects,
+                        get_neighbors,
+                        compute_function,
+                        knowledge_search,
+                        message,
+                      ]
+                    knowledgeFoundations: *knowledgeFoundations_11
                     expectedOutput: A rating band and the factors that produced it.
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
+                    deniedTools: *deniedTools_1
 
                 - id: finops.customer.onboarding.account-opening
                   title: Open the account
                   description: Create the account record once the review clears.
                   ontology:
-                    allowedTools: [search_objects, compute_function, message]
+                    allowedTools: &allowedTools_18 [search_objects, compute_function, message]
                     # An OUTWARD action. Core banking owns accounts, so nothing is
                     # written here: the model calls the service, and this
                     # declaration is what the gate holds that call to. Declaring one
                     # also closes the server — `acme-core-banking` is attached, but
                     # only the operation named below is reachable from this step.
-                    mcpServers: [acme-core-banking]
+                    mcpServers: &mcpServers_15 [acme-core-banking]
                     actions:
                       - id: open-account
                         title: Open an account
@@ -354,25 +327,55 @@ trees:
                             tool: "acme-core-banking__open_account"
                             description: Books the new account in the system that owns it.
                     guidance: >-
-                      Gather all three parameters from the steps above before
-                      calling: the customer the account belongs to, the product, and
-                      the reason the desk is opening it. Core banking mints the account
-                      id, so do not invent one — if a parameter is missing, name it and
+                      Gather all three parameters from the steps above before calling: the customer the
+                      account belongs to, the product, and the reason the desk is opening it. Core banking
+                      mints the account id, so do not invent one — if a parameter is missing, name it and
                       stop.
                     expectedOutput: The new account id, or the reason it was not opened.
                     audit: true
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
+                    deniedTools: *deniedTools_1
+              ontology:
+                entities:
+                  - *entities_finops_customer_onboarding_customer
+                  - *entities_finops_customer_onboarding_account
+                  - *entities_finops_customer_onboarding_document
+                  - *entities_finops_customer_onboarding_transaction
+                relationships:
+                  - *relationships_finops_customer_onboarding_customer_holds_account
+                  - *relationships_finops_customer_onboarding_account_books_transaction
+                  - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                functions:
+                  - *functions_finops_customer_onboarding_account_in_good_standing
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for onboard a new customer. Use supplied facts and prior
+                  step results; do not execute a child action here. Complete this step before entering the
+                  selected next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: &allowedTools_22 [message, search_objects, compute_function]
 
             - id: finops.customer.servicing
               title: Service an existing customer
-              description: Update a profile, work a dispute, or close an account.
+              description: Check the request and prerequisites for service an existing customer.
               children:
                 - id: finops.customer.servicing.profile-update
                   title: Update the customer profile
                   description: Change a stored customer field on request.
                   ontology:
                     allowedTools: [search_objects, knowledge_search, message]
-                    knowledgeFoundations: [acme.privacy-standard]
-                    mcpServers: [acme-core-banking]
+                    knowledgeFoundations: &knowledgeFoundations_17 [acme.privacy-standard]
+                    mcpServers: *mcpServers_15
                     actions:
                       - id: update-customer-profile
                         title: Update a customer profile
@@ -386,18 +389,30 @@ trees:
                             tool: "acme-core-banking__update_customer"
                             description: Rewrites the profile where it actually lives.
                     guidance: >-
-                      Read the customer's current record first, then change only the
-                      field the request actually names. This leaves the workflow — the
-                      write lands in core banking and cannot be taken back from here.
+                      Read the customer's current record first, then change only the field the request
+                      actually names. This leaves the workflow — the write lands in core banking and cannot be
+                      taken back from here.
                     expectedOutput: What changed, on which customer id.
                     audit: true
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
+                    deniedTools: *deniedTools_1
 
                 - id: finops.customer.servicing.dispute
                   title: Work a transaction dispute
                   description: Investigate a disputed transaction and file it for a human when it needs one.
                   ontology:
                     allowedTools:
-                      [
+                      &allowedTools_61 [
                         search_objects,
                         get_neighbors,
                         knowledge_search,
@@ -407,7 +422,7 @@ trees:
                         "acme_tracker__*",
                         "mcp__acme_tracker__*",
                       ]
-                    mcpServers: [acme-tracker]
+                    mcpServers: &mcpServers_62 [acme-tracker]
                     # A denial outranks the attachment. Attaching a server grants
                     # its whole tool surface — that is what makes attaching in the
                     # UI sufficient — so taking ONE operation back is what
@@ -416,26 +431,39 @@ trees:
                     # harness folds punctuation to `_` and an operator writes only
                     # the one they happen to see.
                     #
-                    # Know the price before copying this. `deniedTools` is read
-                    # TREE-WIDE at launch, and a native harness renames tools by
-                    # rules OpenClaw cannot invert, so a PARTIALLY denied server is
-                    # never handed to a hookless runtime at all: this one line puts
-                    # `acme-tracker` out of reach on Codex and the Claude CLI for
-                    # every route through this work-map, including the claims
-                    # escalation step that also attaches it. On the embedded runtime
-                    # it does exactly what it says. That is the trade — a narrower
-                    # denial is not available, because there is no name to narrow on.
-                    deniedTools: ["acme-tracker__delete_issue", "acme_tracker__delete_issue"]
-                    knowledgeFoundations: [acme.privacy-standard]
+                    # Native launch exposure includes only the selected route. A
+                    # partially denied server is withheld for that whole run;
+                    # an unselected sibling cannot withhold a server. Embedded
+                    # calls instead enforce the active step's local denial.
+                    deniedTools:
+                      [
+                        exec,
+                        process,
+                        browser,
+                        acme-tracker__delete_issue,
+                        acme_tracker__delete_issue,
+                      ]
+                    knowledgeFoundations: *knowledgeFoundations_17
                     expectedOutput: The dispute outcome, or the tracker reference it was filed under.
                     audit: true
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
 
                 - id: finops.customer.servicing.closure
                   title: Close the account
                   description: Mark an account closed once its balance is settled.
                   ontology:
-                    allowedTools: [search_objects, compute_function, message]
-                    mcpServers: [acme-core-banking]
+                    allowedTools: *allowedTools_18
+                    mcpServers: *mcpServers_15
                     actions:
                       - id: close-account
                         title: Close an account
@@ -449,11 +477,42 @@ trees:
                             tool: "acme-core-banking__close_account"
                             description: Closes the account in the system that owns it.
                     guidance: >-
-                      Check the account's standing before closing it: the balance
-                      settled and no dispute open. Closing is not reversible from this
-                      step, so if either is unproven, report which and stop.
+                      Check the account's standing before closing it: the balance settled and no dispute open.
+                      Closing is not reversible from this step, so if either is unproven, report which and
+                      stop.
                     expectedOutput: The account id and its new status.
                     audit: true
+                    entities:
+                      - *entities_finops_customer_onboarding_customer
+                      - *entities_finops_customer_onboarding_account
+                      - *entities_finops_customer_onboarding_document
+                      - *entities_finops_customer_onboarding_transaction
+                    relationships:
+                      - *relationships_finops_customer_onboarding_customer_holds_account
+                      - *relationships_finops_customer_onboarding_account_books_transaction
+                      - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                    functions:
+                      - *functions_finops_customer_onboarding_account_in_good_standing
+                    deniedTools: *deniedTools_1
+              ontology:
+                entities:
+                  - *entities_finops_customer_onboarding_customer
+                  - *entities_finops_customer_onboarding_account
+                  - *entities_finops_customer_onboarding_document
+                  - *entities_finops_customer_onboarding_transaction
+                relationships:
+                  - *relationships_finops_customer_onboarding_customer_holds_account
+                  - *relationships_finops_customer_onboarding_account_books_transaction
+                  - *relationships_finops_customer_onboarding_customer_evidenced_by_document
+                functions:
+                  - *functions_finops_customer_onboarding_account_in_good_standing
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for service an existing customer. Use supplied facts and
+                  prior step results; do not execute a child action here. Complete this step before entering
+                  the selected next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_22
 
         # =====================================================================
         # DOMAIN 2 — FINANCIAL-CRIME RISK
@@ -464,10 +523,11 @@ trees:
         # declaration or the import fails, because the object graph merges them.
         - id: finops.risk
           title: Financial-crime risk
-          description: Monitor for financial crime and underwrite credit exposure.
+          description: Check the request and prerequisites for financial-crime risk.
           ontology:
             entities:
-              - id: customer
+              - &entities_finops_risk_monitoring_customer
+                id: customer
                 title: Customer
                 properties:
                   - { id: customer-id, type: id, primaryKey: true }
@@ -482,33 +542,41 @@ trees:
                   # see what underwriting decided about lending.
                   - { id: credit-decision, type: string }
                   - { id: credit-rating, type: string }
-              - id: account
+              - &entities_finops_risk_monitoring_account
+                id: account
                 title: Account
                 properties:
                   - { id: account-id, type: id, primaryKey: true }
                   - { id: customer-id, type: id, required: true }
                   - { id: status, type: string, required: true }
             relationships:
-              - id: customer-holds-account
+              - &relationships_finops_risk_monitoring_customer_holds_account
+                id: customer-holds-account
                 from: customer
                 to: account
                 cardinality: one-to-many
                 description: The customer who owns the account.
-            # An intersection gate, so this list is the ceiling for the whole
-            # domain: a child can narrow it but can never add a sixth corpus.
-            # `acme.credit-policy` is named here purely so underwriting may grant
-            # it — every monitoring LEAF narrows away from it below.
             knowledgeFoundations: [acme.aml-policy, acme.credit-policy, acme.privacy-standard]
+            deniedTools: *deniedTools_1
+            guidance:
+              Confirm the context and required inputs for financial-crime risk. Use supplied facts and prior step
+              results; do not execute a child action here. Complete this step before entering the selected
+              next step.
+            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            allowedTools: &allowedTools_88 [message, search_objects, knowledge_search]
           children:
             - id: finops.risk.monitoring
               title: Transaction monitoring
-              description: Triage alerts, investigate what they surface, and file a SAR when the policy requires one.
+              description: Check the request and prerequisites for transaction monitoring.
               ontology:
                 entities:
                   # `transaction` at its full width here: monitoring needs the
                   # booking date the servicing copy leaves out, because structuring
                   # is a pattern over time rather than over one amount.
-                  - id: transaction
+                  - *entities_finops_risk_monitoring_customer
+                  - *entities_finops_risk_monitoring_account
+                  - &entities_finops_risk_monitoring_alert-triage_transaction
+                    id: transaction
                     title: Transaction
                     properties:
                       - { id: transaction-id, type: id, primaryKey: true }
@@ -516,7 +584,8 @@ trees:
                       - { id: amount, type: number, required: true }
                       - { id: counterparty, type: string }
                       - { id: booked-on, type: date }
-                  - id: alert
+                  - &entities_finops_risk_monitoring_alert-triage_alert
+                    id: alert
                     title: Monitoring alert
                     properties:
                       - { id: alert-id, type: id, primaryKey: true }
@@ -524,14 +593,16 @@ trees:
                       - { id: rule, type: string, required: true }
                       - { id: score, type: number }
                       - { id: status, type: string, required: true }
-                  - id: investigation-case
+                  - &entities_finops_risk_monitoring_alert-triage_investigation_case
+                    id: investigation-case
                     title: Investigation case
                     properties:
                       - { id: case-id, type: id, primaryKey: true }
                       - { id: alert-id, type: id, required: true }
                       - { id: status, type: string, required: true }
                       - { id: analyst, type: string }
-                  - id: sar
+                  - &entities_finops_risk_monitoring_alert-triage_sar
+                    id: sar
                     title: Suspicious activity report
                     properties:
                       - { id: sar-id, type: id, primaryKey: true }
@@ -539,59 +610,108 @@ trees:
                       - { id: narrative, type: string }
                       - { id: filed-on, type: date }
                 relationships:
-                  - id: account-books-transaction
+                  - *relationships_finops_risk_monitoring_customer_holds_account
+                  - &relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                    id: account-books-transaction
                     from: account
                     to: transaction
                     cardinality: one-to-many
                     description: The account a transaction was booked against.
-                  - id: alert-raised-on-account
+                  - &relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                    id: alert-raised-on-account
                     from: alert
                     to: account
                     cardinality: many-to-one
                     description: The account an alert fired on.
-                  - id: case-investigates-alert
+                  - &relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                    id: case-investigates-alert
                     from: investigation-case
                     to: alert
                     cardinality: many-to-one
                     description: The alert a case was opened from.
-                  - id: case-files-sar
+                  - &relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                    id: case-files-sar
                     from: investigation-case
                     to: sar
                     cardinality: one-to-many
                     description: The report a case produced.
                 functions:
-                  - id: alert-priority
+                  - &functions_finops_risk_monitoring_alert-triage_alert_priority
+                    id: alert-priority
                     entity: alert
                     returns: string
                     expression: "$score >= 80 ? 'urgent' : ($score >= 50 ? 'standard' : 'low')"
                     description: Queue band for an alert, from its model score.
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for transaction monitoring. Use supplied facts and prior
+                  step results; do not execute a child action here. Complete this step before entering the
+                  selected next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_22
               children:
                 - id: finops.risk.monitoring.alert-triage
                   title: Triage the alert queue
                   description: Band open alerts and say which ones need an investigation opened.
                   ontology:
-                    allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.aml-policy]
+                    allowedTools: *allowedTools_26
+                    knowledgeFoundations: &knowledgeFoundations_34 [acme.aml-policy]
                     # A declared skill names know-how the step depends on. Advisory:
                     # it reaches the model through the step digest but never widens
                     # the tool scope above, and under explicit grants it also
                     # NARROWS the run's skill catalog to what the route reaches.
                     skills: [taskflow-inbox-triage]
                     guidance: >-
-                      Take each alert's queue band from its derived value rather than
-                      re-reading the score and judging it yourself. The claims domain
-                      bands its own work the same way, and the two must not disagree
-                      about what urgent means.
+                      Take each alert's queue band from its derived value rather than re-reading the score and
+                      judging it yourself. The claims domain bands its own work the same way, and the two must
+                      not disagree about what urgent means.
                     expectedOutput: The alerts worth working, banded, with the rule each fired on.
+                    entities:
+                      - *entities_finops_risk_monitoring_customer
+                      - *entities_finops_risk_monitoring_account
+                      - *entities_finops_risk_monitoring_alert-triage_transaction
+                      - *entities_finops_risk_monitoring_alert-triage_alert
+                      - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                      - *entities_finops_risk_monitoring_alert-triage_sar
+                    relationships:
+                      - *relationships_finops_risk_monitoring_customer_holds_account
+                      - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                      - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                      - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                      - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                    functions:
+                      - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                    deniedTools: *deniedTools_1
 
                 - id: finops.risk.monitoring.investigation
                   title: Investigate a surfaced alert
                   description: >-
-                    Work an alert into a case — who the counterparties are, what
-                    moved, and what the file concludes.
+                    Check the request and prerequisites for investigate a surfaced alert.
                   ontology:
-                    knowledgeFoundations: [acme.aml-policy, acme.privacy-standard]
+                    knowledgeFoundations:
+                      &knowledgeFoundations_31 [acme.aml-policy, acme.privacy-standard]
+                    entities:
+                      - *entities_finops_risk_monitoring_customer
+                      - *entities_finops_risk_monitoring_account
+                      - *entities_finops_risk_monitoring_alert-triage_transaction
+                      - *entities_finops_risk_monitoring_alert-triage_alert
+                      - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                      - *entities_finops_risk_monitoring_alert-triage_sar
+                    relationships:
+                      - *relationships_finops_risk_monitoring_customer_holds_account
+                      - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                      - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                      - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                      - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                    functions:
+                      - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                    deniedTools: *deniedTools_1
+                    guidance:
+                      Confirm the context and required inputs for investigate a surfaced alert. Use supplied facts and
+                      prior step results; do not execute a child action here. Complete this step before
+                      entering the selected next step.
+                    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                    allowedTools: *allowedTools_6
                   children:
                     - id: finops.risk.monitoring.investigation.link-analysis
                       title: Map the counterparties
@@ -612,42 +732,67 @@ trees:
                         # domain. An attachment is per-step, not per-server: the
                         # onboarding screening step reaching it says nothing about
                         # this one, and this one says nothing about its siblings.
-                        mcpServers: [acme-screening]
-                        knowledgeFoundations: [acme.aml-policy, acme.privacy-standard]
+                        mcpServers: *mcpServers_30
+                        knowledgeFoundations: *knowledgeFoundations_31
                         expectedOutput: The counterparty map, and which names the watchlists returned.
+                        entities:
+                          - *entities_finops_risk_monitoring_customer
+                          - *entities_finops_risk_monitoring_account
+                          - *entities_finops_risk_monitoring_alert-triage_transaction
+                          - *entities_finops_risk_monitoring_alert-triage_alert
+                          - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                          - *entities_finops_risk_monitoring_alert-triage_sar
+                        relationships:
+                          - *relationships_finops_risk_monitoring_customer_holds_account
+                          - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                          - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                          - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                          - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                        functions:
+                          - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                        deniedTools: *deniedTools_1
 
                     - id: finops.risk.monitoring.investigation.transaction-review
                       title: Review the transactions
                       description: Read the account's transactions and say which pattern the policy names.
                       ontology:
-                        allowedTools:
-                          [
-                            search_objects,
-                            get_neighbors,
-                            compute_function,
-                            knowledge_search,
-                            message,
-                          ]
-                        knowledgeFoundations: [acme.aml-policy]
+                        allowedTools: *allowedTools_26
+                        knowledgeFoundations: *knowledgeFoundations_34
                         expectedOutput: The transactions that matter and the policy pattern they match.
+                        entities:
+                          - *entities_finops_risk_monitoring_customer
+                          - *entities_finops_risk_monitoring_account
+                          - *entities_finops_risk_monitoring_alert-triage_transaction
+                          - *entities_finops_risk_monitoring_alert-triage_alert
+                          - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                          - *entities_finops_risk_monitoring_alert-triage_sar
+                        relationships:
+                          - *relationships_finops_risk_monitoring_customer_holds_account
+                          - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                          - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                          - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                          - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                        functions:
+                          - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                        deniedTools: *deniedTools_1
 
                     - id: finops.risk.monitoring.investigation.case-file
                       title: Build the case file
-                      description: Record what the investigation found and dispose of the case.
+                      description: Check the request and prerequisites for build the case file.
                       children:
                         - id: finops.risk.monitoring.investigation.case-file.evidence
                           title: Assemble the evidence
                           description: Gather the records the disposition will rest on.
                           ontology:
                             allowedTools:
-                              [
+                              &allowedTools_42 [
                                 search_objects,
                                 get_neighbors,
                                 invoke_action,
                                 knowledge_search,
                                 message,
                               ]
-                            knowledgeFoundations: [acme.aml-policy, acme.privacy-standard]
+                            knowledgeFoundations: *knowledgeFoundations_31
                             actions:
                               # The case is local; the alert and account evidence remain
                               # in their systems of record. This records supplied known
@@ -667,10 +812,26 @@ trees:
                                       description: Opens the local case file.,
                                     }
                             guidance: >-
-                              Open a case only from evidence actually supplied by the
-                              investigation. Record the known alert identifier and case
-                              metadata; do not fabricate alert, account, or transaction data.
+                              Open a case only from evidence actually supplied by the investigation. Record
+                              the known alert identifier and case metadata; do not fabricate alert, account,
+                              or transaction data.
                             expectedOutput: The case id, its supplied evidence metadata, and the records it rests on.
+                            entities:
+                              - *entities_finops_risk_monitoring_customer
+                              - *entities_finops_risk_monitoring_account
+                              - *entities_finops_risk_monitoring_alert-triage_transaction
+                              - *entities_finops_risk_monitoring_alert-triage_alert
+                              - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                              - *entities_finops_risk_monitoring_alert-triage_sar
+                            relationships:
+                              - *relationships_finops_risk_monitoring_customer_holds_account
+                              - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                              - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                              - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                              - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                            functions:
+                              - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                            deniedTools: *deniedTools_1
 
                         - id: finops.risk.monitoring.investigation.case-file.disposition
                           title: Dispose of the case
@@ -684,7 +845,7 @@ trees:
                                 knowledge_search,
                                 message,
                               ]
-                            knowledgeFoundations: [acme.aml-policy]
+                            knowledgeFoundations: *knowledgeFoundations_34
                             actions:
                               - id: close-investigation
                                 title: Record the case disposition
@@ -716,20 +877,57 @@ trees:
                                     relationship: case-investigates-alert
                                     description: Relates the case to the alert that raised it.
                             guidance: >-
-                              Close the case only against evidence already recorded on
-                              it. If the evidence step has not run, say so and stop — a
-                              disposition written from the alert alone is a case file
-                              nobody can defend.
+                              Close the case only against evidence already recorded on it. If the evidence
+                              step has not run, say so and stop — a disposition written from the alert alone
+                              is a case file nobody can defend.
                             expectedOutput: The case id, its disposition, and whether a SAR follows.
                             audit: true
+                            entities:
+                              - *entities_finops_risk_monitoring_customer
+                              - *entities_finops_risk_monitoring_account
+                              - *entities_finops_risk_monitoring_alert-triage_transaction
+                              - *entities_finops_risk_monitoring_alert-triage_alert
+                              - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                              - *entities_finops_risk_monitoring_alert-triage_sar
+                            relationships:
+                              - *relationships_finops_risk_monitoring_customer_holds_account
+                              - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                              - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                              - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                              - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                            functions:
+                              - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                            deniedTools: *deniedTools_1
+                      ontology:
+                        entities:
+                          - *entities_finops_risk_monitoring_customer
+                          - *entities_finops_risk_monitoring_account
+                          - *entities_finops_risk_monitoring_alert-triage_transaction
+                          - *entities_finops_risk_monitoring_alert-triage_alert
+                          - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                          - *entities_finops_risk_monitoring_alert-triage_sar
+                        relationships:
+                          - *relationships_finops_risk_monitoring_customer_holds_account
+                          - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                          - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                          - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                          - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                        functions:
+                          - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                        deniedTools: *deniedTools_1
+                        guidance:
+                          Confirm the context and required inputs for build the case file. Use supplied facts and prior step
+                          results; do not execute a child action here. Complete this step before entering the
+                          selected next step.
+                        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                        allowedTools: *allowedTools_22
 
                 - id: finops.risk.monitoring.sar-filing
                   title: Draft the suspicious activity report
                   description: Write the SAR narrative for a case the policy says must be reported.
                   ontology:
-                    allowedTools:
-                      [search_objects, get_neighbors, invoke_action, knowledge_search, message]
-                    knowledgeFoundations: [acme.aml-policy]
+                    allowedTools: *allowedTools_42
+                    knowledgeFoundations: *knowledgeFoundations_34
                     actions:
                       # The report is born in this workflow — no upstream system
                       # holds it — so this is where it comes into being, and the
@@ -765,24 +963,43 @@ trees:
                             relationship: case-files-sar
                             description: Relates the case to the report it filed.
                     guidance: >-
-                      This step drafts the narrative and stops there. Filing it is a
-                      reporting step with its own regulator-facing server, and sending
-                      it from here would leave the filing itself untraced.
+                      This step drafts the narrative and stops there. Filing it is a reporting step with its
+                      own regulator-facing server, and sending it from here would leave the filing itself
+                      untraced.
                     constraints:
                       - id: no-tipping-off
                         description: Never tell the customer a report was considered or filed.
                     expectedOutput: The SAR id and the policy trigger that required it.
                     audit: true
+                    entities:
+                      - *entities_finops_risk_monitoring_customer
+                      - *entities_finops_risk_monitoring_account
+                      - *entities_finops_risk_monitoring_alert-triage_transaction
+                      - *entities_finops_risk_monitoring_alert-triage_alert
+                      - *entities_finops_risk_monitoring_alert-triage_investigation_case
+                      - *entities_finops_risk_monitoring_alert-triage_sar
+                    relationships:
+                      - *relationships_finops_risk_monitoring_customer_holds_account
+                      - *relationships_finops_risk_monitoring_alert-triage_account_books_transaction
+                      - *relationships_finops_risk_monitoring_alert-triage_alert_raised_on_account
+                      - *relationships_finops_risk_monitoring_alert-triage_case_investigates_alert
+                      - *relationships_finops_risk_monitoring_alert-triage_case_files_sar
+                    functions:
+                      - *functions_finops_risk_monitoring_alert-triage_alert_priority
+                    deniedTools: *deniedTools_1
 
             - id: finops.risk.underwriting
               title: Credit underwriting
-              description: Score an applicant against bureau data and decide the exposure.
+              description: Check the request and prerequisites for credit underwriting.
               ontology:
                 entities:
                   # Bureau data lives ONLY here. Monitoring one level up cannot
                   # address it — same domain, one branch apart — which is the
                   # tightest isolation this work-map demonstrates.
-                  - id: credit-report
+                  - *entities_finops_risk_monitoring_customer
+                  - *entities_finops_risk_monitoring_account
+                  - &entities_finops_risk_underwriting_scoring_credit_report
+                    id: credit-report
                     title: Credit bureau report
                     properties:
                       - { id: report-id, type: id, primaryKey: true }
@@ -790,13 +1007,16 @@ trees:
                       - { id: bureau, type: string, required: true }
                       - { id: score, type: number }
                 relationships:
-                  - id: customer-assessed-by-report
+                  - *relationships_finops_risk_monitoring_customer_holds_account
+                  - &relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
+                    id: customer-assessed-by-report
                     from: customer
                     to: credit-report
                     cardinality: one-to-many
                     description: The bureau report pulled for a customer.
                 functions:
-                  - id: bureau-band
+                  - &functions_finops_risk_underwriting_scoring_bureau_band
+                    id: bureau-band
                     entity: credit-report
                     returns: string
                     expression: "$score >= 700 ? 'prime' : ($score >= 600 ? 'near-prime' : 'subprime')"
@@ -807,7 +1027,14 @@ trees:
                 # policy says nothing about approval bands or exceptions, and the
                 # root forbids inventing a rule, so a decision step holding only
                 # AML material could not do what its title says.
-                knowledgeFoundations: [acme.aml-policy, acme.credit-policy]
+                knowledgeFoundations: &knowledgeFoundations_48 [acme.aml-policy, acme.credit-policy]
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for credit underwriting. Use supplied facts and prior step
+                  results; do not execute a child action here. Complete this step before entering the selected
+                  next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_6
               children:
                 - id: finops.risk.underwriting.scoring
                   title: Score the applicant
@@ -815,14 +1042,25 @@ trees:
                   ontology:
                     allowedTools: [search_objects, get_neighbors, compute_function, message]
                     expectedOutput: The bureau score, its band, and the report id it came from.
+                    entities:
+                      - *entities_finops_risk_monitoring_customer
+                      - *entities_finops_risk_monitoring_account
+                      - *entities_finops_risk_underwriting_scoring_credit_report
+                    relationships:
+                      - *relationships_finops_risk_monitoring_customer_holds_account
+                      - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
+                    functions:
+                      - *functions_finops_risk_underwriting_scoring_bureau_band
+                    deniedTools: *deniedTools_1
 
                 - id: finops.risk.underwriting.decision
                   title: Decide the exposure
                   description: Approve, decline, or refer the application and record the rating.
                   ontology:
-                    allowedTools: [search_objects, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.aml-policy, acme.credit-policy]
-                    mcpServers: [acme-core-banking]
+                    allowedTools:
+                      &allowedTools_51 [search_objects, compute_function, knowledge_search, message]
+                    knowledgeFoundations: *knowledgeFoundations_48
+                    mcpServers: *mcpServers_15
                     actions:
                       - id: record-underwriting-decision
                         title: Record the underwriting decision
@@ -844,22 +1082,41 @@ trees:
                             tool: "acme-core-banking__record_lending_decision"
                             description: Stores the decision where the customer record lives.
                     guidance: >-
-                      Record the decision the scoring step reached, together with the
-                      lending band it rested on. Do not re-derive the band here: the
-                      derived value on the credit report is the one the credit policy is
-                      written against. The band goes in `credit-rating`; `risk-rating` is
+                      Record the decision the scoring step reached, together with the lending band it rested
+                      on. Do not re-derive the band here: the derived value on the credit report is the one
+                      the credit policy is written against. The band goes in `credit-rating`; `risk-rating` is
                       the onboarding desk's and is not yours to change.
                     expectedOutput: The decision, the lending band stored, and what drove it.
                     audit: true
+                    entities:
+                      - *entities_finops_risk_monitoring_customer
+                      - *entities_finops_risk_monitoring_account
+                      - *entities_finops_risk_underwriting_scoring_credit_report
+                    relationships:
+                      - *relationships_finops_risk_monitoring_customer_holds_account
+                      - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
+                    functions:
+                      - *functions_finops_risk_underwriting_scoring_bureau_band
+                    deniedTools: *deniedTools_1
 
                 - id: finops.risk.underwriting.exception
                   title: Request an underwriting exception
                   description: Write up a case for a human credit officer when the policy bar is not met.
                   ontology:
-                    allowedTools: [search_objects, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.aml-policy, acme.credit-policy]
+                    allowedTools: *allowedTools_51
+                    knowledgeFoundations: *knowledgeFoundations_48
                     skills: [taskflow]
                     expectedOutput: A short exception memo naming the customer, the band, and the ask.
+                    entities:
+                      - *entities_finops_risk_monitoring_customer
+                      - *entities_finops_risk_monitoring_account
+                      - *entities_finops_risk_underwriting_scoring_credit_report
+                    relationships:
+                      - *relationships_finops_risk_monitoring_customer_holds_account
+                      - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
+                    functions:
+                      - *functions_finops_risk_underwriting_scoring_bureau_band
+                    deniedTools: *deniedTools_1
 
         # =====================================================================
         # DOMAIN 3 — CLAIMS
@@ -872,22 +1129,25 @@ trees:
         # told apart from risk's.
         - id: finops.claims
           title: Claims handling
-          description: Take a claim in, adjudicate it against the policy, and settle or recover it.
+          description: Check the request and prerequisites for claims handling.
           ontology:
             entities:
-              - id: customer
+              - &entities_finops_claims_intake_customer
+                id: customer
                 title: Customer
                 properties:
                   - { id: customer-id, type: id, primaryKey: true }
                   - { id: name, type: string, required: true }
-              - id: policy
+              - &entities_finops_claims_intake_policy
+                id: policy
                 title: Policy
                 properties:
                   - { id: policy-id, type: id, primaryKey: true }
                   - { id: customer-id, type: id, required: true }
                   - { id: product, type: string, required: true }
                   - { id: coverage-limit, type: number, required: true }
-              - id: claim
+              - &entities_finops_claims_intake_claim
+                id: claim
                 title: Claim
                 properties:
                   - { id: claim-id, type: id, primaryKey: true }
@@ -895,94 +1155,117 @@ trees:
                   - { id: amount, type: number, required: true }
                   - { id: status, type: string, required: true }
                   - { id: fraud-score, type: number }
-              - id: document
+              - &entities_finops_claims_intake_document
+                id: document
                 title: Claim document
                 properties:
                   - { id: document-id, type: id, primaryKey: true }
                   - { id: kind, type: string, required: true }
                   - { id: verified, type: boolean }
             relationships:
-              - id: customer-holds-policy
+              - &relationships_finops_claims_intake_customer_holds_policy
+                id: customer-holds-policy
                 from: customer
                 to: policy
                 cardinality: one-to-many
                 description: The customer a policy was written for.
-              - id: claim-against-policy
+              - &relationships_finops_claims_intake_claim_against_policy
+                id: claim-against-policy
                 from: claim
                 to: policy
                 cardinality: many-to-one
                 description: The policy a claim is made under.
-              - id: claim-evidenced-by-document
+              - &relationships_finops_claims_intake_claim_evidenced_by_document
+                id: claim-evidenced-by-document
                 from: claim
                 to: document
                 cardinality: one-to-many
                 description: The evidence filed with a claim.
             functions:
-              - id: claim-triage-band
+              - &functions_finops_claims_intake_claim_triage_band
+                id: claim-triage-band
                 entity: claim
                 returns: string
                 expression: "$fraud-score >= 70 ? 'refer' : ($amount > 5000 ? 'review' : 'auto')"
                 description: Which queue a claim belongs in.
-              - id: claim-amount-or-zero
+              - &functions_finops_claims_intake_claim_amount_or_zero
+                id: claim-amount-or-zero
                 entity: claim
                 returns: number
                 expression: coalesce($amount, 0)
                 description: The claimed amount, or zero when it has not been stated.
-            knowledgeFoundations: [acme.claims-handbook, acme.privacy-standard]
+            knowledgeFoundations:
+              &knowledgeFoundations_59 [acme.claims-handbook, acme.privacy-standard]
+            deniedTools: *deniedTools_1
+            guidance:
+              Confirm the context and required inputs for claims handling. Use supplied facts and prior step
+              results; do not execute a child action here. Complete this step before entering the selected
+              next step.
+            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            allowedTools: *allowedTools_6
           children:
             - id: finops.claims.intake
               title: Take the claim in
-              description: Classify a new claim, collect its evidence, and hand it on.
+              description: Check the request and prerequisites for take the claim in.
               children:
                 - id: finops.claims.intake.triage
                   title: Triage the claim
                   description: Band a newly submitted claim and say which queue it belongs in.
                   ontology:
-                    allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.claims-handbook]
+                    allowedTools: *allowedTools_26
+                    knowledgeFoundations: &knowledgeFoundations_63 [acme.claims-handbook]
                     # The same skill risk's alert triage declares. The digest names
                     # it under each step that depends on it rather than pooling
                     # them, and a route into only one of the two domains grants only
                     # that one — under explicit grants the catalog follows the route.
                     skills: [taskflow-inbox-triage]
                     guidance: >-
-                      Route on the claim's derived triage band. It already folds the
-                      fraud score and the amount together, so a hand-made judgement here
-                      contradicts the band every later step reads.
+                      Route on the claim's derived triage band. It already folds the fraud score and the
+                      amount together, so a hand-made judgement here contradicts the band every later step
+                      reads.
                     expectedOutput: The claim id, its band, and what put it there.
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                    deniedTools: *deniedTools_1
 
                 - id: finops.claims.intake.evidence
                   title: Collect the evidence
                   description: Check which documents the claim has and which the handbook still requires.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, knowledge_search, message]
-                    knowledgeFoundations: [acme.claims-handbook, acme.privacy-standard]
+                    allowedTools: *allowedTools_9
+                    knowledgeFoundations: *knowledgeFoundations_59
                     expectedOutput: The documents held, verified or not, and what is still missing.
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                    deniedTools: *deniedTools_1
 
                 - id: finops.claims.intake.escalation
                   title: Escalate to a human handler
                   description: File the claim for a human when the desk may not decide it.
                   ontology:
-                    # Reads, even though escalation only summarizes. The planner can
-                    # cut STRAIGHT to this leaf, and a message-only version entered
-                    # that way has no prior turn to summarize: it would produce "per
-                    # the applicable handbook rule" without naming one. A step
-                    # cannot promise an expectedOutput its scope withholds the facts
-                    # for.
-                    allowedTools:
-                      [
-                        search_objects,
-                        get_neighbors,
-                        knowledge_search,
-                        message,
-                        "acme-tracker__*",
-                        "mcp__acme-tracker__*",
-                        "acme_tracker__*",
-                        "mcp__acme_tracker__*",
-                      ]
-                    mcpServers: [acme-tracker]
-                    knowledgeFoundations: [acme.claims-handbook]
+                    allowedTools: *allowedTools_61
+                    mcpServers: *mcpServers_62
+                    knowledgeFoundations: *knowledgeFoundations_63
                     # `taskflow` and `taskflow-inbox-triage` are the two skills this
                     # work-map declares, and both are bundled with OpenClaw and need
                     # no external binary — a skill whose `requires.bins` is missing
@@ -991,35 +1274,88 @@ trees:
                     skills: [taskflow]
                     expectedOutput: A handoff note naming the claim, the rule that forced it, and the tracker reference.
                     audit: true
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                    deniedTools: *deniedTools_1
+              ontology:
+                entities:
+                  - *entities_finops_claims_intake_customer
+                  - *entities_finops_claims_intake_policy
+                  - *entities_finops_claims_intake_claim
+                  - *entities_finops_claims_intake_document
+                relationships:
+                  - *relationships_finops_claims_intake_customer_holds_policy
+                  - *relationships_finops_claims_intake_claim_against_policy
+                  - *relationships_finops_claims_intake_claim_evidenced_by_document
+                functions:
+                  - *functions_finops_claims_intake_claim_triage_band
+                  - *functions_finops_claims_intake_claim_amount_or_zero
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for take the claim in. Use supplied facts and prior step
+                  results; do not execute a child action here. Complete this step before entering the selected
+                  next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_22
 
             - id: finops.claims.adjudication
               title: Adjudicate the claim
-              description: Judge coverage, check for fraud, and decide the claim.
+              description: Check the request and prerequisites for adjudicate the claim.
               children:
                 - id: finops.claims.adjudication.coverage-check
                   title: Check coverage
                   description: Read the policy the claim is made under and say what it covers.
                   ontology:
-                    allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    # The one step that declares NO corpus and inherits the domain's
-                    # instead. Every other step here narrows; this one shows the
-                    # other half of the rule — a grant made by an ancestor reaches a
-                    # step that never names it, so coverage-check queries both the
-                    # handbook and the privacy standard that `finops.claims` granted.
+                    allowedTools: *allowedTools_26
                     expectedOutput: Whether the loss is covered, with the policy id and the limit.
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                    knowledgeFoundations: *knowledgeFoundations_59
+                    deniedTools: *deniedTools_1
 
                 - id: finops.claims.adjudication.fraud-review
                   title: Review the claim for fraud
                   description: Judge the claim's fraud indicators against the handbook's referral bar.
                   ontology:
-                    allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.claims-handbook]
+                    allowedTools: *allowedTools_26
+                    knowledgeFoundations: *knowledgeFoundations_63
                     constraints:
                       - id: refer-do-not-accuse
                         description: Refer a suspect claim to the fraud team; never state fraud as a finding to the customer.
                     expectedOutput: The band, the indicators behind it, and whether it is referred.
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                    deniedTools: *deniedTools_1
 
                 - id: finops.claims.adjudication.decision
                   title: Decide the claim
@@ -1034,7 +1370,7 @@ trees:
                         knowledge_search,
                         message,
                       ]
-                    knowledgeFoundations: [acme.claims-handbook]
+                    knowledgeFoundations: *knowledgeFoundations_63
                     actions:
                       - id: decide-claim
                         title: Record the claim decision
@@ -1050,21 +1386,58 @@ trees:
                               description: Records the adjudicated outcome.,
                             }
                     guidance: >-
-                      Decide only once both the coverage check and the fraud review have
-                      answered. Their outcomes are the inputs to this write, and a
-                      decision recorded without one of them is one the audit trail
-                      cannot explain.
+                      Decide only once both the coverage check and the fraud review have answered. Their
+                      outcomes are the inputs to this write, and a decision recorded without one of them is
+                      one the audit trail cannot explain.
                     expectedOutput: The claim id, the decision, and the handbook section behind it.
                     audit: true
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                    deniedTools: *deniedTools_1
+              ontology:
+                entities:
+                  - *entities_finops_claims_intake_customer
+                  - *entities_finops_claims_intake_policy
+                  - *entities_finops_claims_intake_claim
+                  - *entities_finops_claims_intake_document
+                relationships:
+                  - *relationships_finops_claims_intake_customer_holds_policy
+                  - *relationships_finops_claims_intake_claim_against_policy
+                  - *relationships_finops_claims_intake_claim_evidenced_by_document
+                functions:
+                  - *functions_finops_claims_intake_claim_triage_band
+                  - *functions_finops_claims_intake_claim_amount_or_zero
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for adjudicate the claim. Use supplied facts and prior step
+                  results; do not execute a child action here. Complete this step before entering the selected
+                  next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_22
 
             - id: finops.claims.settlement
               title: Settle the claim
-              description: Judge the payment authority, move the money, and pursue recovery.
+              description: Check the request and prerequisites for settle the claim.
               ontology:
                 entities:
                   # Money movement gets its own object type, one branch deep, so no
                   # step outside settlement can address a payment at all.
-                  - id: payment
+                  - *entities_finops_claims_intake_customer
+                  - *entities_finops_claims_intake_policy
+                  - *entities_finops_claims_intake_claim
+                  - *entities_finops_claims_intake_document
+                  - &entities_finops_claims_settlement_authority_payment
+                    id: payment
                     title: Claim payment
                     properties:
                       - { id: payment-id, type: id, primaryKey: true }
@@ -1077,7 +1450,11 @@ trees:
                       - { id: paid-amount, type: number, required: true }
                       - { id: rail, type: string }
                 relationships:
-                  - id: payment-settles-claim
+                  - *relationships_finops_claims_intake_customer_holds_policy
+                  - *relationships_finops_claims_intake_claim_against_policy
+                  - *relationships_finops_claims_intake_claim_evidenced_by_document
+                  - &relationships_finops_claims_settlement_authority_payment_settles_claim
+                    id: payment-settles-claim
                     from: payment
                     to: claim
                     cardinality: one-to-one
@@ -1088,36 +1465,60 @@ trees:
                   # that quotes 5,000 for a NAMED claim has answered a record
                   # question from a policy passage — the confusion this fixture
                   # exists to catch, and only detectable because the two differ.
-                  - id: auto-payable-amount
+                  - *functions_finops_claims_intake_claim_triage_band
+                  - *functions_finops_claims_intake_claim_amount_or_zero
+                  - &functions_finops_claims_settlement_authority_auto_payable_amount
+                    id: auto-payable-amount
                     entity: claim
                     returns: number
                     expression: min($amount, 2500)
                     description: What this claim pays without a human approver.
-                knowledgeFoundations: [acme.claims-handbook]
+                knowledgeFoundations: *knowledgeFoundations_63
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for settle the claim. Use supplied facts and prior step
+                  results; do not execute a child action here. Complete this step before entering the selected
+                  next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: *allowedTools_6
               children:
                 - id: finops.claims.settlement.authority
                   title: Judge the payment authority
                   description: >-
-                    Decide whether this desk may pay the claim itself. The record
-                    supplies the amount and the derived cap; the handbook supplies
-                    the rule.
+                    Decide whether this desk may pay the claim itself. The record supplies the amount and the
+                    derived cap; the handbook supplies the rule.
                   ontology:
                     # The step that holds BOTH retrieval families, which is the only
                     # place the model's choice between them is real. It reads and
                     # judges; it does not pay, so `invoke_action` is absent and the
                     # write stays on the sibling below.
-                    allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.claims-handbook]
+                    allowedTools: *allowedTools_26
+                    knowledgeFoundations: *knowledgeFoundations_63
                     guidance: >-
-                      Read the claim's own amount and its derived cap from the object
-                      store first, then check them against the handbook's authority
-                      rule. Never quote the handbook's figure as this claim's cap.
+                      Read the claim's own amount and its derived cap from the object store first, then check
+                      them against the handbook's authority rule. Never quote the handbook's figure as this
+                      claim's cap.
                     constraints:
                       - id: cap-from-the-record
                         description: The payable cap is the derived value on the claim, not the figure in the handbook.
                     expectedOutput: Whether the desk may pay it, the cap that applied, and where each number came from.
                     audit: true
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                      - *entities_finops_claims_settlement_authority_payment
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                      - *relationships_finops_claims_settlement_authority_payment_settles_claim
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                      - *functions_finops_claims_settlement_authority_auto_payable_amount
+                    deniedTools: *deniedTools_1
 
                 - id: finops.claims.settlement.payment
                   title: Pay the claim
@@ -1179,24 +1580,54 @@ trees:
                         effects:
                           - { entity: claim, kind: update, description: Marks the claim settled. }
                     guidance: >-
-                      The authority step beside this one decides whether the desk may
-                      pay and up to what cap. Move exactly that amount on the ledger and
-                      then record the payment; if the two figures disagree, report the
-                      gap instead of paying the smaller one.
+                      The authority step beside this one decides whether the desk may pay and up to what cap.
+                      Move exactly that amount on the ledger and then record the payment; if the two figures
+                      disagree, report the gap instead of paying the smaller one.
                     constraints:
                       - id: one-payment-per-claim
                         description: A claim settles once; check for an existing payment before issuing another.
                     expectedOutput: The payment id, the amount, and the claim it settled.
                     audit: true
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                      - *entities_finops_claims_settlement_authority_payment
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                      - *relationships_finops_claims_settlement_authority_payment_settles_claim
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                      - *functions_finops_claims_settlement_authority_auto_payable_amount
+                    deniedTools: *deniedTools_1
 
                 - id: finops.claims.settlement.recovery
                   title: Pursue recovery
                   description: Work a subrogation or overpayment recovery on a settled claim.
                   ontology:
-                    allowedTools:
-                      [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                    knowledgeFoundations: [acme.claims-handbook]
+                    allowedTools: *allowedTools_26
+                    knowledgeFoundations: *knowledgeFoundations_63
                     expectedOutput: What is recoverable, from whom, and under which handbook rule.
+                    entities:
+                      - *entities_finops_claims_intake_customer
+                      - *entities_finops_claims_intake_policy
+                      - *entities_finops_claims_intake_claim
+                      - *entities_finops_claims_intake_document
+                      - *entities_finops_claims_settlement_authority_payment
+                    relationships:
+                      - *relationships_finops_claims_intake_customer_holds_policy
+                      - *relationships_finops_claims_intake_claim_against_policy
+                      - *relationships_finops_claims_intake_claim_evidenced_by_document
+                      - *relationships_finops_claims_settlement_authority_payment_settles_claim
+                    functions:
+                      - *functions_finops_claims_intake_claim_triage_band
+                      - *functions_finops_claims_intake_claim_amount_or_zero
+                      - *functions_finops_claims_settlement_authority_auto_payable_amount
+                    deniedTools: *deniedTools_1
 
         # =====================================================================
         # DOMAIN 4 — REGULATORY REPORTING
@@ -1207,58 +1638,68 @@ trees:
         # fields the operating domains use to decide.
         - id: finops.reporting
           title: Regulatory reporting
-          description: Assemble regulatory filings, management reporting, and the audit trail.
+          description: Check the request and prerequisites for regulatory reporting.
           ontology:
             entities:
-              - id: regulatory-report
+              - &entities_finops_reporting_regulatory_regulatory_report
+                id: regulatory-report
                 title: Regulatory report
                 properties:
                   - { id: report-id, type: id, primaryKey: true }
                   - { id: period, type: string, required: true }
                   - { id: status, type: string, required: true }
-              - id: sar
+              - &entities_finops_reporting_regulatory_sar
+                id: sar
                 title: Suspicious activity report
                 properties:
                   - { id: sar-id, type: id, primaryKey: true }
                   - { id: case-id, type: id, required: true }
                   - { id: filed-on, type: date }
-              - id: investigation-case
+              - &entities_finops_reporting_regulatory_investigation_case
+                id: investigation-case
                 title: Investigation case
                 properties:
                   - { id: case-id, type: id, primaryKey: true }
                   - { id: status, type: string, required: true }
-              - id: claim
+              - &entities_finops_reporting_regulatory_claim
+                id: claim
                 title: Claim
                 properties:
                   - { id: claim-id, type: id, primaryKey: true }
                   - { id: amount, type: number, required: true }
                   - { id: status, type: string, required: true }
-              - id: alert
+              - &entities_finops_reporting_regulatory_alert
+                id: alert
                 title: Monitoring alert
                 properties:
                   - { id: alert-id, type: id, primaryKey: true }
                   - { id: rule, type: string, required: true }
                   - { id: status, type: string, required: true }
             relationships:
-              - id: report-covers-sar
+              - &relationships_finops_reporting_regulatory_report_covers_sar
+                id: report-covers-sar
                 from: regulatory-report
                 to: sar
                 cardinality: one-to-many
                 description: The reports a filing carries.
-              - id: report-covers-claim
+              - &relationships_finops_reporting_regulatory_report_covers_claim
+                id: report-covers-claim
                 from: regulatory-report
                 to: claim
                 cardinality: one-to-many
                 description: The claims a filing summarizes.
-            # Two corpora, and only one of them is shared: acme.aml-policy is also
-            # reachable from the whole risk domain, while acme.regulatory-code is
-            # reachable from nowhere else in this work-map. A corpus is not owned by
-            # a domain — it is granted to whichever steps need it.
-            knowledgeFoundations: [acme.regulatory-code, acme.aml-policy]
+            knowledgeFoundations: &knowledgeFoundations_89 [acme.regulatory-code, acme.aml-policy]
+            deniedTools: *deniedTools_1
+            guidance:
+              Confirm the context and required inputs for regulatory reporting. Use supplied facts and prior step
+              results; do not execute a child action here. Complete this step before entering the selected
+              next step.
+            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            allowedTools: *allowedTools_88
           children:
             - id: finops.reporting.regulatory
               title: File with the regulator
-              description: Assemble and submit the filings the code requires.
+              description: Check the request and prerequisites for file with the regulator.
               children:
                 - id: finops.reporting.regulatory.submission
                   # The title carries the VERB and the artifacts, because a step line
@@ -1267,8 +1708,8 @@ trees:
                   # happens to share the noun.
                   title: Submit a SAR or a periodic return to the regulator
                   description: >-
-                    File a drafted SAR or a period's return with the regulator and move
-                    it to filed. The only step that can submit anything.
+                    File a drafted SAR or a period's return with the regulator and move it to filed. The only
+                    step that can submit anything.
                   ontology:
                     allowedTools:
                       [
@@ -1283,7 +1724,7 @@ trees:
                         "mcp__acme_filing__*",
                       ]
                     mcpServers: [acme-filing]
-                    knowledgeFoundations: [acme.regulatory-code, acme.aml-policy]
+                    knowledgeFoundations: *knowledgeFoundations_89
                     actions:
                       # An UPDATE, because the return is compiled before it is
                       # filed and submitting only moves its status. `period` is
@@ -1305,12 +1746,21 @@ trees:
                               description: Records the submission.,
                             }
                     guidance: >-
-                      File the report the risk domain drafted — do not rewrite it here.
-                      Check the deadline in the regulatory code before sending, and
-                      record what went and when, because that record is the only proof
-                      the deadline was met.
+                      File the report the risk domain drafted — do not rewrite it here. Check the deadline in
+                      the regulatory code before sending, and record what went and when, because that record
+                      is the only proof the deadline was met.
                     expectedOutput: The filing reference, the period it covers, and the deadline it met.
                     audit: true
+                    entities:
+                      - *entities_finops_reporting_regulatory_regulatory_report
+                      - *entities_finops_reporting_regulatory_sar
+                      - *entities_finops_reporting_regulatory_investigation_case
+                      - *entities_finops_reporting_regulatory_claim
+                      - *entities_finops_reporting_regulatory_alert
+                    relationships:
+                      - *relationships_finops_reporting_regulatory_report_covers_sar
+                      - *relationships_finops_reporting_regulatory_report_covers_claim
+                    deniedTools: *deniedTools_1
 
                 - id: finops.reporting.regulatory.preparation
                   # Deliberately does NOT carry the word "return". Its sibling is the
@@ -1318,33 +1768,78 @@ trees:
                   # outranks the verb every time a request names both.
                   title: Compile a period's figures before anything is filed
                   description: >-
-                    Gather what a period's filing must contain and what is still
-                    outstanding. Preparation only — filing is a separate step.
+                    Gather what a period's filing must contain and what is still outstanding. Preparation only
+                    — filing is a separate step.
                   ontology:
-                    allowedTools: [search_objects, get_neighbors, knowledge_search, message]
-                    knowledgeFoundations: [acme.regulatory-code]
+                    allowedTools: *allowedTools_9
+                    knowledgeFoundations: &knowledgeFoundations_95 [acme.regulatory-code]
                     expectedOutput: The return's contents for the period, and what is still outstanding.
+                    entities:
+                      - *entities_finops_reporting_regulatory_regulatory_report
+                      - *entities_finops_reporting_regulatory_sar
+                      - *entities_finops_reporting_regulatory_investigation_case
+                      - *entities_finops_reporting_regulatory_claim
+                      - *entities_finops_reporting_regulatory_alert
+                    relationships:
+                      - *relationships_finops_reporting_regulatory_report_covers_sar
+                      - *relationships_finops_reporting_regulatory_report_covers_claim
+                    deniedTools: *deniedTools_1
+              ontology:
+                entities:
+                  - *entities_finops_reporting_regulatory_regulatory_report
+                  - *entities_finops_reporting_regulatory_sar
+                  - *entities_finops_reporting_regulatory_investigation_case
+                  - *entities_finops_reporting_regulatory_claim
+                  - *entities_finops_reporting_regulatory_alert
+                relationships:
+                  - *relationships_finops_reporting_regulatory_report_covers_sar
+                  - *relationships_finops_reporting_regulatory_report_covers_claim
+                deniedTools: *deniedTools_1
+                guidance:
+                  Confirm the context and required inputs for file with the regulator. Use supplied facts and prior
+                  step results; do not execute a child action here. Complete this step before entering the
+                  selected next step.
+                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                allowedTools: [message, search_objects]
 
             - id: finops.reporting.management
               title: Report to management
               description: Summarize the period's alerts, cases, and claims for an internal audience.
               ontology:
-                allowedTools:
-                  [search_objects, get_neighbors, compute_function, knowledge_search, message]
-                knowledgeFoundations: [acme.regulatory-code]
+                allowedTools: *allowedTools_26
+                knowledgeFoundations: *knowledgeFoundations_95
                 expectedOutput: A short internal summary with the counts and the ids behind them.
+                entities:
+                  - *entities_finops_reporting_regulatory_regulatory_report
+                  - *entities_finops_reporting_regulatory_sar
+                  - *entities_finops_reporting_regulatory_investigation_case
+                  - *entities_finops_reporting_regulatory_claim
+                  - *entities_finops_reporting_regulatory_alert
+                relationships:
+                  - *relationships_finops_reporting_regulatory_report_covers_sar
+                  - *relationships_finops_reporting_regulatory_report_covers_claim
+                deniedTools: *deniedTools_1
 
             - id: finops.reporting.audit-trail
               title: Answer an audit question
               description: Show what was decided on a named record and under which rule.
               ontology:
-                allowedTools: [search_objects, get_neighbors, knowledge_search, message]
-                knowledgeFoundations: [acme.regulatory-code]
+                allowedTools: *allowedTools_9
+                knowledgeFoundations: *knowledgeFoundations_95
                 guidance: >-
-                  Answer from what the run trace and the records actually show. Where a
-                  step never ran or a record was never read, say that rather than
-                  reconstructing what probably happened.
+                  Answer from what the run trace and the records actually show. Where a step never ran or a
+                  record was never read, say that rather than reconstructing what probably happened.
                 expectedOutput: The record, its recorded decisions, and the rule each cited.
+                entities:
+                  - *entities_finops_reporting_regulatory_regulatory_report
+                  - *entities_finops_reporting_regulatory_sar
+                  - *entities_finops_reporting_regulatory_investigation_case
+                  - *entities_finops_reporting_regulatory_claim
+                  - *entities_finops_reporting_regulatory_alert
+                relationships:
+                  - *relationships_finops_reporting_regulatory_report_covers_sar
+                  - *relationships_finops_reporting_regulatory_report_covers_claim
+                deniedTools: *deniedTools_1
 
 # =========================================================================
 # THE CORPORA
@@ -1371,34 +1866,30 @@ knowledgeFoundations:
         title: Evidence bar
         source: kyc/evidence.md
         text: >-
-          An applicant is cleared on two forms of identity evidence, at least one
-          photographic and issued by a government. A proof of address that is not
-          verified does not count toward the bar. Refuse rather than clear when
-          only one form is held.
+          An applicant is cleared on two forms of identity evidence, at least one photographic and issued by a
+          government. A proof of address that is not verified does not count toward the bar. Refuse rather
+          than clear when only one form is held.
       - foundationId: acme.kyc-manual
         title: Screening
         source: kyc/screening.md
         text: >-
-          Screen every applicant against the sanctions and politically exposed
-          person lists before the account is opened, and record the list version
-          the screening ran against. A screening older than thirty days is stale
-          and must be re-run.
+          Screen every applicant against the sanctions and politically exposed person lists before the account
+          is opened, and record the list version the screening ran against. A screening older than thirty days
+          is stale and must be re-run.
       - foundationId: acme.kyc-manual
         title: Risk rating bands
         source: kyc/rating.md
         text: >-
-          Rate a customer standard, elevated, or high. Jurisdiction and product
-          set the floor; unverified evidence raises the rating by one band. An
-          elevated or high rating does not block an account, it changes how often
-          the customer is reviewed.
+          Rate a customer standard, elevated, or high. Jurisdiction and product set the floor; unverified
+          evidence raises the rating by one band. An elevated or high rating does not block an account, it
+          changes how often the customer is reviewed.
       - foundationId: acme.kyc-manual
         title: Refusal
         source: kyc/refusal.md
         text: >-
-          Refuse an application when screening returns a sanctions match, when the
-          evidence bar cannot be met, or when the applicant will not name the
-          source of funds. A refusal is recorded against the applicant, never
-          explained to them in detail.
+          Refuse an application when screening returns a sanctions match, when the evidence bar cannot be met,
+          or when the applicant will not name the source of funds. A refusal is recorded against the
+          applicant, never explained to them in detail.
 
   - id: acme.aml-policy
     descriptor:
@@ -1411,39 +1902,36 @@ knowledgeFoundations:
         title: Alert thresholds
         source: aml/alerts.md
         text: >-
-          An alert scoring 80 or above is urgent and must be triaged within one
-          business day. Between 50 and 79 it is standard queue work. Below 50 an
-          alert is auto-closed unless the account already has an open case.
+          An alert scoring 80 or above is urgent and must be triaged within one business day. Between 50 and
+          79 it is standard queue work. Below 50 an alert is auto-closed unless the account already has an
+          open case.
       - foundationId: acme.aml-policy
         title: Structuring
         source: aml/patterns.md
         text: >-
-          Two or more transfers to one counterparty that each sit just under the
-          10,000 reporting threshold within five days are structuring, whatever
-          the stated reason. Read the transactions themselves; the alert score is
-          a prompt to look, not a finding.
+          Two or more transfers to one counterparty that each sit just under the 10,000 reporting threshold
+          within five days are structuring, whatever the stated reason. Read the transactions themselves; the
+          alert score is a prompt to look, not a finding.
       - foundationId: acme.aml-policy
         title: SAR triggers and deadline
         source: aml/sar.md
         text: >-
-          File a suspicious activity report when an investigation is disposed as
-          reportable, within 30 calendar days of that disposition. A case may be
-          closed without a report only when the file records what was checked and
-          why it was not suspicious.
+          File a suspicious activity report when an investigation is disposed as reportable, within 30
+          calendar days of that disposition. A case may be closed without a report only when the file records
+          what was checked and why it was not suspicious.
       - foundationId: acme.aml-policy
         title: Tipping off
         source: aml/tipping-off.md
         text: >-
-          Never tell a customer, or anyone outside the investigation, that a
-          report was considered, drafted, or filed. This holds even when the
-          customer asks directly and even when the case is closed with no report.
+          Never tell a customer, or anyone outside the investigation, that a report was considered, drafted,
+          or filed. This holds even when the customer asks directly and even when the case is closed with no
+          report.
       - foundationId: acme.aml-policy
         title: What a case file must contain
         source: aml/case-file.md
         text: >-
-          A case file records the alert it came from, the counterparties mapped,
-          the transactions reviewed, the analyst who disposed of it, and the
-          reason. An empty narrative is not a disposition.
+          A case file records the alert it came from, the counterparties mapped, the transactions reviewed,
+          the analyst who disposed of it, and the reason. An empty narrative is not a disposition.
 
   - id: acme.claims-handbook
     descriptor:
@@ -1456,49 +1944,45 @@ knowledgeFoundations:
         title: Settlement authority
         source: claims/authority.md
         text: >-
-          The desk may settle a claim of $5,000 or less on its own authority once
-          coverage is confirmed. Above that a human approver decides, whatever the
-          policy limit is. This figure is the DESK's authority, not any individual
-          claim's payable cap — read the claim's own derived cap from the record.
+          The desk may settle a claim of $5,000 or less on its own authority once coverage is confirmed. Above
+          that a human approver decides, whatever the policy limit is. This figure is the DESK's authority,
+          not any individual claim's payable cap — read the claim's own derived cap from the record.
       - foundationId: acme.claims-handbook
         title: Coverage
         source: claims/coverage.md
         text: >-
-          A claim never settles above the coverage limit written on its policy.
-          When the claimed amount exceeds the limit, settle at the limit and say
-          so; do not decline the claim outright for that reason alone.
+          A claim never settles above the coverage limit written on its policy. When the claimed amount
+          exceeds the limit, settle at the limit and say so; do not decline the claim outright for that reason
+          alone.
       - foundationId: acme.claims-handbook
         title: Evidence
         source: claims/evidence.md
         text: >-
-          A motor claim needs a repair estimate; a theft or malicious damage claim
-          needs a police report. An unverified document does not satisfy the
-          requirement, and a claim missing evidence is held, not declined.
+          A motor claim needs a repair estimate; a theft or malicious damage claim needs a police report. An
+          unverified document does not satisfy the requirement, and a claim missing evidence is held, not
+          declined.
       - foundationId: acme.claims-handbook
         title: Fraud referral
         source: claims/fraud.md
         text: >-
-          Refer a claim to the fraud team when its indicator band says refer, when
-          the same loss has been claimed before, or when the evidence contradicts
-          the account given. A referral is not an accusation and is never worded
-          as one to the customer.
+          Refer a claim to the fraud team when its indicator band says refer, when the same loss has been
+          claimed before, or when the evidence contradicts the account given. A referral is not an accusation
+          and is never worded as one to the customer.
       - foundationId: acme.claims-handbook
         title: Recovery
         source: claims/recovery.md
         text: >-
-          Pursue recovery when another party caused the loss, when a settled claim
-          is later found to exceed what was owed, or when a duplicate payment went
-          out. Subrogation is worth opening above $1,000; below that, write it off
-          rather than spend the handling. An overpayment is recovered from the
+          Pursue recovery when another party caused the loss, when a settled claim is later found to exceed
+          what was owed, or when a duplicate payment went out. Subrogation is worth opening above $1,000;
+          below that, write it off rather than spend the handling. An overpayment is recovered from the
           customer only after the desk has confirmed its own figures.
       - foundationId: acme.claims-handbook
         title: Escalation
         source: claims/escalation.md
         text: >-
-          Escalate to a human handler when the customer asks for one, when the
-          amount exceeds the desk's authority, when the claim is referred for
-          fraud, or when the policy wording is ambiguous. Escalation is the
-          correct answer for these cases, not a failure.
+          Escalate to a human handler when the customer asks for one, when the amount exceeds the desk's
+          authority, when the claim is referred for fraud, or when the policy wording is ambiguous. Escalation
+          is the correct answer for these cases, not a failure.
 
   - id: acme.credit-policy
     descriptor:
@@ -1511,25 +1995,22 @@ knowledgeFoundations:
         title: Approval bands
         source: credit/bands.md
         text: >-
-          A prime applicant is approved at the requested limit. A near-prime
-          applicant is approved at half the requested limit or referred to a credit
-          officer, whichever the applicant prefers. A subprime applicant is
-          declined unless an exception is granted.
+          A prime applicant is approved at the requested limit. A near-prime applicant is approved at half the
+          requested limit or referred to a credit officer, whichever the applicant prefers. A subprime
+          applicant is declined unless an exception is granted.
       - foundationId: acme.credit-policy
         title: Affordability
         source: credit/affordability.md
         text: >-
-          A bureau score decides the band; it does not decide the amount. Check the
-          applicant's own accounts before approving a limit, and never approve
-          against an account that is frozen or in dispute.
+          A bureau score decides the band; it does not decide the amount. Check the applicant's own accounts
+          before approving a limit, and never approve against an account that is frozen or in dispute.
       - foundationId: acme.credit-policy
         title: Exceptions
         source: credit/exceptions.md
         text: >-
-          Only a human credit officer grants an exception. An exception memo names
-          the customer, the band the policy assigned, what is being asked for, and
-          the one fact that is not in the bureau report. An exception is never
-          granted for a customer whose risk rating is high.
+          Only a human credit officer grants an exception. An exception memo names the customer, the band the
+          policy assigned, what is being asked for, and the one fact that is not in the bureau report. An
+          exception is never granted for a customer whose risk rating is high.
 
   - id: acme.regulatory-code
     descriptor:
@@ -1542,30 +2023,26 @@ knowledgeFoundations:
         title: Filing deadlines
         source: code/deadlines.md
         text: >-
-          The quarterly return is due 45 days after the period ends. A suspicious
-          activity report carries its own 30 day clock from disposition and is
-          never deferred to the quarterly cycle.
+          The quarterly return is due 45 days after the period ends. A suspicious activity report carries its
+          own 30 day clock from disposition and is never deferred to the quarterly cycle.
       - foundationId: acme.regulatory-code
         title: Report contents
         source: code/contents.md
         text: >-
-          A return names the period, the reports it carries, and the cases each
-          came from. A return submitted without the case references behind it is
-          incomplete and will be returned by the portal.
+          A return names the period, the reports it carries, and the cases each came from. A return submitted
+          without the case references behind it is incomplete and will be returned by the portal.
       - foundationId: acme.regulatory-code
         title: Retention
         source: code/retention.md
         text: >-
-          Keep filings, case files, and the evidence behind them for seven years
-          from the filing date. Nothing in that window may be deleted, including a
-          draft that was superseded.
+          Keep filings, case files, and the evidence behind them for seven years from the filing date. Nothing
+          in that window may be deleted, including a draft that was superseded.
       - foundationId: acme.regulatory-code
         title: Corrections
         source: code/corrections.md
         text: >-
-          A filed return is corrected by a superseding filing that names the one
-          it replaces. Never edit a submitted return in place, and never withdraw
-          one without a replacement.
+          A filed return is corrected by a superseding filing that names the one it replaces. Never edit a
+          submitted return in place, and never withdraw one without a replacement.
 
   - id: acme.privacy-standard
     descriptor:
@@ -1578,23 +2055,21 @@ knowledgeFoundations:
         title: What may leave
         source: privacy/disclosure.md
         text: >-
-          Never send a full account or payment card number to an external service
-          or write one into a ticket; the last four digits identify it. A name and
-          a jurisdiction are the most that goes to a screening provider.
+          Never send a full account or payment card number to an external service or write one into a ticket;
+          the last four digits identify it. A name and a jurisdiction are the most that goes to a screening
+          provider.
       - foundationId: acme.privacy-standard
         title: Data minimization
         source: privacy/minimization.md
         text: >-
-          Read only the fields the step you are on needs. A record pulled for one
-          purpose is not available for another, and a summary carries the finding
-          rather than the underlying personal data.
+          Read only the fields the step you are on needs. A record pulled for one purpose is not available for
+          another, and a summary carries the finding rather than the underlying personal data.
       - foundationId: acme.privacy-standard
         title: Subject access
         source: privacy/subject-access.md
         text: >-
-          A customer may ask what is held about them. Answer from the stored
-          record, exclude investigation material, and route anything touching an
-          open case to the privacy team instead of answering it.
+          A customer may ask what is held about them. Answer from the stored record, exclude investigation
+          material, and route anything touching an open case to the privacy team instead of answering it.
 
 # Derived from the tree above. Import recomputes all three rather than trusting
 # these, so they are a manifest for the reader, not a contract. The MCP globs

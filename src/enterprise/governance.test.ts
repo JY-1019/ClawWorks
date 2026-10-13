@@ -115,7 +115,7 @@ describe("evaluateToolCallGovernance", () => {
     expect(decision.effect).toBe("allow");
   });
 
-  it("inherits an ancestor's MCP attachment", () => {
+  it("does not inherit a preceding step's MCP attachment", () => {
     // Attaching on the root is how an operator covers a subtree; requiring every
     // leaf to repeat it would make the root grant meaningless.
     const root: EnterprisePlanNode = {
@@ -142,11 +142,11 @@ describe("evaluateToolCallGovernance", () => {
       node: leaf,
       toolName: "github__create_issue",
       policies: [],
-      path: [root, leaf],
+
       mcpTool: { serverName: "github", safeServerName: "github", toolName: "create_issue" },
       mcpServers: ["github"],
     });
-    expect(decision.effect).toBe("allow");
+    expect(decision.effect).toBe("deny");
   });
 
   it("lets a deny list take back an attached server's tool", () => {
@@ -706,7 +706,7 @@ describe("evaluateToolCallGovernance", () => {
     expect(decision.effect).toBe("allow");
   });
 
-  it("reads attachments plan-wide for a runtime that never advances", () => {
+  it("never uses another step attachment at the active step", () => {
     // CLI/Codex/ACP runs stay pinned at the root, so a path check would deny the
     // leaf attachment the operator wrote — while those runtimes were already
     // handed the server plan-wide.
@@ -741,7 +741,6 @@ describe("evaluateToolCallGovernance", () => {
     } as const;
 
     expect(evaluateToolCallGovernance({ ...call }).effect).toBe("deny");
-    expect(evaluateToolCallGovernance({ ...call, attachmentScope: "plan" }).effect).toBe("allow");
   });
 
   it("leaves a plugin-contributed MCP server to the tool scope", () => {
@@ -1129,18 +1128,16 @@ describe("evaluateToolCallGovernance path scope", () => {
     return { plan, path: [root, leaf] };
   }
 
-  it("denies at the ancestor level when the root scope excludes the tool", () => {
+  it("ignores preceding step restrictions at the active step", () => {
     const { plan, path } = nestedPlan();
     const decision = evaluateToolCallGovernance({
       plan,
       node: path[1],
       toolName: "exec",
       policies: [],
-      path,
     });
-    expect(decision.effect).toBe("require_approval");
-    expect(decision.source).toBe("ontology");
-    expect(decision.reason).toContain('"ops"');
+    expect(decision.effect).toBe("allow");
+    expect(decision.source).toBe("default");
   });
 
   it("denies at the leaf level when a deeper step narrows the scope", () => {
@@ -1150,7 +1147,6 @@ describe("evaluateToolCallGovernance path scope", () => {
       node: path[1],
       toolName: "message",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("deny");
     expect(decision.reason).toContain('"ops.step"');
@@ -1163,12 +1159,11 @@ describe("evaluateToolCallGovernance path scope", () => {
       node: path[1],
       toolName: "memory_search",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("allow");
   });
 
-  it("matches action-scoped policies against ancestor actions on the path", () => {
+  it("does not apply action policies from a different step declaration", () => {
     const { plan, path } = nestedPlan();
     const policies: GovernancePolicy[] = [
       { id: "audit.lookup", effect: "require_approval", actions: ["lookup"] },
@@ -1178,10 +1173,9 @@ describe("evaluateToolCallGovernance path scope", () => {
       node: path[1],
       toolName: "memory_search",
       policies,
-      path,
     });
-    expect(decision.effect).toBe("require_approval");
-    expect(decision.policyId).toBe("audit.lookup");
+    expect(decision.effect).toBe("allow");
+    expect(decision.policyId).toBeNull();
   });
 
   it("does not let a shadowed ancestor action keep matching policies", () => {
@@ -1192,13 +1186,12 @@ describe("evaluateToolCallGovernance path scope", () => {
       node: path[1],
       toolName: "memory_search",
       policies: [{ id: "deny.lookup", effect: "deny", actions: ["lookup"] }],
-      path,
     });
 
     expect(decision.effect).toBe("allow");
   });
 
-  it("keeps root-scoped node policies applying after advancing into a leaf", () => {
+  it("limits an exact node policy to that executable step", () => {
     const { plan, path } = nestedPlan();
     // Policy pinned to the workflow root ("ops"), evaluated while the active
     // node is the leaf: it must still deny (would silently fall back to allow
@@ -1211,10 +1204,9 @@ describe("evaluateToolCallGovernance path scope", () => {
       node: path[1],
       toolName: "memory_search",
       policies,
-      path,
     });
-    expect(decision.effect).toBe("deny");
-    expect(decision.policyId).toBe("root.deny");
+    expect(decision.effect).toBe("allow");
+    expect(decision.policyId).toBeNull();
   });
 
   it("still honors leaf-scoped node policies", () => {
@@ -1227,7 +1219,6 @@ describe("evaluateToolCallGovernance path scope", () => {
       node: path[1],
       toolName: "memory_search",
       policies,
-      path,
     });
     expect(decision.effect).toBe("deny");
     expect(decision.policyId).toBe("leaf.deny");
@@ -1269,7 +1260,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "memory_search",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("allow");
   });
@@ -1287,7 +1277,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "complete_step",
       policies: [],
-      path,
       tracksSteps: true,
     });
     expect(decision.effect).toBe("allow");
@@ -1305,7 +1294,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "reopen_step",
       policies: [],
-      path,
       tracksSteps: true,
     });
     expect(decision.effect).toBe("require_approval");
@@ -1321,7 +1309,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "complete_step",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
   });
@@ -1344,7 +1331,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
         node: path[1],
         toolName,
         policies: [],
-        path,
         tracksSteps: true,
       });
       expect(decision.effect, toolName).toBe("require_approval");
@@ -1360,7 +1346,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "complete_step",
       policies: [],
-      path,
       mcpTool: { serverName: "vendor", safeServerName: "vendor", toolName: "complete_step" },
       tracksSteps: true,
     });
@@ -1376,7 +1361,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "complete_step",
       policies: [{ id: "deny.all", effect: "deny", tools: ["*"] }],
-      path,
       tracksSteps: true,
     });
     expect(decision.effect).toBe("allow");
@@ -1395,7 +1379,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "exec",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
     expect(decision.source).toBe("ontology");
@@ -1410,13 +1393,12 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "exec",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
     // The step that narrowed it away, not the active one: that is where the list
     // an operator has to widen lives.
-    expect(decision.reason).toContain('"ops"');
-    expect(decision.reason).toContain("outside the ontology tool scope");
+    expect(decision.reason).toContain('"ops.step"');
+    expect(decision.reason).toContain("not granted");
   });
 
   it("asks about every non-floor tool when no step on the path grants anything", () => {
@@ -1426,7 +1408,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "exec",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
     expect(decision.reason).toContain("grants capabilities explicitly");
@@ -1444,7 +1425,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "exec",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("deny");
     expect(decision.reason).toContain("ontology.deniedTools");
@@ -1460,7 +1440,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "exec",
       policies: [{ id: "deny.exec", effect: "deny", tools: ["exec"] }],
-      path,
     });
     expect(decision.effect).toBe("deny");
     expect(decision.source).toBe("policy");
@@ -1474,7 +1453,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "exec",
       policies: [{ id: "ask.exec", effect: "require_approval", tools: ["exec"] }],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
     expect(decision.source).toBe("policy");
@@ -1498,7 +1476,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
           approval: { timeoutBehavior: "allow", severity: "info" },
         },
       ],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
     expect(decision.approval?.timeoutBehavior).toBe("deny");
@@ -1514,6 +1491,7 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
     // Nothing to fail closed about here: the step grants the tool, and the policy
     // is the only reason a human is asked at all.
     const { plan, path } = grantingPlan(["exec"]);
+    path[1].ontology.allowedTools = ["exec"];
     const decision = evaluateToolCallGovernance({
       plan,
       node: path[1],
@@ -1526,7 +1504,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
           approval: { timeoutBehavior: "allow" },
         },
       ],
-      path,
     });
     expect(decision.effect).toBe("require_approval");
     expect(decision.approval?.timeoutBehavior).toBe("allow");
@@ -1546,7 +1523,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
         node: path[1],
         toolName,
         policies: [],
-        path,
       });
       expect(decision.effect, toolName).toBe("allow");
     }
@@ -1556,7 +1532,7 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
     // capability rather than a courtesy.
     for (const toolName of ["exec", "write", "edit", "session_status"]) {
       expect(
-        evaluateToolCallGovernance({ plan, node: path[1], toolName, policies: [], path }).effect,
+        evaluateToolCallGovernance({ plan, node: path[1], toolName, policies: [] }).effect,
         toolName,
       ).not.toBe("allow");
     }
@@ -1572,7 +1548,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "message",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("deny");
     expect(decision.reason).toContain("ontology.deniedTools");
@@ -1587,7 +1562,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "message",
       policies: [],
-      path,
     });
     expect(decision.effect).toBe("allow");
   });
@@ -1600,7 +1574,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "message",
       policies: [],
-      path,
     });
     // An operator's deniedTools entry is a DECISION: still a hard block, and it
     // says so rather than reporting a scope omission.
@@ -1618,7 +1591,6 @@ describe("evaluateToolCallGovernance explicit capability grants", () => {
       node: path[1],
       toolName: "github__create_issue",
       policies: [],
-      path,
       mcpTool: { serverName: "github", safeServerName: "github", toolName: "create_issue" },
       mcpServers: ["github"],
     });
@@ -1855,7 +1827,7 @@ describe("outward ontology actions", () => {
     const decision = evaluateToolCallGovernance({
       ...call,
       node: leaf,
-      path: [root, leaf],
+
       toolParams: { "account-id": "AC-2002", reason: "structuring pattern" },
     });
 
@@ -2030,7 +2002,7 @@ describe("an outward action closes only its own server", () => {
       seq: 1,
       title: "Leaf",
       ontology: {
-        mcpServers: ["core-banking"],
+        mcpServers: ["core-banking", "tracker"],
         actions: [
           {
             id: "freeze-account",
@@ -2057,7 +2029,7 @@ describe("an outward action closes only its own server", () => {
       evaluateToolCallGovernance({
         plan,
         node: leaf,
-        path: [root, leaf],
+
         toolName: `${server}__${tool}`,
         mcpTool: { serverName: server, safeServerName: server, toolName: tool },
         mcpServers: ["tracker", "core-banking"],

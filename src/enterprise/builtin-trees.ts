@@ -23,17 +23,12 @@ export const BUILTIN_ASSIST_TREE: WorkflowTreeDefinition = {
     // context hints, so the default digest stays empty and prompt bytes match
     // non-enterprise OpenClaw exactly.
     ontology: {},
-    children: [
-      { id: "assist.understand", title: "Understand the request" },
-      { id: "assist.execute", title: "Carry out the work" },
-      { id: "assist.respond", title: "Report the outcome" },
-    ],
   },
 };
 
 /**
  * Shipped EXAMPLE work-map, always visible in the Enterprise UI: a customer-support
- * workflow whose leaves each carry their own ontology (tool scope, actions,
+ * workflow whose executable steps each carry their own ontology (tool scope, actions,
  * constraints, expected output), so the UI shows a rich per-node ontology and the
  * entity/relationship graph.
  *
@@ -61,8 +56,10 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
   },
   root: {
     id: "support",
-    title: "Handle a customer support request",
+    title: "Receive a customer support request",
     ontology: {
+      guidance:
+        "Confirm the requested support outcome and identify the customer. Complete this intake before triage; do not resolve or escalate yet.",
       entities: [
         { id: "customer", description: "The person who opened the request." },
         { id: "order", description: "A purchase the request refers to." },
@@ -84,11 +81,6 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
         },
         { id: "settles", from: "refund", to: "order", description: "A refund settles the order." },
       ],
-      // knowledge_search is allowed here (and inherited by the investigate step) so
-      // the declared knowledge source is queryable under the path scope. Declare the
-      // KB allow-list at the root too, or an omitted list would let the root scope
-      // (used by non-advancing CLI/ACP runs) query every registered foundation.
-      //
       // `clawworks.support-kb.example` ships with example content registered
       // against THIS tree id (src/enterprise/builtin-knowledge.ts), so retrieval
       // returns real snippets once the example is imported. The id is
@@ -132,63 +124,70 @@ export const BUILTIN_SUPPORT_EXAMPLE_TREE: WorkflowTreeDefinition = {
           ],
           expectedOutput: "A category, a priority, and the order the request concerns.",
         },
-      },
-      {
-        id: "support.investigate",
-        title: "Investigate account and order history",
-        ontology: {
-          allowedTools: ["memory_search", "memory_get", "message", "knowledge_search"],
-          knowledgeFoundations: ["clawworks.support-kb.example"],
-          actions: [
-            {
-              id: "lookup-history",
-              description: "Read prior orders and conversations.",
-              tools: ["memory_search", "memory_get"],
+        children: [
+          {
+            id: "support.investigate",
+            title: "Investigate account and order history",
+            ontology: {
+              allowedTools: ["memory_search", "memory_get", "message", "knowledge_search"],
+              knowledgeFoundations: ["clawworks.support-kb.example"],
+              actions: [
+                {
+                  id: "lookup-history",
+                  description: "Read prior orders and conversations.",
+                  tools: ["memory_search", "memory_get"],
+                },
+              ],
+              expectedOutput: "The order and account facts needed to resolve the request.",
             },
-          ],
-          expectedOutput: "The order and account facts needed to resolve the request.",
-        },
-      },
-      {
-        id: "support.resolve",
-        title: "Resolve the request or issue a refund",
-        ontology: {
-          allowedTools: ["memory_get", "message"],
-          skills: ["refund-policy"],
-          actions: [
-            {
-              id: "reply",
-              description: "Send the resolution to the customer.",
-              tools: ["message"],
-            },
-            { id: "issue-refund", description: "Issue a refund within the approval limit." },
-          ],
-          constraints: [
-            {
-              id: "refund-cap",
-              description: "Do not issue a refund over $200 without human approval.",
-            },
-          ],
-          expectedOutput: "A resolution message, plus a refund record when one was issued.",
-        },
-      },
-      {
-        id: "support.escalate",
-        title: "Escalate to a human agent",
-        ontology: {
-          allowedTools: ["message"],
-          // `summarize` is a bundled skill, so this dependency resolves on a
-          // stock install.
-          skills: ["summarize"],
-          actions: [
-            {
-              id: "handoff",
-              description: "Summarize the case and hand it to a human.",
-              tools: ["message"],
-            },
-          ],
-          expectedOutput: "An escalation summary for the human queue.",
-        },
+            children: [
+              {
+                id: "support.resolve",
+                title: "Resolve the request or issue a refund",
+                ontology: {
+                  allowedTools: ["memory_get", "message"],
+                  skills: ["refund-policy"],
+                  actions: [
+                    {
+                      id: "reply",
+                      description: "Send the resolution to the customer.",
+                      tools: ["message"],
+                    },
+                    {
+                      id: "issue-refund",
+                      description: "Issue a refund within the approval limit.",
+                    },
+                  ],
+                  constraints: [
+                    {
+                      id: "refund-cap",
+                      description: "Do not issue a refund over $200 without human approval.",
+                    },
+                  ],
+                  expectedOutput: "A resolution message, plus a refund record when one was issued.",
+                },
+              },
+              {
+                id: "support.escalate",
+                title: "Escalate to a human agent",
+                ontology: {
+                  allowedTools: ["message"],
+                  // `summarize` is a bundled skill, so this dependency resolves on a
+                  // stock install.
+                  skills: ["summarize"],
+                  actions: [
+                    {
+                      id: "handoff",
+                      description: "Summarize the case and hand it to a human.",
+                      tools: ["message"],
+                    },
+                  ],
+                  expectedOutput: "An escalation summary for the human queue.",
+                },
+              },
+            ],
+          },
+        ],
       },
     ],
   },
@@ -207,10 +206,6 @@ export const BUILTIN_SYSTEM_TREE: WorkflowTreeDefinition = {
     id: "system",
     title: "Run the scheduled system task",
     ontology: {},
-    children: [
-      { id: "system.execute", title: "Execute the scheduled work" },
-      { id: "system.report", title: "Record the outcome" },
-    ],
   },
 };
 

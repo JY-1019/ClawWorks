@@ -787,8 +787,8 @@ describe("applyEnterpriseChatStep", () => {
     expect(state.enterpriseChatStep).toMatchObject({
       nodeId: "b",
       title: "Second",
-      ordinal: 2,
-      total: 2,
+      ordinal: 3,
+      total: 3,
       kind: "entered",
     });
   });

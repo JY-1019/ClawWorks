@@ -120,8 +120,8 @@ that discovers it. A router added to config needs a gateway restart, since the
 gateway reads config at startup.
 
 Pick for routing judgment, not context size: the prompt is small, and what matters
-is whether the model picks the deepest node covering a request instead of hedging
-up to its parent.
+is whether the model selects the requested endpoint and its necessary predecessor steps without
+adding unrelated branches.
 
 ### Work-map execution model
 
@@ -153,8 +153,12 @@ accepted in `executionModel`.
 
 ## Workflow trees
 
-A workflow tree is a versioned, importable definition. Each node is a step; leaf
-nodes are the executable steps a run advances through.
+A workflow tree is a versioned, importable definition. Every selected node is an executable
+step, including the root and intermediate parents. A parent must complete before
+a selected child starts. Selecting a node includes its ancestors, never its
+descendants automatically; selecting an intermediate node can end the route there.
+When a request needs several branches, shared predecessors run once and the
+selected steps follow definition order. Capabilities belong to each step locally.
 
 The field-by-field format reference, in YAML and JSON, is
 [Worktree Authoring](/concepts/clawworks-worktree-authoring).
@@ -273,9 +277,8 @@ or to runs until it reloads.
 
 It is a regulated financial-services operation under governance — customer
 lifecycle, financial-crime risk, claims, and regulatory reporting — at the scale
-where the bindings actually constrain each other: 46 nodes across 30 executable
-steps, depth 5, so route selection is a real problem, an object model declared per
-domain so claims cannot address a `sar`, six inlined corpora with per-domain scope,
+where the bindings actually constrain each other: 46 executable nodes (16 prerequisite steps and 30 operation endpoints), depth 5, so route selection is a real problem, an object model declared per
+step so claims cannot address a `sar`, six inlined corpora with per-domain scope,
 five MCP servers attached to
 the steps that need them and denied everywhere else, ten action-declaring steps, and `capabilityGrants: explicit`
 so every one of those is deny-by-default. MCP transports and credentials are
@@ -297,11 +300,11 @@ declares but no install provides is listed too, marked "not installed".
 Each node carries executable metadata in its `ontology`:
 
 - `allowedTools` / `deniedTools`: tool name globs. `allowedTools` is what a step
-  may call **without asking**; a tool no list on the root-to-active path names
+  may call **without asking**; a tool the active step does not grant
   raises a one-off human approval instead of running, and is refused if nobody
-  answers. `deniedTools` is the hard refusal, and deny wins over allow. Each node
-  on the root-to-active path is an independent gate, so a leaf inherits every
-  ancestor's scope. Under
+  answers. `deniedTools` is the hard refusal, and deny wins over allow. Parent and child grants are independent: neither grants nor denials
+  are inherited. For a rule covering the entire work-map, use a governance policy
+  with a tree selector and no node selector. Under
   [explicit capability grants](#capability-grants) an omitted list grants nothing
   approval-free, apart from the reply-and-read floor described there.
 - `knowledgeFoundations`: knowledge foundation ids the step may query. Empty or
@@ -311,8 +314,7 @@ Each node carries executable metadata in its `ontology`:
   name. This is the one scope that DENIES by default — but only for a work-map
   that uses it: attach a server anywhere in the tree and every step is governed,
   so a step without an attachment can call none. A work-map that never mentions
-  the field keeps the behavior it had before it existed. An attachment is
-  inherited down the branch and grants that server's tools without the step also
+  the field keeps the behavior it had before it existed. An attachment belongs to that step and grants that server's tools without the step also
   listing them in `allowedTools`; `deniedTools` still wins, so a step can take one
   tool back. [Explicit capability grants](#capability-grants) turn the same rule
   on for a work-map that attaches no server at all.
@@ -341,21 +343,21 @@ capabilityGrants: explicit
 
 With `capabilityGrants: explicit`, **tools, skills, MCP servers, and knowledge
 foundations are all deny-by-default**. Tools, MCP servers, and knowledge follow
-the active root-to-step path. Skills are narrowed once for the run to those
+the active step's own declarations. Skills are narrowed once for the run to those
 declared anywhere on its planned route; each step's declaration says which of
 that run-scoped set it should use. Tools work slightly differently, and the
 difference matters when you are reasoning about the boundary — read on.
 
 - **Tools**: `allowedTools` controls what a step may call **without asking**. A
-  call no list on the root-to-step path names is not refused outright: it raises a
+  call the active step does not grant is not refused outright: it raises a
   one-off human approval, and runs only if someone allows it. So the list is the
   approval-free set, not a wall.
 
   **`deniedTools` is the wall.** That, and a `deny` governance policy, are what
-  refuse a call outright — on any step of the path, and on the floor tools below
+  refuse a call outright — on the active step, and on the floor tools below
   too. If a step must never touch something, deny it; do not rely on leaving it
-  out. The lists still narrow as they nest (a leaf cannot widen its root's
-  approval-free set).
+  out. A parent's list does not limit a later child's approval-free set;
+  the child must declare its own grants and denials.
 
   An unanswered approval always refuses. A policy that would otherwise allow on
   timeout cannot relax a call the step's scope never covered.
@@ -380,12 +382,12 @@ difference matters when you are reasoning about the boundary — read on.
   is route-wide because the catalog and instruction appendix are fixed for prompt
   stability; the per-step Skills line is the model's applicability cue, not a
   second physical filter.
-- **Knowledge foundations**: a step queries only the foundations its path names.
+- **Knowledge foundations**: a step queries only the foundations it declares.
   Without the switch an omitted or empty list means every configured foundation,
   which is the right default for a work-map that scopes nothing — but it is the
   opposite of what an explicit work-map means by silence. A `knowledge_search`
   that targets an ungranted foundation is reported as skipped, never widened, and
-  the tool is not offered at all when no executable path grants a foundation the
+  the tool is not offered at all when no selected step grants a foundation the
   deployment has.
 
   This one applies in **observe mode too**, unlike the three above. Knowledge
@@ -396,18 +398,15 @@ difference matters when you are reasoning about the boundary — read on.
 - **MCP servers**: already deny-by-default whenever a work-map attaches one
   (above); explicit grants turn the same rule on for a work-map that attaches
   none, and additionally withhold a plugin's MCP servers from a native runtime
-  unless the root's `allowedTools` grants them whole. On the Claude CLI and the
+  unless every selected step's `allowedTools` grants them whole. On the Claude CLI and the
   Codex app-server the attachment alone is not enough to CALL the server — those
-  report a tool name with no MCP origin — so the root must also list the server's
+  report a tool name with no MCP origin — so every selected step must also list the server's
   tool globs, in every spelling (see
   [What that means for a governed native run](#mcp-servers)).
 
-Omit the field for the inherited semantics every work-map written before it
-carries: a scope narrows what an ancestor allowed, and a branch that scopes
-nothing may use anything. That is the default because `allowedTools` and `skills`
-predate this switch — a stored work-map that scopes one leaf means "narrow that
-leaf", and silently rereading it as "deny everywhere else" would break an import
-on upgrade.
+Omit the field for permissive grants: a step with no tool allow-list narrows
+nothing, and omitted knowledge lists allow configured foundations. Permissions
+are local in both modes; omitting `capabilityGrants` never enables inheritance.
 
 The Control UI shows which mode a work-map is in on **Enterprise -> Worktree**,
 next to the work-map's name, and switches it there. Switching writes an ordinary
@@ -439,9 +438,8 @@ hook judges no call at all: there, skills and MCP servers are withheld physicall
 (nothing is linked, nothing is launched), while `allowedTools` bounds only what
 ClawWorks hands over. And a run that never advances — because the model never
 called `complete_step`, or because the runtime receives no OpenClaw tools at all
-(ACP) — is judged by its FIRST step's grants merged with the root's for the whole
-run, so a work-map that holds its grants on later leaves gives such a run nothing.
-Put what every step needs on the root, exactly as an MCP-attaching work-map does.
+(ACP) — never reaches a later step's capabilities. Declare each step's
+requirements on that step, and use a runtime that supports step advancement.
 
 ### The typed object model
 
@@ -483,9 +481,9 @@ transaction — is read from that system and written back to it through an outwa
 action; what lives here is what the workflow itself produces.
 
 Object types are tree-scoped, so instances are stored once per tree. But each
-node only sees the types, properties, relationships, actions, and functions on
-its own root-to-node path, so a sibling branch's declarations are never
-addressable from the current step.
+node only sees its locally declared types, properties, relationships, actions,
+and functions. Repeating a type on another step exposes that step's declared
+fields on the same persisted records; it does not create a second object store.
 
 ## How a run is mediated
 
@@ -496,17 +494,16 @@ When a request starts an enterprise-mediated run:
    trees other than the default are shipped examples and never govern until you
    import them. The `matchedBy` recorded on the run says which path it took:
 
-   | `matchedBy`      | What happened                                   | What governs                      |
-   | ---------------- | ----------------------------------------------- | --------------------------------- |
-   | `planner`        | The model chose a work-map                      | that work-map, routed             |
-   | `no-match`       | The model judged that none apply                | the default tree                  |
-   | `only-candidate` | No work-map is installed for this trigger       | the default tree                  |
-   | `unavailable`    | No planner could be consulted at all            | the default tree                  |
-   | `fallback`       | A planner answered unusably, or the call failed | the first work-map, planned whole |
+   | `matchedBy`      | What happened                                   | What governs                         |
+   | ---------------- | ----------------------------------------------- | ------------------------------------ |
+   | `planner`        | The model chose a work-map                      | that work-map, routed                |
+   | `no-match`       | The model judged that none apply                | the default tree                     |
+   | `only-candidate` | No work-map is installed for this trigger       | the default tree                     |
+   | `unavailable`    | No planner could be consulted at all            | the default tree                     |
+   | `fallback`       | A planner answered unusably, or the call failed | execution blocked; no business tools |
 
-   The last two look alike but must not be confused. `fallback` fails closed onto
-   a work-map because a crafted request can provoke an unusable answer, and that
-   must not become a way out of governance. `unavailable` means no model is
+   A failed call, invalid node id, or empty route blocks execution. It cannot
+   run the first work-map or expand all branches as a fallback. `unavailable` means no model is
    configured or authorized for planning — a property of the install that no
    request can trigger — so the default tree governs instead; otherwise every
    request on that machine, a poem included, would run under whichever work-map
@@ -521,8 +518,9 @@ When a request starts an enterprise-mediated run:
    model-backed judgment, not a guarantee that every ambiguity will be detected.
    Once the planner selects routes, they are honored even for a small tree.
 
-2. **Decomposition** flattens the chosen subtree into a depth-first plan. For
-   embedded and CLI runs the whole subtree's guidance is injected once as a
+2. **Decomposition** includes the selected endpoints and their ancestors in
+   depth-first definition order. Every included node is a step. Unselected
+   descendants are excluded. For embedded and CLI runs the selected guidance is injected once as a
    static step digest so the model sees every step's rules up front (this keeps
    the prompt cache stable). ACP runs own their prompt channel and do not
    receive the digest, so `contextHints` and `expectedOutput` are not
@@ -531,7 +529,7 @@ When a request starts an enterprise-mediated run:
    model calls `complete_step`, so a step lasts as long as its work does instead
    of expiring after one provider turn.
 4. **The tool-call gate** evaluates each tool call against the active node's
-   ontology merged down the root-to-active path, then against config governance
+   own ontology, then against config governance
    policies.
 
 A tool call the step's scope does not cover **asks rather than fails**. A work-map
@@ -546,8 +544,8 @@ cron, headless — resolves it as a refusal rather than passing it.
 Two things stay hard blocks, because both are decisions somebody made rather than
 omissions: an entry in a step's `deniedTools`, and a `deny` policy in
 `enterprise.governance.policies`. Escalating those to a prompt would make writing
-one mean nothing. A denial also wins wherever it appears on the path, including on
-a step _below_ the one whose list omitted the tool.
+one mean nothing. A step's denial applies while that step is active. Use a tree-scoped policy
+without a node selector when the denial must cover every step.
 
 Two more cases cannot reach the prompt at all, because the decision is taken before
 any tool call exists:
@@ -557,14 +555,14 @@ any tool call exists:
   so no per-call gate ever sees it. If any step the run can reach omits it, it is
   withheld for the whole run rather than prompted for. Grant it on every reachable
   step, or expect it to be absent.
-- **Ontology writes.** `invoke_action` needs an explicit opt-in on the active path
+- **Ontology writes.** `invoke_action` needs an explicit opt-in on the active step
   (the tool named in `allowedTools`, or `group:enterprise-write`). A step without
   that opt-in is refused outright rather than prompted, because the tool is exposed
   plan-wide for prompt-cache stability and the opt-in is the only thing separating a
   step that may write from one that merely sees the action declared.
 - **MCP servers on a native backend.** A CLI or Codex subprocess receives its MCP
-  servers once, at launch, and nothing can hand one over later — so a server no
-  reachable step attaches is never written into that subprocess's config at all.
+  servers once, at launch, and nothing can hand one over later — so a server not attached and admitted by every
+  selected step is never written into that subprocess's config at all.
   There is no tool call to approve, because the tool was never offered. See
   "MCP servers" below for what that ceiling reads.
 
@@ -610,7 +608,7 @@ omission is REFUSED rather than prompted: the approval would outlive the harness
 deadline. Grant a Codex work-map what its steps need rather than relying on the
 approval path.
 
-A run opens on the first step of its route, not on the root. Because advancing is
+A run opens on the root and completes each selected predecessor before its child. Because advancing is
 a tool call rather than a property of one runtime's loop, every runtime that
 receives OpenClaw tools can walk the route: the embedded runtime, the CLI
 loopback surface, and the Codex app-server. ACP runs own their own tool channel
@@ -704,7 +702,7 @@ scoped to that node:
 
 The read tools appear whenever the run declares an ontology; `invoke_action`
 appears only when the tree opts into ontology writes. Every tool is bounded to
-the active node's path and to addressable types (those with a primary key), so a
+the active node's local declarations and to addressable types (those with a primary key), so a
 step can never read, traverse into, or write an object type outside its own
 contract. Writes are recorded to the run trace as `action.invoked` events.
 
@@ -772,7 +770,7 @@ grant it back.
 It is still scoped by `allowedTools` like the rest of that plugin. On the embedded
 runtime the per-call gate does that. On a backend with no pre-tool hook nothing
 judges a call afterwards, so the same ceiling is applied at launch instead: a
-plugin server the root's list cannot admit whole — or that a denial or a blocking
+plugin server any selected step's list cannot admit whole — or that a denial or a blocking
 policy reaches — is not handed over. A root that narrows nothing hands over
 everything, as before.
 
@@ -839,12 +837,10 @@ A bundle exported from a work-map records the server names it attaches
 configuration, so the bundle carries the name and the recipient registers the
 server itself.
 
-Put those globs on the ROOT as well when the tree narrows tools there: the root
-sits on every step's path, so its list bounds every call the run makes wherever it
-has advanced to — and on a CLI with no pre-tool hook it also decides whether the
-server is handed over at all (a server the root's list cannot admit is withheld,
-not merely denied later). A tree that narrows nothing needs none of this; the attachment is
-the whole rule there.
+Declare the attachment on the step that needs it. Native launch exposure is
+stricter: every selected step must attach the server and admit these globs. A
+server any selected step cannot admit is withheld before launch. Use the embedded
+per-call runtime when a server should be available on only one step.
 
 A `deniedTools` entry may be written with either the configured server name or the
 runtime's rewritten one; both cover an embedded call.
@@ -879,8 +875,8 @@ different runtimes, so the form asks which one it is.
 
 CLI-backed runtimes (including the Codex app-server) launch their MCP servers
 themselves, from config the subprocess owns, so nothing can be withdrawn once that
-process is up. For those, ClawWorks withholds the servers **no step in the bound
-work-map attaches** — they are never written into the subprocess config or the
+process is up. For those, ClawWorks withholds any server **not attached and
+admitted by every selected step** — they are never written into the subprocess config or the
 Codex thread patch. Two consequences follow, and both are deliberate:
 
 - What is handed over is decided once, across every step the run PLANNED — not
@@ -898,7 +894,7 @@ Codex thread patch. Two consequences follow, and both are deliberate:
 Anything that would have blocked a call counts the same way, because on a runtime
 with no per-call hook nothing evaluates it later: a governance policy that denies
 or requires approval for a tool the server exposes withholds the server at launch,
-and so does a root allow-list that grants it only in part — `allowedTools` stays a
+and so does any selected step's allow-list that grants it only in part — `allowedTools` stays a
 ceiling, so `<server>__*` is how a step grants a server to a native runtime.
 
 Observe mode withholds nothing: it records decisions without blocking, and
@@ -923,10 +919,9 @@ enforcement point is the decision to enable it at all, taken before the thread
 starts.
 
 ClawWorks takes that decision from the same ceiling the MCP withholding uses: the
-root's `allowedTools` (a grant on a leaf a native run can never reach does not
-count), any planned step's `deniedTools`, and, under
+intersection of every selected step's `allowedTools`, their `deniedTools`, and, under
 [explicit grants](#capability-grants), the absence of a grant. So a work-map whose
-root allows `[knowledge_search, message]` turns Codex's hosted web search off for
+selected step allows only `[knowledge_search, message]` turns Codex's hosted web search off for
 that run, and one that narrows nothing leaves it exactly as configured. Observe
 mode changes nothing here either — withholding a tool is physical rather than
 recorded.
@@ -968,7 +963,7 @@ when all of its present selectors match.
 
 - **Effects and precedence**: `deny` > `require_approval` > `allow` > `audit`.
   Composition is order independent.
-- **Selectors**: `trees` and `nodes` scope where a policy applies; `tools` and
+- **Selectors**: `trees` selects work-maps; `nodes` selects exact steps without descendant inheritance. Omit `nodes` for a work-map-wide policy; `tools` and
   `actions` scope tool calls; `knowledge` scopes knowledge retrieval. A policy
   targets one scope family. Mixing a tool selector with a knowledge selector in
   one policy is rejected.
@@ -1164,7 +1159,7 @@ event log of run lifecycle plus governance decisions.
     step can address. Action effects intentionally allow incomplete intermediate
     mappings so an operator can build them incrementally; the inspector and
     authoring warnings mark such an action uncallable until its endpoint and
-    identity mappings resolve against the step's root-to-node scope. A local
+    identity mappings resolve against the step's local declarations. A local
     action with no create/update/delete effect is likewise flagged because the
     write path cannot run it; an outward action is exempt, since its call is how
     it happens.
@@ -1223,7 +1218,7 @@ event log of run lifecycle plus governance decisions.
     `enterprise.trees.import` whole-tree replace. Adding the first tool (or the
     first foundation) on a step turns that list into an allowlist, and every step
     from the root is an independent gate, so the UI warns when an entry narrows
-    scope or when an ancestor's allowlist would still deny it.
+    scope or when the step's own denial would block it.
   - **Step behavior** edits a node's title, parent/order, description,
     instructions, context hints, expected output, and audit flag together without
     requiring raw JSON/YAML.

@@ -1,7 +1,8 @@
 # A complete assessment inside one deep node
 
 This example routes through five levels to
-`operations.orders.returns.cases.assess`. That **one node** owns its MCP server,
+`operations.orders.returns.cases.assess`. The root and three intermediate nodes each confirm the request and prerequisites
+before this assessment step starts. That **one assessment node** owns its MCP server,
 knowledge foundation, two entity types, a relationship, an atomic three-effect
 action, and an eligibility function. Delivery-only and policy-only requests have
 separate neighboring routes; account, billing, and catalog branches are distractors.
@@ -25,15 +26,20 @@ pnpm openclaw gateway restart
 ```
 
 The CLI import requires a restart to refresh the running Gateway's registry.
-The Control UI import refreshes it immediately. Use an authenticated model with
-MCP and tool support. In chat, ask:
+The Control UI import refreshes it immediately. Use an authenticated model on the embedded per-call runtime with MCP and tool
+support. Native launch exposure requires every selected step to admit a server;
+this example deliberately attaches the tracker only to the steps that use it. In chat, ask:
 
 > Acme 주문 1043을 MCP로 조회하고 반품 정책을 검색해서 반품 자격을 심사해 줘.
 > 사례 CASE-1043과 증거 EVIDENCE-1043을 저장하고 연결한 뒤 계산 결과와 연결된
 > 증거를 검증해 줘. 실제 환불이나 메시지 발송은 하지 마.
 
-Use fresh case and evidence ids when replaying. All six tool categories should
-run under the same selected leaf, without `workflow_advance` between calls:
+Use fresh case and evidence ids when replaying. The active-step sequence is
+`operations` → `operations.orders` → `operations.orders.returns` →
+`operations.orders.returns.cases` → `operations.orders.returns.cases.assess`.
+Complete each predecessor with `complete_step` before starting its child.
+All six tool categories then run within the assessment step, without advancing
+between these calls:
 
 1. MCP `order_status`: read the actual fictional order.
 2. `knowledge_search`: retrieve `returns/eligibility.md` from `demo.return-policy`.

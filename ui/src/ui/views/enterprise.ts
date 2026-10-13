@@ -47,10 +47,8 @@ import { enterpriseResumeRefusalMessage } from "../enterprise-resume.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import {
   collectNodeOntologyGraph,
-  declaredExecutableEntityIds,
-  declaredNodePathEntityIds,
+  declaredNodeEntityIds,
   collectOntologyGraph,
-  nodePathTo,
   nodeObjectEntityIds,
 } from "./enterprise-ontology-graph.ts";
 import {
@@ -140,7 +138,7 @@ export type EnterpriseProps = {
   onLoadVersion: (treeId: string, revision: number) => void;
   onSelectNode: (nodeId: string | null) => boolean;
   onSelectNodeEntity: (entity: string) => void;
-  /** Switch the selected work-map between explicit and inherited capability grants. */
+
   onToggleCapabilityGrants: () => void;
   /** Remove empty MCP markers after an explicit confirmation. */
   onDisableMcpGovernance: () => void;
@@ -169,7 +167,6 @@ export type EnterpriseProps = {
     nodeId: string;
     field: NodeOntologyListField;
     entry: string;
-    origin: "step" | "inherited";
   }) => void;
   onCloseBindingDetail: () => void;
   /** In-progress step-behavior edit, or null when nothing is being edited. */
@@ -402,16 +399,8 @@ type OntologyEntryAdder = {
    * revokes the rest. Told before they do it, not after.
    */
   scopeWarning?: string | null;
-  /** Ancestor steps whose own allow-list still gates what is added here. */
-  constrainingAncestors?: readonly string[];
   /** Per-value annotation (e.g. a declared skill no install provides), or null. */
   valueNote?: (value: string) => string | null;
-  /**
-   * Entries an ancestor step granted that apply here too. Shown separately from
-   * `values` because they are not this step's to remove — editing them means
-   * editing the ancestor.
-   */
-  inheritedValues?: readonly string[];
 };
 
 /**
@@ -453,68 +442,23 @@ function renderBindingGroup(props: EnterpriseProps, adder: OntologyEntryAdder): 
         ${adder.values.length === 0
           ? html`<div class="muted">${t("enterprise.entryDraft.none")}</div>`
           : html`<div class="chip-row">
-              ${adder.values.map((value) =>
-                renderBindingChip({ props, adder, value, origin: "step" }),
-              )}
+              ${adder.values.map((value) => renderBindingChip({ props, adder, value }))}
             </div>`}
-        <!-- Inherited grants sit under the step's own, dimmed and labelled: they
-          apply to this step but belong to an ancestor, so removing one means
-          editing that step instead of this one. -->
-        ${adder.inheritedValues?.length
-          ? html`<div class="chip-row" style="margin-top: 6px;">
-              <span class="muted">${t("enterprise.bindings.inherited")}</span>
-              ${adder.inheritedValues.map((value) =>
-                renderBindingChip({ props, adder, value, origin: "inherited" }),
-              )}
-            </div>`
-          : nothing}
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
-        ${adder.constrainingAncestors?.length
-          ? html`<div class="callout">${ancestorGateCallout(adder)}</div>`
-          : nothing}
       </div>
     </section>
   `;
 }
 
-/**
- * The ancestor-gate callout for a row.
- *
- * Knowledge gets its own wording because the RULE is different, not just the
- * noun: an ancestor's allow-list intersects retrieval away with no approval
- * prompt, no denial record, and no `deniedTools` equivalent to point at — so the
- * tool copy's "otherwise it needs a one-off approval" would send an operator to
- * ship a step whose retrieval silently returns nothing.
- */
-function ancestorGateCallout(adder: OntologyEntryAdder): string {
-  const nodeIds = (adder.constrainingAncestors ?? []).join(", ");
-  return adder.field === "knowledgeFoundations"
-    ? t("enterprise.entryDraft.ancestorGateKnowledge", { nodeIds })
-    : t("enterprise.entryDraft.ancestorGateApproval", { nodeIds });
-}
-
-/**
- * One entry on a binding row.
- *
- * The label is a BUTTON, not text: a chip carries a bare id (`group:enterprise`,
- * `acme.kb`) and the operator's next question is always what that id actually
- * resolves to — a question the catalogs on this screen can answer without a round
- * trip. Detach stays a separate control beside it so the two acts never share a
- * hit target.
- *
- * Inherited entries open the same card but never get a Detach: they belong to the
- * ancestor that declared them, and the card says which one to edit instead.
- */
 function renderBindingChip(params: {
   props: EnterpriseProps;
   adder: OntologyEntryAdder;
   value: string;
-  origin: "step" | "inherited";
 }): TemplateResult {
-  const { props, adder, value, origin } = params;
+  const { props, adder, value } = params;
   const note = adder.valueNote?.(value) ?? null;
-  const removable = props.canEdit && origin === "step";
-  return html`<span class="chip chip-entry ${origin === "inherited" ? "chip-entry--inherited" : ""}"
+  const removable = props.canEdit;
+  return html`<span class="chip chip-entry"
     ><button
       type="button"
       class="chip-open"
@@ -524,7 +468,6 @@ function renderBindingChip(params: {
           nodeId: adder.nodeId,
           field: adder.field,
           entry: value,
-          origin,
         })}
     >
       <code>${value}</code>${note ? html`<span class="chip chip-warn">${note}</span>` : nothing}</button
@@ -560,64 +503,18 @@ function removeBindingFromStep(
   }
 }
 
-/**
- * Whether dropping this step's final local allow-list entry exposes a capability
- * the current path does not admit. Explicit grants can still widen to an ancestor
- * grant, while an inherited path constrained to the same entry does not widen.
- */
+/** Removing a permissive step's last scope entry makes it unscoped. */
 function lastLocalScopeRemovalWidens(
   props: EnterpriseProps,
   adder: OntologyEntryAdder,
   value: string,
 ): boolean {
-  if (
-    adder.values.length !== 1 ||
-    (adder.field !== "allowedTools" && adder.field !== "knowledgeFoundations")
-  ) {
-    return false;
-  }
-  const explicit = props.treeDetail?.capabilityGrants === "explicit";
-  const ancestorIds = constrainingAncestorIds(props, adder.nodeId, adder.field);
-  if (ancestorIds.length === 0) {
-    return !explicit && (adder.field === "knowledgeFoundations" || value.trim() !== "*");
-  }
-  if (adder.field === "knowledgeFoundations") {
-    return inheritedKnowledgeFoundations(props, adder.nodeId).some(
-      (foundation) => foundation !== value,
-    );
-  }
-
-  const nodes = props.treeDetail?.nodes ?? [];
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const node = byId.get(adder.nodeId);
-  if (!node) {
-    return false;
-  }
-  const { allowedTools: _allowedTools, ...ontologyWithoutAllow } = node.ontology;
-  const unscopedNode = { ...node, ontology: ontologyWithoutAllow };
-  byId.set(node.id, unscopedNode);
-  const after = toolPolicyPath(unscopedNode, byId);
-  const candidates = new Set([
-    ...props.toolGroups.flatMap((group) => group.tools.map((tool) => tool.id)),
-    ...after.path.slice(1).flatMap((ancestor) => ancestor.ontology.allowedTools ?? []),
-  ]);
-  const localPolicy = { allow: [value] };
-  const explicitFloor = new Set(["message", "read", "memory_search"]);
-  return [...candidates].some((candidate) => {
-    const normalized = candidate.trim().toLowerCase();
-    if (normalized === "complete_step" || (explicit && explicitFloor.has(normalized))) {
-      return false;
-    }
-    const namedByAncestor = after.path.slice(1).some((ancestor) => {
-      const allow = ancestor.ontology.allowedTools ?? [];
-      return allow.length > 0 && isToolAllowedByPolicies(candidate, [{ allow }]);
-    });
-    return (
-      (!explicit || namedByAncestor) &&
-      isToolAllowedByPolicies(candidate, after.policies) &&
-      !isToolAllowedByPolicies(candidate, [...after.policies, localPolicy])
-    );
-  });
+  return (
+    adder.values.length === 1 &&
+    !workMapGrantsExplicitly(props) &&
+    (adder.field === "knowledgeFoundations" ||
+      (adder.field === "allowedTools" && value.trim() !== "*"))
+  );
 }
 
 /**
@@ -759,23 +656,8 @@ function renderBindingPicker(
         <!-- Repeated here, not only on the row behind the dialog: this is where
           the operator confirms, and the row's warning sits after its Add button
           in DOM order, so a keyboard or screen-reader user would reach the
-          action before ever hearing that the first entry revokes the rest or
-          that an ancestor still gates it. -->
-        <!-- Inherited grants sit under the step's own, dimmed and labelled: they
-          apply to this step but belong to an ancestor, so removing one means
-          editing that step instead of this one. -->
-        ${adder.inheritedValues?.length
-          ? html`<div class="chip-row" style="margin-top: 6px;">
-              <span class="muted">${t("enterprise.bindings.inherited")}</span>
-              ${adder.inheritedValues.map(
-                (value) => html`<span class="chip"><code>${value}</code></span>`,
-              )}
-            </div>`
-          : nothing}
+          action before hearing that the first entry narrows the available tools. -->
         ${adder.scopeWarning ? html`<div class="callout">${adder.scopeWarning}</div>` : nothing}
-        ${adder.constrainingAncestors?.length
-          ? html`<div class="callout">${ancestorGateCallout(adder)}</div>`
-          : nothing}
         ${writing ? html`<div class="callout">${t("enterprise.picker.saving")}</div>` : nothing}
         ${picker.failure ? renderPickerFailure(picker.failure) : nothing}
         <div class="row" style="justify-content: flex-end; gap: 8px;">
@@ -898,14 +780,6 @@ function stepsAlsoDeclaring(
     .map((node) => node.id);
 }
 
-/**
- * Why a catalog cannot answer for this entry right now, or null when it can.
- *
- * A failed request and a pending one both leave an EMPTY list, and the detail card
- * is a modal: the error banner behind it (renderBindingCatalogIssues) is not
- * visible, so reporting a failed load as "still loading" leaves the operator
- * watching a dialog that will never fill in.
- */
 function catalogUnavailable(
   props: EnterpriseProps,
   error: string | null | undefined,
@@ -918,20 +792,6 @@ function catalogUnavailable(
     : html`<div class="muted">${t("enterprise.bindingDetail.catalogPending")}</div>`;
 }
 
-/**
- * What a tool entry IS, read from the catalog this screen already holds.
- *
- * Deliberately NOT "and here is what it grants". An entry's real reach is decided
- * by governance: the root->node policy path, the deny matcher that is not the
- * mirror of the allow one, MCP ownership aliases, the step-advance carve-out that
- * runs before either lane, the explicit-grant floor, and group expansion over
- * CORE_TOOL_GROUPS rather than catalog sections. Restating any of that here means
- * keeping a second copy of governance in the view, and each divergence reads as a
- * confident claim about enforcement that is simply wrong.
- *
- * Same call `nodeBindingAdders` already makes for `denialReachesMcpServer`: the
- * card reports catalog facts and leaves the verdict to the runtime.
- */
 function renderToolDetailBody(
   props: EnterpriseProps,
   detail: EnterpriseBindingDetail,
@@ -1139,12 +999,7 @@ function renderBindingDetail(
   if (!adder) {
     return nothing;
   }
-  // A reconnect reloads the same tree while deliberately keeping the node
-  // selection, so the card can outlive what it describes. Re-check the entry
-  // against the list its ORIGIN claims: an entry that was detached elsewhere, or
-  // that moved between local and inherited scope, would otherwise keep its stale
-  // read-out and offer a Detach for a binding this step no longer declares.
-  const declared = detail.origin === "inherited" ? (adder.inheritedValues ?? []) : adder.values;
+  const declared = adder.values;
   if (!declared.includes(detail.entry)) {
     return nothing;
   }
@@ -1152,9 +1007,7 @@ function renderBindingDetail(
   const kindLabel = t(meta.labelKey);
   const note = adder.valueNote?.(detail.entry) ?? null;
   const alsoOn = stepsAlsoDeclaring(props, detail.field, detail.entry, detail.nodeId);
-  // Inherited entries belong to the ancestor that declared them. Offering Detach
-  // here would either fail or silently edit a different step.
-  const removable = props.canEdit && detail.origin === "step";
+  const removable = props.canEdit;
   return html`
     <openclaw-modal-dialog
       label=${t("enterprise.bindingDetail.title", { entry: detail.entry })}
@@ -1170,9 +1023,7 @@ function renderBindingDetail(
         <div class="binding-detail__rows">
           ${renderDetailRow(
             t("enterprise.bindingDetail.declaredOn"),
-            detail.origin === "inherited"
-              ? t("enterprise.bindingDetail.declaredInherited")
-              : html`<code>${detail.nodeId}</code>`,
+            html`<code>${detail.nodeId}</code>`,
           )}
           ${renderDetailRow(
             t("enterprise.bindingDetail.configKey"),
@@ -1201,120 +1052,6 @@ function renderBindingDetail(
       </div>
     </openclaw-modal-dialog>
   `;
-}
-
-/**
- * Ancestors of `nodeId` that carry their OWN allow-list for `field`. Governance
- * checks every node on the root->active path as an independent gate
- * (ontologyScopeViolation in src/enterprise/governance.ts for tools,
- * foundationAllowedByPath in knowledge.ts for foundations), so an entry added here
- * is still denied unless each of these ancestors allows it too — the operator has
- * to see that before believing the change took effect.
- */
-function constrainingAncestorIds(
-  props: EnterpriseProps,
-  nodeId: string,
-  field: "allowedTools" | "knowledgeFoundations",
-): string[] {
-  const nodes = props.treeDetail?.nodes;
-  if (!nodes) {
-    return [];
-  }
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const ids: string[] = [];
-  let current = byId.get(nodeId)?.parentId ?? null;
-  while (current) {
-    const node = byId.get(current);
-    if (!node) {
-      break;
-    }
-    if (node.ontology[field]?.length) {
-      ids.push(node.id);
-    }
-    current = node.parentId;
-  }
-  return ids;
-}
-
-/**
- * Foundations the step actually inherits: the INTERSECTION of every ancestor list
- * that declares one, which is what foundationAllowedByPath enforces — each
- * non-empty level is an independent gate, so a root granting A and a parent
- * granting B leaves the child with neither. A union would claim access the
- * runtime refuses.
- */
-function inheritedKnowledgeFoundations(props: EnterpriseProps, nodeId: string): string[] {
-  const nodes = props.treeDetail?.nodes;
-  if (!nodes) {
-    return [];
-  }
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  let inherited: string[] | null = null;
-  let current = byId.get(nodeId)?.parentId ?? null;
-  while (current) {
-    const node = byId.get(current);
-    if (!node) {
-      break;
-    }
-    const declared = node.ontology.knowledgeFoundations;
-    if (declared?.length) {
-      inherited =
-        inherited === null ? [...declared] : inherited.filter((id) => declared.includes(id));
-    }
-    current = node.parentId;
-  }
-  return inherited ?? [];
-}
-
-/**
- * Denials an ancestor step declared, which apply here too.
- *
- * Shown for the same reason as inherited MCP attachments, but it matters more:
- * a denial cannot be taken back further down the path, so a step whose own list
- * is empty can still be unable to call a tool. Without this the operator would
- * see "no denials" on a step that is in fact denied.
- */
-function inheritedDeniedTools(props: EnterpriseProps, nodeId: string): string[] {
-  const nodes = props.treeDetail?.nodes;
-  if (!nodes) {
-    return [];
-  }
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const inherited = new Set<string>();
-  let current = byId.get(nodeId)?.parentId ?? null;
-  while (current) {
-    const node = byId.get(current);
-    if (!node) {
-      break;
-    }
-    for (const tool of node.ontology.deniedTools ?? []) {
-      inherited.add(tool);
-    }
-    current = node.parentId;
-  }
-  return [...inherited].toSorted((a, b) => a.localeCompare(b));
-}
-
-/** MCP attachments inherited from ancestors apply to every descendant step. */
-function inheritedMcpServers(props: EnterpriseProps, nodeId: string): string[] {
-  const nodes = props.treeDetail?.nodes;
-  if (!nodes) {
-    return [];
-  }
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const inherited = new Set<string>();
-  let current = byId.get(nodeId)?.parentId ?? null;
-  while (current) {
-    const node = byId.get(current);
-    if (!node) {
-      break;
-    }
-    for (const server of node.ontology.mcpServers ?? []) {
-      inherited.add(server);
-    }
-    current = node.parentId;
-  }
-  return [...inherited].toSorted((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -1355,33 +1092,11 @@ function addUsage(usage: Map<string, CatalogUsage[]>, key: string, node: Enterpr
   usage.set(key, [step]);
 }
 
-/**
- * Every tool policy on the root->node path, nearest first. Governance treats each
- * scoped node on that path as an INDEPENDENT gate (ontologyScopeViolation in
- * src/enterprise/governance.ts), so a step that lists `memory_search` under a root
- * that allows only `message` can never call it. Unscoped ancestors contribute no
- * policy — an empty allow-list means "allow everything not denied", which would
- * wrongly widen the composition.
- */
-function toolPolicyPath(
-  node: EnterpriseTreeNode,
-  byId: Map<string, EnterpriseTreeNode>,
-): { path: EnterpriseTreeNode[]; policies: Array<{ allow: string[]; deny: string[] }> } {
-  const path: EnterpriseTreeNode[] = [];
-  const policies: Array<{ allow: string[]; deny: string[] }> = [];
-  const seen = new Set<string>();
-  let current: EnterpriseTreeNode | undefined = node;
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    path.push(current);
-    const allow = current.ontology.allowedTools ?? [];
-    const deny = current.ontology.deniedTools ?? [];
-    if (allow.length > 0 || deny.length > 0) {
-      policies.push({ allow: [...allow], deny: [...deny] });
-    }
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  return { path, policies };
+/** Match only this step's declarations, as the runtime gate does. */
+function nodeToolPolicies(node: EnterpriseTreeNode): Array<{ allow: string[]; deny: string[] }> {
+  const allow = node.ontology.allowedTools ?? [];
+  const deny = node.ontology.deniedTools ?? [];
+  return allow.length || deny.length ? [{ allow: [...allow], deny: [...deny] }] : [];
 }
 
 /**
@@ -1399,26 +1114,12 @@ const ONTOLOGY_WRITE_OPT_INS: ReadonlySet<string> = new Set([
   "group:enterprise-write",
 ]);
 
-function pathAllowsOntologyWrites(path: readonly EnterpriseTreeNode[]): boolean {
-  return path.some((node) =>
-    (node.ontology.allowedTools ?? []).some((tool) =>
-      ONTOLOGY_WRITE_OPT_INS.has(tool.trim().toLowerCase()),
-    ),
+function nodeAllowsOntologyWrites(node: EnterpriseTreeNode): boolean {
+  return (node.ontology.allowedTools ?? []).some((tool) =>
+    ONTOLOGY_WRITE_OPT_INS.has(tool.trim().toLowerCase()),
   );
 }
 
-/**
- * Which steps of the selected work-map put each catalog tool in scope. Delegates
- * to the runtime gate (isToolAllowedByPolicies, the same matcher governance calls)
- * so `group:` selectors and `*` globs resolve to exactly the tools they resolve to
- * at call time — a literal "is this id in the array" check would report a step as
- * unbound while the runtime lets it call, and an own-scope-only check would claim
- * a step can call a tool an ancestor denies it.
- *
- * Steps with no `allowedTools` of their own are skipped: governance leaves them
- * unscoped, so they allow everything their ancestors do, and listing them under
- * every tool would drown the steps that actually made a choice.
- */
 function collectToolUsage(
   nodes: readonly EnterpriseTreeNode[] | undefined,
   groups: ToolsCatalogResult["groups"],
@@ -1429,16 +1130,15 @@ function collectToolUsage(
   if (scoped.length === 0) {
     return usage;
   }
-  const byId = new Map(all.map((node) => [node.id, node]));
-  const resolved = new Map(scoped.map((node) => [node.id, toolPolicyPath(node, byId)]));
+  const resolved = new Map(scoped.map((node) => [node.id, nodeToolPolicies(node)]));
   for (const group of groups) {
     for (const tool of group.tools) {
       for (const node of scoped) {
         const gate = resolved.get(node.id);
-        if (!gate || !isToolAllowedByPolicies(tool.id, gate.policies)) {
+        if (!gate || !isToolAllowedByPolicies(tool.id, gate)) {
           continue;
         }
-        if (tool.id === ONTOLOGY_WRITE_TOOL && !pathAllowsOntologyWrites(gate.path)) {
+        if (tool.id === ONTOLOGY_WRITE_TOOL && !nodeAllowsOntologyWrites(node)) {
           continue;
         }
         addUsage(usage, tool.id, node);
@@ -1512,10 +1212,6 @@ function renderCatalogUsage(
  */
 function renderCatalogUsageScope(props: EnterpriseProps): TemplateResult {
   if (props.treeIssue) {
-    // A failed load may or may not come with a fallback definition (the protocol
-    // allows `tree: null` beside an error, and a rejected request leaves nothing
-    // at all). Only the first case has steps on screen to explain, so claiming a
-    // fallback in the second would describe rows that are not there.
     return html`<div class="callout" style="margin-top: 8px;">
       ${props.treeDetail
         ? t("enterprise.catalogUsage.treeIssue", { message: props.treeIssue })
@@ -3709,6 +3405,7 @@ function renderTreeDetail(tree: EnterpriseTreeDetail, options: EnterpriseProps):
     ${renderCapabilityGrants(tree, props)}
 
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.structureTitle")}</div>
+    <div class="muted">${t("enterprise.sequentialStepsHint")}</div>
     <openclaw-workflow-tree-graph
       .nodes=${tree.nodes}
       .showInspector=${false}
@@ -3729,17 +3426,6 @@ function renderTreeDetail(tree: EnterpriseTreeDetail, options: EnterpriseProps):
   `;
 }
 
-/**
- * Declarations on the saved work-map that no run could reach — an action no step
- * can invoke, a knowledge source every path excludes.
- *
- * Shown beside the authoritative tree rather than in the editor: these are not
- * why a save failed, they are what the current work-map says and cannot do.
- * Until this landed only `openclaw enterprise import`
- * printed them, so a work-map built entirely in the node inspector — the surface
- * that makes it easiest to declare a grant an ancestor excludes — never showed
- * one.
- */
 function renderTreeWarnings(props: EnterpriseProps): TemplateResult | typeof nothing {
   if (!props.treeWarnings?.length) {
     return nothing;
@@ -3756,26 +3442,10 @@ function renderTreeWarnings(props: EnterpriseProps): TemplateResult | typeof not
   `;
 }
 
-/**
- * How this work-map hands capabilities to its steps, and the switch between the
- * two modes.
- *
- * Shown on the work-map itself rather than per step because it changes what every
- * step's bindings MEAN: under explicit grants a step with no tools listed reaches
- * none, while the inherited default leaves it unrestricted. An operator reading
- * per-step lists without knowing which mode is on would read them backwards.
- */
 function renderCapabilityGrants(
   tree: EnterpriseTreeDetail,
   props: EnterpriseProps,
 ): TemplateResult {
-  // Two different questions, and conflating them inverts the toggle. What the
-  // work-map is CONFIGURED as drives the chip and the button: fold the mode in
-  // here and an explicit map viewed in observe reads "Inherited scopes" with a
-  // "Grant explicitly" button that removes the grant an operator was trying to
-  // add. What the run currently ENFORCES drives only the hint, because the
-  // approval wording is an enforce-mode claim — observe records without gating
-  // and `off` governs nothing.
   const configuredExplicit = tree.capabilityGrants === "explicit";
   const enforcingExplicit = configuredExplicit && props.enterpriseMode === "enforce";
   // This opt-out is tree-wide and only safe once every real attachment is gone;
@@ -3845,13 +3515,6 @@ function renderCapabilityGrants(
   `;
 }
 
-/**
- * The merged whole-tree ontology, shown only while no node is selected. Selecting
- * a node swaps in that node's root→node scope via renderNodeInspector, so the two
- * graphs never render together (the always-on merged graph used to read as a
- * step's "default ontology" and be mistaken for a node's own scope). Labeled to
- * make its whole-tree meaning explicit.
- */
 function renderWholeTreeOverview(
   tree: EnterpriseTreeDetail,
   props: EnterpriseProps,
@@ -3873,11 +3536,6 @@ function renderWholeTreeOverview(
   `;
 }
 
-/**
- * The clicked node's own scope: the ontology it can address (root→node path) and
- * the live object instances of its entity types. This is the operator-facing
- * mirror of what the agent sees at that node — the point of P4.
- */
 function renderNodeInspector(
   tree: EnterpriseTreeDetail,
   props: EnterpriseProps,
@@ -4023,9 +3681,6 @@ function nodeBindingAdders(
     ids: retrievableIds,
     ownershipKnown,
   } = retrievableFoundations(props);
-  // Only claim something is missing once ITS catalog answered without error:
-  // a failed request also leaves an empty list, which would otherwise mark every
-  // declared value unresolved.
   const skillsKnown = props.catalogErrors.skills === null;
   // Ownership is part of the claim: without it a value cannot be called
   // unavailable, only unverified.
@@ -4037,14 +3692,6 @@ function nodeBindingAdders(
   const enabledServers = new Set(
     props.mcpServers.filter((server) => server.enabled).map((server) => server.name),
   );
-  const inheritedMcp = inheritedMcpServers(props, node.id);
-  // The knowledge allow-list INTERSECTS down the path, so an ancestor that names
-  // other sources silently excludes what is attached here. Both halves are
-  // needed: the ancestor ids say whether anything narrows at all, and the
-  // inherited set says what survives — an ancestor chain that intersects to
-  // nothing leaves the second empty while the first is not.
-  const knowledgeAncestors = constrainingAncestorIds(props, node.id, "knowledgeFoundations");
-  const inheritedFoundations = inheritedKnowledgeFoundations(props, node.id);
   const mcpGoverned = workMapGovernsMcp(props);
   const mcpDeclared = workMapDeclaresMcp(props);
   return [
@@ -4054,18 +3701,12 @@ function nodeBindingAdders(
       values: allowedTools,
       title: t("enterprise.bindings.allowedLabel"),
       options: toolBindingOptions(props),
-      // What an empty list MEANS flips with the work-map's grant mode: inherited
-      // scopes leave the step wide open (the first entry narrows it), while
-      // explicit grants leave it with nothing until some step on the path names a
-      // tool. Showing the narrowing warning there would state the opposite and
-      // discourage the very first grant the step needs.
       scopeWarning:
         allowedTools.length === 0
           ? workMapGrantsExplicitly(props)
             ? t("enterprise.entryDraft.scopeUngrantedGated")
             : t("enterprise.entryDraft.scopeNarrowingApproval")
           : null,
-      constrainingAncestors: constrainingAncestorIds(props, node.id, "allowedTools"),
     },
     {
       nodeId: node.id,
@@ -4092,14 +3733,6 @@ function nodeBindingAdders(
             : // `off` is not "recorded but not applied": mediation is bypassed
               // entirely, so there is no decision and no audit trail to point at.
               t("enterprise.bindings.deniedToolsOff"),
-      inheritedValues: inheritedDeniedTools(props, node.id),
-      // Deliberately ancestor-only. Denials ARE collected definition-wide for the
-      // launch-time MCP ceiling (src/enterprise/plan.ts), but whether a given
-      // entry reaches a given server is decided by `denialReachesMcpServer`
-      // (src/enterprise/active-runs.ts) — namespaces, `mcp__` spellings,
-      // collision aliases, glob policy. Reproducing that here would duplicate
-      // governance policy in the UI and drift from it; listing every off-path
-      // denial without it would claim restrictions that do not exist.
     },
     {
       nodeId: node.id,
@@ -4146,30 +3779,16 @@ function nodeBindingAdders(
             : { value: foundation.id };
         })
         .toSorted((a, b) => a.value.localeCompare(b.value)),
-      // Same path-gate shape as tools: an omitted list lets the step query every
-      // registered foundation, so the first entry restricts it.
-      // Same inversion as the tool list above: under explicit grants an empty
-      // list means the step queries NO foundation, not every one — unless an
-      // ancestor already granted one, which the step inherits down the path.
-      // Saying "no access" there would prompt a duplicate entry.
       scopeWarning:
         foundations.length === 0
           ? workMapGrantsKnowledgeExplicitly(props)
-            ? inheritedKnowledgeFoundations(props, node.id).length > 0
-              ? null
-              : t("enterprise.entryDraft.knowledgeUngranted")
+            ? t("enterprise.entryDraft.knowledgeUngranted")
             : t("enterprise.entryDraft.knowledgeNarrowing")
           : null,
-      constrainingAncestors: knowledgeAncestors,
-      // "Not registered" first: an id nobody serves is dead whatever the path
-      // allows, and telling the operator to widen an ancestor for it would send
-      // them to fix the wrong file.
       valueNote: (value) =>
         foundationsKnown && !retrievableIds.has(value)
           ? t("enterprise.bindings.foundationNotRegistered")
-          : knowledgeAncestors.length > 0 && !inheritedFoundations.includes(value)
-            ? t("enterprise.bindings.foundationExcludedByAncestor")
-            : null,
+          : null,
     },
     {
       nodeId: node.id,
@@ -4183,21 +3802,14 @@ function nodeBindingAdders(
           .join(" — "),
         ...(server.enabled ? {} : { disabled: true }),
       })),
-      // The opposite warning to the lists above: those START permissive and the
-      // first entry narrows, while no attachment anywhere on the path reaches
-      // nothing. Two conditions, though: an ancestor's attachment counts (the run
-      // grants it here too), and the rule is only ON for a work-map that uses the
-      // field — saying "can call none" about an ungoverned tree would promise a
-      // restriction that is not being enforced.
       scopeWarning: mcpDeclared
-        ? mcpGoverned && (ontology.mcpServers ?? []).length === 0 && inheritedMcp.length === 0
+        ? mcpGoverned && (ontology.mcpServers ?? []).length === 0
           ? t("enterprise.entryDraft.mcpNoneAttached")
           : null
         : // Nothing declared yet: the FIRST attachment opts the whole work-map into
           // deny-by-default, so every other step loses its registered servers once
           // the deployment enforces. Worth reading before saving.
           t("enterprise.entryDraft.mcpFirstAttachment"),
-      inheritedValues: inheritedMcp,
       valueNote: (value) =>
         props.mcpServersKnown && !registeredServers.has(value)
           ? t("enterprise.bindings.mcpNotRegistered")
@@ -4508,14 +4120,6 @@ function renderNodeGuidance(
   `;
 }
 
-/**
- * Whether the merged shape of `entityId` already declares an identity field.
- *
- * The schema merges an entity across every declaration, so a child extending an
- * ancestor's type can have an empty local `properties` array while the type is
- * already keyed. Defaulting the checkbox from the local array would open it
- * checked and make the first Save fail.
- */
 function mergedEntityHasIdentity(props: EnterpriseProps, entityId: string): boolean {
   // TREE-wide, matching what the edit helper validates. The path view would miss
   // a key declared on a sibling branch and open the box checked, so the first
@@ -4665,8 +4269,6 @@ function renderNodeOntologyEditor(
   const actions = node.ontology.actions ?? [];
   const functions = node.ontology.functions ?? [];
   const constraints = node.ontology.constraints ?? [];
-  // A node may declare only LINKS, or only an action over types an ancestor gave
-  // it — valid and common, so an empty local entity list is not an empty section.
   if (
     !props.canEdit &&
     entities.length === 0 &&
@@ -4682,20 +4284,14 @@ function renderNodeOntologyEditor(
   // inputs and a Save the server can only refuse.
   const draft =
     props.canEdit && props.ontologyDraft?.nodeId === node.id ? props.ontologyDraft : null;
-  // Link endpoints come from the node's SCOPE, not its own declarations: object
-  // types are inherited down the path, so a child that declares none may still
-  // link the ones an ancestor gave it — which is what the import accepts.
-  // DECLARED ones only: the graph synthesizes endpoints for legacy links that
-  // name an undeclared type, and offering one here would produce a save the
-  // splicer refuses as out of scope.
   const scopeEntityIds = props.treeDetail
-    ? declaredNodePathEntityIds(props.treeDetail, node.id)
+    ? declaredNodeEntityIds(props.treeDetail, node.id)
     : entities.map((entity) => entity.id);
   // The AIP verbs reach further than a link does: they execute at whatever node
   // is active below here, so a type a DESCENDANT declares is addressable and the
   // splicers accept it. Offering only the path would hide exactly those.
   const verbEntityIds = props.treeDetail
-    ? declaredExecutableEntityIds(props.treeDetail, node.id)
+    ? declaredNodeEntityIds(props.treeDetail, node.id)
     : scopeEntityIds;
   return html`
     <!-- No scope note here: the enclosing ontology section already carries it,
@@ -4756,9 +4352,6 @@ function renderNodeOntologyEditor(
                         entityIndex,
                         id: "",
                         type: "string",
-                        // From the MERGED shape, not this node's array: an
-                        // ancestor may already carry the identity field, and
-                        // opening the box checked would guarantee a refusal.
                         primaryKey: !mergedEntityHasIdentity(props, entity.id),
                         required: false,
                         description: "",
@@ -5409,14 +5002,6 @@ function renderNodeOntologyActions(
   `;
 }
 
-/**
- * Runtime ontology shapes for every leaf where an action declared at `nodeId`
- * may execute.
- *
- * Kept per leaf because link ids are last-wins and may resolve to different
- * endpoint types on different branches. Flattening them would bless an action
- * that works on one executable path and fails on another.
- */
 function executableOntologyScopes(
   tree: EnterpriseTreeDetail | null,
   nodeId: string,
@@ -5436,16 +5021,13 @@ function executableOntologyScopes(
   if (!tree) {
     return [];
   }
-  const subtree = new Set([nodeId]);
-  // Parents precede children in the flat node list, so one forward pass closes
-  // the descendant set without walking the tree per node.
-  for (const candidate of tree.nodes) {
-    if (candidate.parentId && subtree.has(candidate.parentId)) {
-      subtree.add(candidate.id);
-    }
+  const step = tree.nodes.find((node) => node.id === nodeId);
+  if (
+    !step ||
+    step.ontology.actions?.findLastIndex((action) => action.id === actionId) !== actionIndex
+  ) {
+    return [];
   }
-  const parents = new Set(tree.nodes.map((candidate) => candidate.parentId));
-  const leaves = [...subtree].filter((id) => !parents.has(id));
   // Required properties are TREE-wide, matching `collectTreeRequiredProperties`
   // (src/enterprise/ontology-runtime.ts): the runtime unions them across the
   // whole definition, so a property optional on this branch and required on a
@@ -5462,79 +5044,49 @@ function executableOntologyScopes(
       treeRequired.set(entity.id, required);
     }
   }
-  const effectiveLeaves = (leaves.length > 0 ? leaves : [nodeId]).filter((id) => {
-    let ownerId: string | undefined;
-    let ownerIndex: number | undefined;
-    for (const step of nodePathTo(tree, id)) {
-      for (const [index, action] of (step.ontology.actions ?? []).entries()) {
-        if (action.id === actionId) {
-          ownerId = step.id;
-          ownerIndex = index;
-        }
-      }
+
+  const declaredEntityIds = new Set((step.ontology.entities ?? []).map((entity) => entity.id));
+  const entities = new Map<
+    string,
+    {
+      primaryKey?: { id: string; type: OntologyValueTypeName };
+      properties: Map<string, OntologyValueTypeName>;
+      required: string[];
     }
-    return ownerId === nodeId && ownerIndex === actionIndex;
-  });
-  return effectiveLeaves.map((id) => {
-    const path = nodePathTo(tree, id);
-    const declaredEntityIds = new Set(
-      path.flatMap((step) => (step.ontology.entities ?? []).map((entity) => entity.id)),
-    );
-    const entities = new Map<
-      string,
-      {
-        primaryKey?: { id: string; type: OntologyValueTypeName };
-        properties: Map<string, OntologyValueTypeName>;
-        required: string[];
-      }
-    >();
-    for (const entity of collectNodeOntologyGraph(tree, id).entities) {
-      if (!declaredEntityIds.has(entity.id)) {
-        continue;
-      }
-      const primaryKey = entity.properties?.find((property) => property.primaryKey);
-      entities.set(entity.id, {
-        ...(primaryKey
-          ? {
-              primaryKey: {
-                id: primaryKey.id,
-                type: primaryKey.type as OntologyValueTypeName,
-              },
-            }
-          : {}),
-        properties: new Map<string, OntologyValueTypeName>(
-          (entity.properties ?? []).map((property) => [
-            property.id,
-            property.type as OntologyValueTypeName,
-          ]),
-        ),
-        // `planEffect` refuses a create that leaves any required property unset,
-        // and only a parameter can supply one — so an action missing that
-        // parameter fails every call exactly as a missing key does.
-        required: [...(treeRequired.get(entity.id) ?? [])],
-      });
+  >();
+  for (const entity of collectNodeOntologyGraph(tree, nodeId).entities) {
+    if (!declaredEntityIds.has(entity.id)) {
+      continue;
     }
-    const relationships = new Map<string, { from: string; to: string }>();
-    for (const step of path) {
-      for (const relationship of step.ontology.relationships ?? []) {
-        relationships.set(relationship.id, {
-          from: relationship.from,
-          to: relationship.to,
-        });
-      }
-    }
-    return { entities, relationships };
-  });
+    const primaryKey = entity.properties?.find((property) => property.primaryKey);
+    entities.set(entity.id, {
+      ...(primaryKey
+        ? {
+            primaryKey: {
+              id: primaryKey.id,
+              type: primaryKey.type as OntologyValueTypeName,
+            },
+          }
+        : {}),
+      properties: new Map<string, OntologyValueTypeName>(
+        (entity.properties ?? []).map((property) => [
+          property.id,
+          property.type as OntologyValueTypeName,
+        ]),
+      ),
+      required: [...(treeRequired.get(entity.id) ?? [])],
+    });
+  }
+  const relationships = new Map<string, { from: string; to: string }>();
+  for (const relationship of step.ontology.relationships ?? []) {
+    relationships.set(relationship.id, {
+      from: relationship.from,
+      to: relationship.to,
+    });
+  }
+  return [{ entities, relationships }];
 }
 
-/**
- * Can `invoke_action` actually run this action?
- *
- * Mirrors `planEffect` and `planLinkEffect`: every executable leaf must resolve
- * each local effect, its endpoint identity fields, and the parameters that carry
- * them. Flagging only the presence of an effect would clear the warning halfway
- * through building an action that still fails on every call.
- */
 function actionIsCallable(
   effects: readonly (
     | { entity: string; kind: string }

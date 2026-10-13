@@ -2700,7 +2700,6 @@ describe("enterprise binding detail card", () => {
     nodeId: "acme.support.root",
     field: "allowedTools" as const,
     entry: "exec",
-    origin: "step" as const,
   };
 
   it("binds the open card to the selected work-map", () => {

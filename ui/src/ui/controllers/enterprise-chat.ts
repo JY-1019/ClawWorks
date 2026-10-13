@@ -431,10 +431,9 @@ function reconcileEnterpriseChatStep(state: EnterpriseChatState, run: Enterprise
     state.enterpriseChatStep = null;
     return;
   }
-  // Same derivation the publisher uses (enterpriseStepSequence -> leaf nodes),
+  // Every selected node is a step, matching enterpriseStepSequence,
   // so a seeded ordinal and a live one cannot disagree about "step N of M".
-  const parentIds = new Set(run.nodes.map((node) => node.parentId).filter(Boolean));
-  const steps = run.nodes.filter((node) => !parentIds.has(node.nodeId));
+  const steps = run.nodes;
   const ordinal = steps.findIndex((node) => node.nodeId === run.activeNodeId) + 1;
   if (ordinal < 1 || steps.length === 0) {
     return;

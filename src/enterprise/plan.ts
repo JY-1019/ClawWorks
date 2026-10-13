@@ -104,7 +104,7 @@ export function collectWorkflowTreeCandidates(params: {
  * skipped node can never have a kept descendant and pruning its branch is safe.
  *
  * Depth-first is also the run's EXECUTION order, and deliberately so: the planner
- * picks WHICH leaves the run visits, the tree owns the order it visits them in.
+ * picks WHICH endpoints the run reaches, the tree owns the order it visits them in.
  * Honoring a planner-chosen order instead was tried and reverted — it let the
  * model-facing digest (tree order) disagree with enforcement (planner order).
  */
@@ -206,27 +206,22 @@ export function buildEnterpriseRunPlan(params: {
   // Explicit grants imply it: a work-map that grants only what it attaches must not
   // reach every registered server just because it attached none.
   const mcpGoverned = capabilityGrants === "explicit" || treeDeclaresMcpAttachment(tree.root);
-  // Denials are read definition-wide (a rule from any branch should withhold), but
-  // ATTACHMENTS come from the routed nodes below: a branch this run will not enter
-  // must not hand its server to a subprocess that has no per-step gate.
-  // Tree-wide, and not only for MCP-governed trees: the launch-time MCP check
-  // honors these for plugin-supplied servers too, which no attachment can grant.
-  const mcpDeniedTools = collectTreeOntologyList(tree.root, "deniedTools");
-  // A route resolved against a DIFFERENT tree cannot prune this one; ignoring it
-  // is the safe read (plan everything) rather than planning an empty run.
+  // Invalid selections must not widen into execution of the whole tree.
   const routeNodeIds =
     params.route?.nodeIds && params.route.nodeIds.has(tree.root.id)
       ? params.route.nodeIds
       : undefined;
+  if (params.route?.nodeIds && !routeNodeIds) {
+    throw new Error("Workflow route does not include its root step.");
+  }
   const nodes = flattenPlanNodes(tree.root, routeNodeIds);
-  // Where the cursor starts. A step-tracking plan opens ON its first step rather
-  // than on the root: advancing is a tool call now (complete_step), not a
-  // property of one runtime's loop shape, so every mediated runtime can walk the
-  // route and none of them needs the root as a holding scope. A plan with no
-  // steps to track keeps the root, which is the only scope it will ever have.
-  const stepIds = leafNodeIds(nodes);
-  const firstNodeId = nodes[0].nodeId;
-  const activeNodeId = nodesTrackSteps(nodes) ? (stepIds[0] ?? firstNodeId) : firstNodeId;
+  if (routeNodeIds && nodes.length !== routeNodeIds.size) {
+    throw new Error("Workflow route contains unknown steps or omits a predecessor.");
+  }
+  const mcpDeniedTools = [
+    ...new Set(nodes.flatMap((node) => node.ontology.deniedTools ?? [])),
+  ].toSorted();
+  const activeNodeId = nodes[0].nodeId;
   const route: EnterpriseRoutePlan | undefined = params.route
     ? {
         // Route ids are safe: they were resolved against the tree, so they can
@@ -286,20 +281,6 @@ export function buildEnterpriseRunPlan(params: {
   };
 }
 
-/** One ontology list, gathered across the whole definition. Pre-pruning. */
-function collectTreeOntologyList(
-  node: WorkflowNodeDefinition,
-  field: "mcpServers" | "deniedTools",
-): string[] {
-  const values = new Set<string>(node.ontology?.[field] ?? []);
-  for (const child of node.children ?? []) {
-    for (const value of collectTreeOntologyList(child, field)) {
-      values.add(value);
-    }
-  }
-  return [...values].toSorted((a, b) => a.localeCompare(b));
-}
-
 /** Does any node in the definition attach an MCP server? Pre-pruning opt-in. */
 function treeDeclaresMcpAttachment(node: WorkflowNodeDefinition): boolean {
   // PRESENCE, not length: `mcpServers: []` is an operator saying "this step
@@ -319,38 +300,9 @@ export function findPlanNode(
   return plan.nodes.find((node) => node.nodeId === nodeId);
 }
 
-/**
- * Ancestor chain from the subtree root down to `nodeId` (inclusive). Governance
- * evaluates the tool call against every node on this path so a deeper step
- * cannot escape the scope its ancestors declared. Returns [] when the node is
- * missing. The walk is bounded by the node count so a malformed parentId chain
- * can never spin.
- */
-export function resolvePlanNodePath(plan: EnterpriseRunPlan, nodeId: string): EnterprisePlanNode[] {
-  const byId = new Map(plan.nodes.map((node) => [node.nodeId, node]));
-  const path: EnterprisePlanNode[] = [];
-  let current = byId.get(nodeId);
-  while (current && path.length <= plan.nodes.length) {
-    path.push(current);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  return path.toReversed();
-}
-
-/**
- * Ordered node ids the run steps through: the depth-first leaf nodes. Interior
- * nodes only provide inherited scope, so the cursor visits leaves (concrete
- * work). A childless root is itself the single leaf/step.
- */
-function leafNodeIds(nodes: readonly EnterprisePlanNode[]): string[] {
-  const parentIds = new Set(
-    nodes.map((node) => node.parentId).filter((id): id is string => id !== null),
-  );
-  return nodes.filter((node) => !parentIds.has(node.nodeId)).map((node) => node.nodeId);
-}
-
+/** Every selected node executes once, with predecessors before successors. */
 export function enterpriseStepSequence(plan: EnterpriseRunPlan): string[] {
-  return leafNodeIds(plan.nodes);
+  return plan.nodes.map((node) => node.nodeId);
 }
 
 /**
@@ -392,57 +344,28 @@ export function ontologyHasGuidance(ontology: OntologyBinding): boolean {
     ontology.constraints?.length ||
     ontology.contextHints?.length ||
     ontology.guidance ||
-    // A step whose ONLY binding is `skills` still has something to tell the
-    // model. Omitting it here would leave that node guidance-free, so the step
-    // loop would never advance into it and the declaration could never reach a
-    // turn — the same footgun the object-graph checks below guard against.
     ontology.skills?.length ||
     ontology.allowedTools?.length ||
     ontology.deniedTools?.length ||
     ontology.actions?.length ||
     ontology.knowledgeFoundations?.length ||
-    // Attaching an MCP server is the only way a step reaches it, so a node whose
-    // ONLY binding is that attachment must still count as guided — otherwise the
-    // step loop never advances into it and the grant can never take effect.
     ontology.mcpServers?.length ||
     ontology.expectedOutput ||
-    // The object graph is guidance too. Without these, a tree whose ONLY guidance
-    // is its ontology reads as guidance-free: the step loop never advances past
-    // the root, so every ontology tool call resolves the root scope and rejects
-    // the leaf's own object types for the entire run.
     ontology.entities?.length ||
     ontology.relationships?.length ||
     ontology.functions?.length,
   );
 }
 
-/**
- * Whether a run should advance and trace per-node steps. Only governed trees
- * qualify: the root must have sub-steps (a leaf distinct from the root the
- * cursor enters and enforces — true whenever the plan has more than the root
- * node) and some node must carry guidance or opt into auditing.
- * Guidance-free built-in runs stay step-quiet so the stock path adds no per-run
- * trace writes (slice 1).
- *
- * `description` counts. It is the field the GUI's add-child flow writes and the
- * one an operator reaches for first, so omitting it left a hand-authored node
- * unable to make its own tree step-tracking — the declaration was accepted and
- * then silently never entered.
- */
-function nodesTrackSteps(nodes: readonly EnterprisePlanNode[]): boolean {
-  if (nodes.length <= 1) {
-    return false;
-  }
-  return nodes.some(
-    (node) =>
-      ontologyHasGuidance(node.ontology) ||
-      node.ontology.audit === true ||
-      Boolean(node.description),
-  );
-}
+// Only the exact stock defaults are passive. A custom replacement using the same
+// id still tracks its authored step, including a bare or MCP-empty one.
+const passiveDefaultHashes = new Map(
+  [BUILTIN_ASSIST_TREE, BUILTIN_SYSTEM_TREE].map((tree) => [tree.id, hashWorkflowTree(tree)]),
+);
 
 export function planTracksSteps(plan: EnterpriseRunPlan): boolean {
-  return nodesTrackSteps(plan.nodes);
+  const passiveHash = passiveDefaultHashes.get(plan.treeId);
+  return passiveHash === undefined || plan.treeHash !== passiveHash;
 }
 
 /*
@@ -645,8 +568,7 @@ export function buildEnterprisePromptSection(
   if (
     !tracksSteps &&
     plan.mcpGoverned !== true &&
-    // A single-scope work-map never tracks steps, but its authored description
-    // still tells the model what to do; do not silently drop that instruction.
+    // Passive stock defaults have no authored step instructions.
     !plan.nodes.some((node) => ontologyHasGuidance(node.ontology) || Boolean(node.description))
   ) {
     return "";
@@ -698,7 +620,7 @@ export function buildEnterprisePromptSection(
   // so a workflow with no attachment keeps its exact prompt bytes.
   if (plan.mcpGoverned === true) {
     lines.push(
-      "A step's MCP servers line names the servers that step may call. MCP tools are available only on the steps (or ancestors) that attach them; on any other step they are denied.",
+      "A step's MCP servers line names the servers that step may call. MCP tools are available only on the steps that attach them; on any other step they are denied.",
     );
   }
   // Explicit grants change what SILENCE means — a step with no Tools line reaches
@@ -707,7 +629,7 @@ export function buildEnterprisePromptSection(
   if (plan.capabilityGrants === "explicit") {
     lines.push(
       plan.mode === "enforce"
-        ? "This workflow grants capabilities explicitly. Tools, MCP servers, and knowledge sources belong to a step only when it or a step above it lists them. Skills are run-scoped: this run carries only skills declared somewhere on its planned route, and each step's Skills line says which of those to use there. A knowledge source or MCP server no step on your path lists is not available — do not wait on one. An unlisted TOOL is usually different: calling it asks a human to approve that one call, so prefer what the step lists and expect a wait if you go outside it. Two exceptions are refused outright rather than asked about — an ontology action from a step that does not opt into writes, and an MCP server no step on your path attached. Replying and reading (message, read, memory_search) stay available unless a step's Denied tools line names them or a governance policy denies them; a step that lists no tools still has those."
+        ? "This workflow grants capabilities explicitly. Tools, MCP servers, and knowledge sources belong to a step only when that step lists them. Skills are run-scoped: this run carries only skills declared somewhere on its planned route, and each step's Skills line says which of those to use there. A knowledge source or MCP server the active step does not list is not available — do not wait on one. An unlisted TOOL is usually different: calling it asks a human to approve that one call, so prefer what the step lists and expect a wait if you go outside it. Two exceptions are refused outright rather than asked about — an ontology action from a step that does not opt into writes, and an MCP server the active step has not attached. Replying and reading (message, read, memory_search) stay available unless a step's Denied tools line names them or a governance policy denies them; a step that lists no tools still has those."
         : // Observe records decisions without blocking, so the deny-by-default
           // half is not in force. A step's own knowledge list still scopes
           // retrieval here, as it does in every mode — promising otherwise would
@@ -715,11 +637,7 @@ export function buildEnterprisePromptSection(
           "This workflow grants capabilities explicitly: each step names the tools, skills, MCP servers, and knowledge sources it is meant to use. This run records what falls outside that instead of blocking it, except for knowledge, which stays scoped to what each step names.",
     );
   }
-  // Only the leaves are executed; interior nodes lend their scope to the steps
-  // beneath them. The model needs to tell the two apart to know what it is being
-  // asked to do, and it needs the node ID because that is the name complete_step
-  // takes and the name every denial, trace event and operator screen uses. One
-  // vocabulary across prompt, cursor and UI — see enterpriseStepSequence.
+  // The cursor, prompt and UI share one ordered sequence, including predecessors.
   const stepOrdinals = new Map(
     enterpriseStepSequence(plan).map((nodeId, index) => [nodeId, index + 1] as const),
   );
@@ -736,7 +654,7 @@ export function buildEnterprisePromptSection(
     // step 3 is the one thing that would make a resumed run redo finished work.
     const openingOrdinal = stepOrdinals.get(plan.activeNodeId) ?? 1;
     lines.push(
-      `This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step ${openingOrdinal}. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,
+      `Parents are preceding executable steps, not containers. Capabilities apply only on the step declaring them. This run walks ${stepOrdinals.size} step${stepOrdinals.size === 1 ? "" : "s"} in the order below, starting on step ${openingOrdinal}. Call ${WORKFLOW_STEP_ADVANCE_TOOL} when a step's work is actually done — that call is the only thing that advances the run, so ${laterStepScope}. Do not call it merely because you replied.`,
     );
     // A user can steer a governed run at any tool boundary, and a correction often
     // lands on work an earlier step already closed. Without this line the model
@@ -753,11 +671,7 @@ export function buildEnterprisePromptSection(
   // bounded). Trees are operator-authored, so total size stays reasonable.
   for (const node of plan.nodes) {
     const ordinal = stepOrdinals.get(node.nodeId);
-    // Scope containers are labelled too, so a node with no marker reads as
-    // deliberate rather than as a rendering gap.
-    const marker = ordinal
-      ? ` [step ${ordinal} of ${stepOrdinals.size} · id: ${node.nodeId}]`
-      : " [scope only]";
+    const marker = ` [step ${ordinal} of ${stepOrdinals.size} · id: ${node.nodeId}]`;
     lines.push(
       `${node.seq}. ${node.title}${node.description ? ` — ${node.description}` : ""}${marker}`,
     );

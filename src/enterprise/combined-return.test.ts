@@ -23,7 +23,7 @@ import {
   clearEnterpriseRunMediationForTest,
   endEnterpriseRun,
 } from "./run-mediation.js";
-import { evaluateEnterpriseToolCall } from "./runtime.js";
+import { completeEnterpriseStep, evaluateEnterpriseToolCall } from "./runtime.js";
 import { getEnterpriseRunRecord, listEnterpriseRunEvents } from "./trace-store.sqlite.js";
 import { invalidateWorkflowTreeRegistry } from "./tree-registry.js";
 
@@ -63,7 +63,14 @@ it("executes MCP, knowledge and ontology tools within one deeply routed node", a
       format: "yaml",
     });
     expect(imported).toMatchObject({ ok: true, requiredMcpServers: ["acme-tracker"] });
-    const leaf = "operations.orders.returns.cases.assess";
+    const assessment = "operations.orders.returns.cases.assess";
+    const steps = [
+      "operations",
+      "operations.orders",
+      "operations.orders.returns",
+      "operations.orders.returns.cases",
+      assessment,
+    ];
     for (const { orderId, eligible } of [
       { orderId: "1043", eligible: true },
       { orderId: "1051", eligible: false },
@@ -76,16 +83,31 @@ it("executes MCP, knowledge and ontology tools within one deeply routed node", a
         routePlanner: async () => ({
           kind: "decided",
           treeId: "demo.combined-return",
-          routes: [leaf],
+          routes: [assessment],
         }),
       });
       if (run.kind !== "mediated") {
         throw new Error(`Expected mediation, got ${run.kind}`);
       }
-      expect(run.plan.activeNodeId).toBe(leaf);
+      expect(run.plan.nodes.map((node) => node.nodeId)).toEqual(steps);
+      expect(run.plan.activeNodeId).toBe(steps[0]);
+      for (const [index, nodeId] of steps.slice(0, -1).entries()) {
+        expect(
+          completeEnterpriseStep({
+            runId,
+            expectedNodeId: nodeId,
+            summary: `Confirmed return assessment for order ${orderId}; no refund or message requested.`,
+          }),
+        ).toMatchObject({
+          kind: "advanced",
+          completed: { nodeId },
+          next: { nodeId: steps[index + 1] },
+        });
+      }
+      expect(run.plan.activeNodeId).toBe(assessment);
       const gate = (params: Omit<Parameters<typeof evaluateEnterpriseToolCall>[0], "runId">) => {
         expect(evaluateEnterpriseToolCall({ ...params, runId })).toMatchObject({ blocked: false });
-        expect(run.plan.activeNodeId).toBe(leaf);
+        expect(run.plan.activeNodeId).toBe(assessment);
       };
       gate({
         toolName: "acme-tracker__order_status",
@@ -173,19 +195,43 @@ it("executes MCP, knowledge and ontology tools within one deeply routed node", a
       expect(evaluateEnterpriseToolCall({ runId, toolName: "exec" })).toMatchObject({
         blocked: true,
       });
+      expect(
+        completeEnterpriseStep({
+          runId,
+          expectedNodeId: assessment,
+          summary: `Recorded case ${caseId} and verified linked evidence ${noteId}.`,
+        }),
+      ).toMatchObject({ kind: "route-complete" });
       endEnterpriseRun({ runId, status: "completed" });
       const record = getEnterpriseRunRecord(runId);
       if (!record) {
         throw new Error("Missing persisted run");
       }
       const events = listEnterpriseRunEvents(record.executionId);
+      expect(
+        events.filter((event) => event.kind === "node.entered").map((event) => event.nodeId),
+      ).toEqual(steps);
+      expect(
+        events.filter((event) => event.kind === "node.completed").map((event) => event.nodeId),
+      ).toEqual(steps);
+      const auditedTools = events.filter((event) => event.kind === "governance.decision");
+      expect(auditedTools.map((event) => event.payload.toolName)).toEqual(
+        expect.arrayContaining([
+          "acme-tracker__order_status",
+          "knowledge_search",
+          "search_objects",
+          "invoke_action",
+          "compute_function",
+          "get_neighbors",
+        ]),
+      );
       expect([
         ...new Set(
           events
             .filter((event) => event.kind === "governance.decision")
             .map((event) => event.nodeId),
         ),
-      ]).toEqual([leaf]);
+      ]).toEqual([assessment]);
     }
   } finally {
     await client.close().catch(() => {});

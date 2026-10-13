@@ -49,14 +49,11 @@ export async function planWithClassifier(params: {
   if (!tree) {
     return { kind: "failed" };
   }
-  const leaves: Array<{ id: string; path: string }> = [];
+  const steps: Array<{ id: string; path: string }> = [];
   const visit = (node: typeof tree.root, path: string) => {
     const nextPath = `${path} / ${node.title}${node.description ? `: ${node.description}` : ""}`;
-    if (node.children?.length) {
-      node.children.forEach((child) => visit(child, nextPath));
-    } else {
-      leaves.push({ id: node.id, path: nextPath });
-    }
+    steps.push({ id: node.id, path: nextPath });
+    node.children?.forEach((child) => visit(child, nextPath));
   };
   visit(tree.root, tree.name);
   const questions: Parameters<Classify>[0]["questions"] = {
@@ -65,12 +62,12 @@ export async function planWithClassifier(params: {
       instructions: `Within ${tree.name}, does choosing an operation require assuming user intent or prerequisite record state? Generic 'handle/process' requests with several distinct operations need clarification. Missing records alone do not. Answer yes also if the explicitly limited scope cannot answer the request.`,
     },
   };
-  for (const leaf of leaves) {
+  for (const step of steps) {
     // Independent binary relevance supports several requested branches. Choice
     // probabilities would incorrectly force mutually exclusive operations.
-    questions[leaf.id] = {
+    questions[step.id] = {
       type: "binary",
-      instructions: `Is operation ${leaf.path} (${leaf.id}) needed to answer this request? Select every explicitly requested operation and respect exclusions. Do not include a sibling merely because it might supply context. Do not infer an unrequested submission, payment or destructive operation.`,
+      instructions: `Should the request reach step ${step.path} (${step.id})? Selecting it executes each predecessor first and stops at this step; descendants are not implied. Select every explicitly requested operation and respect exclusions. Do not include a sibling merely because it might supply context. Do not infer an unrequested submission, payment or destructive operation.`,
     };
   }
   const second = await classify({ modelId, apiKey, signal, state, questions });
@@ -79,12 +76,12 @@ export async function planWithClassifier(params: {
     return { kind: "failed" };
   }
   const clarification = second.$clarify;
-  const routes = leaves
-    .filter((leaf) => {
-      const result = second[leaf.id];
+  const routes = steps
+    .filter((step) => {
+      const result = second[step.id];
       return result?.type === "binary" && result.probability >= 0.5;
     })
-    .map((leaf) => leaf.id);
+    .map((step) => step.id);
   if (
     (clarification?.type === "binary" && clarification.probability >= 0.5) ||
     routes.length === 0

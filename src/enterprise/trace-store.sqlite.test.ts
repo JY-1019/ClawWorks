@@ -58,12 +58,13 @@ function makeTwoStepPlan(runId: string): EnterpriseRunPlan {
   const base = makePlan(runId);
   return {
     ...base,
+    activeNodeId: "support.triage",
     nodes: [
-      ...base.nodes,
+      { ...base.nodes[1], parentId: null, seq: 0 },
       {
         nodeId: "support.resolve",
-        parentId: "support",
-        seq: 2,
+        parentId: "support.triage",
+        seq: 1,
         title: "Resolve",
         ontology: {},
       },
@@ -543,6 +544,8 @@ describe("enterprise trace store", () => {
 
   it("refuses to mark a run that finished its whole route", () => {
     const plan = makePlan("run-resume-5");
+    plan.nodes = [{ ...plan.nodes[1], parentId: null, seq: 0 }];
+    plan.activeNodeId = "support.triage";
     persistEnterpriseRunStart(
       {
         executionId: "exec-resume-done",
@@ -661,10 +664,9 @@ describe("enterprise trace store", () => {
     const plan: EnterpriseRunPlan = {
       ...makePlan("run-chain"),
       nodes: [
-        { nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} },
-        { nodeId: "a", parentId: "root", seq: 1, title: "A", ontology: {} },
-        { nodeId: "b", parentId: "root", seq: 2, title: "B", ontology: {} },
-        { nodeId: "c", parentId: "root", seq: 3, title: "C", ontology: {} },
+        { nodeId: "a", parentId: null, seq: 0, title: "A", ontology: {} },
+        { nodeId: "b", parentId: "a", seq: 1, title: "B", ontology: {} },
+        { nodeId: "c", parentId: "b", seq: 2, title: "C", ontology: {} },
       ],
     };
     persistEnterpriseRunStart(
@@ -762,10 +764,9 @@ describe("enterprise trace store", () => {
     const plan: EnterpriseRunPlan = {
       ...makePlan("run-reopen"),
       nodes: [
-        { nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} },
-        { nodeId: "a", parentId: "root", seq: 1, title: "A", ontology: {} },
-        { nodeId: "b", parentId: "root", seq: 2, title: "B", ontology: {} },
-        { nodeId: "c", parentId: "root", seq: 3, title: "C", ontology: {} },
+        { nodeId: "a", parentId: null, seq: 0, title: "A", ontology: {} },
+        { nodeId: "b", parentId: "a", seq: 1, title: "B", ontology: {} },
+        { nodeId: "c", parentId: "b", seq: 2, title: "C", ontology: {} },
       ],
     };
     persistEnterpriseRunStart(
@@ -832,9 +833,8 @@ describe("enterprise trace store", () => {
     const plan: EnterpriseRunPlan = {
       ...makePlan("run-reopen-2"),
       nodes: [
-        { nodeId: "root", parentId: null, seq: 0, title: "Root", ontology: {} },
-        { nodeId: "a", parentId: "root", seq: 1, title: "A", ontology: {} },
-        { nodeId: "b", parentId: "root", seq: 2, title: "B", ontology: {} },
+        { nodeId: "a", parentId: null, seq: 0, title: "A", ontology: {} },
+        { nodeId: "b", parentId: "a", seq: 1, title: "B", ontology: {} },
       ],
     };
     persistEnterpriseRunStart(

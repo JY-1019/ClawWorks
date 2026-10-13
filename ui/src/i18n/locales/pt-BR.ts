@@ -328,7 +328,7 @@ export const pt_BR: TranslationMap = {
       attachHint:
         "Este é o catálogo. Para permitir que um passo chame uma ferramenta, abra o Worktree, selecione o passo e adicione-a em Vinculações do passo.",
       attachHintGrantedGated:
-        "Este work-map concede ferramentas explicitamente. Um passo deve usar as ferramentas que ele lista, ou as que um passo acima dele lista. Qualquer outra coisa gera uma aprovação pontual em vez de ser executada, e é recusada se ninguém responder. Responder e ler (message, read, memory_search) permanecem disponíveis em todos os passos, a menos que um passo os negue ou uma política de governança o faça.",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "Nenhuma ferramenta disponível neste gateway.",
       toolCount: "{count} ferramenta(s)",
       optionalBadge: "opcional",
@@ -481,27 +481,23 @@ export const pt_BR: TranslationMap = {
       cancel: "Cancel",
       removeTitle: "Desvincular {entry} desta etapa",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "Nenhum declarado ainda.",
       scopeNarrowingApproval:
         "Esta etapa ainda não tem uma lista de ferramentas permitidas, então permite todas as ferramentas, exceto as negadas. Adicionar a primeira entrada a transforma em uma lista de permissões. As ferramentas listadas são executadas livremente e qualquer outra precisa de uma aprovação avulsa.",
       scopeUngrantedGated:
-        "Este work-map concede ferramentas explicitamente. Até que uma ferramenta seja listada aqui ou em um passo acima, usá-la requer uma aprovação pontual — exceto responder e ler (message, read, memory_search), que permanecem disponíveis a menos que um passo os negue ou uma política de governança o faça.",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "Este passo ainda não possui uma lista de permissões de conhecimento, portanto pode consultar todas as fundações registradas. Adicionar a primeira entrada restringe o acesso às fundações listadas.",
       knowledgeUngranted:
-        "Este mapa de trabalho concede conhecimento explicitamente. A etapa não consulta nenhuma base até que uma seja listada aqui ou em uma etapa acima.",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid:
         "Use um nome de skill: letras minúsculas, dígitos e hífens simples, no máximo 64 caracteres.",
       foundationIdInvalid:
         "Use um id de fundação: segmentos em minúsculas separados por pontos, por exemplo acme.runbooks.",
-      ancestorGateApproval:
-        "Os passos pai ({nodeIds}) possuem sua própria lista de permissões para isso. A governança verifica cada passo a partir da raiz, então uma entrada adicionada aqui só será executada sem solicitar aprovação se esses passos também a permitirem; caso contrário, será necessária uma aprovação pontual. Adicione-a a esses passos também ou use ferramentas Negadas para recusá-la diretamente.",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "Insira um valor primeiro.",
       duplicate: "Essa entrada já está declarada nesta etapa.",
       nodeMissing: "Essa etapa não está mais na árvore; recarregue e tente novamente.",
@@ -536,7 +532,7 @@ export const pt_BR: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "Remover",
@@ -664,7 +660,7 @@ export const pt_BR: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "Description",
       fieldLabel: "Instructions for step {nodeId}",
@@ -679,26 +675,26 @@ export const pt_BR: TranslationMap = {
       save: "Save behavior",
       revert: "Reverter",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "Ferramentas",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "Skills",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "Conhecimento",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -711,7 +707,6 @@ export const pt_BR: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -754,17 +749,15 @@ export const pt_BR: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "Uma negação sempre prevalece. Ela se aplica a esta etapa e a tudo abaixo dela, e nenhuma concessão mais adiante no ramo pode revertê-la.",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "A mediação corporativa está em modo de observação, então as negações são registradas, mas não aplicadas. Quando estiver em modo de aplicação, uma negação se aplicará a esta etapa e a tudo abaixo dela, e nenhuma concessão mais adiante no ramo poderá revertê-la.",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "A mediação corporativa está desativada, então as negações não são aplicadas nem registradas. Ative a mediação para que isso tenha efeito ou apareça no rastreamento de execução.",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "não registrado em mcp.servers",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "Herdado de uma etapa pai:",
     },
     skillsTab: {
       title: "Skills",
@@ -829,24 +822,26 @@ export const pt_BR: TranslationMap = {
     treeUnavailable: "A definição da árvore não está mais disponível.",
     capabilityGrants: {
       explicit: "Concessões explícitas",
-      inherited: "Escopos herdados",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "This work-map grants capabilities explicitly, but enterprise mode is not enforcing. Tool, skill and MCP grants are recorded rather than applied. Knowledge grants still scope retrieval in every mode.",
       explicitHintOff:
         "This work-map grants capabilities explicitly, but enterprise mediation is not active, so no grant applies. The grants below are saved and take effect once mediation is enabled.",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "Conceder explicitamente",
-      turnOff: "Usar escopos herdados",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "Estrutura",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "Ontologia",
     wholeTreeOverviewTitle: "Visão geral da árvore completa",
     action: "Ação: {id}",
@@ -872,7 +867,7 @@ export const pt_BR: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "Arraste um nó · role para ampliar",
     graphExpand: "Open whole work-map",

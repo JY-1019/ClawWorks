@@ -79,6 +79,18 @@ async function openRun(runId: string, routes: string[]) {
   if (result.kind !== "mediated") {
     throw new Error(`expected a mediated showcase run, got ${result.kind}`);
   }
+  expect(result.plan.activeNodeId).toBe("desk");
+  // These authored request/context checks execute before the operation. Finish
+  // them explicitly so an endpoint fixture cannot silently skip its parents.
+  for (const node of result.plan.nodes.slice(0, 2)) {
+    expect(
+      completeEnterpriseStep({
+        runId,
+        expectedNodeId: node.nodeId,
+        summary: "Confirmed the fictional incident operation and supplied-value-only scope.",
+      }),
+    ).toMatchObject({ kind: "advanced", completed: { nodeId: node.nodeId } });
+  }
   return result;
 }
 
@@ -178,11 +190,11 @@ describe("the hands-on service incident golden case", () => {
   });
 
   it.each([
-    { rootAudit: true, stepAudit: false, recorded: true },
+    { rootAudit: true, stepAudit: false, recorded: false },
     { rootAudit: false, stepAudit: true, recorded: true },
     { rootAudit: false, stepAudit: false, recorded: false },
   ])(
-    "audits default allows with root=$rootAudit and step=$stepAudit",
+    "uses only local audit for default allows with root=$rootAudit and step=$stepAudit",
     async ({ rootAudit, stepAudit, recorded }) => {
       const original = exportWorkflowTree({ treeId: TREE_ID, format: "json" });
       if (!original.ok) {
@@ -248,7 +260,14 @@ describe("the hands-on service incident golden case", () => {
 
   it("creates, computes, updates, links, and reports real local objects on the routed steps", async () => {
     const runId = "showcase-lifecycle";
-    const { plan } = await openRun(runId, ["desk.incidents"]);
+    const { plan } = await openRun(runId, [
+      "desk.incidents.intake",
+      "desk.incidents.triage",
+      "desk.incidents.assign",
+      "desk.incidents.evidence",
+      "desk.incidents.resolve",
+      "desk.incidents.report",
+    ]);
     expect(plan.nodes.map((node) => node.nodeId)).toEqual([
       "desk",
       "desk.incidents",
@@ -399,6 +418,13 @@ describe("the hands-on service incident golden case", () => {
       throw new Error("the completed run must have a persisted trace");
     }
     const events = listEnterpriseRunEvents(record.executionId);
+    const steps = plan.nodes.map((node) => node.nodeId);
+    expect(
+      events.filter((event) => event.kind === "node.entered").map((event) => event.nodeId),
+    ).toEqual(steps);
+    expect(
+      events.filter((event) => event.kind === "node.completed").map((event) => event.nodeId),
+    ).toEqual(steps);
     expect(
       events
         .filter((event) => event.kind === "action.invoked")

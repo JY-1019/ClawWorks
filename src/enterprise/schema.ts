@@ -304,9 +304,7 @@ export const WorkflowTreeDefinitionSchema = z
         "Execution model must be a qualified provider/model reference without an auth-profile suffix.",
       )
       .optional(),
-    // One value, and deliberately not a boolean: the inherited semantics this
-    // opts out of are a mode of their own, so the field has room to name them
-    // (or a third) without a second flag contradicting the first.
+    // Explicit grants remove the permissive defaults for each step.
     capabilityGrants: z.literal("explicit").optional(),
     root: WorkflowNodeDefinitionSchema,
   })
@@ -315,9 +313,8 @@ export const WorkflowTreeDefinitionSchema = z
     // Duplicate node ids silently corrupt plan node attribution and per-node
     // trace grouping, so they are a validation error rather than last-wins.
     const seen = new Set<string>();
-    // Object types are declared per node but scoped tree-wide: a deep step may
-    // act on a type its ancestor introduced, so collect them all before
-    // resolving references.
+    // Stored objects share tree-wide identity and schema. Validate that catalog
+    // here; tree warnings separately diagnose references missing on a local step.
     //
     // Only action `effects` are checked. Link endpoints are deliberately NOT:
     // trees already imported before this field existed may name an endpoint
@@ -474,11 +471,8 @@ export const WorkflowTreeDefinitionSchema = z
           }
         });
       });
-      // A function's expression is checked against the MERGED tree-wide shape of
-      // its object type, so a deep step may compute over a property its ancestor
-      // declared. Resolving refs here (not at call time) is the whole point: an
-      // unresolvable `$property` is a definition bug, and finding it at import
-      // beats returning a null from compute_function in the middle of a run.
+      // Reject references absent from the shared object schema. Local availability
+      // is checked by tree warnings and the active step's runtime scope.
       node.ontology?.functions?.forEach((fn, index) => {
         const functionPath = [...path, "ontology", "functions", index];
         const shape = entityShapes.get(fn.entity);

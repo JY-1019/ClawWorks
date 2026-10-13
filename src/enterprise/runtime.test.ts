@@ -407,9 +407,9 @@ describe("enterpriseRunTracksSteps", () => {
     expect(enterpriseRunTracksSteps("nope")).toBe(false);
   });
 
-  it("is false for a guidance-free single-node run", () => {
+  it("tracks a custom single-node run even without guidance", () => {
     registerEnterpriseActiveRun(makeRun({ runId: "run-1" }));
-    expect(enterpriseRunTracksSteps("run-1")).toBe(false);
+    expect(enterpriseRunTracksSteps("run-1")).toBe(true);
   });
 
   it("is true for a guidance-free multi-leaf run when a policy targets a node", () => {
@@ -422,57 +422,6 @@ describe("enterpriseRunTracksSteps", () => {
     registerEnterpriseActiveRun(run);
     expect(enterpriseRunTracksSteps("run-steps")).toBe(true);
   });
-
-  it("ignores node-scoped policies whose node globs match nothing here", () => {
-    const run = makeGovernedRun();
-    run.plan.nodes[0].ontology = {};
-    // The tree matches, but the glob names a node this plan does not contain, so
-    // the policy can never fire — advancing for it would buy nothing, and an
-    // exporter judging relevance would disagree with this predicate.
-    run.policies = [
-      { id: "deny.absent.node", effect: "deny", tools: ["exec"], nodes: ["support.nowhere"] },
-    ];
-    registerEnterpriseActiveRun(run);
-    expect(enterpriseRunTracksSteps("run-steps")).toBe(false);
-  });
-
-  it("ignores node-scoped policies whose action selector matches nothing here", () => {
-    const run = makeGovernedRun();
-    run.plan.nodes[0].ontology = {};
-    // Same rule as the node glob above, applied to the other selector. The bundle
-    // exporter judges relevance with this very predicate, so a policy counted
-    // here and dropped there would silently change whether the imported work-map
-    // advances through its steps at all.
-    run.policies = [
-      {
-        id: "deny.absent.action",
-        effect: "deny",
-        tools: ["exec"],
-        nodes: ["support.*"],
-        actions: ["support.nowhere"],
-      },
-    ];
-    registerEnterpriseActiveRun(run);
-    expect(enterpriseRunTracksSteps("run-steps")).toBe(false);
-  });
-
-  it("ignores node-scoped policies whose tree selector cannot match this run", () => {
-    const run = makeGovernedRun();
-    run.plan.nodes[0].ontology = {};
-    // Policy is pinned to a different tree, so it can never apply here; the run
-    // must stay write-quiet rather than install the hook for nothing.
-    run.policies = [
-      {
-        id: "deny.other.tree",
-        effect: "deny",
-        tools: ["exec"],
-        nodes: ["support.resolve"],
-        trees: ["finance.*"],
-      },
-    ];
-    registerEnterpriseActiveRun(run);
-    expect(enterpriseRunTracksSteps("run-steps")).toBe(false);
-  });
 });
 
 describe("enterprise step cursor", () => {
@@ -482,14 +431,14 @@ describe("enterprise step cursor", () => {
 
     expect(enterpriseRunActiveStep("run-steps")).toMatchObject({
       nodeId: "support.triage",
-      ordinal: 1,
-      total: 2,
+      ordinal: 2,
+      total: 3,
     });
     const advance = completeEnterpriseStep({ runId: "run-steps", summary: "classified" });
     expect(advance).toMatchObject({
       kind: "advanced",
       completed: { nodeId: "support.triage" },
-      next: { nodeId: "support.resolve", ordinal: 2, total: 2 },
+      next: { nodeId: "support.resolve", ordinal: 3, total: 3 },
     });
     expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.resolve");
     expect(events.map((event) => `${event.kind}:${event.nodeId}`)).toEqual([
@@ -590,12 +539,12 @@ describe("enterprise step cursor", () => {
     });
     expect(advance).toMatchObject({
       kind: "wrong-step",
-      active: { nodeId: "support.triage", ordinal: 1 },
+      active: { nodeId: "support.triage", ordinal: 2 },
     });
     expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
   });
 
-  it("enters the first step from a root cursor without completing the container", () => {
+  it("completes the parent before entering its child", () => {
     const events: SinkEvent[] = [];
     // A policy-only tracking run opens on the root, which is a scope container
     // and did no work — so the first advance enters step 1 and completes nothing.
@@ -603,10 +552,10 @@ describe("enterprise step cursor", () => {
     registerEnterpriseActiveRun(run);
     expect(completeEnterpriseStep({ runId: "run-steps" })).toMatchObject({
       kind: "advanced",
-      completed: null,
+      completed: { nodeId: "support" },
       next: { nodeId: "support.triage" },
     });
-    expect(events.map((event) => event.kind)).toEqual(["node.entered"]);
+    expect(events.map((event) => event.kind)).toEqual(["node.completed", "node.entered"]);
   });
 
   it("redacts a model-authored step summary before it reaches the trace", () => {
@@ -631,25 +580,26 @@ describe("enterprise step cursor", () => {
     expect(typeof summary === "string" ? summary.length : -1).toBeLessThanOrEqual(300);
   });
 
-  it("refuses runs it cannot advance instead of throwing", () => {
+  it("completes a single authored step and refuses an unknown run", () => {
     expect(completeEnterpriseStep({ runId: "nope" })).toEqual({ kind: "unmediated" });
     registerEnterpriseActiveRun(makeRun({ runId: "run-1" }));
-    expect(completeEnterpriseStep({ runId: "run-1" })).toEqual({ kind: "no-steps" });
-    expect(enterpriseRunActiveStep("run-1")).toBeNull();
+    expect(completeEnterpriseStep({ runId: "run-1" })).toMatchObject({
+      kind: "route-complete",
+      completed: { nodeId: "support", ordinal: 1, total: 1 },
+    });
+    expect(enterpriseRunActiveStep("run-1")).toMatchObject({ nodeId: "support" });
   });
 
-  it("scopes the gate to the active leaf's ancestor path", () => {
+  it("does not inherit a preceding step's tool restriction", () => {
     registerEnterpriseActiveRun(makeGovernedRun(undefined, { activeNodeId: "support.triage" }));
-    // On the first leaf: the root allows only memory_search/message, so an
-    // out-of-scope tool is gated under the leaf's INHERITED path — and the reason
-    // names the ancestor that narrowed it, not the leaf standing on it.
+    // The preceding step's allow-list is not a gate on this step.
     const verdict = evaluateEnterpriseToolCall({ runId: "run-steps", toolName: "exec" });
     expect(verdict?.nodeId).toBe("support.triage");
-    expect(verdict?.requiresApproval).toBe(true);
-    expect(verdict?.decision.reason).toContain('workflow step "support"');
+    expect(verdict?.requiresApproval).toBe(false);
+    expect(verdict?.decision.effect).toBe("allow");
   });
 
-  it("keeps recording default allows under a leaf when the root opts into audit", () => {
+  it("keeps audit opt-in local to its step", () => {
     const events: SinkEvent[] = [];
     registerEnterpriseActiveRun(
       makeGovernedRun((event) => events.push(event), {
@@ -657,14 +607,12 @@ describe("enterprise step cursor", () => {
         activeNodeId: "support.triage",
       }),
     );
-    // The active leaf is audit-free, but the root audit setting is inherited
-    // down the path, so default allows are still traced.
+    // Auditing the predecessor does not opt this step into default-allow traces.
     const verdict = evaluateEnterpriseToolCall({ runId: "run-steps", toolName: "message" });
     expect(verdict?.decision.effect).toBe("allow");
     expect(verdict?.decision.source).toBe("default");
     const decisions = events.filter((event) => event.kind === "governance.decision");
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0].nodeId).toBe("support.triage");
+    expect(decisions).toHaveLength(0);
   });
 });
 
@@ -688,7 +636,7 @@ describe("enterprise step reopen", () => {
     expect(reopen).toMatchObject({
       kind: "reopened",
       from: { nodeId: "support.resolve" },
-      to: { nodeId: "support.triage", ordinal: 1 },
+      to: { nodeId: "support.triage", ordinal: 2 },
     });
     expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
     expect(events).toHaveLength(1);
@@ -734,7 +682,7 @@ describe("enterprise step reopen", () => {
     registerEnterpriseActiveRun(makeGovernedRun());
     expect(reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.resolve" })).toMatchObject({
       kind: "not-behind",
-      active: { nodeId: "support.triage", ordinal: 1 },
+      active: { nodeId: "support.triage", ordinal: 2 },
     });
     expect(getEnterpriseActiveRun("run-steps")?.plan.activeNodeId).toBe("support.triage");
   });
@@ -771,7 +719,7 @@ describe("enterprise step reopen", () => {
     completeEnterpriseStep({ runId: "run-steps" });
     expect(reopenEnterpriseStep({ runId: "run-steps", nodeId: "support.nope" })).toMatchObject({
       kind: "unknown-step",
-      steps: ["support.triage", "support.resolve"],
+      steps: ["support", "support.triage", "support.resolve"],
     });
   });
 
@@ -830,13 +778,13 @@ describe("recordEnterpriseRunSteer", () => {
     expect(events[0]?.payload.origin).toBe("runtime");
   });
 
-  it("records a run-scoped steer with no step when the run walks none", () => {
+  it("attributes a steer to the single authored step", () => {
     const events: SinkEvent[] = [];
     registerEnterpriseActiveRun(
       makeRun({ runId: "run-flat", sink: (event) => events.push(event) }),
     );
     recordEnterpriseRunSteer({ runId: "run-flat", text: "hold on", origin: "user" });
-    expect(events[0]).toMatchObject({ kind: "run.steered", nodeId: null });
+    expect(events[0]).toMatchObject({ kind: "run.steered", nodeId: "support" });
   });
 
   it("redacts steer text before it reaches the trace", () => {
@@ -1252,8 +1200,20 @@ describe("enterpriseRunAttachedMcpServers", () => {
       ],
     });
     run.plan.nodes = [
-      { nodeId: "desk", parentId: null, seq: 0, title: "Desk", ontology: {} },
-      { nodeId: "desk.triage", parentId: "desk", seq: 1, title: "Triage", ontology: {} },
+      {
+        nodeId: "desk",
+        parentId: null,
+        seq: 0,
+        title: "Desk",
+        ontology: { mcpServers: ["github"] },
+      },
+      {
+        nodeId: "desk.triage",
+        parentId: "desk",
+        seq: 1,
+        title: "Triage",
+        ontology: { mcpServers: ["github"] },
+      },
       {
         nodeId: "desk.file",
         parentId: "desk",

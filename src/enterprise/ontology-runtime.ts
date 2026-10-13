@@ -1,17 +1,4 @@
-/**
- * What the ontology tools may see from where the run currently stands.
- *
- * This is the whole point of a per-node ontology: at the active node, the agent
- * sees the object types, links, actions, and functions declared on the root→node
- * path, and nothing else. A type declared on a sibling branch is not part of this
- * node's contract, so it is not addressable — the model cannot search it, walk
- * into it, or act on it, whatever it may have inferred from the prompt.
- *
- * The scope is derived from the run registry (keyed by runId) rather than
- * threaded through the tool call, because a tool handler only ever gets its
- * closure. Same lookup `knowledge_search` uses.
- */
-import { findPlanNode, resolvePlanNodePath } from "./plan.js";
+import { findPlanNode } from "./plan.js";
 import { getEnterpriseActiveRun } from "./runtime.js";
 import type {
   EnterpriseId,
@@ -46,16 +33,16 @@ export type NodeOntologyScope = {
   treeRequiredProperties: Map<EnterpriseId, Set<string>>;
 };
 
-export type OntologyPathScope = Pick<
+export type OntologyDeclarations = Pick<
   NodeOntologyScope,
   "entities" | "relationships" | "actions" | "functions"
 >;
 
-/** Merge ontology declarations root-first so descendants extend or replace them. */
-export function mergeOntologyPath(
+/** Collate declarations for a step or a whole-map catalog; callers choose the nodes. */
+export function mergeOntologyDeclarations(
   nodes: readonly { ontology?: OntologyBinding }[],
-): OntologyPathScope {
-  const scope: OntologyPathScope = {
+): OntologyDeclarations {
+  const scope: OntologyDeclarations = {
     entities: new Map(),
     relationships: new Map(),
     actions: new Map(),
@@ -78,14 +65,6 @@ export function mergeOntologyPath(
   return scope;
 }
 
-/**
- * Merge the ontology down the root→active path.
- *
- * Merging (rather than reading the leaf alone) mirrors governance, which ANDs
- * the tool scope of every ancestor: a step operates inside the contract its
- * ancestors declared, so it can also see the object types they introduced.
- * Returns null when the run is not enterprise-mediated at all.
- */
 export function resolveActiveOntologyScope(runId: string): NodeOntologyScope | null {
   const run = getEnterpriseActiveRun(runId);
   if (!run) {
@@ -95,7 +74,7 @@ export function resolveActiveOntologyScope(runId: string): NodeOntologyScope | n
   if (!node) {
     return null;
   }
-  const ontology = mergeOntologyPath(resolvePlanNodePath(run.plan, node.nodeId));
+  const ontology = mergeOntologyDeclarations([node]);
   return {
     treeId: run.plan.treeId,
     nodeId: node.nodeId,
@@ -109,28 +88,12 @@ export function resolveActiveOntologyScope(runId: string): NodeOntologyScope | n
   };
 }
 
-/**
- * An object type is TREE-scoped: a child may extend one its ancestor introduced,
- * adding properties without repeating the primaryKey. Schema validation merges
- * declarations across nodes to check them, and the UI graph merges them to draw
- * them — so the runtime has to merge them too. Replacing the ancestor's record
- * with the child's would drop the primary key and make the type unaddressable
- * (compute_function would report a type it can plainly see as "not addressable").
- */
 function mergeEntity(base: OntologyEntity | undefined, extension: OntologyEntity): OntologyEntity {
   if (!base) {
     return extension;
   }
   const properties = new Map((base.properties ?? []).map((property) => [property.id, property]));
   for (const property of extension.properties ?? []) {
-    // Merge the FIELDS, not the property object: a descendant that restates an
-    // existing property (say, to add a description) without repeating
-    // `primaryKey: true` would otherwise drop the flag, and the object type would
-    // report itself unaddressable at that step.
-    //
-    // The identity flags are OR-ed, not overwritten: a restatement carrying
-    // `primaryKey: false` (or omitting it) must not clear an identity the ancestor
-    // established. A redeclaration extends a type; it does not un-declare it.
     const existing = properties.get(property.id);
     if (!existing) {
       properties.set(property.id, property);

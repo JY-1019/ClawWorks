@@ -70,13 +70,6 @@ export type InsertChildResult =
   | { ok: true; definition: EditableTreeDefinition }
   | { ok: false; reason: "parent-not-found" | "duplicate-id" };
 
-/**
- * Return a NEW definition with `child` appended under the node identified by
- * `parentId`. Immutable (structuredClone), so a failed splice leaves the caller's
- * definition untouched; every other field — the node's ontology, the envelope
- * keys — is preserved verbatim. Behavior/ontology fields can be added through
- * the node inspector after this initial child is saved.
- */
 export function insertChildNode(
   definition: EditableTreeDefinition,
   parentId: string,
@@ -176,13 +169,6 @@ export type AddNodeOntologyEntryResult =
   | { ok: true; definition: EditableTreeDefinition }
   | { ok: false; reason: "node-not-found" | "duplicate-entry" | "entry-not-found" };
 
-/**
- * Return a NEW definition with `entry` appended to `node.ontology[field]` on the
- * node identified by `nodeId`. Same contract as insertChildNode: immutable
- * (structuredClone) so a failed add leaves the caller's definition untouched, and
- * every other field passes through verbatim. Adding a tool grant or a declared
- * skill therefore stays a splice-then-reimport over the ONE existing write path.
- */
 export function addNodeOntologyEntry(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -223,12 +209,6 @@ export function enableNodeMcpGovernance(
   return { ok: true, definition: next };
 }
 
-/**
- * Return an inherited-grant tree to legacy MCP behavior after every attachment
- * has been removed. Explicit grants still govern MCP without a marker, and a
- * non-empty list still grants a real server, so neither state can be disabled by
- * deleting presence markers alone.
- */
 export function disableTreeMcpGovernance(
   definition: EditableTreeDefinition,
 ): AddNodeOntologyEntryResult {
@@ -260,24 +240,6 @@ export function disableTreeMcpGovernance(
   return { ok: true, definition: next };
 }
 
-/**
- * Detach one entry from a step's binding.
- *
- * The mirror of `addNodeOntologyEntry`, and it has to exist: a governance
- * surface where grants can only ever be ADDED forces an operator into the raw
- * editor to take one back, which is exactly the edit you least want done by
- * hand-editing YAML.
- *
- * Removing the last entry drops the key entirely rather than leaving `[]`, since
- * those mean different things — an omitted `allowedTools` inherits the path's
- * scope, while an empty one grants nothing.
- *
- * `mcpServers` is the exception and must keep its empty array: the runtime reads
- * PRESENCE, not length (`treeDeclaresMcpAttachment` in src/enterprise/plan.ts),
- * so an absent property marks a tree written before the field existed and leaves
- * every registered server callable. Dropping the last attachment would silently
- * un-govern the whole work-map — the opposite of what the operator asked for.
- */
 export function removeNodeOntologyEntry(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -582,37 +544,15 @@ function exactIndexedEntry(
   return entry && matches(entry) ? entry : null;
 }
 
-/**
- * Ontology scope for one step, as the runtime reads it.
- *
- * An object type is inherited down the path (governance merges root→node the
- * same way), and a type declared on a parent may be EXTENDED by a child. Editing
- * decisions therefore cannot be made from the selected node's own arrays: a child
- * whose types all come from an ancestor would look like it declares none.
- *
- * `relationshipEndpoints` is tree-WIDE on purpose. The schema deliberately
- * tolerates a link whose endpoint is undeclared (legacy definitions), so a
- * removal that only checked this node would quietly leave another branch's link
- * pointing at a type no longer in scope — accepted by import, broken at runtime.
- */
 export type DefinitionOntologyScope = {
-  /**
-   * Object types visible at this node, from its root→node path, each merged with
-   * the properties and identity field every declaration ON THAT PATH gives it.
-   *
-   * The path rather than the tree, because that is what the runtime resolves
-   * against (`resolveActiveOntologyScope`): an action effect or a derived
-   * function naming a type only a sibling branch declares imports cleanly and
-   * then fails mid-run.
-   */
-  pathEntityShapes: Map<
+  nodeEntityShapes: Map<
     string,
     { propertyTypes: Map<string, OntologyValueTypeName>; primaryKey?: string }
   >;
   /**
    * Property id already marked primaryKey per entity, merged TREE-WIDE.
    *
-   * Wider than `pathEntityShapes` on purpose: the schema merges an entity's shape across
+   * Wider than `nodeEntityShapes` on purpose: the schema merges an entity's shape across
    * every declaration in the definition, so a key declared on a sibling branch
    * still collides. Checking only the path would send that conflict to the server
    * instead of explaining it at the field.
@@ -633,24 +573,6 @@ export type DefinitionOntologyScope = {
   relationshipEndpoints: Set<string>;
 };
 
-function nodePathToDefinitionNode(
-  node: EditableTreeNode,
-  id: string,
-  trail: EditableTreeNode[] = [],
-): EditableTreeNode[] | null {
-  const path = [...trail, node];
-  if (node.id === id) {
-    return path;
-  }
-  for (const child of node.children ?? []) {
-    const found = nodePathToDefinitionNode(child, id, path);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
-}
-
 function eachDefinitionNode(node: EditableTreeNode): EditableTreeNode[] {
   return [node, ...(node.children ?? []).flatMap((child) => eachDefinitionNode(child))];
 }
@@ -660,8 +582,9 @@ export function collectDefinitionOntologyScope(
   definition: EditableTreeDefinition,
   nodeId: string,
 ): DefinitionOntologyScope {
-  const path = nodePathToDefinitionNode(definition.root, nodeId) ?? [];
-  const pathEntityShapes = new Map<
+  const selected = findNode(definition.root, nodeId);
+  const path = selected ? [selected] : [];
+  const nodeEntityShapes = new Map<
     string,
     { propertyTypes: Map<string, OntologyValueTypeName>; primaryKey?: string }
   >();
@@ -671,7 +594,7 @@ export function collectDefinitionOntologyScope(
       if (!id) {
         continue;
       }
-      const merged = pathEntityShapes.get(id) ?? {
+      const merged = nodeEntityShapes.get(id) ?? {
         propertyTypes: new Map<string, OntologyValueTypeName>(),
       };
       for (const property of Array.isArray(entity.properties)
@@ -693,7 +616,7 @@ export function collectDefinitionOntologyScope(
           merged.primaryKey = property.id;
         }
       }
-      pathEntityShapes.set(id, merged);
+      nodeEntityShapes.set(id, merged);
     }
   }
   const primaryKeyByEntity = new Map<string, string>();
@@ -739,7 +662,7 @@ export function collectDefinitionOntologyScope(
     }
   }
   return {
-    pathEntityShapes,
+    nodeEntityShapes,
     primaryKeyByEntity,
     propertyTypesByEntity,
     requiredByEntity,
@@ -811,10 +734,6 @@ export function removeNodeOntologyEntity(
     "entities",
     entities.filter((entity, index) => !matches(entity, index)),
   );
-  // Judged AFTER the removal, and per referring declaration. "Still declared
-  // somewhere" is not enough: an id on an unrelated sibling is not on the
-  // referrer's root→node path. Import validates those references TREE-wide, so it
-  // would accept what the runtime — which resolves scope per path — cannot.
   const blocker = newBreakageReason(definition, next);
   if (blocker) {
     return { ok: false, reason: blocker };
@@ -983,21 +902,14 @@ export function addNodeOntologyRelationship(
     return { ok: false, reason: "invalid-id" };
   }
   const ontology = nodeOntologyRecord(node);
-  // Endpoints resolve against the node's SCOPE, not its own declarations: object
-  // types are inherited down the path, so a child whose types all come from an
-  // ancestor may legitimately link them (schema.test.ts covers exactly that).
   const scope = collectDefinitionOntologyScope(definition, nodeId);
   if (
-    !scope.pathEntityShapes.has(relationship.from) ||
-    !scope.pathEntityShapes.has(relationship.to)
+    !scope.nodeEntityShapes.has(relationship.from) ||
+    !scope.nodeEntityShapes.has(relationship.to)
   ) {
     return { ok: false, reason: "entity-not-found" };
   }
   const relationships = ontologyList(ontology, "relationships");
-  // Unique across the whole branch, not just this node: the runtime scope maps
-  // links by id (ontology-runtime.ts), so an ancestor's id is already in scope
-  // and a DESCENDANT's silently replaces one added here — while the inspector,
-  // which keys by endpoints too, shows both.
   if (ontologyIdCollidesAtNode(next, nodeId, "relationships", id)) {
     return { ok: false, reason: "duplicate-entry" };
   }
@@ -1100,48 +1012,19 @@ function findNodeAction(
     : exactIndexedEntry(actions, actionIndex, (action) => action.id === actionId);
 }
 
-/**
- * True when declaring `id` at `nodeId` would collide with an existing one.
- *
- * Ancestors AND descendants, because `resolveActiveOntologyScope`
- * (src/enterprise/ontology-runtime.ts) maps actions, functions, and links by id
- * along the active node's path, last one wins. An ancestor's id is therefore
- * already in scope here, and a DESCENDANT's would silently shadow whatever is
- * added here on that branch — so checking only the root→node path accepts a
- * duplicate that the runtime then resolves to the other declaration.
- */
+/** Action/function/link identifiers are unique within their executable step. */
 function ontologyIdCollidesAtNode(
   definition: EditableTreeDefinition,
   nodeId: string,
   key: "actions" | "functions" | "relationships",
   id: string,
 ): boolean {
-  const declaresId = (node: EditableTreeNode) =>
-    ontologyList(nodeOntologyRecord(node), key).some((entry) => entry.id === id);
-  const path = nodePathToDefinitionNode(definition.root, nodeId) ?? [];
-  if (path.some(declaresId)) {
-    return true;
-  }
-  // `path` already covers the node itself, so only its subtree is left. Every
-  // descendant counts, not just direct children: the shadowing happens at
-  // whatever leaf the run reaches.
-  const node = path.at(-1);
-  return node ? eachDefinitionNode(node).some(declaresId) : false;
+  const node = findNode(definition.root, nodeId);
+  return (
+    node !== null && ontologyList(nodeOntologyRecord(node), key).some((entry) => entry.id === id)
+  );
 }
 
-/**
- * Declare an ACTION on a step — the ontology's write verb, the one `invoke_action`
- * calls.
- *
- * Created bare, the way an object type is: an action's `effects` ARE its write
- * authorization (src/enterprise/ontology-actions.ts refuses one that declares
- * none), and each effect has to be checked against the types this step can
- * address, so they are added one at a time rather than guessed here.
- *
- * Unique along the PATH, not just this node: the runtime scope maps actions by id
- * (ontology-runtime.ts), so a child reusing an ancestor's id silently replaces it
- * while the inspector shows both.
- */
 export function addNodeOntologyAction(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -1185,13 +1068,6 @@ export function addNodeOntologyAction(
   return { ok: true, definition: next };
 }
 
-/**
- * Undeclare an action.
- *
- * Nothing references an action directly, but imported definitions can contain a
- * shadowed ancestor with the same id. Refuse a removal that would reveal an
- * invalid declaration the runtime previously replaced with this one.
- */
 export function removeNodeOntologyAction(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -1221,67 +1097,31 @@ export function removeNodeOntologyAction(
   return { ok: true, definition: next };
 }
 
-/**
- * Every scope a declaration made at `nodeId` can EXECUTE in.
- *
- * An action or function is in scope at its node and at every descendant, and
- * `resolveActiveOntologyScope` merges the path of whichever node is active — so
- * a declaration may legitimately name an object type or a property that a
- * DESCENDANT contributes, and the importer accepts exactly that. Validating only
- * against the declaring node's own path refuses those definitions; validating
- * against these scopes accepts a declaration when some reachable leaf can run it,
- * and still refuses one that names a sibling branch's type, which no scope under
- * this node ever contains.
- */
 function executableNodes(
   definition: EditableTreeDefinition,
   nodeId: string,
   action?: Record<string, unknown>,
 ): EditableTreeNode[] {
-  const node = (nodePathToDefinitionNode(definition.root, nodeId) ?? []).at(-1);
+  const node = findNode(definition.root, nodeId);
   if (!node) {
     return [];
   }
-  // LEAVES only. A step run advances to leaves, and the declaration is inherited
-  // into every one of them — so every leaf is a scope this must work in, while
-  // an interior node is only ever passed through. Including interior scopes here
-  // would let a declaration pass on a node no run ever executes at.
-  const leaves = eachDefinitionNode(node).filter((candidate) => !candidate.children?.length);
-  const candidates = leaves.length > 0 ? leaves : [node];
-  if (!action || typeof action.id !== "string") {
-    return candidates;
+  if (action && nodeOntologyActions(node).findLast((entry) => entry.id === action.id) !== action) {
+    return [];
   }
-  return candidates.filter((candidate) => {
-    let effective: Record<string, unknown> | undefined;
-    for (const step of nodePathToDefinitionNode(definition.root, candidate.id) ?? []) {
-      for (const declared of nodeOntologyActions(step)) {
-        if (declared.id === action.id) {
-          effective = declared;
-        }
-      }
-    }
-    return effective === action;
-  });
+  return [node];
 }
 
 function executableShapeScopes(
   definition: EditableTreeDefinition,
   nodeId: string,
   action?: Record<string, unknown>,
-): DefinitionOntologyScope["pathEntityShapes"][] {
+): DefinitionOntologyScope["nodeEntityShapes"][] {
   return executableNodes(definition, nodeId, action).map(
-    (candidate) => collectDefinitionOntologyScope(definition, candidate.id).pathEntityShapes,
+    (candidate) => collectDefinitionOntologyScope(definition, candidate.id).nodeEntityShapes,
   );
 }
 
-/**
- * Link type ids each reachable leaf can address, the relationship mirror of
- * `executableShapeScopes`.
- *
- * `planLinkEffect` resolves a graph effect against the ACTIVE node's path
- * (src/enterprise/ontology-actions.ts), so a declaration naming a link type only
- * a sibling branch declares imports cleanly and then fails mid-run.
- */
 function executableRelationshipScopes(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -1289,7 +1129,7 @@ function executableRelationshipScopes(
 ): Set<string>[] {
   return executableNodes(definition, nodeId, action).map((candidate) => {
     const ids = new Set<string>();
-    for (const step of nodePathToDefinitionNode(definition.root, candidate.id) ?? []) {
+    for (const step of [candidate]) {
       for (const relationship of ontologyList(nodeOntologyRecord(step), "relationships")) {
         if (typeof relationship.id === "string") {
           ids.add(relationship.id);
@@ -1300,21 +1140,8 @@ function executableRelationshipScopes(
   });
 }
 
-/**
- * The parameter/property type clash the runtime cannot resolve.
- *
- * A call's value is checked TWICE against two different declarations:
- * `validateParameters` against the action's parameter type, `planEffect` against
- * the target property's type (src/enterprise/ontology-actions.ts). The importer
- * tolerates a disagreement — the property wins at write time — but then no
- * non-null value satisfies both, so the action saves and fails on every call.
- *
- * Write effects only: a `read` effect maps no parameter onto a property, and a
- * parameter matching no property at all is an input to the DECISION (a
- * rationale, a reason code) that the write path deliberately leaves unmapped.
- */
 function parameterTypeConflicts(
-  shapes: DefinitionOntologyScope["pathEntityShapes"],
+  shapes: DefinitionOntologyScope["nodeEntityShapes"],
   effects: readonly Record<string, unknown>[],
   parameter: { id: string; type: OntologyValueTypeName },
 ): boolean {
@@ -1342,16 +1169,8 @@ function parameterTypeConflicts(
   });
 }
 
-/**
- * Does `parameter` clash on ANY leaf that carries the effect's object type?
- *
- * One disagreeing leaf is enough to refuse: the call resolves at whichever leaf
- * the run reached, so a parameter that only works on some of them is a
- * declaration that fails part of the time. A leaf missing the type entirely is a
- * reachability failure the callers report separately.
- */
 function parameterClashesAnywhere(
-  scopes: readonly DefinitionOntologyScope["pathEntityShapes"][],
+  scopes: readonly DefinitionOntologyScope["nodeEntityShapes"][],
   effects: readonly Record<string, unknown>[],
   parameter: { id: string; type: OntologyValueTypeName },
 ): boolean {
@@ -1366,16 +1185,6 @@ function parameterClashesAnywhere(
   });
 }
 
-/**
- * Authorize one object type for one kind of write.
- *
- * Two checks the importer does not make, both of which would otherwise surface as
- * a runtime refusal the operator never saw coming. The type must be addressable
- * from THIS step's path — declarations inherit downward, so a type on a sibling
- * branch is out of scope here whatever the tree-wide schema accepts — and a write
- * effect needs the type's identity field, because `planEffect` resolves which
- * instance it touches through the primaryKey and refuses a type without one.
- */
 export function addNodeOntologyActionEffect(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -1436,9 +1245,6 @@ export function addNodeOntologyActionEffect(
     ) {
       return { ok: false, reason: "invalid-id" };
     }
-    // EVERY leaf, the same rule the object effects below follow: the action is
-    // inherited into all of them, and planLinkEffect refuses it at whichever leaf
-    // cannot address the link type.
     if (
       !executableRelationshipScopes(next, nodeId, action).every((ids) =>
         ids.has(effect.relationship),
@@ -1466,9 +1272,6 @@ export function addNodeOntologyActionEffect(
     });
     return { ok: true, definition: next };
   }
-  // EVERY leaf, not some: the action is inherited into all of them, and planEffect
-  // refuses it at whichever leaf cannot address the type. An action that resolves
-  // on one branch only belongs on that branch's node.
   const scopes = executableShapeScopes(next, nodeId, action);
   if (!scopes.every((scope) => scope.has(effect.entity))) {
     return { ok: false, reason: "entity-not-found" };
@@ -1536,13 +1339,6 @@ export function addNodeOntologyActionEffect(
   return { ok: true, definition: next };
 }
 
-/**
- * Withdraw one write authorization.
- *
- * Dropping the last effect leaves the key off rather than an empty array, the
- * same distinction the binding splicers keep: an action with no effects is
- * read-only, which is what an absent list already means.
- */
 export function removeNodeOntologyActionEffect(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -1638,9 +1434,6 @@ export function addNodeOntologyActionParameter(
   const declaredEffects = Array.isArray(action.effects)
     ? (action.effects as Record<string, unknown>[])
     : [];
-  // Refused only when every scope carrying the written type disagrees: the
-  // property may be contributed by a descendant, and that is the leaf the call
-  // resolves at.
   if (
     parameterClashesAnywhere(executableShapeScopes(next, nodeId, action), declaredEffects, {
       id,
@@ -1727,16 +1520,11 @@ export function addNodeOntologyFunction(
   if (!isValidEnterpriseId(id)) {
     return { ok: false, reason: "invalid-id" };
   }
-  // Path-unique for the same reason actions and links are: the runtime scope maps
-  // functions by id, so a child reusing an ancestor's id replaces it silently.
   if (ontologyIdCollidesAtNode(next, nodeId, "functions", id)) {
     return { ok: false, reason: "duplicate-entry" };
   }
-  const leafScopes = executableShapeScopes(next, nodeId);
-  const shapes = leafScopes.map((scope) => scope.get(fn.entity));
-  // EVERY leaf, for the same reason an action effect needs every one: the
-  // function is inherited into all of them and evaluates at whichever the run
-  // reached, so one leaf without the type makes it fail part of the time.
+  const nodeScopes = executableShapeScopes(next, nodeId);
+  const shapes = nodeScopes.map((scope) => scope.get(fn.entity));
   if (shapes.length === 0 || shapes.some((shape) => shape === undefined)) {
     return { ok: false, reason: "entity-not-found" };
   }
@@ -1789,10 +1577,6 @@ export function addNodeOntologyFunction(
   return { ok: true, definition: next };
 }
 
-/**
- * Undeclare a derived function, unless doing so reveals an invalid shadowed
- * ancestor declaration with the same id.
- */
 export function removeNodeOntologyFunction(
   definition: EditableTreeDefinition,
   nodeId: string,
@@ -2175,20 +1959,8 @@ export function removeNodeOntologyConstraint(
   return { ok: true, definition: next };
 }
 
-/**
- * Every ontology reference resolution, scoped to the leaf where it executes.
- *
- * One scan for all of them, because they share a rule the importer does not
- * enforce: import validates references TREE-wide, while the runtime resolves
- * each declaration through its own root→node path. A link, a derived function,
- * or an action can therefore be accepted on save and fail at execution.
- *
- * Callers compare before and after and refuse only when an edit breaks a previously
- * healthy execution path. Existing problems on unrelated branches stay editable.
- */
 type ActionParameterMapping = {
   activeId: string;
-  pathIds: Set<string>;
   actionKey: string;
   entityId: string;
   parameterId: string;
@@ -2197,7 +1969,6 @@ type ActionParameterMapping = {
 
 type ScopedOntologyCheck = {
   activeId: string;
-  pathIds: Set<string>;
   identity: string;
   reason: Exclude<OntologyBreakageReason, "duplicate-entry">;
   broken: boolean;
@@ -2231,34 +2002,20 @@ function ontologyReferenceState(definition: EditableTreeDefinition): OntologyRef
       requiredByEntity.set(entity.id, required);
     }
   }
-  // Interior steps only route to leaves. Counting them as executions would hide
-  // the new break exposed when deleting or moving their final child.
-  const activeNodes = nodes.filter((node) => !node.children?.length);
+  const activeNodes = nodes;
 
-  // Consumers, by contrast, resolve at the node they RUN at. Iterated as
-  // active-node candidates because declarations inherit downward: a function on
-  // an ancestor executes at any descendant against THAT node's merged scope,
-  // which is what resolveActiveOntologyScope does.
-  //
-  // Paths and scopes are built once per node, top-down, so a deep chain costs one
-  // pass rather than a rescan per owner.
   const pathOf = new Map<string, EditableTreeNode[]>();
   const scopeOf = new Map<
     string,
     Map<string, { properties: Map<string, OntologyValueTypeName>; primaryKey?: string }>
   >();
-  const visit = (node: EditableTreeNode, parentPath: EditableTreeNode[]) => {
-    const path = [...parentPath, node];
+  const visit = (node: EditableTreeNode) => {
+    const path = [node];
     pathOf.set(node.id, path);
-    const parentScope =
-      parentPath.length > 0 ? scopeOf.get(parentPath.at(-1)?.id ?? "") : undefined;
     const scope = new Map<
       string,
       { properties: Map<string, OntologyValueTypeName>; primaryKey?: string }
     >();
-    for (const [id, entity] of parentScope ?? []) {
-      scope.set(id, { properties: new Map(entity.properties), primaryKey: entity.primaryKey });
-    }
     for (const entity of ontologyList(nodeOntologyRecord(node), "entities")) {
       const id = typeof entity.id === "string" ? entity.id : "";
       if (!id) {
@@ -2285,17 +2042,16 @@ function ontologyReferenceState(definition: EditableTreeDefinition): OntologyRef
     }
     scopeOf.set(node.id, scope);
     for (const child of node.children ?? []) {
-      visit(child, path);
+      visit(child);
     }
   };
-  visit(definition.root, []);
+  visit(definition.root);
 
   for (const active of activeNodes) {
     const visible = scopeOf.get(active.id) ?? new Map();
     const path = pathOf.get(active.id) ?? [];
-    const activePathIds = new Set(path.map((candidate) => candidate.id));
     const record = (identity: string, reason: ScopedOntologyCheck["reason"], broken: boolean) =>
-      checks.push({ activeId: active.id, pathIds: activePathIds, identity, reason, broken });
+      checks.push({ activeId: active.id, identity, reason, broken });
     // These three kinds resolve LAST-WINS per id along the path. Check only the
     // effective declaration, and record a newly introduced collision separately:
     // a reparent must not silently change which action/function/link runs.
@@ -2500,7 +2256,6 @@ function ontologyReferenceState(definition: EditableTreeDefinition): OntologyRef
             const mapped = propertyType !== undefined;
             actionParameterMappings.push({
               activeId: active.id,
-              pathIds: activePathIds,
               actionKey,
               entityId: String(effect.entity),
               parameterId: parameter.id,
@@ -2527,34 +2282,15 @@ function newScopedBreakageReasons(
 ): Set<ScopedOntologyCheck["reason"]> {
   const reasons = new Set<ScopedOntologyCheck["reason"]>();
   for (const current of after) {
-    if (!current.broken) {
-      continue;
-    }
-    const same = before.filter(
-      (candidate) => candidate.identity === current.identity && candidate.reason === current.reason,
+    const previous = before.find(
+      (candidate) =>
+        candidate.activeId === current.activeId &&
+        candidate.identity === current.identity &&
+        candidate.reason === current.reason,
     );
-    const exact = same.find((candidate) => candidate.activeId === current.activeId);
-    if (exact) {
-      if (!exact.broken) {
-        reasons.add(current.reason);
-      }
-      continue;
+    if (current.broken && !previous?.broken) {
+      reasons.add(current.reason);
     }
-    const formerAncestors = same.filter((candidate) => current.pathIds.has(candidate.activeId));
-    if (formerAncestors.length > 0) {
-      if (formerAncestors.some((candidate) => !candidate.broken)) {
-        reasons.add(current.reason);
-      }
-      continue;
-    }
-    const formerDescendants = same.filter((candidate) => candidate.pathIds.has(current.activeId));
-    if (formerDescendants.length > 0) {
-      if (formerDescendants.some((candidate) => !candidate.broken)) {
-        reasons.add(current.reason);
-      }
-      continue;
-    }
-    reasons.add(current.reason);
   }
   return reasons;
 }
@@ -2584,15 +2320,7 @@ function actionParameterMappingBroke(
     if (sameExecution) {
       return sameExecution.mapped;
     }
-    // Removing or moving a last child makes its parent executable. Treat its
-    // former descendant leaves as the same execution surface for dependency
-    // purposes; losing their mapped field is still a semantic break.
-    const formerDescendants = sameParameter.filter((candidate) =>
-      candidate.pathIds.has(current.activeId),
-    );
-    return formerDescendants.length > 0
-      ? formerDescendants.every((candidate) => candidate.mapped)
-      : sameParameter.every((candidate) => candidate.mapped);
+    return false;
   });
 }
 

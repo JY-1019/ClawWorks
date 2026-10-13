@@ -104,7 +104,13 @@ function activeRun(activeNodeId: string): EnterpriseActiveRun {
       title: "Root",
       ontology: JSON.parse(TREE).root.ontology,
     },
-    { nodeId: "root.claims", parentId: "root", seq: 1, title: "Claims", ontology: {} },
+    {
+      nodeId: "root.claims",
+      parentId: "root",
+      seq: 1,
+      title: "Claims",
+      ontology: JSON.parse(TREE).root.ontology,
+    },
     {
       nodeId: "root.payroll",
       parentId: "root",
@@ -198,7 +204,7 @@ describe("search_objects", () => {
     ]);
   });
 
-  it("refuses a type the active node's path does not declare", async () => {
+  it("refuses a type the active node does not declare", async () => {
     // payroll-record exists in the TREE, but on a sibling branch. Standing on the
     // claims branch it is not part of this step's contract, so it is not
     // addressable — whatever the model may have inferred from the prompt.
@@ -238,9 +244,9 @@ describe("addressability gate: a dropped primaryKey hides stale runtime rows", (
   // gateway path, instead of handing the model an orphaned row.
   function runWithDeAddressedClaim(): EnterpriseActiveRun {
     const run = activeRun("root.claims");
-    const root = run.plan.nodes.find((node) => node.nodeId === "root");
+    const root = run.plan.nodes.find((node) => node.nodeId === "root.claims");
     if (!root) {
-      throw new Error("expected the root node");
+      throw new Error("expected the claims node");
     }
     root.ontology = {
       ...root.ontology,
@@ -275,9 +281,9 @@ describe("addressability gate: a dropped primaryKey hides stale runtime rows", (
     // claim-against-policy link + P-1 row survive the re-import, and the link type
     // is still in scope — but the de-addressed target must not surface.
     const run = activeRun("root.claims");
-    const root = run.plan.nodes.find((node) => node.nodeId === "root");
+    const root = run.plan.nodes.find((node) => node.nodeId === "root.claims");
     if (!root) {
-      throw new Error("expected the root node");
+      throw new Error("expected the claims node");
     }
     root.ontology = {
       ...root.ontology,
@@ -349,9 +355,9 @@ describe("the node boundary holds against sibling-branch data", () => {
     // evaluating it here would leak sideways exactly what search_objects and
     // get_neighbors withhold.
     const run = runWithSiblingExtensions("root.claims");
-    const root = run.plan.nodes.find((node) => node.nodeId === "root");
+    const root = run.plan.nodes.find((node) => node.nodeId === "root.claims");
     if (!root) {
-      throw new Error("expected the root node");
+      throw new Error("expected the claims node");
     }
     root.ontology = {
       ...root.ontology,
@@ -414,75 +420,23 @@ describe("tree-wide shape survives routing", () => {
   });
 });
 
-describe("entity merging along the path", () => {
-  it("keeps an ancestor's primaryKey when a child extends the object type", async () => {
-    // An object type is TREE-scoped: a child may add properties to one its
-    // ancestor introduced, WITHOUT repeating the primary key. Last-wins replacing
-    // the ancestor's record would drop that key and make the type unaddressable —
-    // compute_function would report a type it can plainly see as "not addressable".
+describe("local ontology identity", () => {
+  it.each([
+    { properties: [] },
+    { properties: [{ id: "claim-id", type: "id" as const, primaryKey: false }] },
+    { properties: [{ id: "claim-id", type: "id" as const }] },
+  ])("does not borrow a predecessor's identity or function for %j", async ({ properties }) => {
     const run = activeRun("root.claims");
-    const claims = run.plan.nodes.find((node) => node.nodeId === "root.claims");
-    if (!claims) {
-      throw new Error("expected the claims node");
-    }
-    claims.ontology = {
-      entities: [{ id: "claim", properties: [{ id: "note", type: "string" }] }],
-    };
+    const claims = run.plan.nodes.find((node) => node.nodeId === "root.claims")!;
+    claims.ontology = { entities: [{ id: "claim", properties }] };
     registerEnterpriseActiveRun(run);
-
-    const details = await call(createComputeFunctionTool({ runId: RUN_ID }), {
+    const read = await call(createSearchObjectsTool({ runId: RUN_ID }), { entity: "claim" });
+    expect(read.error).toContain("not addressable");
+    const computed = await call(createComputeFunctionTool({ runId: RUN_ID }), {
       function: "band",
       objectId: "C-1",
     });
-    expect(details.error).toBeUndefined();
-    expect(details.value).toBe("refer");
-  });
-
-  it("does not let an explicit primaryKey:false clear an inherited identity", async () => {
-    // A redeclaration EXTENDS a type; it does not un-declare it. Letting false
-    // clear the ancestor's identity would make the object type unaddressable.
-    const run = activeRun("root.claims");
-    const claims = run.plan.nodes.find((node) => node.nodeId === "root.claims");
-    if (!claims) {
-      throw new Error("expected the claims node");
-    }
-    claims.ontology = {
-      entities: [{ id: "claim", properties: [{ id: "claim-id", type: "id", primaryKey: false }] }],
-    };
-    registerEnterpriseActiveRun(run);
-
-    const details = await call(createComputeFunctionTool({ runId: RUN_ID }), {
-      function: "band",
-      objectId: "C-1",
-    });
-    expect(details.error).toBeUndefined();
-    expect(details.value).toBe("refer");
-  });
-
-  it("keeps primaryKey when a child restates a property without repeating the flag", async () => {
-    // Restating `claim-id` to add a description must not drop `primaryKey: true`,
-    // or the object type reports itself unaddressable at that step.
-    const run = activeRun("root.claims");
-    const claims = run.plan.nodes.find((node) => node.nodeId === "root.claims");
-    if (!claims) {
-      throw new Error("expected the claims node");
-    }
-    claims.ontology = {
-      entities: [
-        {
-          id: "claim",
-          properties: [{ id: "claim-id", type: "id", description: "The claim reference." }],
-        },
-      ],
-    };
-    registerEnterpriseActiveRun(run);
-
-    const details = await call(createComputeFunctionTool({ runId: RUN_ID }), {
-      function: "band",
-      objectId: "C-1",
-    });
-    expect(details.error).toBeUndefined();
-    expect(details.value).toBe("refer");
+    expect(computed.error).toContain("not in the ontology of this workflow step");
   });
 });
 

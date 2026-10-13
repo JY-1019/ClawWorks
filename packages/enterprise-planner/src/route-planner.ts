@@ -1,33 +1,7 @@
 /**
- * Workflow planning: which tree governs a request, and which part of it runs.
- *
- * Both questions are one model call. Tree selection used to be a keyword
- * substring match in core, which failed in both directions: a request phrased
- * without the tree's keywords (or in another language) silently escaped the
- * work-map's tool scopes entirely, and an unrelated request that happened to
- * contain one ("refactor the payout settlement code") got locked into them.
- * Keyword matching is also the cheaper half of a decision the model is already
- * making, so folding it in costs no extra call — and keeps the planning prompt
- * a single stable prefix rather than one that changes with whichever tree
- * matched.
- *
- * Route selection then answers WHICH PART of the chosen tree runs. A 40-node
- * tree has one relevant branch for any given request, and planning the whole
- * thing means the run carries (and steps through) 35 nodes of guidance that do
- * not apply. The planner picks cut points — node ids — and the run plans exactly
- * their subtrees plus the ancestors needed to reach them. Ancestors matter:
- * governance merges every node's ontology down the root→active path, so dropping
- * an ancestor would drop the tool ceiling it declares.
- *
- * The model call is INJECTED. This module stays pure so the prompt inputs, the
- * parsing contract, and the route→node resolution are testable without a
- * provider, and so a run with no planner wired simply falls back to the default
- * tree planned whole (today's behavior) rather than failing.
- *
- * Candidate ORDER is the caller's: this package is structural and does not know
- * about triggers or priorities, so core hands it an already-filtered,
- * deterministically ordered list and the fail-closed pick below is "the first
- * non-default candidate".
+ * Pure workflow selection. A route names stopping points; each ancestor is an
+ * executable prerequisite, and only explicitly selected branches execute.
+ * Invalid routing blocks execution instead of guessing a business operation.
  */
 import { z } from "zod";
 import type { PlannableNode, PlannableTree } from "./types.js";
@@ -38,7 +12,7 @@ type WorkflowNodeDefinition = PlannableNode;
 type WorkflowTreeDefinition = PlannableTree;
 
 /** Trees this small are cheaper to run whole than to ask a model about. */
-const MIN_NODES_TO_PLAN = 5;
+const MIN_NODES_TO_PLAN = 2;
 /**
  * Keep the candidate digest bounded: it is prompt-cache-sensitive prefix text.
  * One budget per line KIND, because the two carry different weight.
@@ -129,7 +103,10 @@ export type EnterpriseWorkflowSelection<
   /** Model text when the model chose; a fixed explanation otherwise. */
   treeRationale: string;
   route: EnterpriseRouteSelection;
-  next: { kind: "execute" } | { kind: "clarify"; question: string };
+  next:
+    | { kind: "execute" }
+    | { kind: "clarify"; question: string }
+    | { kind: "blocked"; reason: string };
 };
 
 const planDecisionSchema = z.object({
@@ -201,11 +178,7 @@ export function buildPlanCandidateDigest(trees: readonly WorkflowTreeDefinition[
     .join("\n\n");
 }
 
-/**
- * Expand chosen cut points into the set of nodes to plan: each route's whole
- * subtree, plus every ancestor above it (governance needs the full root→node
- * scope chain, and the plan's parent links must resolve).
- */
+/** Select endpoints and all preceding steps, without implicit descendants. */
 export function resolveRouteNodeIds(
   tree: WorkflowTreeDefinition,
   routes: readonly string[],
@@ -230,11 +203,9 @@ export function resolveRouteNodeIds(
       invalid.push(raw);
       continue;
     }
-    // Descendants: the whole subtree under the cut point runs.
-    walk(node, 0, (descendant) => {
-      nodeIds.add(descendant.id);
-    });
-    // Ancestors: needed for the scope chain and for parentId to resolve.
+    // Selecting an endpoint runs its predecessors, never unselected successors.
+    nodeIds.add(node.id);
+    // Parents are prerequisites and must execute before the selected endpoint.
     let parent = parentOf.get(route) ?? null;
     while (parent) {
       nodeIds.add(parent);
@@ -249,28 +220,16 @@ function wholeTree(rationale: string, invalidRoutes: string[] = []): EnterpriseR
   return { routes: [], nodeIds: null, rationale, source: "whole-tree", invalidRoutes };
 }
 
-/**
- * Resolve the routes a decision named against the tree it named.
- *
- * Every failure resolves to the whole tree rather than to an empty plan: an
- * empty plan would be an unGOVERNED run (no node scopes at all), which is the
- * opposite of failing closed. Running the whole tree keeps every scope the tree
- * declares — it is only less precise, never less safe.
- */
+/** Reject empty or partially invalid routes; no implicit execution fallback. */
 function resolveRoute(
   tree: WorkflowTreeDefinition,
   routes: readonly string[],
   rationale: string | undefined,
-): EnterpriseRouteSelection {
+): EnterpriseRouteSelection | null {
   const total = countTreeNodes(tree);
   const { nodeIds, invalid } = resolveRouteNodeIds(tree, routes);
-  if (nodeIds.size === 0) {
-    return wholeTree(
-      invalid.length > 0
-        ? `route planner returned only unknown routes (${invalid.join(", ")}); planning the whole tree`
-        : "route planner selected no route; planning the whole tree",
-      invalid,
-    );
+  if (nodeIds.size === 0 || invalid.length > 0) {
+    return null;
   }
   // A route set that covers the tree anyway is not a narrowing; report it as
   // whole-tree so the trace does not claim a selection that changed nothing.
@@ -298,62 +257,40 @@ function selectionWithoutModel<TTree extends WorkflowTreeDefinition>(
     treeSource,
     treeRationale,
     route: wholeTree(routeRationale),
-    next: { kind: "execute" },
+    next:
+      countTreeNodes(tree) > 1
+        ? {
+            kind: "blocked",
+            reason: "This work-map needs a route planner before its steps can execute.",
+          }
+        : { kind: "execute" },
   };
 }
 
-/**
- * The selection for a run nothing may judge, but governance must still see a
- * work-map for: the first domain candidate, planned whole.
- *
- * Exported because mediation withholds an otherwise-available planner when a
- * run-start policy already denies a candidate — the prompt must not reach a
- * provider for a run that is going to be blocked. That is NOT the same as having
- * no planner: binding the permissive default there would make the very policy
- * that withheld the planner miss its target, and the run would be allowed.
- */
+/** Routing or policy preflight failed: return metadata but never execute steps. */
 export function failClosedWorkflowSelection<TTree extends WorkflowTreeDefinition>(params: {
   trees: readonly TTree[];
   defaultTree: TTree;
   reason: string;
 }): EnterpriseWorkflowSelection<TTree> {
-  // Candidate order is the caller's contract: the first domain tree is the one a
-  // failure binds (see the module header).
+  // Metadata only; a failed selection never opens an active run.
   const firstDomainTree = params.trees.find((tree) => tree.id !== params.defaultTree.id);
-  return selectionWithoutModel(
-    firstDomainTree ?? params.defaultTree,
-    "fallback",
-    params.reason,
-    "planning the whole tree",
-  );
+  return {
+    ...selectionWithoutModel(
+      firstDomainTree ?? params.defaultTree,
+      "fallback",
+      params.reason,
+      "no steps executed",
+    ),
+    next: {
+      kind: "blocked",
+      reason:
+        "Workflow routing failed. No workflow steps were executed. Retry or clarify the intended operation.",
+    },
+  };
 }
 
-/**
- * Choose the governing tree and the route through it, for one request.
- *
- * FAILING CLOSED. Four outcomes are deliberately not the same thing:
- *
- * - The model answers `treeId: null` — "no work-map applies". That is a
- *   judgement, and it is honored: the default tree governs, which is how a
- *   coding question on a machine that also holds a finance work-map keeps
- *   working.
- * - The model answers unusably (prose, a tree id that does not exist), or the
- *   call itself blows up. That is NOT a judgement and must not read as one. A
- *   hostile request can provoke it — the strict parser rejects prose, so text
- *   crafted to make the planner ramble would otherwise be a reliable way to fall
- *   out of governance. So a failure binds the first domain candidate and plans it
- *   WHOLE: over-restrictive, never unGOVERNED.
- * - NO planner can be consulted for this run — none was wired, or none is
- *   configured/authorized. The default tree governs. This is deliberately NOT the
- *   failure case: a request cannot cause it, it is the same answer for every run
- *   on the box, and treating it as failure would put every unrelated request
- *   (a poem, a refactor) under whichever work-map happens to sort first, planned
- *   whole. The tradeoff is accepted and real: if planner auth breaks silently,
- *   work-maps stop governing until it is fixed. The runtime logs a warning when
- *   it cannot build a planner, and `matchedBy: "unavailable"` on the run records it.
- * - No domain candidate exists at all (the stock install). Then the default tree
- *   is the only answer, and no model call is made for it.
- */
+/** Choose a work-map and explicit endpoints, or stop for clarification/failure. */
 export async function selectWorkflowPlan<TTree extends WorkflowTreeDefinition>(params: {
   /** Candidate trees for this trigger, in deterministic order. */
   trees: readonly TTree[];
@@ -450,6 +387,10 @@ export async function selectWorkflowPlan<TTree extends WorkflowTreeDefinition>(p
     return failClosed(`workflow planner named an unknown tree (${parsed.data.treeId})`);
   }
 
+  const route = resolveRoute(tree, parsed.data.routes, parsed.data.rationale);
+  if (!route) {
+    return failClosed("workflow planner selected no valid complete route");
+  }
   const treeRationale = parsed.data.rationale?.trim() || `selected ${tree.id}`;
   // The model call has already selected routes. Expanding a small tree here
   // would discard that choice and introduce unrelated steps and tool ceilings.
@@ -457,7 +398,7 @@ export async function selectWorkflowPlan<TTree extends WorkflowTreeDefinition>(p
     tree,
     treeSource: "planner",
     treeRationale,
-    route: resolveRoute(tree, parsed.data.routes, parsed.data.rationale),
+    route,
     next: { kind: "execute" },
   };
 }

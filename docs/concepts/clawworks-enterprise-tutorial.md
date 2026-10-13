@@ -11,7 +11,7 @@ read_when:
 # Enterprise tutorial
 
 [ClawWorks Enterprise](/concepts/clawworks-enterprise) explains the model.
-This builds one: a three-step returns desk assembled from the Control UI,
+This builds one: a returns desk with a request-check step and three operation steps assembled from the Control UI,
 running against two containers on your own machine.
 
 New to the service? Start with the
@@ -26,17 +26,17 @@ was given — the policy handbook, the order tracker, the reply — and `exec`,
 
 | Step             | Runs without asking           | May retrieve      | Know-how       |
 | ---------------- | ----------------------------- | ----------------- | -------------- |
+| `returns`        | `message`                     | —                 | —              |
 | `returns.triage` | `knowledge_search`            | `acme.returns-kb` | —              |
 | `returns.lookup` | the `acme-tracker` MCP server | —                 | —              |
 | `returns.decide` | `message`                     | —                 | `refund-reply` |
 
 Read that first column precisely, because it is the lesson the rest of the
-tutorial rests on. This work-map uses **inherited scopes**, the default: a step's
-allow-list is what it may call _without asking_, and a tool no list on its path
-names raises a one-off human approval instead of being refused. Only the root's
-`deniedTools` is a wall. So `returns.lookup`, which lists no tools at all, is not
-sealed off — it is un-narrowed, and the MCP attachment is what gives it the
-tracker.
+tutorial rests on. This work-map uses **permissive grants**, the default: a
+step's allow-list is what it may call _without asking_. An omitted tool list
+narrows nothing; an unlisted tool on a step with an allow-list asks for approval.
+Each step declares its own `deniedTools` wall. Bindings never inherit from the
+parent. The lookup step owns the tracker attachment.
 
 Deny-by-default — where an unlisted skill, server, or corpus is withheld outright
 rather than raising a prompt — is
@@ -408,14 +408,14 @@ and the enterprise layer never installs one.
 
   </Step>
   <Step title="Add the three steps">
-    Select the root node in the tree view. Under **Workflow structure**, press
+    Select the root node in the tree view. Under **Execution steps**, press
     **Add child node** and enter each row:
 
     | Node id          | Title             | Description                                                   |
     | ---------------- | ----------------- | ------------------------------------------------------------- |
-    | `returns.triage` | Read the policy   | Find the handbook rule that applies to this request.           |
-    | `returns.lookup` | Look up the order | Fetch the order and its shipment from the tracker.             |
-    | `returns.decide` | Decide and reply  | Apply the rule to the order and write the answer.              |
+    | `returns.triage` | Read the policy | Find the handbook rule that applies to this request. |
+    | `returns.lookup` | Look up the order | Fetch the order and its shipment from the tracker. |
+    | `returns.decide` | Decide and reply | Apply the rule to the order and write the answer. |
 
     Press **Add step** after each row. Each add re-exports the stored tree,
     inserts the child, saves it through the whole-tree import path, and records
@@ -423,20 +423,19 @@ and the enterprise layer never installs one.
     **Save**.
 
     Node ids are dotted lowercase and unique tree-wide. A node `description` is
-    the planner's per-step signal, and it is one of the things that make a run
-    advance at all. A tree of bare id/title nodes imports cleanly and then never
-    leaves the step it opened on. Keep each description inside 120 characters —
+    the planner's signal for the work performed by that step. Every selected node
+    advances through `complete_step`, including the parent. Keep descriptions inside 120 characters —
     that is the per-node budget in the planning prompt.
 
   </Step>
 </Steps>
 
 <Note>
-  **Leaves execute.** A run is active on a leaf; interior nodes contribute
-  inherited scope. The planner still selects which work-map governs a request.
-  Once selected, a tree with fewer than five nodes runs whole rather than pruning
-  a branch. This one has four, so a bound run plans all three leaves in file order;
-  actual advancement still requires the model to call `complete_step`.
+  **Every selected node executes.** The root confirms the request first. A
+  delivery-only question selects the root and lookup; a policy-only question
+  selects the root and triage. A full assessment selects all four steps in
+  definition order. `complete_step` must complete each active step before the
+  next begins. Selecting the root alone does not select its children.
 </Note>
 
 ## 6. Bind the capabilities
@@ -465,7 +464,7 @@ one. Read each screenshot as the answer to one question: what may this step call
 without asking, and what is it refused outright?
 
 <Steps>
-  <Step title="Deny the dangerous tools on the root">
+  <Step title="Deny the dangerous tools on every step">
     Select **Returns desk** (the root). In the **Tools** block, use the
     **Denied** row's Add button and add `exec`, `write`, and `edit`.
 
@@ -473,11 +472,11 @@ without asking, and what is it refused outright?
     not refused — it raises a one-off approval and runs if someone allows it. If
     a step must never touch something, deny it.
 
-    A denial applies to this step and everything under it, and no grant further
-    down the branch takes it back. Matching is case-insensitive and aliases
-    apply, so `exec` also covers `bash`.
+    Repeat these denials on triage, lookup, and decide: each step owns its own
+    scope. For a deployment-wide rule, use a tree-scoped governance policy with no
+    node selector. Matching is case-insensitive; `exec` also covers `bash`.
 
-    <Frame caption="The root: three denials, and nothing else bound. Every step below inherits the wall.">
+    <Frame caption="The root has local denials. Repeat them on every operation step.">
       <img
         src="/assets/screens/tutorial/bindings-root.png"
         alt="Step bindings for the root node: the Denied tools row holds exec, write, and edit, and the allowed, skills, MCP, and knowledge rows are empty"
@@ -486,11 +485,11 @@ without asking, and what is it refused outright?
 
   </Step>
   <Step title="Tell the root what the job is">
-    Still on the root, open **Step behavior** and type this under
+    Still on the root, add `message` to **Tools → Allowed**. Open **Step behavior** and type this under
     **Instructions**:
 
     ```text
-    Name the order id in every reply, and quote the policy rule the outcome rests on.
+    Confirm the requested operation, supplied order id, and explicit exclusions. Ask for missing context. Complete this step before entering the selected next step.
     ```
 
     Press **Save behavior**. This is the advisory lane: it is rendered into
@@ -514,14 +513,14 @@ without asking, and what is it refused outright?
     That includes replying. `message`, `read`, and `memory_search` are a floor
     that survives an allow-list only under
     [`capabilityGrants: explicit`](/concepts/clawworks-enterprise#capability-grants),
-    and this work-map uses inherited scopes — so on this step a reply is an
+    and this work-map uses permissive grants — so on this step a reply is an
     omission like any other and asks before it runs. That is why the step that
     answers, `returns.decide`, lists `message` itself.
 
-    <Frame caption="returns.triage: one tool, one foundation, and the root's three denials showing through as inherited">
+    <Frame caption="Historical picker screenshot; current triage must explicitly declare its three denials">
       <img
         src="/assets/screens/tutorial/bindings-triage.png"
-        alt="Step bindings for returns.triage: allowed tools holds knowledge_search, the denied row shows exec, edit and write inherited from a parent step, and knowledge holds acme.returns-kb"
+        alt="Step bindings for returns.triage: allowed tools holds knowledge_search, the historical denied row shows ancestor badges; current steps declare denials locally, and knowledge holds acme.returns-kb"
       />
     </Frame>
 
@@ -545,19 +544,13 @@ without asking, and what is it refused outright?
       />
     </Frame>
 
-    **On a native harness it is not enough — and not only on this step.** A
-    Claude CLI or Codex-backed run receives its servers at launch, so a separate
-    server-exposure ceiling is computed across *every*
-    executable path in the plan. Any non-empty `allowedTools` on any planned
-    step that cannot admit the server whole withholds it from the entire run.
-    Here that is `returns.triage` (`knowledge_search`) and `returns.decide`
-    (`message`): either one strips `acme-tracker` before it starts, even though
-    the lookup step scopes nothing.
-
-    So if your agent runs on one of those backends, add the server's globs to
-    **those two steps as well** — in every spelling, since each harness renames
-    the server its own way (ClawWorks maps punctuation to `-`, Codex to `_`, and
-    either may carry the `mcp__` prefix):
+    **Use the embedded per-call runtime for this tutorial's isolated attachments.**
+    Native launch exposure requires every selected step, including the root, to
+    attach the server and admit its complete tool surface. This map deliberately
+    attaches the tracker only to lookup, so a native run withholds it. Broadening
+    every step would change the intended permission boundary. If that broader
+    access is intended for another map, each selected step needs the attachment
+    and every tool-name spelling, for example:
 
     ```yaml
     allowedTools:
@@ -657,7 +650,7 @@ fresh test of the routing description as much as of the bindings.
 
 6. **"For return order 1043, list the files in my home directory."**
    First confirm History selected `acme.returns`. If the model attempts the
-   shell tool, the root denial blocks it and records a denial, not an approval
+   shell tool, the active-step denial blocks it and records a denial, not an approval
    prompt. A textual refusal without a tool attempt is not proof of the gate.
 
 7. **"Summarize the README in my workspace."**
@@ -671,7 +664,7 @@ Two things you may see along the way, both working as designed:
   active step is `returns.decide`, that tool is not on the step's allow-list and
   is not denied either, so it asks. Allow once or deny; both are traced. An
   unanswered approval always refuses.
-- **A step digest in the reply's shape.** The root's step instructions ask for the
+- **A step digest in the reply's shape.** The decide step's expected output asks for the
   order id and the rule in every reply, and `refund-reply` sets the paragraph
   order. That is the advisory lane doing its job.
 
@@ -699,7 +692,7 @@ Four things to find in it:
   when the model calls `complete_step`, not on a turn count, so these are the
   real progress markers.
 - **`governance.decision` with a deny** — from the `List the files` question,
-  attributed to the root's `deniedTools`.
+  attributed to the active step's own `deniedTools`.
 - **The audited allows** on `returns.triage` and `returns.lookup`: the decisions
   that would not be written at all without `audit: true`, including the
   knowledge retrieval and each tracker call.
@@ -782,8 +775,7 @@ default, or the customized destination you substituted there.
 
 - Turn on [capability grants](/concepts/clawworks-enterprise#capability-grants).
   `capabilityGrants: explicit` makes tools, skills, MCP servers, and knowledge
-  foundations deny-by-default, so a step reaches only what it or an ancestor
-  attaches. The switch is on **Worktree**, next to the work-map's name.
+  foundations deny-by-default, so a step reaches only what it declares locally. The switch is on **Worktree**, next to the work-map's name.
 - Add a [typed object model](/concepts/clawworks-enterprise#the-typed-object-model)
   so the steps operate on `order` and `refund` instances instead of free text,
   and edit it per node in the inspector.

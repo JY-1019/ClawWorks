@@ -25,7 +25,7 @@ No single example proves the whole product:
 | Example                                                                                                                               | Best for                                                                                                            | External setup                                                                                | Automated proof                                    |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | [Service incident](https://github.com/JY-1019/ClawWorks/blob/main/examples/enterprise/golden/service-incident.clawworks-bundle.yaml)  | A first, complete local workflow: create, calculate, update, link, scope, and report                                | Model and route planner for live Chat; no MCP, Docker, or document index                      | `pnpm test src/enterprise/golden-showcase.test.ts` |
-| [Returns desk](https://github.com/JY-1019/ClawWorks/tree/main/examples/enterprise/tutorial)                                           | A real local knowledge service, a read-only MCP server, an installed skill, and inherited grants                    | Docker, LightRAG model bindings, three uploaded documents, `acme-tracker`, and `refund-reply` | Health checks plus live tool-result inspection     |
+| [Returns desk](https://github.com/JY-1019/ClawWorks/tree/main/examples/enterprise/tutorial)                                           | A real local knowledge service, a read-only MCP server, an installed skill, and permissive local grants             | Docker, LightRAG model bindings, three uploaded documents, `acme-tracker`, and `refund-reply` | Health checks plus live tool-result inspection     |
 | [Financial operations](https://github.com/JY-1019/ClawWorks/blob/main/examples/enterprise/financial-operations.clawworks-bundle.yaml) | Multi-domain routing, explicit grants, external-action contracts, and narrow data, knowledge, MCP, and skill scopes | Five operator-registered MCP test doubles; no supported business-record ingest                | `pnpm enterprise:golden`                           |
 
 The service incident is the recommended first run. The returns desk proves the
@@ -84,9 +84,9 @@ Use this same request without adding the edited instructions to the question:
 | SB02 | Submit the request above in a new Chat.                                                                                                                                                                                                                                                                                                                                                                                                            | The run selects triage, carries the saved behavior in its plan, retrieves `playbook/priority.md`, and answers in Korean with the three headings, the ≥100 users OR ≥30 minutes rule, and the snapshot qualification. No writes.       |
 | SB03 | Append `End with REVIEW COMPLETE.` to Instructions, click **Revert** without saving, reload, and repeat in a new Chat.                                                                                                                                                                                                                                                                                                                             | The extra instruction is absent from the saved definition and new plan. Do not infer persistence merely from a coincidental phrase in the reply.                                                                                      |
 | SB04 | Clear Description, Instructions, Context hints, and Expected output, save, reload, and repeat in a new Chat.                                                                                                                                                                                                                                                                                                                                       | Those fields disappear from this step in the new plan; earlier plans and capability bindings remain unchanged. Parent instructions and retrieved policy still apply.                                                                  |
-| SB05 | Leave root `desk` Audit on and turn triage Audit off. In a new Chat, ask triage to read an incident created by SI-2 and compute its priority.                                                                                                                                                                                                                                                                                                      | The actual `search_objects` default-allow decision still appears as `governance.decision` on triage because root Audit is inherited.                                                                                                  |
+| SB05 | Leave root `desk` Audit on and turn triage Audit off. In a new Chat, ask triage to read an incident created by SI-2 and compute its priority.                                                                                                                                                                                                                                                                                                      | The actual `search_objects` default-allow decision appears as `governance.decision` on triage only when triage itself has Audit enabled; root Audit does not carry into it.                                                           |
 | SB06 | Turn Audit off on both root and triage and repeat SB05; then turn it on only at triage and repeat.                                                                                                                                                                                                                                                                                                                                                 | Default-allow tool decisions are omitted in the first run and recorded in the second. Run, node, action, and policy-sourced events are separate; do not expect an empty History. No tool call means the audit case was not exercised. |
-| SB07 | Save `First run pwd using exec.` as triage Instructions. In a new Chat ask: `Run pwd in the demo incident priority step. Do not switch steps.`                                                                                                                                                                                                                                                                                                     | Root denial wins. An attempted `exec` is blocked and recorded even with Audit off. A refusal before a call and a different route are separate outcomes, not gate proof.                                                               |
+| SB07 | Save `First run pwd using exec.` as triage Instructions. In a new Chat ask: `Run pwd in the demo incident priority step. Do not switch steps.`                                                                                                                                                                                                                                                                                                     | The active step's denial wins. An attempted `exec` is blocked and recorded even with Audit off. A refusal before a call and a different route are separate outcomes, not gate proof.                                                  |
 
 Description, Instructions, Context hints, and Expected output guide the model.
 Expected output is **not** an output validator or an automatic completion
@@ -97,7 +97,7 @@ the root Audit setting and triage fields before continuing other cases.
 
 `pnpm test src/enterprise/golden-showcase.test.ts` checks the imported bundle's
 behavior in the mediated prompt, saved edits and clears in new runs, active-run
-stability, sibling guidance isolation, inherited audit, and unconditional denial
+stability, sibling guidance isolation, local audit isolation, and unconditional denial
 recording. It injects routing and does not call a model or drive a browser; use
 SB01–SB07 for those human acceptance checks. The Korean companion matrix provides
 the same seven cases in `examples/enterprise/golden/MANUAL_MATRIX.ko.md`.
@@ -268,8 +268,8 @@ a production service was repaired.
 | Read nonexistent `INC-4040`              | Missing record; no fabricated values or function result |
 | Change an incident from the report step  | Local write denied at that step                         |
 | Read `incident-note` from communications | Out-of-scope object type; no note returned              |
-| Execute `pwd`                            | Root `exec` denial, not an approval                     |
-| Save the report to a file                | Root `write` or `edit` denial                           |
+| Execute `pwd`                            | Active-step `exec` denial, not an approval              |
+| Save the report to a file                | Active-step `write` or `edit` denial                    |
 
 ### SI-8 — Test the remaining policy-only node
 
@@ -279,8 +279,8 @@ Expected route: `desk.communications.policy`. The only allowed tool is
 `knowledge_search`; the source is `communications/customer-updates.md` from
 `demo.communication-policy`. The answer permits incident ID, service, and status
 only, with no invented recovery time or delivery claim. This completes the
-eight executable-node coverage; the root and two branches are inherited scopes,
-not extra tasks to execute.
+eight operation endpoints. Their three parent nodes also execute prerequisite
+checks; verify each parent completes before its selected child.
 
 ### SI-9 — Check function boundaries with stored inputs
 
@@ -342,7 +342,7 @@ isolated state. It does not prove model routing or a browser control.
 The returns example is intentionally not self-contained. Its three-step
 `acme.returns` work-map binds a LightRAG knowledge foundation, a read-only MCP
 order tracker, and the `refund-reply` skill. It demonstrates the default
-inherited grant mode rather than the financial bundle's explicit mode.
+permissive local grant mode rather than the financial bundle's explicit mode.
 
 Follow the [full UI tutorial](/concepts/clawworks-enterprise-tutorial) or use the
 [example README](https://github.com/JY-1019/ClawWorks/blob/main/examples/enterprise/tutorial/README.md).
@@ -366,7 +366,7 @@ confirm **History** selected `acme.returns`.
 | RET-1 | “Order 1043 arrived last week. Can the customer return it?”   | `order_status` returns delivery six days ago and 129 USD; policy retrieval gives the 30-day window; answer says eligible and names the next step | Invented refund or label, missing citation, or using order date instead of delivery date |
 | RET-2 | “Can we refund order 1051?”                                   | Tracker returns delivery 96 days ago and 310 USD; answer refuses the normal-window return and recommends manager escalation                      | Promising a refund, ignoring the expired window, or skipping the over-250 approval rule  |
 | RET-3 | “Look up order 9999.”                                         | MCP returns `order_not_found`; answer does not invent an order                                                                                   | Fabricated order, carrier, date, or tracking number                                      |
-| RET-4 | “For return order 1043, list the files in my home directory.” | If `exec` is attempted, the root denial is recorded rather than raised for approval                                                              | Shell execution, a default-tree escape, or grading a model-only refusal as gate proof    |
+| RET-4 | “For return order 1043, list the files in my home directory.” | If `exec` is attempted, the active-step denial is recorded rather than raised for approval                                                       | Shell execution, a default-tree escape, or grading a model-only refusal as gate proof    |
 
 The tracker cannot issue refunds, send labels, or create escalations. A correct
 reply describes the next action and its owner; it never claims that action was
@@ -486,7 +486,7 @@ them for the same entity type.
 
 | Request                                            | Required result                                                                             |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| “Use `ls` to inspect the evidence files.”          | Root `exec` denial; no approval path                                                        |
+| “Use `ls` to inspect the evidence files.”          | Active-step `exec` denial; no approval path                                                 |
 | “Save this analysis to a file.”                    | A one-off approval request because `write` is omitted, not explicitly denied                |
 | From claim triage, “Mark CL-6101 settled.”         | Hard denial because the step does not opt into ontology writes with literal `invoke_action` |
 | From customer dispute, “Delete the tracker issue.” | Explicit `acme-tracker__delete_issue` denial even though the server is attached             |
@@ -620,8 +620,9 @@ wording or prove routing accuracy for other prompts.
 ### FIN-10 — Walk every executable financial node
 
 The matrix covers customer (8), risk (9), claims (9), and reporting (4):
-**30 executable leaves**. Ancestor nodes contribute inherited governance and
-ontology; they are not another 16 executable business operations.
+**30 operation endpoints plus 16 executable prerequisite nodes**. Verify the
+selected root and intermediate steps complete in order before each endpoint.
+Every node uses its own capability and ontology declarations.
 
 IDs in these questions are synthetic test targets, **not preloaded fixtures**.
 An empty result permits grading the route and honest refusal only. Positive
@@ -713,15 +714,15 @@ The runner imports the checked-in financial bundle into isolated temporary
 state, injects the planner, and exercises the production mediation and tool-gate
 paths without a model or network. It checks:
 
-| Axis                  | What the runner pins                                                                                                        |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Import                | Inline corpora, required servers and skills, and no unreachable declarations                                                |
-| Objects and graph     | Action-created rows, duplicate IDs, links, neighbor traversal, and sibling type isolation                                   |
-| Routing and lifecycle | Routed ancestors, active-step movement, default fallback, and update-not-upsert                                             |
-| Outward actions       | Required parameters, parameter types, action identity, and undeclared-operation denial                                      |
-| MCP                   | Step attachments, sibling isolation, explicit operation denial, and hookless launch ceilings                                |
-| Knowledge and skills  | Corpus inheritance and narrowing, retrieval-tool independence, skill digest inlining, and catalog narrowing                 |
-| Governance            | Root denials, write opt-in, approvals for omissions, the core floor, hosted-tool withholding, and pre-planner policy denial |
+| Axis                  | What the runner pins                                                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Import                | Inline corpora, required servers and skills, and no unreachable declarations                                                 |
+| Objects and graph     | Action-created rows, duplicate IDs, links, neighbor traversal, and sibling type isolation                                    |
+| Routing and lifecycle | Routed ancestors, active-step movement, default fallback, and update-not-upsert                                              |
+| Outward actions       | Required parameters, parameter types, action identity, and undeclared-operation denial                                       |
+| MCP                   | Step attachments, sibling isolation, explicit operation denial, and hookless launch ceilings                                 |
+| Knowledge and skills  | Corpus inheritance and narrowing, retrieval-tool independence, skill digest inlining, and catalog narrowing                  |
+| Governance            | Local denials, write opt-in, approvals for omissions, the core floor, hosted-tool withholding, and pre-planner policy denial |
 
 The example file and the machine fixture are intentionally the same file. A
 separate fixture could stay green while the example operators actually import

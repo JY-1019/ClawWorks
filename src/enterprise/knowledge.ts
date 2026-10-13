@@ -11,12 +11,7 @@
  */
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { evaluateKnowledgeRetrievalGovernance } from "./governance.js";
-import {
-  enterpriseStepSequence,
-  findPlanNode,
-  planTracksSteps,
-  resolvePlanNodePath,
-} from "./plan.js";
+import { findPlanNode } from "./plan.js";
 import {
   getEnterpriseActiveRun,
   type EnterpriseActiveRun,
@@ -409,40 +404,9 @@ export async function snapshotEnterpriseKnowledgeFoundation(
   }
 }
 
-/**
- * The foundations this run can actually retrieve, sorted: registered for its tree
- * (a live plugin foundation, or a bundle one it owns) AND admitted by some path
- * the run can be active on.
- *
- * ONE list answers the two model-facing questions that must never disagree —
- * whether to expose `knowledge_search` at all, and which sources to name in its
- * routing glossary. Deriving them apart let a run advertise a source it could
- * never query, and hid every source from a run whose steps declare no allow-list.
- *
- * The paths are the ones the CURSOR can occupy, decided the same way the plan
- * decides where to open it (planTracksSteps): a step-tracking plan visits its
- * LEAVES and is never active on the root, while a plan with no steps to track
- * spends its whole life on the root. Asking the same question both ways — root
- * OR leaves, never both — keeps this from advertising a source only an
- * unreachable scope admits; interior nodes are excluded either way, which is
- * what makes an interior-only grant correctly read as unusable.
- *
- * Whichever branch applies, the answer stays STABLE for the whole run, because
- * it decides a model-visible tool and its description and a list that changes
- * between turns costs the prompt cache. The per-call scope still refuses
- * anything the active path denies.
- */
 function routableFoundationIds(run: EnterpriseActiveRun): string[] {
   const grantsExplicitly = run.plan.capabilityGrants === "explicit";
-  // A childless root is its own single leaf (leafNodeIds), so the step branch
-  // already covers the one-node plan; this only picks the root for a multi-node
-  // plan whose nodes carry nothing to step through.
-  const cursorNodeIds = planTracksSteps(run.plan)
-    ? enterpriseStepSequence(run.plan)
-    : [run.plan.nodes[0]?.nodeId];
-  const paths = cursorNodeIds
-    .filter((nodeId): nodeId is string => typeof nodeId === "string")
-    .map((nodeId) => resolvePlanNodePath(run.plan, nodeId));
+  const paths = run.plan.nodes.map((node) => [node]);
   // retrievalFoundationIds is sorted and filter preserves order, so the glossary
   // and the gate stay deterministic without re-sorting.
   return retrievalFoundationIds(run.plan.treeId).filter((foundationId) =>
@@ -490,17 +454,6 @@ export function removeEnterpriseKnowledgeDocument(
   );
 }
 
-/**
- * Whether the active step's ontology allow-list admits a foundation. Each node
- * on the root→active path that declares a non-empty `knowledgeFoundations` set
- * is an independent gate (like tool scope); nodes that omit it don't restrict.
- *
- * Under `capabilityGrants: "explicit"` silence denies instead: the foundation
- * also has to be NAMED by some node on the path, so a step that attaches no
- * knowledge queries none. Same shape as the tool grant in governance.ts — the
- * per-node gates are unchanged, this only asks the question they cannot: did any
- * level attach it?
- */
 function foundationAllowedByPath(
   path: readonly EnterprisePlanNode[],
   foundationId: string,
@@ -610,11 +563,9 @@ export async function resolveEnterpriseKnowledge(params: {
   if (!node) {
     return { snippets: [], searched: [], skipped: [], mediated: true };
   }
-  const path = resolvePlanNodePath(run.plan, node.nodeId);
+  const path = [node];
   const limit = params.limit && params.limit > 0 ? params.limit : DEFAULT_KNOWLEDGE_LIMIT;
   const enforce = run.plan.mode === "enforce";
-  // Audit inherits down the path like the tool-call gate: an audited root
-  // traces default-allowed retrievals from its leaves.
   const auditEnabled = path.some((step) => step.ontology.audit === true);
   // A requested set narrows which allowed foundations are queried; an omitted
   // (undefined) set queries every allowed foundation (unchanged behavior). An
@@ -657,7 +608,6 @@ export async function resolveEnterpriseKnowledge(params: {
       node,
       foundationId,
       policies: run.policies,
-      path,
     });
     // No interactive approval channel inside retrieval, so approval gates fail
     // closed in enforce mode (and record) like a run-start approval would.

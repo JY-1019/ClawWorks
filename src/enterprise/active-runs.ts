@@ -285,9 +285,8 @@ export function enterpriseRunAttachedMcpServers(
   if (run.plan.mcpGoverned !== true) {
     return null;
   }
-  // Definition-wide, not the pruned plan: a native runtime is handed its servers
-  // once, at launch, for the whole run, so a branch the route left out still
-  // decides what it may be given.
+  // A native runtime receives servers once at launch. Only selected steps
+  // constrain that exposure; pruned branches must not affect this run.
   // Registered AND enabled only: an attachment naming a disabled key must not keep
   // an inherited config entry of the same name alive, and an attachment naming a
   // server nobody registered is inert (the screen and docs say so).
@@ -312,7 +311,12 @@ export function enterpriseRunAttachedMcpServers(
     const siblings = [...new Set([...attachedSnapshot, ...peerServerNames])].filter(
       (other) => other !== server,
     );
-    if (!ceilingAdmitsMcpServer(ceiling, server, siblings)) {
+    // Native servers cannot be withdrawn between steps. Without a reliable
+    // per-call gate, only an attachment valid on every selected step is safe.
+    const attachedEveryStep = run.plan.nodes.every((node) =>
+      node.ontology.mcpServers?.includes(server),
+    );
+    if (!attachedEveryStep || !ceilingAdmitsMcpServer(ceiling, server, siblings)) {
       attached.delete(server);
     }
   }
@@ -416,8 +420,8 @@ export function enterpriseRunAdmitsHostedTool(
   // The root used to be the whole answer because native runs never left it. They
   // walk the route now (complete_step), while a hosted tool is still granted once
   // before the thread starts and can never be withdrawn — so a tool the root
-  // allows but the first leaf narrows away would otherwise stay callable from
-  // that leaf, with no per-call gate able to catch it.
+  // allows but the next step does not grant would otherwise stay callable from
+  // that step, with no per-call gate able to catch it.
   //
   // Conservative on purpose: one step forbidding it withholds it for the run,
   // even on steps that grant it. That is strictly the safe direction, and the
@@ -432,9 +436,9 @@ export function enterpriseRunAdmitsHostedTool(
   if (blocking.some((policy) => policyReachesTool(policy, toolName, run.plan.nodes))) {
     return false;
   }
-  const executablePaths = executableNodePaths(run.plan.nodes);
+
   const grantsExplicitly = run.plan.capabilityGrants === "explicit";
-  return executablePaths.every((path) => pathAdmitsTool(path, toolName, grantsExplicitly));
+  return run.plan.nodes.every((node) => nodeAdmitsTool(node, toolName, grantsExplicitly));
 }
 
 /**
@@ -465,73 +469,36 @@ function policyReachesTool(
   if (actionSelectors.length === 0) {
     return selectorMatches(toolName, toolPatterns);
   }
-  // Every selector has to hold on ONE reachable root→node path: the node selector,
+  // Every selector has to hold on ONE reachable step: the node selector,
   // the action, and (when present) the policy's own tool pattern. Scanning them
   // independently would withhold a tool for a combination no real call produces.
   return nodes.some((node) => {
-    const path = rootPathTo(nodes, node);
-    if (!path.some((step) => selectorMatches(step.nodeId, policy.nodes))) {
+    if (!selectorMatches(node.nodeId, policy.nodes)) {
       return false;
     }
-    return path.some((step) =>
-      (step.ontology.actions ?? [])
+    return (
+      (node.ontology.actions ?? [])
         .filter((action) => selectorMatches(action.id, actionSelectors))
         // An action with no `tools` covers every tool, this one included.
         .some(
           (action) =>
             (action.tools ?? ["*"]).some((actionTool) => selectorMatches(toolName, [actionTool])) &&
             (toolPatterns.length === 0 || selectorMatches(toolName, toolPatterns)),
-        ),
+        )
     );
   });
 }
 
-/**
- * The narrowing lists on each executable path, kept PER PATH.
- *
- * Grouping matters: "this path names nothing" is itself the answer under explicit
- * grants, and a flat list of every branch's grants cannot express it.
- */
-function executablePathAllowLists(nodes: readonly EnterprisePlanNode[]): string[][][] {
-  return executableNodePaths(nodes).map((path) =>
-    path
-      .map((node) => [...(node.ontology.allowedTools ?? [])])
-      .filter((allowed) => allowed.length > 0),
-  );
-}
-
-/** Root→leaf path for every step the run can actually stand on. */
-function executableNodePaths(nodes: readonly EnterprisePlanNode[]): EnterprisePlanNode[][] {
-  const parentIds = new Set(
-    nodes.map((node) => node.parentId).filter((id): id is string => id !== null),
-  );
-  const leaves = nodes.filter((node) => !parentIds.has(node.nodeId));
-  return leaves.map((leaf) => rootPathTo(nodes, leaf));
-}
-
-/**
- * Does one root→leaf path admit the tool? Mirrors the per-call scope gate: every
- * level that narrows must admit it, and under explicit grants some level must
- * also have named it.
- */
-function pathAdmitsTool(
-  path: readonly EnterprisePlanNode[],
+/** A hosted tool has no per-call gate, so each selected step must grant it. */
+function nodeAdmitsTool(
+  node: EnterprisePlanNode,
   toolName: string,
   grantsExplicitly: boolean,
 ): boolean {
-  for (const node of path) {
-    const allowed = node.ontology.allowedTools ?? [];
-    if (allowed.length > 0 && !isToolAllowedByPolicyName(toolName, { allow: [...allowed] })) {
-      return false;
-    }
-  }
-  if (!grantsExplicitly) {
-    return true;
-  }
-  return path.some((node) => {
-    const allowed = node.ontology.allowedTools ?? [];
-    return allowed.length > 0 && isToolAllowedByPolicyName(toolName, { allow: [...allowed] });
-  });
+  const allowed = node.ontology.allowedTools ?? [];
+  return allowed.length === 0
+    ? !grantsExplicitly
+    : isToolAllowedByPolicyName(toolName, { allow: [...allowed] });
 }
 
 type McpCeiling = {
@@ -539,12 +506,12 @@ type McpCeiling = {
   blocking: readonly GovernancePolicy[];
   /**
    * Every non-empty `allowedTools` list the run could ever be judged against —
-   * one per narrowing level across every executable root→leaf path, not just the
+   * one per executable step, including the
    * root's. A hookless backend receives the server once and cannot withdraw it
    * when the cursor advances, so a list on ANY reachable step is a constraint the
    * launch decision has to honor up front.
    */
-  pathAllowLists: readonly (readonly (readonly string[])[])[];
+  nodeAllowLists: readonly (readonly string[])[];
   nodes: readonly EnterprisePlanNode[];
 };
 
@@ -567,7 +534,7 @@ function resolveMcpCeiling(run: EnterpriseActiveRun): McpCeiling {
     // (complete_step) while the server is handed over once, before the subprocess
     // connects — on a CLI with no PreToolUse relay that hand-over is the only
     // enforcement there will ever be.
-    pathAllowLists: executablePathAllowLists(run.plan.nodes),
+    nodeAllowLists: run.plan.nodes.map((node) => node.ontology.allowedTools ?? []),
     nodes: run.plan.nodes,
   };
 }
@@ -600,20 +567,13 @@ function ceilingAdmitsMcpServer(
   if (ceiling.blocking.some((policy) => policyReachesMcpServer(policy, server, ceiling.nodes))) {
     return false;
   }
-  if (ceiling.pathAllowLists.length === 0) {
+  if (ceiling.nodeAllowLists.length === 0) {
     return !requireGrant;
   }
-  // EVERY executable path must admit the server, and each path is judged WHOLE.
-  // Flattening the lists across paths loses the case that matters most under
-  // explicit grants: a sibling path that names nothing grants nothing, so reading
-  // one branch's grant as the run's would hand a hookless CLI a server the silent
-  // branch must never reach.
-  return ceiling.pathAllowLists.every((lists) => {
-    if (lists.length === 0) {
-      return !requireGrant;
-    }
-    return lists.every((allowed) => allowListGrantsWholeMcpServer(allowed, server, siblings));
-  });
+  // A grant on one step cannot authorize a silent step on a hookless backend.
+  return ceiling.nodeAllowLists.every((allowed) =>
+    allowed.length === 0 ? !requireGrant : allowListGrantsWholeMcpServer(allowed, server, siblings),
+  );
 }
 
 /**
@@ -794,25 +754,6 @@ function globCoversEverythingUnder(pattern: string, prefix: string): boolean {
   return !literal.includes("*") && prefix.startsWith(literal);
 }
 
-/** The root→node chain, the unit governance evaluates a policy against. */
-function rootPathTo(
-  nodes: readonly EnterprisePlanNode[],
-  node: EnterprisePlanNode,
-): EnterprisePlanNode[] {
-  const byId = new Map(nodes.map((candidate) => [candidate.nodeId, candidate]));
-  const path: EnterprisePlanNode[] = [node];
-  let current = node.parentId;
-  while (current) {
-    const parent = byId.get(current);
-    if (!parent) {
-      break;
-    }
-    path.unshift(parent);
-    current = parent.parentId;
-  }
-  return path;
-}
-
 /** A policy selector matches when it is unset or one of its globs matches. */
 function selectorMatches(value: string, globs: readonly string[] | undefined): boolean {
   if (!globs || globs.length === 0) {
@@ -848,17 +789,16 @@ function policyReachesMcpServer(
   if (actionSelectors.length === 0) {
     return toolPatterns.some((entry) => denialReachesMcpServer(entry, server, false));
   }
-  // Governance requires every selector to hold on ONE active root→node path, so an
-  // action only counts when the policy's node selector matches somewhere on that
-  // same path. Scanning branches independently would withhold a server for a
+  // Governance requires every selector to hold on ONE active step, so an
+  // action only counts when the policy's node selector matches that
+  // same step. Scanning branches independently would withhold a server for a
   // combination no real call can produce.
   return nodes.some((node) => {
-    const path = rootPathTo(nodes, node);
-    if (!path.some((step) => selectorMatches(step.nodeId, policy.nodes))) {
+    if (!selectorMatches(node.nodeId, policy.nodes)) {
       return false;
     }
-    return path.some((step) =>
-      (step.ontology.actions ?? [])
+    return (
+      (node.ontology.actions ?? [])
         .filter((action) => selectorMatches(action.id, actionSelectors))
         // An action with no `tools` covers every tool, this server's included.
         .some((action) =>
@@ -879,7 +819,7 @@ function policyReachesMcpServer(
                     patternsCanShareACall(entry, actionTool),
                 )),
           ),
-        ),
+        )
     );
   });
 }

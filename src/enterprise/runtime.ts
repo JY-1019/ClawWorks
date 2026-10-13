@@ -7,12 +7,11 @@
  */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { activeRuns, getEnterpriseActiveRun, type EnterpriseActiveRun } from "./active-runs.js";
-import { evaluateToolCallGovernance, policyCanFireInScope } from "./governance.js";
+import { evaluateToolCallGovernance } from "./governance.js";
 import {
   enterpriseStepSequence,
   findPlanNode,
   planTracksSteps,
-  resolvePlanNodePath,
   summarizeModelText,
 } from "./plan.js";
 import type {
@@ -53,31 +52,7 @@ export function resolveEnterpriseMode(config?: OpenClawConfig): EnterpriseMode {
  * the route, and one answer serves every one of them.
  */
 function runTracksSteps(run: EnterpriseActiveRun): boolean {
-  if (planTracksSteps(run.plan)) {
-    return true;
-  }
-  // Node-scoped governance policies also require advancement so the active node
-  // can reach the leaves they target. Only policies that can actually fire here
-  // count: an unrelated tree's policy would break the write-quiet no-op path, and
-  // a selector matching nothing in this plan can never produce a decision, so
-  // advancing for it buys nothing.
-  //
-  // Shares `policyCanFireInScope` with the bundle exporter on purpose — when the
-  // two disagreed about which policies were relevant, export silently dropped
-  // step tracking on the imported copy of a work-map.
-  const scope = {
-    treeId: run.plan.treeId,
-    nodeIds: run.plan.nodes.map((node) => node.nodeId),
-    actionIds: run.plan.nodes.flatMap((node) =>
-      (node.ontology.actions ?? []).map((action) => action.id),
-    ),
-  };
-  return (
-    run.plan.nodes.length > 1 &&
-    run.policies.some(
-      (policy) => (policy.nodes?.length ?? 0) > 0 && policyCanFireInScope(policy, scope),
-    )
-  );
+  return planTracksSteps(run.plan);
 }
 
 export function enterpriseRunTracksSteps(runId: string): boolean {
@@ -165,12 +140,8 @@ export function completeEnterpriseStep(params: {
     return { kind: "wrong-step", active };
   }
   const activeIndex = steps.indexOf(activeId);
-  // Mediation puts every tracking run's cursor on step 1, so an interior node
-  // here means a plan built outside it (a test fixture, or a row restored from an
-  // older shape). Enter step 1 rather than refuse: completing nothing is correct,
-  // since a scope container did no work.
-  const nextId = activeIndex < 0 ? steps[0] : steps[activeIndex + 1];
-  const completed = activeIndex < 0 ? null : active;
+  const nextId = steps[activeIndex + 1];
+  const completed = active;
   const summary = params.summary ? summarizeModelText(params.summary) : "";
   if (completed) {
     if (run.routeCompleted) {
@@ -502,12 +473,12 @@ export function runAllowsOntologyWrites(runId: string): boolean {
  * non-opted step is denied and recorded before any approval is prompted, rather
  * than prompting a human and then having the tool refuse the call anyway.
  */
-function activePathAllowsWrites(plan: EnterpriseRunPlan): boolean {
+function activeNodeAllowsWrites(plan: EnterpriseRunPlan): boolean {
   const node = findPlanNode(plan, plan.activeNodeId);
   if (!node) {
     return false;
   }
-  return resolvePlanNodePath(plan, node.nodeId).some(explicitlyAllowsOntologyWrites);
+  return explicitlyAllowsOntologyWrites(node);
 }
 
 export function readInvokedActionId(toolName: string, params: unknown): string | undefined {
@@ -557,7 +528,7 @@ export function evaluateEnterpriseToolCall(params: {
     }
     // An ontology WRITE needs an explicit opt-in on the active path, decided
     // before any policy or approval runs.
-    if (toolCarriesOntologyAction(params.toolName) && !activePathAllowsWrites(plan)) {
+    if (toolCarriesOntologyAction(params.toolName) && !activeNodeAllowsWrites(plan)) {
       const verdict: EnterpriseToolCallVerdict = {
         decision: {
           effect: "deny",
@@ -579,23 +550,16 @@ export function evaluateEnterpriseToolCall(params: {
       }
       return verdict;
     }
-    // Scope the call with the active node's ontology plus its ancestors so a
-    // deeper step cannot escape the tool scope its root declared.
-    const path = resolvePlanNodePath(plan, node.nodeId);
+    // Preceding steps confer no permissions on this step.
     const decision = evaluateToolCallGovernance({
       plan,
       node,
       toolName: params.toolName,
       policies: run.policies,
-      path,
       ...(params.mcpTool ? { mcpTool: params.mcpTool } : {}),
       ...(run.mcpServers ? { mcpServers: run.mcpServers } : {}),
-      // A run with no steps to walk never leaves its opening scope, so a leaf's
-      // attachment could never be reached from the active path — read them
-      // plan-wide there instead of denying every grant the work-map declared.
-      // The same answer also tells governance whether the core step-advance tool
-      // exists for this run, which is what makes a call by that name provably ours.
-      ...(runTracksSteps(run) ? { tracksSteps: true } : { attachmentScope: "plan" as const }),
+      // This proves the step-advance tool is the core tool for this run.
+      tracksSteps: runTracksSteps(run),
       ...(params.actionId !== undefined ? { actionId: params.actionId } : {}),
       ...(toolCarriesOntologyAction(params.toolName) ? { carriesAction: true } : {}),
       ...(params.toolParams !== undefined ? { toolParams: params.toolParams } : {}),
@@ -610,10 +574,9 @@ export function evaluateEnterpriseToolCall(params: {
     };
     // Default allows stay silent (matching run-start mediation) so the stock
     // enterprise path adds no per-tool-call SQLite writes; a node opts into full
-    // decision auditing with ontology.audit. Audit is inherited down the path so
-    // a root audit setting keeps covering leaves after the run advances.
+    // decision auditing with its own ontology.audit.
     // Approval-gated calls are recorded once the human decision resolves.
-    const auditEnabled = path.some((step) => step.ontology.audit === true);
+    const auditEnabled = node.ontology.audit === true;
     const silentDefaultAllow =
       decision.effect === "allow" && decision.source === "default" && !auditEnabled;
     // A BLOCKED call is always recorded, whatever `record` says: it returns

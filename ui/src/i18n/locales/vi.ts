@@ -327,7 +327,7 @@ export const vi: TranslationMap = {
       attachHint:
         "Đây là danh mục. Để cho phép một bước gọi công cụ, hãy mở Worktree, chọn bước và thêm vào mục Step bindings.",
       attachHintGrantedGated:
-        "Bản đồ công việc này cấp công cụ một cách rõ ràng. Một bước được thiết kế để sử dụng các công cụ mà nó liệt kê, hoặc các công cụ được liệt kê ở bước phía trên. Bất kỳ công cụ nào khác sẽ yêu cầu phê duyệt một lần thay vì chạy, và sẽ bị từ chối nếu không ai phản hồi. Trả lời và đọc (message, read, memory_search) luôn khả dụng ở mọi bước trừ khi một bước từ chối chúng hoặc chính sách quản trị từ chối.",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "Không có công cụ nào khả dụng trên gateway này.",
       toolCount: "{count} công cụ",
       optionalBadge: "tùy chọn",
@@ -479,27 +479,23 @@ export const vi: TranslationMap = {
       cancel: "Cancel",
       removeTitle: "Tách {entry} khỏi bước này",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "Chưa có khai báo nào.",
       scopeNarrowingApproval:
         "Bước này chưa có danh sách công cụ cho phép, vì vậy nó cho phép mọi công cụ ngoại trừ những công cụ bị từ chối. Thêm mục đầu tiên sẽ chuyển nó thành danh sách cho phép. Các công cụ được liệt kê sẽ chạy tự do và bất kỳ công cụ nào khác cần được phê duyệt riêng lẻ.",
       scopeUngrantedGated:
-        "Bản đồ công việc này cấp công cụ một cách rõ ràng. Cho đến khi một công cụ được liệt kê ở đây hoặc ở bước phía trên, việc sử dụng nó cần phê duyệt một lần — ngoại trừ trả lời và đọc (message, read, memory_search), vốn luôn khả dụng trừ khi một bước từ chối chúng hoặc chính sách quản trị từ chối.",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "Bước này chưa có danh sách cho phép kiến thức, vì vậy nó có thể truy vấn mọi foundation đã đăng ký. Thêm mục đầu tiên sẽ giới hạn nó chỉ trong các foundation được liệt kê.",
       knowledgeUngranted:
-        "Bản đồ công việc này cấp quyền truy cập kiến thức một cách rõ ràng. Bước này không truy vấn nền tảng nào cho đến khi một nền tảng được liệt kê ở đây hoặc ở bước phía trên.",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid:
         "Sử dụng tên skill: chữ cái thường, chữ số và dấu gạch ngang đơn, tối đa 64 ký tự.",
       foundationIdInvalid:
         "Sử dụng ID foundation: các phân đoạn chữ thường phân cách bằng dấu chấm, ví dụ acme.runbooks.",
-      ancestorGateApproval:
-        "Các bước cha ({nodeIds}) có danh sách cho phép riêng cho mục này. Governance kiểm tra từng bước từ gốc, vì vậy một mục được thêm ở đây chỉ chạy mà không cần hỏi nếu các bước đó cũng cho phép; nếu không, nó cần một lần phê duyệt riêng. Hãy thêm mục đó vào các bước đó, hoặc sử dụng Denied tools để từ chối hoàn toàn.",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "Nhập giá trị trước.",
       duplicate: "Mục đó đã được khai báo trên bước này.",
       nodeMissing: "Bước đó không còn trong cây; tải lại và thử lại.",
@@ -534,7 +530,7 @@ export const vi: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "Xóa",
@@ -662,7 +658,7 @@ export const vi: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "Description",
       fieldLabel: "Instructions for step {nodeId}",
@@ -677,26 +673,26 @@ export const vi: TranslationMap = {
       save: "Save behavior",
       revert: "Hoàn tác",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "Công cụ",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "Skills",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "Kiến thức",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -709,7 +705,6 @@ export const vi: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -753,17 +748,15 @@ export const vi: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "Từ chối luôn được ưu tiên. Nó áp dụng cho bước này và mọi thứ bên dưới, và không có quyền cấp nào ở sâu hơn trong nhánh có thể thu hồi nó.",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to this step and everything under it, and no grant further down the branch can take it back.",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "Enterprise mediation is off, so denials are neither applied nor recorded. Turn mediation on for this to take effect or appear in the run trace.",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "chưa được đăng ký trong mcp.servers",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "Kế thừa từ bước cha:",
     },
     skillsTab: {
       title: "Skills",
@@ -828,24 +821,26 @@ export const vi: TranslationMap = {
     treeUnavailable: "Định nghĩa cây không còn khả dụng.",
     capabilityGrants: {
       explicit: "Cấp quyền rõ ràng",
-      inherited: "Phạm vi kế thừa",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "Work-map này cấp quyền năng lực một cách tường minh, nhưng chế độ enterprise không được thực thi. Các quyền cấp cho công cụ, skill và MCP được ghi nhận thay vì áp dụng. Các quyền cấp cho kiến thức vẫn giới hạn phạm vi truy xuất trong mọi chế độ.",
       explicitHintOff:
         "Bản đồ công việc này cấp quyền một cách rõ ràng, nhưng tính năng điều phối doanh nghiệp chưa được kích hoạt nên không có quyền nào được áp dụng. Các quyền bên dưới đã được lưu và sẽ có hiệu lực khi tính năng điều phối được bật.",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "Cấp quyền rõ ràng",
-      turnOff: "Sử dụng phạm vi kế thừa",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "Cấu trúc",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "Bản thể học",
     wholeTreeOverviewTitle: "Tổng quan toàn bộ cây",
     action: "Hành động: {id}",
@@ -871,7 +866,7 @@ export const vi: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "Kéo một nút · cuộn để phóng to",
     graphExpand: "Open whole work-map",

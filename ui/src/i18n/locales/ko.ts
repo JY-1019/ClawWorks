@@ -327,7 +327,7 @@ export const ko: TranslationMap = {
       attachHint:
         "이것은 카탈로그입니다. 단계에서 도구를 호출하려면 Worktree를 열고 단계를 선택한 후 Step bindings에서 추가하세요.",
       attachHintGrantedGated:
-        "이 작업 맵은 도구를 명시적으로 부여합니다. 각 단계는 해당 단계 또는 상위 단계에 나열된 도구를 사용하도록 되어 있습니다. 그 외의 도구는 실행되지 않고 일회성 승인을 요청하며, 아무도 응답하지 않으면 거부됩니다. 응답 및 읽기(message, read, memory_search)는 단계에서 거부하거나 거버넌스 정책에서 거부하지 않는 한 모든 단계에서 사용할 수 있습니다.",
+        "This work-map grants tools explicitly. A step is meant to use the tools it lists. Anything else raises a one-off approval instead of running, and is refused if nobody answers. Replying and reading (message, read, memory_search) stay available on every step unless a step denies them or a governance policy does.",
       empty: "이 Gateway에서 사용 가능한 도구가 없습니다.",
       toolCount: "{count}개 도구",
       optionalBadge: "선택 사항",
@@ -479,27 +479,23 @@ export const ko: TranslationMap = {
       cancel: "Cancel",
       removeTitle: "이 단계에서 {entry} 분리",
       removeLastAllowedTool:
-        "Remove this step's last local tool restriction? In inherited mode it will fall back to its parent scope and may gain tools this list currently excludes.",
+        "Remove this step's last local tool restriction? In permissive mode it may gain tools this list currently excludes.",
       removeLastKnowledgeFoundation:
-        "Remove this step's last local knowledge restriction? In inherited mode it will fall back to its parent scope and may query foundations this list currently excludes.",
+        "Remove this step's last local knowledge restriction? In permissive mode it may query foundations this list currently excludes.",
       requireMcpAttachments: "Require attachments",
       none: "아직 선언된 항목이 없습니다.",
       scopeNarrowingApproval:
         "이 단계에는 아직 도구 허용 목록이 없으므로 거부된 도구를 제외한 모든 도구를 허용합니다. 첫 번째 항목을 추가하면 허용 목록으로 전환됩니다. 나열된 도구는 자유롭게 실행되며, 그 외의 도구는 일회성 승인이 필요합니다.",
       scopeUngrantedGated:
-        "이 작업 맵은 도구를 명시적으로 부여합니다. 도구가 여기 또는 상위 단계에 나열될 때까지 해당 도구를 사용하려면 일회성 승인이 필요합니다. 단, 응답 및 읽기(message, read, memory_search)는 단계에서 거부하거나 거버넌스 정책에서 거부하지 않는 한 사용할 수 있습니다.",
+        "This work-map grants tools explicitly. Until a tool is listed on this step, using it needs a one-off approval — except replying and reading (message, read, memory_search), which stay available unless a step denies them or a governance policy does.",
       knowledgeNarrowing:
         "이 단계에는 아직 지식 허용 목록이 없으므로 등록된 모든 파운데이션을 쿼리할 수 있습니다. 첫 번째 항목을 추가하면 나열된 파운데이션으로 제한됩니다.",
       knowledgeUngranted:
-        "이 작업 맵은 지식을 명시적으로 부여합니다. 여기 또는 상위 단계에 지식이 등록되기 전까지 해당 단계는 어떤 기반도 조회하지 않습니다.",
+        "This work-map grants knowledge explicitly. The step queries no foundation until one is listed on this step.",
       skillNameInvalid:
         "Skill 이름을 사용하세요: 소문자, 숫자, 단일 하이픈만 허용되며 최대 64자입니다.",
       foundationIdInvalid:
         "파운데이션 ID를 사용하세요: 점으로 구분된 소문자 세그먼트(예: acme.runbooks).",
-      ancestorGateApproval:
-        "상위 단계({nodeIds})에 이에 대한 자체 허용 목록이 있습니다. 거버넌스는 루트부터 각 단계를 확인하므로, 여기에 추가된 항목은 해당 단계에서도 허용하는 경우에만 확인 없이 실행됩니다. 그렇지 않으면 일회성 승인이 필요합니다. 해당 단계에도 추가하거나, 거부된 도구를 사용하여 완전히 차단하세요.",
-      ancestorGateKnowledge:
-        "Parent steps ({nodeIds}) list their own knowledge sources. Each step from the root narrows again, so a source those steps do not list is never queried here — with no approval prompt and nothing reported as skipped, retrieval simply comes back empty. Add it to those steps as well, or attach only what they already allow.",
       empty: "먼저 값을 입력하세요.",
       duplicate: "해당 항목은 이미 이 단계에 선언되어 있습니다.",
       nodeMissing: "해당 단계가 더 이상 트리에 없습니다. 새로고침 후 다시 시도하세요.",
@@ -533,7 +529,7 @@ export const ko: TranslationMap = {
     ontologyEditor: {
       title: "Object types",
       scopeNote:
-        "The domain concepts this step works with, their fields, and how they link. A step can address the types declared here plus every type it inherits from the steps above it.",
+        "The domain concepts this step works with, their fields, and how they link. A step can address only the types declared here. Parent steps execute first and do not grant their ontology to later steps.",
       addEntity: "Add object type",
       addProperty: "Add field",
       removeEntity: "삭제",
@@ -661,7 +657,7 @@ export const ko: TranslationMap = {
       guidanceNote:
         "Describe the step, give it instructions and context, define its output, and choose detailed auditing. These fields never grant a withheld capability.",
       titleLabel: "Step title",
-      parentLabel: "Parent step",
+      parentLabel: "Preceding step",
       positionLabel: "Position among siblings",
       descriptionLabel: "Description",
       fieldLabel: "Instructions for step {nodeId}",
@@ -676,26 +672,26 @@ export const ko: TranslationMap = {
       save: "Save behavior",
       revert: "되돌리기",
       reparentWarning:
-        "Moving this step changes what it inherits from its parent. Save the new parent and recheck its capabilities and ontology?",
+        "Moving this step changes its execution prerequisites. Save the new preceding step?",
       error: {
         "title-empty": "Enter a step title.",
         "move-refused":
-          "That move is no longer valid or would break inherited ontology. Reload the work-map and check the target parent.",
+          "That move is no longer valid or would break a step's ontology. Reload the work-map and check the target parent.",
       },
     },
     capabilities: {
       toolsTitle: "도구",
       toolsHint:
-        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal is declared for this step and every step beneath it.",
+        "Which of the gateway's tools this step lists as allowed, and which it lists as refused. A refusal applies to this step. Use a tree-wide governance policy for a shared restriction.",
       skillsTitle: "Skills",
       skillsHint:
         "Know-how this step declares as a dependency. A declared skill only resolves to instructions when the agent actually has it installed.",
       mcpTitle: "MCP servers",
       mcpHint:
-        "Which registered MCP servers this step attaches. Unlike tools and knowledge, nothing is attached unless a step on the path names it.",
+        "Which registered MCP servers this step attaches. Nothing is attached unless this step names it.",
       knowledgeTitle: "지식",
       knowledgeHint:
-        "Which knowledge foundations this step lists. Each step on the path carries its own list, and a step keeps only what every list above it also names.",
+        "Which knowledge foundations this step may query. This list applies only to this step; preceding steps do not grant or restrict its sources.",
     },
     bindingDetail: {
       openTitle: "Show what {entry} is",
@@ -708,7 +704,6 @@ export const ko: TranslationMap = {
       kindKnowledge: "Knowledge foundation",
       kindMcp: "MCP attachment",
       declaredOn: "Declared on",
-      declaredInherited: "A parent step. Edit it there to change or remove it.",
       configKey: "Definition key",
       alsoOn: "Also on",
       description: "What it does",
@@ -751,17 +746,15 @@ export const ko: TranslationMap = {
       declaredLabel: "Declared",
       attachedLabel: "Attached",
       deniedToolsWins:
-        "거부는 항상 우선합니다. 이 단계와 그 하위 모든 항목에 적용되며, 하위 브랜치의 어떤 권한 부여도 이를 되돌릴 수 없습니다.",
+        "A denial always wins. It applies to this step. Use a work-map governance policy for a restriction shared by every step.",
       deniedToolsObserving:
-        "엔터프라이즈 중재가 관찰 모드이므로 거부가 기록되지만 적용되지는 않습니다. 적용 모드가 되면 이 단계와 그 하위 항목 모두에 거부가 적용되며, 하위 브랜치의 어떤 허용도 이를 되돌릴 수 없습니다.",
+        "Enterprise mediation is observing, so denials are recorded but not applied. Once it enforces, a denial applies to the step declaring it.",
       deniedToolsOff:
         "엔터프라이즈 중재가 꺼져 있으므로 거부가 적용되거나 기록되지 않습니다. 이 설정이 적용되거나 실행 추적에 표시되려면 중재를 켜세요.",
       skillNotModelVisible: "not available to the model for this agent",
       foundationNotRegistered: "not retrievable by this work-map",
-      foundationExcludedByAncestor: "excluded by a parent step's own list",
       mcpNotRegistered: "mcp.servers에 등록되지 않음",
       mcpDisabled: "disabled in mcp.servers",
-      inherited: "상위 단계에서 상속됨:",
     },
     skillsTab: {
       title: "Skills",
@@ -825,24 +818,26 @@ export const ko: TranslationMap = {
     treeUnavailable: "트리 정의를 더 이상 사용할 수 없습니다.",
     capabilityGrants: {
       explicit: "명시적 권한 부여",
-      inherited: "상속된 범위",
+      inherited: "Permissive scopes",
       explicitHintGated:
-        "Tools, MCP servers, and knowledge foundations follow each step's parent path. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
+        "Tools, MCP servers, and knowledge foundations are granted on each step separately. Skills are narrowed once for the run to those declared anywhere on its planned route; each step's Skills row says which of them applies there. An unlisted MCP server or knowledge source is withheld outright. An unlisted TOOL instead raises a one-off approval, and replying and reading (message, read, memory_search) stay available unless a step or governance policy denies them.",
       explicitHintNotEnforcing:
         "이 작업 맵은 기능을 명시적으로 부여하지만, 엔터프라이즈 모드가 적용되고 있지 않습니다. 도구, 스킬 및 MCP 부여는 적용되지 않고 기록만 됩니다. 지식 부여는 모든 모드에서 검색 범위를 제한합니다.",
       explicitHintOff:
         "이 작업 맵은 기능을 명시적으로 부여하지만, 엔터프라이즈 중재가 활성화되어 있지 않으므로 부여가 적용되지 않습니다. 아래 부여 항목은 저장되며 중재가 활성화되면 적용됩니다.",
       inheritedHint:
-        "Tool and knowledge lists narrow what parent steps allowed; an unlisted branch may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
+        "Each step's tool and knowledge lists narrow that step only; a step without a list may use every tool and registered knowledge source. Skills declared anywhere on the planned route are available for that run. MCP remains unrestricted until the work-map opts into attachment governance.",
       turnOn: "명시적으로 부여",
-      turnOff: "상속된 범위 사용",
+      turnOff: "Use permissive scopes",
       turnOffWarning:
-        "Switch to inherited scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
+        "Switch to permissive scopes? Unlisted tools, knowledge sources, and skills become available again. If this work-map has no MCP attachment marker, every registered MCP server becomes available too.",
       stopMcp: "Stop requiring MCP attachments",
       stopMcpWarning:
         "Stop requiring MCP attachments? Every registered MCP server will become available to every step wherever enterprise mode enforces.",
     },
-    structureTitle: "구조",
+    structureTitle: "Execution steps",
+    sequentialStepsHint:
+      "Each parent completes before its selected child. A route runs only the chosen branches; each step uses its own capabilities.",
     ontologyTitle: "온톨로지",
     wholeTreeOverviewTitle: "전체 트리 개요",
     action: "액션: {id}",
@@ -868,7 +863,7 @@ export const ko: TranslationMap = {
     removeNodeWarning:
       'Delete "{node}" and every step beneath it? This records a new work-map revision.',
     structureEditRefused:
-      "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
+      "That structure change would break a step's ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "노드를 드래그 · 스크롤하여 확대/축소",
     graphExpand: "Open whole work-map",
