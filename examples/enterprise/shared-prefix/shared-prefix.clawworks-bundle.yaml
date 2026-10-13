@@ -4,7 +4,7 @@ trees:
   - schema: clawworks.workflow-tree
     schemaVersion: 1
     id: demo.shared-prefix
-    version: 1.0.0
+    version: 1.1.0
     name: Shared-prefix returns verification
     description:
       Fictional order return assessments. Three executable shared steps create a case, collect
@@ -16,7 +16,7 @@ trees:
       id: case
       title: Open assessment case
       description:
-        Start a fictional returns assessment; require an order id and a fresh case id. Every selected
+        Start a fictional returns assessment; require an order id and a case id. Every selected
         route executes this step once.
       ontology:
         audit: true
@@ -69,9 +69,10 @@ trees:
           - proof-evidence
         guidance:
           Search proof.intake and proof.privacy for intake evidence. Read the case-id with search_objects. If
-          absent call open-case using the supplied case-id and order-id. This is a local verification
-          exercise; never send money, goods, or messages. Complete only after creating the case.
-        expectedOutput: Fresh local case and both intake/privacy citations.
+          absent call open-case using the supplied case-id and order-id. If present, verify its order-id matches;
+          stop on a mismatch. This is a local verification exercise; never send money, goods, or messages.
+          Complete after creating or verifying the case. Replays must reread evidence at every step.
+        expectedOutput: Created or verified local case and both intake/privacy citations.
       children:
         - id: case.order
           title: Collect order and risk facts
@@ -221,12 +222,23 @@ trees:
                     kind: link
                   - relationship: order-signal
                     kind: link
+              - id: reuse-order
+                tools: [invoke_action]
+                parameters:
+                  - { id: case-id, type: id, required: true }
+                  - { id: order-id, type: id, required: true }
+                effects:
+                  - { relationship: case-order, kind: link }
             guidance:
               "Call proof-orders lookup and proof-risk lookup with orderId. Stop on any error, unknown order or
               missing fact; do not complete this step or create an assessment. Search proof.evidence and
-              proof.privacy. Record exactly returned facts with record-order: supplied case-id; returned
-              order-id, customer-id/customer-name, total/days, item-id/sku/quantity, signal-id/risk. Verify
-              case-order and order-signal neighbors before completing."
+              proof.privacy. Read customer, order, item and risk-signal by their returned ids. If all are absent,
+              record exactly returned facts with record-order: supplied case-id; returned order-id,
+              customer-id/customer-name, total/days, item-id/sku/quantity, signal-id/risk. If all exist and every
+              stored property matches the fresh MCP facts, verify customer-order, order-item and order-signal
+              already link exactly the returned ids. Then call reuse-order with case-id and order-id; it only
+              adds the case-order link. Stop on partial or conflicting facts or links; never overwrite them.
+              Verify case-order, customer-order, order-item and order-signal neighbors before completing."
             expectedOutput: Four persisted objects and four verified graph links from actual MCP facts.
           children:
             - id: case.order.assess
@@ -409,10 +421,12 @@ trees:
                         kind: link
                 guidance:
                   Call all three MCP lookup tools for orderId. Search proof.refund, proof.exchange and proof.evidence
-                  for eligibility evidence. With record-assessment create assessment-id=case-id+'-assessment',
-                  evidence-id=case-id+'-evidence', policy-id=case-id+'-policy'. Pass case-id, order-id,
-                  returned total/days/risk/stock/signal-id, actual retrieved refund source in source, and a
-                  factual summary. Compute refund-eligible, exchange-eligible, net-credit; verify
+                  for eligibility evidence. Read assessment-id=case-id+'-assessment', evidence-id=case-id+'-evidence',
+                  policy-id=case-id+'-policy'. If all are absent, create them with record-assessment. Pass case-id,
+                  order-id, returned total/days/risk/stock/signal-id, actual retrieved refund source in source,
+                  and a factual summary. If all exist, verify every numeric fact, the evidence summary and source,
+                  and the policy source against fresh MCP/knowledge results; do not recreate them. Stop on partial
+                  or conflicting records. Compute refund-eligible, exchange-eligible, net-credit; verify
                   case-assessment, assessment-order, assessment-signal, assessment-evidence, evidence-policy.
                   Complete this shared step once. If only shared evidence is requested stop here; do not
                   prepare a tail.
@@ -481,10 +495,12 @@ trees:
                             kind: link
                     guidance:
                       Read the stored assessment. Compute refund-eligible and net-credit. Search proof.refund and
-                      proof.evidence for eligibility evidence. Call prepare-refund with refund-id = case-id +
-                      '-refund', assessment-id = case-id + '-assessment', computed eligible,
-                      status='prepared'. Complete this step; only finalize if that next step is selected.
-                    expectedOutput: A prepared refund review with the computed eligibility and linked assessment.
+                      proof.evidence for eligibility evidence. Read refund-id=case-id+'-refund'. If absent,
+                      call prepare-refund with that id, assessment-id=case-id+'-assessment', computed eligible,
+                      status='prepared'. If present, verify eligible matches, status is prepared or verified,
+                      and refund-assessment links to this assessment. Preserve its status; stop on a mismatch.
+                      Complete this step; only finalize if that next step is selected. Report the stored status.
+                    expectedOutput: A prepared or previously verified refund review with matching eligibility and linked assessment.
                   children:
                     - id: case.order.assess.refund.finalize
                       title: Finalize refund assessment
@@ -606,10 +622,12 @@ trees:
                             kind: link
                     guidance:
                       Read the stored assessment. Compute exchange-eligible and net-credit. Search proof.exchange and
-                      proof.evidence for eligibility evidence. Call prepare-exchange with exchange-id =
-                      case-id + '-exchange', assessment-id = case-id + '-assessment', computed eligible,
-                      status='prepared'. Complete this step; only finalize if that next step is selected.
-                    expectedOutput: A prepared exchange review with the computed eligibility and linked assessment.
+                      proof.evidence for eligibility evidence. Read exchange-id=case-id+'-exchange'. If absent,
+                      call prepare-exchange with that id, assessment-id=case-id+'-assessment', computed eligible,
+                      status='prepared'. If present, verify eligible matches, status is prepared or verified,
+                      and exchange-assessment links to this assessment. Preserve its status; stop on a mismatch.
+                      Complete this step; only finalize if that next step is selected. Report the stored status.
+                    expectedOutput: A prepared or previously verified exchange review with matching eligibility and linked assessment.
                   children:
                     - id: case.order.assess.exchange.finalize
                       title: Finalize exchange assessment
@@ -678,8 +696,8 @@ knowledgeFoundations:
         source: intake/evidence.md
         title: intake eligibility evidence
         text:
-          "Intake evidence: require supplied order id and fresh case id. Create one case only, including when both
-          tails are requested."
+          "Intake evidence: require supplied order id and case id. Create the case only if absent, including when
+          both tails are requested. On replay verify its order id and reread evidence; stop if facts conflict."
   - id: proof.privacy
     descriptor:
       kind: local

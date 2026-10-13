@@ -6,9 +6,75 @@ import {
   openSharedPrefixFixture,
   scenarios,
 } from "../../scripts/lib/enterprise-shared-prefix-fixture.js";
-import { runOntologyObjectWrite, upsertOntologyObject } from "./object-store.sqlite.js";
+import {
+  getOntologyNeighbors,
+  runOntologyObjectWrite,
+  upsertOntologyObject,
+} from "./object-store.sqlite.js";
 
 describe("shared three-step prefix with distinct two-step tails", () => {
+  it("reuses an existing order graph for another case without overwriting facts", async () => {
+    const scenario = scenarios.find((candidate) => candidate.id === "refund")!;
+    const fixture = await openSharedPrefixFixture(scenario);
+    try {
+      await executeSharedPrefixScenario(fixture, {
+        ...scenario,
+        expected: { ...scenario.expected, steps: ["case"] },
+      });
+      const facts = {
+        "case-id": scenario.caseId,
+        "order-id": "1043",
+        "customer-id": "C-1043",
+        "customer-name": "Fictional Dana",
+        "item-id": "I-1043",
+        "signal-id": "S-1043",
+        sku: "GRINDER",
+        quantity: 1,
+        total: 129,
+        days: 6,
+        risk: 12,
+      };
+      expect(
+        (await fixture.call("invoke_action", { action: "record-order", args: facts })).details,
+      ).not.toHaveProperty("error");
+      const before = fixture.readObject("order", "1043");
+      const caseId = "second-case";
+      runOntologyObjectWrite((database) =>
+        upsertOntologyObject(database, {
+          treeId: "demo.shared-prefix",
+          entity: "case",
+          objectId: caseId,
+          properties: { "case-id": caseId, "order-id": "1043" },
+        }),
+      );
+      const args = { "case-id": caseId, "order-id": "1043" };
+      const missing = await fixture.call("invoke_action", {
+        action: "reuse-order",
+        args: { ...args, "order-id": "missing" },
+      });
+      expect(missing.details).toHaveProperty("error");
+      const neighbors = () =>
+        getOntologyNeighbors({
+          treeId: "demo.shared-prefix",
+          entity: "case",
+          objectId: caseId,
+          relationship: "case-order",
+          limit: 10,
+        });
+      expect(neighbors()).toEqual([]);
+      for (let replay = 0; replay < 2; replay += 1) {
+        const result = await fixture.call("invoke_action", { action: "reuse-order", args });
+        expect(result.details).toMatchObject({
+          writes: [{ relationship: "case-order", from: caseId, to: "1043", kind: "link" }],
+        });
+        expect(neighbors()).toHaveLength(1);
+        expect(fixture.readObject("order", "1043")).toEqual(before);
+      }
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 30_000);
+
   it.each(scenarios)(
     "executes and verifies $id",
     async (scenario) => {

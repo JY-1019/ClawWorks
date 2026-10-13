@@ -441,7 +441,7 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
         }
         const expectedRelations =
           node.nodeId === "case.order"
-            ? ["case-order", "order-signal"]
+            ? ["case-order", "customer-order", "order-item", "order-signal"]
             : node.nodeId === "case.order.assess"
               ? [
                   "case-assessment",
@@ -470,7 +470,10 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
             `${node.nodeId} did not verify ${relation}`,
           );
         }
-        for (const action of node.ontology.actions ?? []) {
+        // Fresh-state proofs create the order; GUI replays may instead relink verified facts.
+        for (const action of (node.ontology.actions ?? []).filter(
+          (entry) => entry.id !== "reuse-order",
+        )) {
           assert.equal(
             nodeCalls.filter(
               (entry) =>
@@ -616,6 +619,8 @@ export async function executeSharedPrefixScenario(
       await search(["proof.evidence", "proof.privacy"]);
       await action("record-order", { "case-id": scenario.caseId, ...order, ...risk });
       await neighbors("case", scenario.caseId, "case-order");
+      await neighbors("customer", String(order["customer-id"]), "customer-order");
+      await neighbors("order", scenario.orderId, "order-item");
       await neighbors("order", scenario.orderId, "order-signal");
     } else if (nodeId === "case.order.assess") {
       const order = await lookup("orders"),
