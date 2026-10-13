@@ -4,7 +4,7 @@ trees:
   - schema: clawworks.workflow-tree
     schemaVersion: 1
     id: demo.shared-prefix
-    version: 1.2.0
+    version: 1.3.0
     name: Shared-prefix returns verification
     description:
       Fictional order return assessments. Three executable shared steps create a case, collect
@@ -72,8 +72,9 @@ trees:
           foundation ids. Read the exact case-id with search_objects; reject substring matches for
           another id. If absent call open-case using the supplied case-id and order-id. If present
           verify its order-id matches; stop on a mismatch. Complete after creating or verifying the
-          case. Throughout this run, carry verified tool outputs forward between steps. Combine each
-          step's knowledge sources into one search, and use get_neighbors without relationship and
+          case. Throughout this run, carry verified tool outputs forward between steps. Reuse earlier successful knowledge snippets only within this run and only for
+          foundations explicitly allowed by the current node. Search only missing or
+          insufficient evidence, combining the needed foundations into one call, and use get_neighbors without relationship and
           limit=50 to read all in-scope edges and neighbor properties together. Never repeat a
           successful read unless data changed or this step explicitly requires a fresh check. Never
           send money, goods, or messages.
@@ -234,10 +235,13 @@ trees:
                   - { id: order-id, type: id, required: true }
                 effects:
                   - { relationship: case-order, kind: link }
-            guidance:
-              Call proof-orders lookup and proof-risk lookup once with orderId. Stop on errors,
-              unknown orders or missing facts. Search proof.evidence and proof.privacy together
-              in one call. Read the exact order-id with search_objects. If absent, record
+            guidance: >-
+              First call proof-orders lookup with orderId. If it returns an error, unknown order
+              or missing facts, stop immediately: do not call risk, knowledge, object reads or writes,
+              or complete_step. Do not try another source to work around order_not_found.
+              Only after a valid order result call proof-risk lookup once; stop on its errors
+              or missing facts. Use the earlier privacy citation and search proof.evidence; retrieve privacy
+              again only if its earlier evidence is insufficient for this step. Read the exact order-id with search_objects. If absent, record
               exactly the returned order/customer/item/risk facts using record-order; its atomic
               create must fail on partial existing data, never overwrite. Then
               get_neighbors(order, order-id) once, omitting relationship. If order exists,
@@ -346,22 +350,6 @@ trees:
                     from: assessment
                     to: risk-signal
                     cardinality: many-to-one
-                functions:
-                  - &a13
-                    id: refund-eligible
-                    entity: assessment
-                    expression: $days >= 0 && $days <= 30 && $total <= 200 && $risk < 50
-                    returns: boolean
-                  - &a21
-                    id: exchange-eligible
-                    entity: assessment
-                    expression: $days >= 0 && $days <= 30 && $stock >= 1 && $risk < 50
-                    returns: boolean
-                  - &a14
-                    id: net-credit
-                    entity: assessment
-                    expression: $total * 0.9
-                    returns: number
                 mcpServers:
                   - proof-orders
                   - proof-risk
@@ -432,8 +420,8 @@ trees:
                       - relationship: assessment-signal
                         kind: link
                 guidance: Use this run's verified order/risk MCP facts from case.order; do not call
-                  those services again. Call proof-stock lookup once. Search proof.refund,
-                  proof.exchange and proof.evidence together in one call. Read the exact
+                  those services again. Call proof-stock lookup once. Use the earlier proof.evidence citation and search proof.refund and
+                  proof.exchange together; retrieve missing evidence only when needed. Read the exact
                   assessment-id=case-id+'-assessment'. If absent, call record-assessment
                   with this run's total/days/risk/stock/signal-id, case-id, order-id, actual
                   retrieved refund source, and factual summary. Atomic creation must fail on
@@ -443,10 +431,10 @@ trees:
                   neighbors in one call; use returned properties to verify the evidence
                   summary/source and policy source. Verify case-assessment,
                   assessment-order, assessment-signal, assessment-evidence and evidence-policy link the
-                  expected ids. Stop on missing or conflicting facts or links. Compute
-                  refund-eligible, exchange-eligible and net-credit once each and carry
-                  these results forward. Complete this shared step once; if only shared
-                  evidence was requested, stop here.
+                  expected ids. Stop on missing or conflicting facts or links. Do not calculate
+                  branch eligibility or net-credit here; selected branch steps own those
+                  calculations. Complete this shared step once; if only shared evidence
+                  was requested, stop here.
                 expectedOutput: Shared facts and a linked, cited assessment; no branch decision has been recorded.
               children:
                 - id: case.order.assess.refund
@@ -480,8 +468,11 @@ trees:
                         to: assessment
                         cardinality: many-to-one
                     functions:
-                      - *a13
-                      - *a14
+                      - &a13
+                        id: refund-eligible
+                        entity: assessment
+                        expression: $days >= 0 && $days <= 30 && $total <= 200 && $risk < 50
+                        returns: boolean
                     skills:
                       - proof-refund
                       - proof-citations
@@ -510,17 +501,17 @@ trees:
                             kind: create
                           - relationship: refund-assessment
                             kind: link
-                    guidance: Use the assessment and computed refund-eligible/net-credit from
-                      this run's completed shared step. Do not repeat its search or
-                      calculations. Search proof.refund and proof.evidence together in
-                      one call. Read exact refund-id=case-id+'-refund'. If absent call
-                      prepare-refund with that id, assessment-id=case-id+'-assessment',
-                      computed eligible and status='prepared'. If present verify
-                      eligible matches and status is prepared or verified, then get all
-                      refund review neighbors once; verify refund-assessment targets the
-                      expected assessment and its returned facts still match the shared
-                      step. Stop on mismatch; preserve existing status. Complete this
-                      step; finalize only when selected. Report the stored status.
+                    guidance: >-
+                      Use the verified assessment from this run's shared step. Reuse its
+                      proof.refund and proof.evidence citations; search only if required evidence is
+                      missing or insufficient. Compute refund-eligible once; do not compute the
+                      other branch or net-credit. Read exact refund-id=case-id+'-refund'. If absent
+                      call prepare-refund with that id, assessment-id=case-id+'-assessment',
+                      computed eligible and status='prepared'. If present verify eligible matches
+                      and status is prepared or verified, then get all review neighbors once; verify
+                      refund-assessment targets the expected assessment and its returned facts still
+                      match the shared step. Stop on mismatch; preserve existing status. Complete
+                      this step; finalize only when selected. Report the stored status.
                     expectedOutput: A prepared or previously verified refund review with matching eligibility and linked assessment.
                   children:
                     - id: case.order.assess.refund.finalize
@@ -551,7 +542,11 @@ trees:
                           - *assessmentSignal
                         functions:
                           - *a13
-                          - *a14
+                          - &a14
+                            id: net-credit
+                            entity: assessment
+                            expression: $total * 0.9
+                            returns: number
                         skills:
                           - proof-refund
                           - proof-citations
@@ -574,25 +569,26 @@ trees:
                             effects:
                               - entity: refund-review
                                 kind: update
-                        guidance: Search proof.refund and proof.evidence together in one
-                          call. Recheck proof-risk lookup once for the supplied
-                          order-id. Read the exact refund review. Get all its
-                          neighbors once to read the linked assessment; get all
-                          assessment neighbors once and all evidence neighbors once,
-                          omitting relationship. Verify refund-assessment,
-                          assessment-evidence and evidence-policy target the
-                          expected ids and actual evidence source. Also verify
-                          assessment-signal points to the fresh signal-id and its
-                          returned risk matches the fresh risk MCP result and stored
-                          assessment. Compare the current assessment facts with this
-                          run's shared snapshot; stop on missing links or changed
-                          facts. Recompute refund-eligible and net-credit once each.
-                          Call finalize-refund with status='verified' only after
-                          these checks. Its successful result confirms the review
-                          update; the action cannot change assessment or evidence
-                          links, so do not repeat those reads afterward. Return the
-                          skill's exact marker, eligibility, source and review id;
-                          call complete_step.
+                        guidance: >-
+                          Reuse this run's proof.refund and proof.evidence citations; search only if
+                          required evidence is missing or insufficient. Recheck proof-risk lookup once
+                          for the supplied order-id. Get all neighbors of the expected assessment once,
+                          then all neighbors of its expected evidence once, omitting relationship. These
+                          results contain the review, assessment and policy properties: do not
+                          separately search the review or read its neighbors. Verify the inbound
+                          refund-assessment edge comes from exact review id case-id+'-refund',
+                          assessment-evidence and evidence-policy target the expected ids, and the
+                          actual evidence source matches the retrieved citation. Verify the review
+                          status is prepared or verified. Also verify assessment-signal points to the
+                          fresh signal-id and its returned risk matches both the fresh risk MCP result
+                          and stored assessment. Compare the current assessment properties returned by
+                          the evidence neighbor with this run's shared snapshot; stop on missing links
+                          or changed facts. Recompute refund-eligible and calculate net-credit once
+                          each. Verify stored review eligibility equals the fresh calculation. If the
+                          review is prepared call finalize-refund with status='verified'; if already
+                          verified preserve it without another write. The successful update result or
+                          freshly read verified status confirms the review state. Return the skill's
+                          exact marker, eligibility, source and review id; call complete_step.
                         expectedOutput: Verified local refund assessment using the proof-refund output format.
                 - id: case.order.assess.exchange
                   title: Prepare exchange assessment
@@ -625,8 +621,11 @@ trees:
                         to: assessment
                         cardinality: many-to-one
                     functions:
-                      - *a21
-                      - *a14
+                      - &a21
+                        id: exchange-eligible
+                        entity: assessment
+                        expression: $days >= 0 && $days <= 30 && $stock >= 1 && $risk < 50
+                        returns: boolean
                     skills:
                       - proof-exchange
                       - proof-citations
@@ -655,17 +654,17 @@ trees:
                             kind: create
                           - relationship: exchange-assessment
                             kind: link
-                    guidance: Use the assessment and computed exchange-eligible/net-credit from
-                      this run's completed shared step. Do not repeat its search or
-                      calculations. Search proof.exchange and proof.evidence together in
-                      one call. Read exact exchange-id=case-id+'-exchange'. If absent
-                      call prepare-exchange with that id,
-                      assessment-id=case-id+'-assessment', computed eligible and status='prepared'. If
-                      present verify eligible matches and status is prepared or
-                      verified, then get all exchange review neighbors once; verify
-                      exchange-assessment targets the expected assessment and its
-                      returned facts still match the shared step. Stop on mismatch;
-                      preserve existing status. Complete this step; finalize only when
+                    guidance: >-
+                      Use the verified assessment from this run's shared step. Reuse its
+                      proof.exchange and proof.evidence citations; search only if required evidence
+                      is missing or insufficient. Compute exchange-eligible once; do not compute the
+                      other branch or net-credit. Read exact exchange-id=case-id+'-exchange'. If
+                      absent call prepare-exchange with that id,
+                      assessment-id=case-id+'-assessment', computed eligible and status='prepared'.
+                      If present verify eligible matches and status is prepared or verified, then
+                      get all review neighbors once; verify exchange-assessment targets the expected
+                      assessment and its returned facts still match the shared step. Stop on
+                      mismatch; preserve existing status. Complete this step; finalize only when
                       selected. Report the stored status.
                     expectedOutput: A prepared or previously verified exchange review with matching eligibility and linked assessment.
                   children:
@@ -699,9 +698,12 @@ trees:
                         skills:
                           - proof-exchange
                           - proof-citations
+                        # The shared evidence stores a refund-policy citation; finalization
+                        # must explicitly allow that source to verify its provenance.
                         knowledgeFoundations:
                           - proof.exchange
                           - proof.evidence
+                          - proof.refund
                         mcpServers:
                           - proof-stock
                         actions:
@@ -718,24 +720,25 @@ trees:
                             effects:
                               - entity: exchange-review
                                 kind: update
-                        guidance: Search proof.exchange and proof.evidence together in one
-                          call. Recheck proof-stock lookup once for the supplied
-                          order-id. Read the exact exchange review. Get all its
-                          neighbors once to read the linked assessment; get all
-                          assessment neighbors once and all evidence neighbors once,
-                          omitting relationship. Verify exchange-assessment,
-                          assessment-evidence and evidence-policy target the
-                          expected ids and actual evidence source. Verify fresh
-                          stock equals the stored assessment stock. Compare the
-                          current assessment facts with this run's shared snapshot;
-                          stop on missing links or changed facts. Recompute
-                          exchange-eligible and net-credit once each. Call
-                          finalize-exchange with status='verified' only after these checks.
-                          Its successful result confirms the review update; the
-                          action cannot change assessment or evidence links, so do
-                          not repeat those reads afterward. Return the skill's exact
-                          marker, eligibility, source and review id; call
-                          complete_step.
+                        guidance: >-
+                          Reuse this run's proof.exchange, proof.evidence and proof.refund citations; search only if
+                          required evidence is missing or insufficient. Recheck proof-stock lookup once
+                          for the supplied order-id. Get all neighbors of the expected assessment once,
+                          then all neighbors of its expected evidence once, omitting relationship. These
+                          results contain the review, assessment and policy properties: do not
+                          separately search the review or read its neighbors. Verify the inbound
+                          exchange-assessment edge comes from exact review id case-id+'-exchange',
+                          assessment-evidence and evidence-policy target the expected ids, and the
+                          actual evidence source matches the retrieved citation. Verify the review
+                          status is prepared or verified. Verify fresh stock equals the stored
+                          assessment stock. Compare the current assessment properties returned by the
+                          evidence neighbor with this run's shared snapshot; stop on missing links or
+                          changed facts. Recompute exchange-eligible and calculate net-credit once each.
+                          Verify stored review eligibility equals the fresh calculation. If the review
+                          is prepared call finalize-exchange with status='verified'; if already verified
+                          preserve it without another write. The successful update result or freshly
+                          read verified status confirms the review state. Return the skill's exact
+                          marker, eligibility, source and review id; call complete_step.
                         expectedOutput: Verified local exchange assessment using the proof-exchange output format.
 knowledgeFoundations:
   - id: proof.intake

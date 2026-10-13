@@ -66,6 +66,36 @@ export type ProofCall = {
   error?: string;
 };
 
+const neighborResultSchema = z.object({
+  neighbors: z.array(
+    z.object({
+      relationship: z.string(),
+      direction: z.enum(["inbound", "outbound"]),
+      entity: z.string(),
+      objectId: z.string(),
+      properties: z.record(z.string(), z.unknown()),
+    }),
+  ),
+});
+
+function requireNeighbor(
+  neighbors: z.infer<typeof neighborResultSchema>["neighbors"],
+  relationship: string,
+  direction: "inbound" | "outbound",
+  entity: string,
+  objectId: string,
+) {
+  const match = neighbors.find(
+    (entry) =>
+      entry.relationship === relationship &&
+      entry.direction === direction &&
+      entry.entity === entity &&
+      entry.objectId === objectId,
+  );
+  assert.ok(match, `Missing ${relationship} link to ${objectId}`);
+  return match.properties;
+}
+
 export async function openSharedPrefixFixture(scenario: Scenario, decision?: WorkflowPlanDecision) {
   const state = await createOpenClawTestState({
     label: `shared-prefix-${scenario.id}`,
@@ -424,9 +454,15 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
         expectedCompleted.includes(candidate.nodeId),
       )) {
         const nodeCalls = calls.filter((entry) => entry.nodeId === node.nodeId && !entry.error);
+        const completion = calls.findIndex(
+          (entry) => entry.nodeId === node.nodeId && entry.name === "complete_step",
+        );
+        // Citations can be reused within this run, but later retrievals cannot
+        // retroactively prove a completed step had its required evidence.
+        const availableCalls = calls.slice(0, completion + 1).filter((entry) => !entry.error);
         for (const foundation of node.ontology.knowledgeFoundations ?? []) {
           assert.ok(
-            nodeCalls.some(
+            availableCalls.some(
               (entry) =>
                 entry.name === "knowledge_search" &&
                 z
@@ -475,21 +511,42 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
         for (const action of (node.ontology.actions ?? []).filter(
           (entry) => entry.id !== "reuse-order",
         )) {
-          assert.equal(
-            nodeCalls.filter(
+          const preserved =
+            node.nodeId.endsWith(".finalize") &&
+            nodeCalls.some(
               (entry) =>
-                entry.name === "invoke_action" &&
-                z.object({ action: z.string() }).parse(entry.args).action === action.id,
-            ).length,
-            1,
-            `${node.nodeId}/${action.id} must execute once`,
+                entry.name === "get_neighbors" &&
+                neighborResultSchema
+                  .parse(entry.details)
+                  .neighbors.some(
+                    (neighbor) =>
+                      neighbor.objectId ===
+                        `${scenario.caseId}-${action.id.slice("finalize-".length)}` &&
+                      neighbor.properties.status === "verified",
+                  ),
+            );
+          const actionCalls = nodeCalls.filter(
+            (entry) =>
+              entry.name === "invoke_action" &&
+              z.object({ action: z.string() }).parse(entry.args).action === action.id,
           );
+          assert.equal(
+            actionCalls.length,
+            preserved ? 0 : 1,
+            `${node.nodeId}/${action.id} must write only when needed`,
+          );
+          if (action.id.startsWith("prepare-")) {
+            for (const entry of actionCalls) {
+              const input = z.object({ args: z.object({ status: z.string() }) }).parse(entry.args);
+              assert.equal(
+                input.args.status,
+                "prepared",
+                "Preparation cannot write verified status",
+              );
+            }
+          }
         }
-        // Preparation consumes the shared calculation; finalization recomputes
-        // against the reread assessment after its fresh risk/stock check.
-        const computesHere =
-          node.nodeId === "case.order.assess" || node.nodeId.endsWith(".finalize");
-        for (const fn of computesHere ? (node.ontology.functions ?? []) : []) {
+        for (const fn of node.ontology.functions ?? []) {
           const computed = nodeCalls.filter(
             (entry) =>
               entry.name === "compute_function" &&
@@ -518,7 +575,6 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
           "proof-stock__lookup",
           "knowledge_search",
           "invoke_action",
-          "compute_function",
           "get_neighbors",
         ],
       };
@@ -527,12 +583,11 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
           required[nodeId] ??
           (nodeId.endsWith(".finalize")
             ? [
-                "invoke_action",
                 "get_neighbors",
                 "compute_function",
                 nodeId.includes(".refund.") ? "proof-risk__lookup" : "proof-stock__lookup",
               ]
-            : ["search_objects", "knowledge_search", "invoke_action"]);
+            : ["search_objects", "compute_function", "invoke_action"]);
         for (const name of names) {
           assert.ok(
             calls.some((entry) => entry.nodeId === nodeId && entry.name === name && !entry.error),
@@ -595,19 +650,35 @@ export async function executeSharedPrefixScenario(
     assert.ok(!fixture.calls.at(-1)?.error, JSON.stringify(result.details));
     return result;
   };
-  const search = (ids: string[]) =>
-    call("knowledge_search", { query: "eligibility evidence", foundations: ids });
-  const neighbors = (entity: string, objectId: string) =>
-    call("get_neighbors", { entity, objectId, limit: 50 });
-  const computedValues = new Map<string, boolean | number>();
+  const retrievedFoundations = new Set<string>();
+  const search = async (ids: string[]) => {
+    const missing = ids.filter((id) => !retrievedFoundations.has(id));
+    if (missing.length === 0) {
+      return undefined;
+    }
+    const result = await call("knowledge_search", {
+      query: "eligibility evidence",
+      foundations: missing,
+    });
+    const { snippets } = z
+      .object({ snippets: z.array(z.object({ foundationId: z.string() })) })
+      .parse(result.details);
+    for (const snippet of snippets) {
+      retrievedFoundations.add(snippet.foundationId);
+    }
+    return result;
+  };
+  const neighbors = async (entity: string, objectId: string) => {
+    const result = await call("get_neighbors", { entity, objectId, limit: 50 });
+    return neighborResultSchema.parse(result.details).neighbors;
+  };
   const compute = async (fn: string) => {
     const result = await call("compute_function", {
       function: fn,
       objectId: `${scenario.caseId}-assessment`,
     });
     const { value } = z.object({ value: z.union([z.boolean(), z.number()]) }).parse(result.details);
-    computedValues.set(fn, value);
-    return result;
+    return value;
   };
   const lookup = async (service: string) => {
     const result = await call(`proof-${service}__lookup`, { orderId: scenario.orderId });
@@ -637,6 +708,7 @@ export async function executeSharedPrefixScenario(
       assert.ok(collectedFacts);
       const stock = await lookup("stock");
       const knowledge = await search(["proof.refund", "proof.exchange", "proof.evidence"]);
+      assert.ok(knowledge);
       const snippets = z
         .object({ snippets: z.array(z.object({ source: z.string(), foundationId: z.string() })) })
         .parse(knowledge.details).snippets;
@@ -660,13 +732,6 @@ export async function executeSharedPrefixScenario(
         source,
         summary: `Returned order ${scenario.orderId}: total=${collectedFacts.total}, days=${collectedFacts.days}, risk=${collectedFacts.risk}, stock=${stock.stock}`,
       });
-      for (const fn of ["refund-eligible", "exchange-eligible", "net-credit"]) {
-        const result = await compute(fn);
-        assert.deepEqual(
-          (result.details as { value: unknown }).value,
-          fn === "net-credit" ? Number(collectedFacts.total) * 0.9 : scenario.orderId === "1043",
-        );
-      }
       await neighbors("assessment", `${scenario.caseId}-assessment`);
       await neighbors("evidence", `${scenario.caseId}-evidence`);
     } else {
@@ -674,17 +739,94 @@ export async function executeSharedPrefixScenario(
       const id = `${scenario.caseId}-${kind}`;
       await search([`proof.${kind}`, "proof.evidence"]);
       if (nodeId.endsWith(".finalize")) {
-        await lookup(kind === "refund" ? "risk" : "stock");
-        await call("search_objects", { entity: `${kind}-review`, match: id });
-        await neighbors(`${kind}-review`, id);
-        await neighbors("assessment", `${scenario.caseId}-assessment`);
-        await neighbors("evidence", `${scenario.caseId}-evidence`);
-        await compute(`${kind}-eligible`);
+        const fresh = await lookup(kind === "refund" ? "risk" : "stock");
+        const assessmentLinks = await neighbors("assessment", `${scenario.caseId}-assessment`);
+        const evidenceLinks = await neighbors("evidence", `${scenario.caseId}-evidence`);
+        // Validate returned state BEFORE writing, so finalization cannot hide
+        // corrupt review status, eligibility, or evidence by overwriting it.
+        const review = requireNeighbor(
+          assessmentLinks,
+          `${kind}-assessment`,
+          "inbound",
+          `${kind}-review`,
+          id,
+        );
+        assert.ok(
+          ["prepared", "verified"].includes(String(review.status)),
+          "Invalid review status",
+        );
+        const evidence = requireNeighbor(
+          assessmentLinks,
+          "assessment-evidence",
+          "outbound",
+          "evidence",
+          `${scenario.caseId}-evidence`,
+        );
+        const policy = requireNeighbor(
+          evidenceLinks,
+          "evidence-policy",
+          "outbound",
+          "policy",
+          `${scenario.caseId}-policy`,
+        );
+        assert.equal(evidence.source, "refund/eligibility.md");
+        assert.equal(policy.source, evidence.source);
+        const allowedFoundations = fixture.run.plan.nodes.find((node) => node.nodeId === nodeId)
+          ?.ontology.knowledgeFoundations;
+        assert.ok(
+          fixture.calls.some(
+            (entry) =>
+              entry.name === "knowledge_search" &&
+              z
+                .object({
+                  snippets: z.array(z.object({ source: z.string(), foundationId: z.string() })),
+                })
+                .parse(entry.details)
+                .snippets.some(
+                  (snippet) =>
+                    snippet.source === evidence.source &&
+                    allowedFoundations?.includes(snippet.foundationId),
+                ),
+          ),
+          "Final evidence source is not cited within the active knowledge scope",
+        );
+        const assessment = requireNeighbor(
+          evidenceLinks,
+          "assessment-evidence",
+          "inbound",
+          "assessment",
+          `${scenario.caseId}-assessment`,
+        );
+        const expected = expectedMcpFacts[scenario.orderId];
+        assert.deepEqual(assessment, {
+          "assessment-id": `${scenario.caseId}-assessment`,
+          total: expected.orders.total,
+          days: expected.orders.days,
+          risk: expected.risk.risk,
+          stock: expected.stock.stock,
+        });
+        const field = kind === "refund" ? "risk" : "stock";
+        assert.equal(fresh[field], assessment[field]);
+        if (kind === "refund") {
+          const signalId = fresh["signal-id"];
+          assert.equal(typeof signalId, "string");
+          const signal = requireNeighbor(
+            assessmentLinks,
+            "assessment-signal",
+            "outbound",
+            "risk-signal",
+            String(signalId),
+          );
+          assert.equal(signal.risk, fresh.risk);
+        }
+        assert.equal(review.eligible, await compute(`${kind}-eligible`));
         await compute("net-credit");
-        await action(`finalize-${kind}`, { [`${kind}-id`]: id, status: "verified" });
+        if (review.status === "prepared") {
+          await action(`finalize-${kind}`, { [`${kind}-id`]: id, status: "verified" });
+        }
       } else {
         await call("search_objects", { entity: `${kind}-review`, match: id });
-        const eligible = computedValues.get(`${kind}-eligible`);
+        const eligible = await compute(`${kind}-eligible`);
         assert.ok(typeof eligible === "boolean");
         await action(`prepare-${kind}`, {
           [`${kind}-id`]: id,

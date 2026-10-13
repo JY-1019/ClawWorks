@@ -85,12 +85,25 @@ describe("shared three-step prefix with distinct two-step tails", () => {
         expect(proof.passed).toBe(true);
         if (proof.steps.length === 5) {
           // Keep the complete graph/citation proof within a bounded demo budget.
-          expect(fixture.calls.length).toBeLessThanOrEqual(35);
-          expect(fixture.calls.filter((call) => call.name === "knowledge_search")).toHaveLength(5);
+          expect(fixture.calls.length).toBeLessThanOrEqual(30);
+          expect(
+            fixture.calls.filter((call) => call.name === "knowledge_search").length,
+          ).toBeLessThan(proof.steps.length);
           expect(fixture.calls.filter((call) => call.name === "proof-orders__lookup")).toHaveLength(
             1,
           );
-          expect(fixture.calls.filter((call) => call.name === "compute_function")).toHaveLength(5);
+        }
+        const computations = fixture.calls
+          .filter((call) => call.name === "compute_function")
+          .map((call) => (call.args as { function: string }).function);
+        if (!proof.steps.some((step) => step.includes(".refund"))) {
+          expect(computations).not.toContain("refund-eligible");
+        }
+        if (!proof.steps.some((step) => step.includes(".exchange"))) {
+          expect(computations).not.toContain("exchange-eligible");
+        }
+        if (!proof.steps.some((step) => step.endsWith(".finalize"))) {
+          expect(computations).not.toContain("net-credit");
         }
       } finally {
         await fixture.cleanup();
@@ -98,6 +111,117 @@ describe("shared three-step prefix with distinct two-step tails", () => {
     },
     30_000,
   );
+
+  it.each(["refund", "exchange"])(
+    "limits %s preparation to its own eligibility calculation",
+    async (kind) => {
+      const scenario = scenarios.find((candidate) => candidate.id === kind)!;
+      const fixture = await openSharedPrefixFixture(scenario);
+      try {
+        await executeSharedPrefixScenario(fixture, {
+          ...scenario,
+          expected: { ...scenario.expected, steps: scenario.expected.steps.slice(0, 3) },
+        });
+        const objectId = `${scenario.caseId}-assessment`;
+        for (const fn of [
+          "net-credit",
+          kind === "refund" ? "exchange-eligible" : "refund-eligible",
+        ]) {
+          expect(
+            (await fixture.call("compute_function", { function: fn, objectId })).details,
+          ).toHaveProperty("error");
+        }
+        expect(
+          (await fixture.call("compute_function", { function: `${kind}-eligible`, objectId }))
+            .details,
+        ).toMatchObject({ value: true });
+      } finally {
+        await fixture.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it.each(["verified", "corrupt"])(
+    "preserves an existing %s review during finalization",
+    async (status) => {
+      const scenario = scenarios.find((candidate) => candidate.id === "refund")!;
+      const fixture = await openSharedPrefixFixture(scenario);
+      try {
+        await executeSharedPrefixScenario(fixture, {
+          ...scenario,
+          expected: { ...scenario.expected, steps: scenario.expected.steps.slice(0, -1) },
+        });
+        const review = fixture.readObject("refund-review", `${scenario.caseId}-refund`)!;
+        runOntologyObjectWrite((database) =>
+          upsertOntologyObject(database, {
+            treeId: "demo.shared-prefix",
+            entity: "refund-review",
+            objectId: review.objectId,
+            properties: { ...review.properties, status },
+          }),
+        );
+        const finalize = executeSharedPrefixScenario(fixture, {
+          ...scenario,
+          expected: { ...scenario.expected, steps: scenario.expected.steps.slice(-1) },
+        });
+        if (status === "corrupt") {
+          await expect(finalize).rejects.toThrow("Invalid review status");
+        } else {
+          await finalize;
+          expect(fixture.finish().passed).toBe(true);
+        }
+        expect(fixture.readObject("refund-review", review.objectId)?.properties.status).toBe(
+          status,
+        );
+        expect(
+          fixture.calls.filter(
+            (call) => call.name === "invoke_action" && call.nodeId?.endsWith(".finalize"),
+          ),
+        ).toEqual([]);
+      } finally {
+        await fixture.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it("rejects preparation that bypasses finalization by writing verified directly", async () => {
+    const scenario = scenarios.find((candidate) => candidate.id === "refund")!;
+    const fixture = await openSharedPrefixFixture(scenario);
+    try {
+      await executeSharedPrefixScenario(fixture, {
+        ...scenario,
+        expected: { ...scenario.expected, steps: scenario.expected.steps.slice(0, 3) },
+      });
+      const reviewId = `${scenario.caseId}-refund`;
+      await fixture.call("compute_function", {
+        function: "refund-eligible",
+        objectId: `${scenario.caseId}-assessment`,
+      });
+      await fixture.call("search_objects", { entity: "refund-review", match: reviewId });
+      await fixture.call("invoke_action", {
+        action: "prepare-refund",
+        args: {
+          "assessment-id": `${scenario.caseId}-assessment`,
+          "refund-id": reviewId,
+          eligible: true,
+          status: "verified",
+        },
+      });
+      await fixture.call("complete_step", {
+        step: "case.order.assess.refund",
+        summary: "Prepared review",
+      });
+      await executeSharedPrefixScenario(fixture, {
+        ...scenario,
+        expected: { ...scenario.expected, steps: scenario.expected.steps.slice(-1) },
+      });
+      expect(() => fixture.finish()).toThrow("Preparation cannot write verified status");
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 30_000);
 
   it.each(["late-call", "fabricated-source"])(
     "rejects false-positive proof: %s",
