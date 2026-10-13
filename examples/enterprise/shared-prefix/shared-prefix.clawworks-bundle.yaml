@@ -330,7 +330,8 @@ trees:
                     from: assessment
                     to: order
                     cardinality: many-to-one
-                  - id: assessment-signal
+                  - &assessmentSignal
+                    id: assessment-signal
                     from: assessment
                     to: risk-signal
                     cardinality: many-to-one
@@ -522,10 +523,12 @@ trees:
                           - *a15
                           - *a16
                           - *a17
+                          - *a6
                         relationships:
                           - *a18
                           - *a19
                           - *a20
+                          - *assessmentSignal
                         functions:
                           - *a13
                           - *a14
@@ -554,7 +557,9 @@ trees:
                         guidance:
                           Search proof.refund and proof.evidence for eligibility evidence. Recheck proof-risk lookup for the supplied order-id. Read the prepared refund review and its
                           refund-assessment neighbor. Traverse assessment-evidence and evidence-policy to
-                          verify the evidence source. Recompute refund-eligible and net-credit. If the new facts disagree,
+                          verify the evidence source. Traverse assessment-signal and compare both its signal-id
+                          and risk with the fresh MCP result and the stored assessment risk.
+                          Recompute refund-eligible and net-credit. If the new facts disagree,
                           stop and report stale evidence. Otherwise call finalize-refund with
                           status='verified'. Return the branch skill's exact marker, eligibility, source, and
                           review id; call complete_step after verification.

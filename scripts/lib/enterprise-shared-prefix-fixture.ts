@@ -455,6 +455,7 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
                     node.nodeId.includes(".refund.") ? "refund-assessment" : "exchange-assessment",
                     "assessment-evidence",
                     "evidence-policy",
+                    ...(node.nodeId.includes(".refund.") ? ["assessment-signal"] : []),
                   ]
                 : [];
         for (const relation of expectedRelations) {
@@ -668,6 +669,9 @@ export async function executeSharedPrefixScenario(
         await neighbors(`${kind}-review`, id, `${kind}-assessment`);
         await neighbors("assessment", `${scenario.caseId}-assessment`, "assessment-evidence");
         await neighbors("evidence", `${scenario.caseId}-evidence`, "evidence-policy");
+        if (kind === "refund") {
+          await neighbors("assessment", `${scenario.caseId}-assessment`, "assessment-signal");
+        }
         await compute(`${kind}-eligible`);
         await compute("net-credit");
         await action(`finalize-${kind}`, { [`${kind}-id`]: id, status: "verified" });
