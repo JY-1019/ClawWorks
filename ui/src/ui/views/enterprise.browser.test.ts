@@ -2746,8 +2746,8 @@ describe("enterprise Worktree step bindings (browser)", () => {
     // Allow and deny share the tools block: they are one decision over one
     // catalog, so there is no separate denial section.
     expect(kinds).toEqual([
-      "prompt",
       "structure",
+      "prompt",
       "tools",
       "skills",
       "mcp",
@@ -2764,10 +2764,7 @@ describe("enterprise Worktree step bindings (browser)", () => {
     }
   });
 
-  it("puts step behavior and the sub-step control above the capability blocks", () => {
-    // What the step IS and what sits under it are the two shortest decisions on
-    // the screen; behind the capability and ontology blocks they took the most
-    // scrolling to reach.
+  it("puts structure directly after the map, before behavior and capabilities", () => {
     const container = renderInto(
       createProps({
         section: "worktree",
@@ -2777,8 +2774,9 @@ describe("enterprise Worktree step bindings (browser)", () => {
       }),
     );
     const blocks = [
-      '.node-section[data-kind="prompt"]',
+      "openclaw-workflow-tree-graph",
       '.node-section[data-kind="structure"]',
+      '.node-section[data-kind="prompt"]',
       '.node-section[data-kind="tools"]',
       '.node-section[data-kind="ontology"]',
     ].map((selector) => container.querySelector(selector));
@@ -2790,7 +2788,8 @@ describe("enterprise Worktree step bindings (browser)", () => {
     const all = [...container.querySelectorAll("*")];
     const positions = blocks.map((block) => all.indexOf(block as Element));
     expect(positions).toEqual([...positions].toSorted((left, right) => left - right));
-    const behavior = blocks[0]?.textContent ?? "";
+    expect((blocks[0] as HTMLElement & { showInspector: boolean }).showInspector).toBe(false);
+    const behavior = blocks[2]?.textContent ?? "";
     expect(behavior).toContain("Description");
     expect(behavior).toContain("Context hints");
     expect(behavior).toContain("Expected output");

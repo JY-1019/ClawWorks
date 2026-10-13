@@ -147,6 +147,9 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
    */
   @property({ attribute: false }) selected: string | null = null;
 
+  // The authoring view owns its editor; route cards use the built-in inspector.
+  @property({ attribute: false }) showInspector = true;
+
   static override styles = css`
     :host {
       display: block;
@@ -346,7 +349,7 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
         </svg>
       </div>
       <div class="hint">${t("enterprise.selectStep")}</div>
-      ${this.renderInspector()}
+      ${this.showInspector ? this.renderInspector() : nothing}
     `;
   }
 

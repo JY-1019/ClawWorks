@@ -3694,6 +3694,7 @@ function renderTreeDetail(tree: EnterpriseTreeDetail, options: EnterpriseProps):
     <div class="card-title" style="margin-top: 16px;">${t("enterprise.structureTitle")}</div>
     <openclaw-workflow-tree-graph
       .nodes=${tree.nodes}
+      .showInspector=${false}
       .selected=${props.selectedNodeId}
       ?inert=${props.treeSaving}
       aria-disabled=${props.treeSaving ? "true" : "false"}
@@ -3893,18 +3894,8 @@ function renderNodeInspector(
       ${node.description
         ? html`<div class="muted node-inspector__desc">${node.description}</div>`
         : nothing}
-      <!-- Role prompt and sub-steps come FIRST: they are what the step is and
-        what sits under it, which an operator settles before deciding what it may
-        call. The capability and ontology blocks below are longer, so leaving these
-        at the bottom put the two shortest decisions behind the most scrolling. -->
-      ${guidance === nothing
-        ? nothing
-        : renderNodeSection({
-            kind: "prompt",
-            title: t("enterprise.guidanceEditor.title"),
-            hint: t("enterprise.guidanceEditor.guidanceNote"),
-            body: guidance,
-          })}
+      <!-- Structure stays next to the map. The longer prompt and capability
+        editors must not push add/remove controls below the fold. -->
       <!-- Adding a CHILD STEP is structural: it changes the workflow shape, not
         what this step may call, so it keeps its own block rather than reading as
         a fifth kind of capability. -->
@@ -3939,6 +3930,14 @@ function renderNodeInspector(
             `,
           })
         : nothing}
+      ${guidance === nothing
+        ? nothing
+        : renderNodeSection({
+            kind: "prompt",
+            title: t("enterprise.guidanceEditor.title"),
+            hint: t("enterprise.guidanceEditor.guidanceNote"),
+            body: guidance,
+          })}
       ${renderNodeCapabilities(adders, props)}
       ${renderNodeSection({
         kind: "ontology",

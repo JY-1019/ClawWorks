@@ -137,6 +137,17 @@ describe("openclaw-workflow-tree-graph node selection", () => {
     expect(events).toEqual([null]);
   });
 
+  it("lets the parent own the inspector while preserving graph selection", async () => {
+    const element = await mount();
+    element.showInspector = false;
+    clickNode(element, "Triage");
+    await element.updateComplete;
+
+    expect(element.selected).toBe("root.triage");
+    expect(node(element, "Triage").getAttribute("aria-pressed")).toBe("true");
+    expect(element.shadowRoot?.querySelector(".inspector")).toBeNull();
+  });
+
   it("renders step guidance in the inspector (not 'no step scope')", async () => {
     container = document.createElement("div");
     document.body.append(container);
