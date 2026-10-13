@@ -882,6 +882,12 @@ export const en: TranslationMap = {
       "That structure change would break a step's inherited ontology. Move or remove the dependent declaration first.",
     editBecameStale: "The work-map changed. Reopen this editor from the refreshed definition.",
     graphHint: "Drag a node · scroll to zoom",
+    graphExpand: "Open whole work-map",
+    graphFit: "Fit to view",
+    graphZoomIn: "Zoom in",
+    graphZoomOut: "Zoom out",
+    graphNavigationHint: "Scroll to zoom · drag the background to pan",
+
     routeTitle: "Route taken",
     routeViewLabel: "Route view",
     routeViewRoute: "Route only",

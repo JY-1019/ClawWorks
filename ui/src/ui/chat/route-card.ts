@@ -251,6 +251,7 @@ export class OpenClawChatRouteCard extends LitElement {
           : nothing}
         <openclaw-workflow-tree-graph
           .nodes=${nodes}
+          .expandable=${false}
           .routeNodeIds=${mode === "tree" ? planned : null}
         ></openclaw-workflow-tree-graph>
         ${route ? html`<div class="why">${route.rationale}</div>` : nothing}
@@ -277,6 +278,7 @@ export class OpenClawChatRouteCard extends LitElement {
           </div>
           <openclaw-workflow-tree-graph
             .nodes=${nodes}
+            .expandable=${false}
             .routeNodeIds=${routeNodeIds}
           ></openclaw-workflow-tree-graph>
         </div>

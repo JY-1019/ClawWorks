@@ -6,9 +6,10 @@
 // child edges of the governance hierarchy are the point, since a leaf inherits
 // every ancestor's tool/knowledge scope.
 import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import type { EnterpriseTreeNode } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
+import "./modal-dialog.ts";
 
 export type WorkflowTreeOntology = EnterpriseTreeNode["ontology"];
 
@@ -150,6 +151,14 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
   // The authoring view owns its editor; route cards use the built-in inspector.
   @property({ attribute: false }) showInspector = true;
 
+  @property({ attribute: false }) expandable = true;
+
+  @state() private expanded = false;
+  @state() private zoom = 1;
+  private resizeObserver?: ResizeObserver;
+  private viewport?: HTMLElement;
+  private drag: { x: number; y: number; left: number; top: number } | null = null;
+
   static override styles = css`
     :host {
       display: block;
@@ -167,20 +176,46 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
       border: 1px solid var(--border);
       border-radius: 10px;
       background: var(--bg-accent, var(--card));
-      /* Both axes: a full tree overflows horizontally (breadth) and vertically
-         (depth). Capped against the viewport so the graph can never outgrow the
-         screen — you scroll the tree, not the page. */
       overflow: auto;
-      /* border-box so the cap bounds the WHOLE box: with the default content-box
-         the padding and border would push the shell past the viewport budget. */
       box-sizing: border-box;
-      max-height: min(60vh, 460px);
-      /* Reaching the tree's edge must not start scrolling the chat thread behind it. */
       overscroll-behavior: contain;
+      touch-action: pan-x pan-y;
     }
-
+    .canvas {
+      display: grid;
+      place-items: center;
+      min-width: 100%;
+      min-height: 100%;
+      width: max-content;
+    }
     svg {
       display: block;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    button {
+      font: inherit;
+      color: var(--text);
+      background: var(--bg-accent, var(--card));
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .expanded {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      max-height: calc(100dvh - 64px);
+      overflow: auto;
+    }
+    .placeholder {
+      height: min(60vh, 460px);
     }
 
     .node-box {
@@ -309,6 +344,9 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
   }
 
   override willUpdate(changed: Map<string, unknown>) {
+    if (changed.has("nodes") && this.nodes.length === 0) {
+      this.expanded = false;
+    }
     if (changed.has("nodes") && this.selected) {
       const stillThere = this.nodes.some((node) => node.id === this.selected);
       if (!stillThere) {
@@ -326,30 +364,205 @@ export class OpenClawWorkflowTreeGraph extends LitElement {
     }
   }
 
+  override connectedCallback() {
+    super.connectedCallback();
+    this.requestUpdate();
+  }
+
+  override disconnectedCallback() {
+    this.resizeObserver?.disconnect();
+    this.viewport = undefined;
+    super.disconnectedCallback();
+  }
+
+  override updated(changed: Map<string, unknown>) {
+    const viewport = this.shadowRoot?.querySelector<HTMLElement>(".tree-shell") ?? undefined;
+    if (viewport !== this.viewport) {
+      this.resizeObserver?.disconnect();
+      this.viewport = viewport;
+      // The canvas moves into the dialog; observe its new size, not the hidden
+      // inline slot. Re-fitting after resize keeps the entire map reachable.
+      if (viewport && typeof ResizeObserver !== "undefined") {
+        this.resizeObserver = new ResizeObserver(() => this.fit());
+        // Classic scrollbars shrink the content box during zoom. Only a real
+        // viewport resize should fit again, or every zoom would undo itself.
+        this.resizeObserver.observe(viewport, { box: "border-box" });
+      }
+      this.fit();
+    } else if (changed.has("nodes")) {
+      this.fit();
+    }
+  }
+
+  private fitScale(): number {
+    const { width, height } = layoutWorkflowTree(this.nodes);
+    const viewport = this.viewport;
+    return viewport?.clientWidth && viewport.clientHeight
+      ? Math.min(1, (viewport.clientWidth - 8) / width, (viewport.clientHeight - 8) / height)
+      : 1;
+  }
+
+  private fit = () => {
+    this.zoom = this.fitScale();
+    if (this.viewport) {
+      this.viewport.scrollLeft = 0;
+      this.viewport.scrollTop = 0;
+    }
+  };
+
+  private async zoomAt(next: number, x?: number, y?: number) {
+    const viewport = this.viewport;
+    const canvas = viewport?.querySelector("svg");
+    if (!viewport || !canvas) {
+      return;
+    }
+    const bounds = viewport.getBoundingClientRect();
+    const clientX = x ?? bounds.left + viewport.clientWidth / 2;
+    const clientY = y ?? bounds.top + viewport.clientHeight / 2;
+    const before = canvas.getBoundingClientRect();
+    const fractionX = before.width ? (clientX - before.left) / before.width : 0;
+    const fractionY = before.height ? (clientY - before.top) / before.height : 0;
+    this.zoom = Math.max(this.fitScale() / 4, Math.min(4, next));
+    await this.updateComplete;
+    // Anchor the diagram point under the pointer as its SVG dimensions change.
+    const after = canvas.getBoundingClientRect();
+    viewport.scrollLeft += after.left + fractionX * after.width - clientX;
+    viewport.scrollTop += after.top + fractionY * after.height - clientY;
+  }
+
+  private handleWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 460 : 1;
+    const delta = Math.max(-500, Math.min(500, event.deltaY * unit));
+    void this.zoomAt(this.zoom * Math.exp(-delta * 0.002), event.clientX, event.clientY);
+  };
+
+  private handlePointerDown = (event: PointerEvent) => {
+    if (
+      event.button !== 0 ||
+      event.pointerType === "touch" ||
+      (event.target as Element).closest(".node-box")
+    ) {
+      return;
+    }
+    const viewport = event.currentTarget as HTMLElement;
+    viewport.setPointerCapture(event.pointerId);
+    this.drag = {
+      x: event.clientX,
+      y: event.clientY,
+      left: viewport.scrollLeft,
+      top: viewport.scrollTop,
+    };
+  };
+
+  private handlePointerMove = (event: PointerEvent) => {
+    if (!event.buttons) {
+      this.drag = null;
+    }
+    if (this.drag && this.viewport) {
+      this.viewport.scrollLeft = this.drag.left - (event.clientX - this.drag.x);
+      this.viewport.scrollTop = this.drag.top - (event.clientY - this.drag.y);
+    }
+  };
+
+  private handlePointerUp = () => {
+    this.drag = null;
+  };
+
+  private renderCanvas() {
+    const { placed, width, height } = layoutWorkflowTree(this.nodes);
+    const byId = new Map(placed.map((node) => [node.id, node]));
+    return html`
+      <div class="toolbar">
+        <button
+          type="button"
+          @click=${() => this.zoomAt(this.zoom / 1.25)}
+          aria-label=${t("enterprise.graphZoomOut")}
+        >
+          −
+        </button>
+        <span>${Math.round(this.zoom * 100)}%</span>
+        <button
+          type="button"
+          @click=${() => this.zoomAt(this.zoom * 1.25)}
+          aria-label=${t("enterprise.graphZoomIn")}
+        >
+          +
+        </button>
+        <button type="button" @click=${this.fit}>${t("enterprise.graphFit")}</button>
+        ${this.expanded
+          ? html`<button
+              type="button"
+              @click=${() => {
+                this.expanded = false;
+              }}
+            >
+              ${t("enterprise.routeExpandClose")}
+            </button>`
+          : nothing}
+      </div>
+      <div
+        class="tree-shell"
+        style=${this.expanded
+          ? "height: 65dvh"
+          : `height: min(60vh, ${Math.min(height + 10, 460)}px)`}
+        @wheel=${this.handleWheel}
+        @pointerdown=${this.handlePointerDown}
+        @pointermove=${this.handlePointerMove}
+        @pointerup=${this.handlePointerUp}
+        @pointercancel=${this.handlePointerUp}
+        @lostpointercapture=${this.handlePointerUp}
+      >
+        <div class="canvas">
+          <svg
+            width=${width * this.zoom}
+            height=${height * this.zoom}
+            viewBox="0 0 ${width} ${height}"
+            role="list"
+            aria-label=${t("enterprise.structureTitle")}
+          >
+            <g transform="translate(${PADDING}, ${PADDING})">
+              ${placed.map((node) => this.renderEdge(node, byId))}
+              ${placed.map((node) => this.renderNode(node))}
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="hint">${t("enterprise.graphNavigationHint")}</div>
+      <div class="hint">${t("enterprise.selectStep")}</div>
+      ${this.showInspector ? this.renderInspector() : nothing}
+    `;
+  }
+
   override render() {
     if (this.nodes.length === 0) {
       return nothing;
     }
-    const { placed, width, height } = layoutWorkflowTree(this.nodes);
-    const byId = new Map(placed.map((node) => [node.id, node]));
     return html`
-      <div class="tree-shell">
-        <svg
-          width=${width}
-          height=${height}
-          viewBox="0 0 ${width} ${height}"
-          style="min-width: ${width}px;"
-          role="list"
-          aria-label=${t("enterprise.structureTitle")}
-        >
-          <g transform="translate(${PADDING}, ${PADDING})">
-            ${placed.map((node) => this.renderEdge(node, byId))}
-            ${placed.map((node) => this.renderNode(node))}
-          </g>
-        </svg>
-      </div>
-      <div class="hint">${t("enterprise.selectStep")}</div>
-      ${this.showInspector ? this.renderInspector() : nothing}
+      ${this.expandable
+        ? html`<button
+            type="button"
+            class="expand"
+            @click=${() => {
+              this.expanded = true;
+            }}
+          >
+            ${t("enterprise.graphExpand")}
+          </button>`
+        : nothing}
+      ${this.expanded
+        ? html`<div class="placeholder"></div>
+            <openclaw-modal-dialog
+              wide
+              .label=${t("enterprise.graphExpand")}
+              @modal-cancel=${(event: Event) => {
+                event.stopPropagation();
+                this.expanded = false;
+              }}
+            >
+              <div class="expanded">${this.renderCanvas()}</div>
+            </openclaw-modal-dialog>`
+        : this.renderCanvas()}
     `;
   }
 

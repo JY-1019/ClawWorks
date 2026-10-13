@@ -247,6 +247,11 @@ describeControlUiE2e("Control UI enterprise route card overflow", () => {
       const shell = page.locator(".tree-shell");
       await shell.waitFor({ timeout: 10_000 });
 
+      // Initial view fits the map. Zoom into it to exercise overflow containment.
+      const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
+      for (let index = 0; index < 14; index++) {
+        await zoomIn.click();
+      }
       const geometry = await shell.evaluate((element) => {
         const treeShell = element as HTMLElement;
         // Climb OUT of two shadow roots: .tree-shell lives in the graph's shadow

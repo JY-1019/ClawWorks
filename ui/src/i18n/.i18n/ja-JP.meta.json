@@ -100,6 +100,11 @@
     "enterprise.entryDraft.removeLastAllowedTool",
     "enterprise.entryDraft.removeLastKnowledgeFoundation",
     "enterprise.entryDraft.requireMcpAttachments",
+    "enterprise.graphExpand",
+    "enterprise.graphFit",
+    "enterprise.graphNavigationHint",
+    "enterprise.graphZoomIn",
+    "enterprise.graphZoomOut",
     "enterprise.guidanceEditor.addContextHint",
     "enterprise.guidanceEditor.auditLabel",
     "enterprise.guidanceEditor.contextHintsLabel",
@@ -365,12 +370,12 @@
     "knowledge.statSources",
     "workboard.dispatch"
   ],
-  "generatedAt": "2026-10-12T17:01:51.017Z",
+  "generatedAt": "2026-10-13T00:32:05.527Z",
   "locale": "ja-JP",
   "model": "claude-opus-4-6",
   "provider": "anthropic",
-  "sourceHash": "1e0e7710e7d723a77f657d70975246785a969617482071a4214a133d90a4397b",
-  "totalKeys": 2049,
+  "sourceHash": "a3a2b4b53936a7e5fb3af4eec8d67ba6b509b7a91523cb9b15a5fcd345deca98",
+  "totalKeys": 2054,
   "translatedKeys": 1685,
   "workflow": 1
 }
