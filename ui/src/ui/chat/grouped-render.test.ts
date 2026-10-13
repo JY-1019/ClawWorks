@@ -1058,6 +1058,34 @@ describe("grouped chat rendering", () => {
     expect(onToggleToolMessageExpanded).toHaveBeenCalledWith("activity:tool-group", true);
   });
 
+  it("counts persisted call/result pairs once without merging distinct or anonymous calls", () => {
+    const container = document.createElement("div");
+    const messages = Array.from({ length: 50 }, (_, index) => [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: `call-${index}`, name: "lookup", arguments: {} }],
+      },
+      { role: "toolResult", toolCallId: `call-${index}`, toolName: "lookup", content: "ok" },
+    ]).flat();
+    const group: MessageGroup = {
+      kind: "group",
+      key: "persisted-tools",
+      role: "tool",
+      messages: [
+        ...messages,
+        { role: "tool", toolName: "lookup", content: "anonymous one" },
+        { role: "tool", toolName: "lookup", content: "anonymous two" },
+      ].map((message, index) => ({ key: `message-${index}`, message })),
+      timestamp: 1000,
+      lastTimestamp: 1001,
+      isStreaming: false,
+    };
+    renderMessageGroups(container, [group]);
+    expect(container.querySelector(".chat-activity-group__summary")?.textContent).toContain(
+      "Activity: 52 tools",
+    );
+  });
+
   it("hides grouped tool activity when tool calls are disabled", () => {
     const container = document.createElement("div");
     const group: MessageGroup = {

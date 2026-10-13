@@ -37,6 +37,7 @@ import {
   renderToolPreview,
   resolveCollapsedToolDetail,
 } from "./tool-cards.ts";
+import { extractToolMessageRefs } from "./tool-message-refs.ts";
 
 type AssistantAttachmentAvailability =
   | { status: "checking" }
@@ -507,7 +508,19 @@ export function renderMessageGroup(group: MessageGroup, opts: RenderMessageGroup
 
   if (normalizedRole === "tool" && group.messages.length > 1) {
     const cards = group.messages.flatMap((item) => extractToolCardsCached(item.message, item.key));
-    const toolCount = cards.length || group.messages.length;
+    // Persisted history keeps calls and results in separate messages. Count their
+    // shared tool-use identity once; anonymous records must remain distinct.
+    const toolIds = new Set<string>();
+    let anonymousTools = 0;
+    for (const item of group.messages) {
+      const refs = extractToolMessageRefs(item.message);
+      for (const ref of refs) {
+        toolIds.add(ref.id);
+      }
+      const messageCards = extractToolCardsCached(item.message, item.key);
+      anonymousTools += Math.max(0, messageCards.length - refs.length);
+    }
+    const toolCount = toolIds.size + anonymousTools || group.messages.length;
     const toolLabels = [
       ...new Set(
         cards.map(
