@@ -1,0 +1,743 @@
+schema: clawworks.workflow-bundle
+schemaVersion: 1
+trees:
+  - schema: clawworks.workflow-tree
+    schemaVersion: 1
+    id: demo.shared-prefix
+    version: 1.0.0
+    name: Shared-prefix returns verification
+    description:
+      Fictional order return assessments. Three executable shared steps create a case, collect
+      order/risk data, and record eligibility evidence. Then two independent tails each prepare and finalize
+      either a refund assessment or an exchange assessment. Explicitly comparing both completed assessments
+      selects both tails, sharing the first three steps once. No real money or goods move.
+    capabilityGrants: explicit
+    root:
+      id: case
+      title: Open assessment case
+      description:
+        Start a fictional returns assessment; require an order id and a fresh case id. Every selected
+        route executes this step once.
+      ontology:
+        audit: true
+        deniedTools: &a1
+          - exec
+          - process
+          - browser
+          - web_fetch
+          - web_search
+          - read
+          - write
+          - edit
+          - apply_patch
+          - message
+        allowedTools: &a11
+          - knowledge_search
+          - search_objects
+          - get_neighbors
+          - compute_function
+          - invoke_action
+        entities:
+          - &a2
+            id: case
+            properties:
+              - id: case-id
+                type: id
+                primaryKey: true
+                required: true
+              - id: order-id
+                type: string
+                required: true
+        actions:
+          - id: open-case
+            tools:
+              - invoke_action
+            parameters:
+              - id: case-id
+                type: id
+                required: true
+              - id: order-id
+                type: string
+                required: true
+            effects:
+              - entity: case
+                kind: create
+        knowledgeFoundations:
+          - proof.intake
+          - proof.privacy
+        skills:
+          - proof-evidence
+        guidance:
+          Search proof.intake and proof.privacy for intake evidence. Read the case-id with search_objects. If
+          absent call open-case using the supplied case-id and order-id. This is a local verification
+          exercise; never send money, goods, or messages. Complete only after creating the case.
+        expectedOutput: Fresh local case and both intake/privacy citations.
+      children:
+        - id: case.order
+          title: Collect order and risk facts
+          description:
+            Read order and risk MCP services, then persist the customer/order/item/risk graph. Unknown orders
+            stop here without completing this step.
+          ontology:
+            audit: true
+            deniedTools: *a1
+            allowedTools:
+              - knowledge_search
+              - search_objects
+              - get_neighbors
+              - compute_function
+              - invoke_action
+              - proof-orders__*
+              - proof-risk__*
+            entities:
+              - *a2
+              - &a3
+                id: customer
+                properties:
+                  - id: customer-id
+                    type: id
+                    primaryKey: true
+                    required: true
+                  - id: customer-name
+                    type: string
+                    required: true
+              - &a4
+                id: order
+                properties:
+                  - id: order-id
+                    type: id
+                    primaryKey: true
+                    required: true
+                  - id: total
+                    type: number
+                    required: true
+                  - id: days
+                    type: number
+                    required: true
+              - &a5
+                id: item
+                properties:
+                  - id: item-id
+                    type: id
+                    primaryKey: true
+                    required: true
+                  - id: sku
+                    type: string
+                    required: true
+                  - id: quantity
+                    type: number
+                    required: true
+              - &a6
+                id: risk-signal
+                properties:
+                  - id: signal-id
+                    type: id
+                    primaryKey: true
+                    required: true
+                  - id: risk
+                    type: number
+                    required: true
+            relationships:
+              - &a7
+                id: case-order
+                from: case
+                to: order
+                cardinality: many-to-one
+              - &a8
+                id: customer-order
+                from: customer
+                to: order
+                cardinality: many-to-one
+              - &a9
+                id: order-item
+                from: order
+                to: item
+                cardinality: many-to-one
+              - &a10
+                id: order-signal
+                from: order
+                to: risk-signal
+                cardinality: many-to-one
+            mcpServers:
+              - proof-orders
+              - proof-risk
+            knowledgeFoundations:
+              - proof.evidence
+              - proof.privacy
+            skills:
+              - proof-evidence
+            actions:
+              - id: record-order
+                tools:
+                  - invoke_action
+                parameters:
+                  - id: case-id
+                    type: id
+                    required: true
+                  - id: order-id
+                    type: id
+                    required: true
+                  - id: customer-id
+                    type: id
+                    required: true
+                  - id: customer-name
+                    type: string
+                    required: true
+                  - id: total
+                    type: number
+                    required: true
+                  - id: days
+                    type: number
+                    required: true
+                  - id: item-id
+                    type: id
+                    required: true
+                  - id: sku
+                    type: string
+                    required: true
+                  - id: quantity
+                    type: number
+                    required: true
+                  - id: signal-id
+                    type: id
+                    required: true
+                  - id: risk
+                    type: number
+                    required: true
+                effects:
+                  - entity: customer
+                    kind: create
+                  - entity: order
+                    kind: create
+                  - entity: item
+                    kind: create
+                  - entity: risk-signal
+                    kind: create
+                  - relationship: case-order
+                    kind: link
+                  - relationship: customer-order
+                    kind: link
+                  - relationship: order-item
+                    kind: link
+                  - relationship: order-signal
+                    kind: link
+            guidance:
+              "Call proof-orders lookup and proof-risk lookup with orderId. Stop on any error, unknown order or
+              missing fact; do not complete this step or create an assessment. Search proof.evidence and
+              proof.privacy. Record exactly returned facts with record-order: supplied case-id; returned
+              order-id, customer-id/customer-name, total/days, item-id/sku/quantity, signal-id/risk. Verify
+              case-order and order-signal neighbors before completing."
+            expectedOutput: Four persisted objects and four verified graph links from actual MCP facts.
+          children:
+            - id: case.order.assess
+              title: Build shared eligibility evidence
+              description:
+                "Complete the shared assessment only when requested: reread order/risk/stock and record evidence.
+                Refund and exchange are independent two-step tails; select both only for an explicit
+                comparison of both completed assessments."
+              ontology:
+                audit: true
+                deniedTools: *a1
+                allowedTools:
+                  - knowledge_search
+                  - search_objects
+                  - get_neighbors
+                  - compute_function
+                  - invoke_action
+                  - proof-orders__*
+                  - proof-risk__*
+                  - proof-stock__*
+                entities:
+                  - *a2
+                  - *a3
+                  - *a4
+                  - *a5
+                  - *a6
+                  - &a12
+                    id: assessment
+                    properties:
+                      - id: assessment-id
+                        type: id
+                        primaryKey: true
+                        required: true
+                      - id: total
+                        type: number
+                        required: true
+                      - id: days
+                        type: number
+                        required: true
+                      - id: risk
+                        type: number
+                        required: true
+                      - id: stock
+                        type: number
+                        required: true
+                  - &a16
+                    id: evidence
+                    properties:
+                      - id: evidence-id
+                        type: id
+                        primaryKey: true
+                        required: true
+                      - id: source
+                        type: string
+                        required: true
+                      - id: summary
+                        type: string
+                        required: true
+                  - &a17
+                    id: policy
+                    properties:
+                      - id: policy-id
+                        type: id
+                        primaryKey: true
+                        required: true
+                      - id: source
+                        type: string
+                        required: true
+                relationships:
+                  - *a7
+                  - *a8
+                  - *a9
+                  - *a10
+                  - id: case-assessment
+                    from: case
+                    to: assessment
+                    cardinality: many-to-one
+                  - &a19
+                    id: assessment-evidence
+                    from: assessment
+                    to: evidence
+                    cardinality: many-to-one
+                  - &a20
+                    id: evidence-policy
+                    from: evidence
+                    to: policy
+                    cardinality: many-to-one
+                  - id: assessment-order
+                    from: assessment
+                    to: order
+                    cardinality: many-to-one
+                  - id: assessment-signal
+                    from: assessment
+                    to: risk-signal
+                    cardinality: many-to-one
+                functions:
+                  - &a13
+                    id: refund-eligible
+                    entity: assessment
+                    expression: $days >= 0 && $days <= 30 && $total <= 200 && $risk < 50
+                    returns: boolean
+                  - &a21
+                    id: exchange-eligible
+                    entity: assessment
+                    expression: $days >= 0 && $days <= 30 && $stock >= 1 && $risk < 50
+                    returns: boolean
+                  - &a14
+                    id: net-credit
+                    entity: assessment
+                    expression: $total * 0.9
+                    returns: number
+                mcpServers:
+                  - proof-orders
+                  - proof-risk
+                  - proof-stock
+                knowledgeFoundations:
+                  - proof.refund
+                  - proof.exchange
+                  - proof.evidence
+                skills:
+                  - proof-evidence
+                  - proof-citations
+                actions:
+                  - id: record-assessment
+                    tools:
+                      - invoke_action
+                    parameters:
+                      - id: case-id
+                        type: id
+                        required: true
+                      - id: order-id
+                        type: string
+                        required: true
+                      - id: assessment-id
+                        type: id
+                        required: true
+                      - id: total
+                        type: number
+                        required: true
+                      - id: days
+                        type: number
+                        required: true
+                      - id: risk
+                        type: number
+                        required: true
+                      - id: stock
+                        type: number
+                        required: true
+                      - id: evidence-id
+                        type: id
+                        required: true
+                      - id: source
+                        type: string
+                        required: true
+                      - id: summary
+                        type: string
+                        required: true
+                      - id: policy-id
+                        type: id
+                        required: true
+                      - id: signal-id
+                        type: id
+                        required: true
+                    effects:
+                      - entity: assessment
+                        kind: create
+                      - entity: evidence
+                        kind: create
+                      - entity: policy
+                        kind: create
+                      - relationship: case-assessment
+                        kind: link
+                      - relationship: assessment-evidence
+                        kind: link
+                      - relationship: evidence-policy
+                        kind: link
+                      - relationship: assessment-order
+                        kind: link
+                      - relationship: assessment-signal
+                        kind: link
+                guidance:
+                  Call all three MCP lookup tools for orderId. Search proof.refund, proof.exchange and proof.evidence
+                  for eligibility evidence. With record-assessment create assessment-id=case-id+'-assessment',
+                  evidence-id=case-id+'-evidence', policy-id=case-id+'-policy'. Pass case-id, order-id,
+                  returned total/days/risk/stock/signal-id, actual retrieved refund source in source, and a
+                  factual summary. Compute refund-eligible, exchange-eligible, net-credit; verify
+                  case-assessment, assessment-order, assessment-signal, assessment-evidence, evidence-policy.
+                  Complete this shared step once. If only shared evidence is requested stop here; do not
+                  prepare a tail.
+                expectedOutput: Shared facts and a linked, cited assessment; no branch decision has been recorded.
+              children:
+                - id: case.order.assess.refund
+                  title: Prepare refund assessment
+                  description:
+                    Prepare a local refund review from the shared assessment. This step does not finalize it or send
+                    money/goods.
+                  ontology:
+                    audit: true
+                    deniedTools: *a1
+                    allowedTools: *a11
+                    entities:
+                      - *a12
+                      - &a15
+                        id: refund-review
+                        properties:
+                          - id: refund-id
+                            type: id
+                            primaryKey: true
+                            required: true
+                          - id: eligible
+                            type: boolean
+                            required: true
+                          - id: status
+                            type: string
+                            required: true
+                    relationships:
+                      - &a18
+                        id: refund-assessment
+                        from: refund-review
+                        to: assessment
+                        cardinality: many-to-one
+                    functions:
+                      - *a13
+                      - *a14
+                    skills:
+                      - proof-refund
+                      - proof-citations
+                    knowledgeFoundations:
+                      - proof.refund
+                      - proof.evidence
+                    actions:
+                      - id: prepare-refund
+                        tools:
+                          - invoke_action
+                        parameters:
+                          - id: assessment-id
+                            type: id
+                            required: true
+                          - id: refund-id
+                            type: id
+                            required: true
+                          - id: eligible
+                            type: boolean
+                            required: true
+                          - id: status
+                            type: string
+                            required: true
+                        effects:
+                          - entity: refund-review
+                            kind: create
+                          - relationship: refund-assessment
+                            kind: link
+                    guidance:
+                      Read the stored assessment. Compute refund-eligible and net-credit. Search proof.refund and
+                      proof.evidence for eligibility evidence. Call prepare-refund with refund-id = case-id +
+                      '-refund', assessment-id = case-id + '-assessment', computed eligible,
+                      status='prepared'. Complete this step; only finalize if that next step is selected.
+                    expectedOutput: A prepared refund review with the computed eligibility and linked assessment.
+                  children:
+                    - id: case.order.assess.refund.finalize
+                      title: Finalize refund assessment
+                      description:
+                        Finalize and verify the local refund review. Requires prepare-refund. No real refund,
+                        reservation, shipment, or customer message.
+                      ontology:
+                        audit: true
+                        deniedTools: *a1
+                        allowedTools:
+                          - knowledge_search
+                          - search_objects
+                          - get_neighbors
+                          - compute_function
+                          - invoke_action
+                          - proof-risk__*
+                        entities:
+                          - *a12
+                          - *a15
+                          - *a16
+                          - *a17
+                        relationships:
+                          - *a18
+                          - *a19
+                          - *a20
+                        functions:
+                          - *a13
+                          - *a14
+                        skills:
+                          - proof-refund
+                          - proof-citations
+                        knowledgeFoundations:
+                          - proof.refund
+                          - proof.evidence
+                        mcpServers:
+                          - proof-risk
+                        actions:
+                          - id: finalize-refund
+                            tools:
+                              - invoke_action
+                            parameters:
+                              - id: refund-id
+                                type: id
+                                required: true
+                              - id: status
+                                type: string
+                                required: true
+                            effects:
+                              - entity: refund-review
+                                kind: update
+                        guidance:
+                          Search proof.refund and proof.evidence for eligibility evidence. Recheck proof-risk lookup for the supplied order-id. Read the prepared refund review and its
+                          refund-assessment neighbor. Traverse assessment-evidence and evidence-policy to
+                          verify the evidence source. Recompute refund-eligible and net-credit. If the new facts disagree,
+                          stop and report stale evidence. Otherwise call finalize-refund with
+                          status='verified'. Return the branch skill's exact marker, eligibility, source, and
+                          review id; call complete_step after verification.
+                        expectedOutput: Verified local refund assessment using the proof-refund output format.
+                - id: case.order.assess.exchange
+                  title: Prepare exchange assessment
+                  description:
+                    Prepare a local exchange review from the shared assessment. This step does not finalize it or
+                    send money/goods.
+                  ontology:
+                    audit: true
+                    deniedTools: *a1
+                    allowedTools: *a11
+                    entities:
+                      - *a12
+                      - &a22
+                        id: exchange-review
+                        properties:
+                          - id: exchange-id
+                            type: id
+                            primaryKey: true
+                            required: true
+                          - id: eligible
+                            type: boolean
+                            required: true
+                          - id: status
+                            type: string
+                            required: true
+                    relationships:
+                      - &a23
+                        id: exchange-assessment
+                        from: exchange-review
+                        to: assessment
+                        cardinality: many-to-one
+                    functions:
+                      - *a21
+                      - *a14
+                    skills:
+                      - proof-exchange
+                      - proof-citations
+                    knowledgeFoundations:
+                      - proof.exchange
+                      - proof.evidence
+                    actions:
+                      - id: prepare-exchange
+                        tools:
+                          - invoke_action
+                        parameters:
+                          - id: assessment-id
+                            type: id
+                            required: true
+                          - id: exchange-id
+                            type: id
+                            required: true
+                          - id: eligible
+                            type: boolean
+                            required: true
+                          - id: status
+                            type: string
+                            required: true
+                        effects:
+                          - entity: exchange-review
+                            kind: create
+                          - relationship: exchange-assessment
+                            kind: link
+                    guidance:
+                      Read the stored assessment. Compute exchange-eligible and net-credit. Search proof.exchange and
+                      proof.evidence for eligibility evidence. Call prepare-exchange with exchange-id =
+                      case-id + '-exchange', assessment-id = case-id + '-assessment', computed eligible,
+                      status='prepared'. Complete this step; only finalize if that next step is selected.
+                    expectedOutput: A prepared exchange review with the computed eligibility and linked assessment.
+                  children:
+                    - id: case.order.assess.exchange.finalize
+                      title: Finalize exchange assessment
+                      description:
+                        Finalize and verify the local exchange review. Requires prepare-exchange. No real refund,
+                        reservation, shipment, or customer message.
+                      ontology:
+                        audit: true
+                        deniedTools: *a1
+                        allowedTools:
+                          - knowledge_search
+                          - search_objects
+                          - get_neighbors
+                          - compute_function
+                          - invoke_action
+                          - proof-stock__*
+                        entities:
+                          - *a12
+                          - *a22
+                          - *a16
+                          - *a17
+                        relationships:
+                          - *a23
+                          - *a19
+                          - *a20
+                        functions:
+                          - *a21
+                          - *a14
+                        skills:
+                          - proof-exchange
+                          - proof-citations
+                        knowledgeFoundations:
+                          - proof.exchange
+                          - proof.evidence
+                        mcpServers:
+                          - proof-stock
+                        actions:
+                          - id: finalize-exchange
+                            tools:
+                              - invoke_action
+                            parameters:
+                              - id: exchange-id
+                                type: id
+                                required: true
+                              - id: status
+                                type: string
+                                required: true
+                            effects:
+                              - entity: exchange-review
+                                kind: update
+                        guidance:
+                          Search proof.exchange and proof.evidence for eligibility evidence. Recheck proof-stock lookup for the supplied order-id. Read the prepared exchange review and its
+                          exchange-assessment neighbor. Traverse assessment-evidence and evidence-policy to
+                          verify the evidence source. Recompute exchange-eligible and net-credit. If the new facts disagree,
+                          stop and report stale evidence. Otherwise call finalize-exchange with
+                          status='verified'. Return the branch skill's exact marker, eligibility, source, and
+                          review id; call complete_step after verification.
+                        expectedOutput: Verified local exchange assessment using the proof-exchange output format.
+knowledgeFoundations:
+  - id: proof.intake
+    descriptor:
+      kind: local
+      displayName: Fictional intake policy
+    snippets:
+      - foundationId: proof.intake
+        source: intake/evidence.md
+        title: intake eligibility evidence
+        text:
+          "Intake evidence: require supplied order id and fresh case id. Create one case only, including when both
+          tails are requested."
+  - id: proof.privacy
+    descriptor:
+      kind: local
+      displayName: Fictional privacy policy
+    snippets:
+      - foundationId: proof.privacy
+        source: privacy/evidence.md
+        title: privacy eligibility evidence
+        text: "Privacy evidence: fictional data only. Never send messages, payments, reservations or shipments."
+  - id: proof.evidence
+    descriptor:
+      kind: local
+      displayName: Fictional evidence policy
+    snippets:
+      - foundationId: proof.evidence
+        source: evidence/lineage.md
+        title: evidence eligibility evidence
+        text:
+          "Eligibility evidence: store exact MCP facts and retrieved source; traverse case → assessment → evidence
+          → policy, plus assessment → order → signal. Never invent facts."
+  - id: proof.refund
+    descriptor:
+      kind: local
+      displayName: Fictional refund policy
+    snippets:
+      - foundationId: proof.refund
+        source: refund/eligibility.md
+        title: refund eligibility evidence
+        text:
+          "Refund eligibility evidence: days from 0 through 30, total <= 200 and risk < 50. Net credit estimate is
+          total * 0.9. A local assessment does not execute a payment."
+  - id: proof.exchange
+    descriptor:
+      kind: local
+      displayName: Fictional exchange policy
+    snippets:
+      - foundationId: proof.exchange
+        source: exchange/eligibility.md
+        title: exchange eligibility evidence
+        text:
+          "Exchange eligibility evidence: days from 0 through 30, stock >= 1 and risk < 50. A local assessment
+          does not reserve stock or ship anything."
+requiredTools:
+  - knowledge_search
+  - search_objects
+  - get_neighbors
+  - compute_function
+  - invoke_action
+  - proof-orders__*
+  - proof-risk__*
+  - proof-stock__*
+requiredSkills:
+  - proof-evidence
+  - proof-citations
+  - proof-refund
+  - proof-exchange
+requiredMcpServers:
+  - proof-orders
+  - proof-risk
+  - proof-stock
+governanceMode: enforce

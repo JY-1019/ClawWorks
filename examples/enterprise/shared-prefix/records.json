@@ -1,0 +1,12 @@
+{
+  "1043": {
+    "orders": { "order-id": "1043", "customer-id": "C-1043", "customer-name": "Fictional Dana", "total": 129, "days": 6, "item-id": "I-1043", "sku": "GRINDER", "quantity": 1 },
+    "risk": { "signal-id": "S-1043", "risk": 12 },
+    "stock": { "sku": "GRINDER", "stock": 3 }
+  },
+  "1051": {
+    "orders": { "order-id": "1051", "customer-id": "C-1051", "customer-name": "Fictional Marc", "total": 310, "days": 96, "item-id": "I-1051", "sku": "ESPRESSO", "quantity": 1 },
+    "risk": { "signal-id": "S-1051", "risk": 72 },
+    "stock": { "sku": "ESPRESSO", "stock": 0 }
+  }
+}

@@ -1,0 +1,110 @@
+schema: clawworks.routing-cases
+schemaVersion: 1
+trees:
+  - examples/enterprise/shared-prefix/shared-prefix.clawworks-bundle.yaml
+cases:
+  - id: refund
+    category: shared-prefix
+    request:
+      가상 주문 1043, 새 case-id SP-refund. 환불 검토를 준비하고 최종 검증까지 완료해줘. 교환은 하지 마. 실제
+      결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+        - case.order.assess.refund
+        - case.order.assess.refund.finalize
+  - id: exchange
+    category: shared-prefix
+    request:
+      가상 주문 1043, 새 case-id SP-exchange. 교환 검토를 준비하고 최종 검증까지 완료해줘. 환불은 하지 마.
+      실제 결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+        - case.order.assess.exchange
+        - case.order.assess.exchange.finalize
+  - id: both
+    category: shared-prefix
+    request:
+      가상 주문 1043, 새 case-id SP-both. 환불 검토와 교환 검토를 둘 다 준비하고 각각 최종 검증까지 완료해서
+      비교해줘. 실제 결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+        - case.order.assess.refund
+        - case.order.assess.refund.finalize
+        - case.order.assess.exchange
+        - case.order.assess.exchange.finalize
+  - id: ineligible
+    category: shared-prefix
+    request:
+      가상 주문 1051, 새 case-id SP-ineligible. 환불과 교환 검토를 둘 다 준비하고 각각 최종 검증까지
+      완료해서 가능 여부를 비교해줘. 실제 결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+        - case.order.assess.refund
+        - case.order.assess.refund.finalize
+        - case.order.assess.exchange
+        - case.order.assess.exchange.finalize
+  - id: evidence
+    category: shared-prefix
+    request:
+      가상 주문 1043, 새 case-id SP-evidence. 공통 자격검증 근거만 기록해줘. 환불이나 교환 검토 생성과 최종
+      검증은 하지 마. 실제 결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+  - id: prepared
+    category: shared-prefix
+    request:
+      가상 주문 1043, 새 case-id SP-prepared. 환불 검토를 준비만 해줘. 최종 검증과 교환 검토는 하지 마.
+      실제 결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+        - case.order.assess.refund
+  - id: unknown
+    category: shared-prefix
+    request:
+      가상 주문 9999, 새 case-id SP-unknown. 환불 검토를 준비하고 최종 검증까지 완료해줘. 교환은 하지 마.
+      실제 결제나 발송은 금지.
+    expected:
+      kind: execute
+      treeId: demo.shared-prefix
+      steps:
+        - case
+        - case.order
+        - case.order.assess
+        - case.order.assess.refund
+        - case.order.assess.refund.finalize
+  - id: ambiguous
+    category: clarification
+    request: 주문 1043의 반품 건을 처리해줘.
+    expected:
+      kind: clarify
+      treeId: demo.shared-prefix

@@ -141,6 +141,58 @@ function expectRecordFields(record: unknown, expected: Record<string, unknown>) 
 }
 
 describe("openai transport stream", () => {
+  it.each(["snapshot", "deltas"])(
+    "retains %s tool arguments in the final assistant message across multiple calls",
+    async (mode) => {
+      const model = createAzureResponsesModel();
+      const output = createResponsesAssistantOutput(model);
+      const push = vi.fn();
+      const calls = [
+        { id: "fc_1", call_id: "call_1", name: "search", arguments: '{"query":"policy"}' },
+        { id: "fc_2", call_id: "call_2", name: "lookup", arguments: '{"orderId":"1043"}' },
+      ];
+      const events = calls.flatMap((call) => [
+        {
+          type: "response.output_item.added",
+          item: { ...call, type: "function_call", arguments: "" },
+        },
+        ...(mode === "deltas"
+          ? [{ type: "response.function_call_arguments.delta", delta: call.arguments }]
+          : []),
+        {
+          type: "response.output_item.done",
+          item: {
+            ...call,
+            type: "function_call",
+            arguments: mode === "snapshot" ? call.arguments : "",
+          },
+        },
+      ]);
+      await testing.processResponsesStream(
+        streamChunks([
+          ...events,
+          { type: "response.completed", response: { status: "completed" } },
+        ]),
+        output,
+        { push },
+        model,
+      );
+      const expected = calls.map((call) => ({
+        type: "toolCall",
+        id: `${call.call_id}|${call.id}`,
+        name: call.name,
+        arguments: JSON.parse(call.arguments),
+      }));
+      expect(output.content).toEqual(expected);
+      expect(output.stopReason).toBe("toolUse");
+      expect(
+        push.mock.calls
+          .filter(([event]) => event.type === "toolcall_end")
+          .map(([event]) => event.toolCall),
+      ).toEqual(expected);
+    },
+  );
+
   it("fails Azure Responses streams when headers arrive but no first event follows", async () => {
     const model = createAzureResponsesModel();
     await expect(

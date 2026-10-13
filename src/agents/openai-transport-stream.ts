@@ -1789,15 +1789,22 @@ async function processResponsesStream(
           currentBlock?.type === "toolCall" && currentBlock.partialJson
             ? parseStreamingJson(stringifyJsonLike(currentBlock.partialJson, "{}"))
             : parseStreamingJson(stringifyJsonLike(item.arguments, "{}"));
+        const toolCall = {
+          type: "toolCall",
+          id: `${stringifyUnknown(item.call_id)}|${stringifyUnknown(item.id)}`,
+          name: stringifyUnknown(item.name),
+          arguments: args,
+        };
+        if (currentBlock?.type === "toolCall") {
+          // Agent execution reads output.content, not the toolcall_end event.
+          // Snapshot-only arguments must update that same block before replay.
+          currentBlock.arguments = args;
+          delete currentBlock.partialJson;
+        }
         stream.push({
           type: "toolcall_end",
           contentIndex: blockIndex(),
-          toolCall: {
-            type: "toolCall",
-            id: `${stringifyUnknown(item.call_id)}|${stringifyUnknown(item.id)}`,
-            name: stringifyUnknown(item.name),
-            arguments: args,
-          },
+          toolCall,
           partial: output,
         });
         currentBlock = null;
