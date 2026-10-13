@@ -465,14 +465,17 @@ export function applyCronDefaults(cfg: OpenClawConfig): OpenClawConfig {
 
 export function applyEnterpriseDefaults(cfg: OpenClawConfig): OpenClawConfig {
   // ClawWorks enterprise mode is on by default; "off" restores stock behavior.
-  if (cfg.enterprise?.mode) {
+  const enterprise = cfg.enterprise;
+  if (enterprise?.mode === "off" || (enterprise?.mode && enterprise.routePlanner?.model)) {
     return cfg;
   }
   return {
     ...cfg,
     enterprise: {
-      ...cfg.enterprise,
-      mode: "enforce",
+      ...enterprise,
+      mode: enterprise?.mode ?? "enforce",
+      // Keep default routing independent of the agent's provider and credentials.
+      routePlanner: { model: enterprise?.routePlanner?.model ?? "openai/gpt-5.5" },
     },
   };
 }

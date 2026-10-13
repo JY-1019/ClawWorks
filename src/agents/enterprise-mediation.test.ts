@@ -3,6 +3,7 @@
  * run-start blocking, raw-run skips, and outcome→trace status mapping.
  */
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { applyEnterpriseDefaults } from "../config/defaults.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -377,6 +378,26 @@ describe("a configured router model", () => {
   // which is the whole reason an operator names a router model.
   const withRouter = (ref: string): OpenClawConfig =>
     ({ enterprise: { routePlanner: { model: ref } } }) as OpenClawConfig;
+
+  it("routes on the GPT default without borrowing the execution provider's credential", () => {
+    const config = applyEnterpriseDefaults({});
+    const params = makeParams({
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      authProfileId: "anthropic:work",
+      authProfileIdSource: "user",
+    });
+    expect(resolveRouteModelRefForTest(params, { config })).toEqual({
+      kind: "ref",
+      ref: "openai/gpt-5.5",
+      literal: true,
+    });
+    expect(resolveRoutePlannerAuthProfileIdForTest(params, config)).toBeUndefined();
+    expect(
+      resolveRouteModelRefForTest({ ...params, routeModel: "ollama/qwen3:8b" }, { config }),
+    ).toEqual({ kind: "ref", ref: "ollama/qwen3:8b", literal: true });
+    expect(params.provider).toBe("anthropic");
+  });
 
   it("wins over the model the turn happens to run on", () => {
     expect(

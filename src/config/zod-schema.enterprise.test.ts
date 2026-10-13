@@ -143,15 +143,34 @@ describe("EnterpriseConfigSchema", () => {
 });
 
 describe("applyEnterpriseDefaults", () => {
-  it("defaults enterprise mode to enforce (default-on)", () => {
+  it("defaults enterprise mode to enforce with a GPT router", () => {
     const cfg: OpenClawConfig = {};
     const next = applyEnterpriseDefaults(cfg);
     expect(next.enterprise?.mode).toBe("enforce");
+    expect(next.enterprise?.routePlanner?.model).toBe("openai/gpt-5.5");
+    expect(cfg.enterprise).toBeUndefined();
   });
 
-  it("returns the same reference when a mode is already set", () => {
+  it("leaves enterprise off without adding a router", () => {
     const cfg: OpenClawConfig = { enterprise: { mode: "off" } };
     expect(applyEnterpriseDefaults(cfg)).toBe(cfg);
+  });
+
+  it.each(["enforce", "observe"] as const)("defaults the router in %s mode", (mode) => {
+    const next = applyEnterpriseDefaults({ enterprise: { mode, routePlanner: {} } });
+    expect(next.enterprise).toEqual({ mode, routePlanner: { model: "openai/gpt-5.5" } });
+    expect(applyEnterpriseDefaults(next)).toBe(next);
+  });
+
+  it("preserves an explicit router when defaulting the mode", () => {
+    const next = applyEnterpriseDefaults({
+      enterprise: { routePlanner: { model: "ollama/qwen3:8b" } },
+    });
+    expect(next.enterprise).toEqual({
+      mode: "enforce",
+      routePlanner: { model: "ollama/qwen3:8b" },
+    });
+    expect(applyEnterpriseDefaults(next)).toBe(next);
   });
 
   it("preserves sibling enterprise settings when defaulting the mode", () => {
@@ -163,11 +182,13 @@ describe("applyEnterpriseDefaults", () => {
     expect(next.enterprise?.governance?.policies).toHaveLength(1);
   });
 
-  it("is applied by materializeRuntimeConfig", () => {
-    const runtime = materializeRuntimeConfig({}, "load");
+  it.each(["load", "missing", "snapshot"] as const)("is materialized for %s", (mode) => {
+    const runtime = materializeRuntimeConfig({}, mode);
     expect(runtime.enterprise?.mode).toBe("enforce");
-    const optedOut = materializeRuntimeConfig({ enterprise: { mode: "off" } }, "load");
+    expect(runtime.enterprise?.routePlanner?.model).toBe("openai/gpt-5.5");
+    const optedOut = materializeRuntimeConfig({ enterprise: { mode: "off" } }, mode);
     expect(optedOut.enterprise?.mode).toBe("off");
+    expect(optedOut.enterprise?.routePlanner).toBeUndefined();
   });
 });
 

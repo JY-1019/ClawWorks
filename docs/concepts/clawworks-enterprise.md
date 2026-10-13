@@ -55,23 +55,22 @@ current shape.
 
 ## Giving the router its own model
 
-By default the router plans with the model the run itself dispatches to. That is
-the right default — it keeps the routing prompt on a provider the run already
-chose — but it ties two unlike workloads together. The turn can be long and
-tool-heavy; the text router makes one small structured call, capped at 400 output
-tokens, before the tool loop starts. More importantly, the router goes through the
-direct completion API, while a CLI backend runs the turn by handing it to a binary
-that authenticates itself. Such a run has no API credential to lend the router, so
-it cannot be planned at all and the default tree governs.
+The router defaults to `openai/gpt-5.5`, independently of the conversation and
+work-map execution models. This keeps routing from inheriting an unavailable
+Anthropic credential from the agent. The text router makes one small structured
+call, capped at 400 output tokens, before the tool loop starts.
 
-Name a router model when either applies:
+Routing sends the planning prompt to OpenAI by default, even when execution uses
+a local model. To keep routing on a local or private provider, set
+`enterprise.routePlanner.model` explicitly. Existing saved router choices remain
+unchanged; query overrides still take priority. The default configuration is:
 
 ```jsonc
 {
   "enterprise": {
     "mode": "enforce",
     "routePlanner": {
-      "model": "mistral/mistral-medium-3-5",
+      "model": "openai/gpt-5.5",
     },
   },
 }
@@ -88,8 +87,8 @@ work-map and its operations in two sequential requests.
 
 In the Control UI, set the saved default under **Settings → Enterprise → Route
 Planner Model**. The chat **Routing model** control accepts a `provider/model`
-reference for that query. Choose **Default** to use the saved router, or the
-turn's model if the setting is absent. A queued query keeps the selection it had
+reference for that query. Choose **Default** to use the saved router, or
+`openai/gpt-5.5` if the setting is absent. A queued query keeps the selection it had
 when sent; later picker changes do not rewrite it. Query overrides require
 `operator.admin`, as changing the provider determines where the prompt is sent.
 
@@ -102,10 +101,9 @@ Three consequences worth knowing:
 - **The router picks its own credential.** An auth profile names an account inside
   one provider, so the run's pinned profile is not forwarded to a router on a
   different one.
-- **It overrides the gates that exist because the run's model is unknowable** — a
+- **The router is independent of execution model selection** — a
   provider-only run, or a `before_model_resolve` hook that may swap the model
-  later. Naming a router answers the question those gates were guessing at: where
-  the routing prompt may go. The gates about whether a run plans **at all** still
+  later, does not change the default or saved router. The gates about whether a run plans **at all** still
   decide first, so an ACP run (its backend is not ours to pick) and a cron turn a
   `before_agent_reply` hook may answer without dispatching are still not planned —
   naming a router never buys a routing call for work that never runs.
@@ -136,7 +134,7 @@ executionModel: ollama/qwen3:8b
 ```
 
 Routing and execution are separate choices. Routing uses the query's **Routing
-model**, then the saved **Route Planner Model**, then the conversation model.
+model**, then the saved **Route Planner Model**, then `openai/gpt-5.5`.
 After routing selects a work-map, its execution model takes priority over the
 conversation selection for that turn. An unbound work-map keeps the conversation
 model and its normal fallback policy. Choosing **Default** in chat uses those

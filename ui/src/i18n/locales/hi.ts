@@ -878,7 +878,7 @@ export const hi: TranslationMap = {
     routingModel: "Routing model",
     routingDefault: "डिफ़ॉल्ट",
     routingModelHint:
-      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or openai/gpt-5.5 when unset. This only chooses the route; execution keeps its own model.",
     routeViewLabel: "रूट दृश्य",
     routeViewRoute: "केवल रूट",
     routeViewTree: "पूरा ट्री",

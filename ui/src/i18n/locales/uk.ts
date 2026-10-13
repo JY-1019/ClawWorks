@@ -887,7 +887,7 @@ export const uk: TranslationMap = {
     routingModel: "Routing model",
     routingDefault: "Default",
     routingModelHint:
-      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or the turn model when unset. This only chooses the route.",
+      "Enter provider/model. Default uses Settings → Enterprise → Route Planner Model, or openai/gpt-5.5 when unset. This only chooses the route; execution keeps its own model.",
     routeViewLabel: "Перегляд маршруту",
     routeViewRoute: "Лише маршрут",
     routeViewTree: "Усе дерево",

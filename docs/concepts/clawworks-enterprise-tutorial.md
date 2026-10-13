@@ -70,20 +70,20 @@ for a guarded update.
   APIs by default; no local model download is needed.
 
 <Note>
-  If your agent runs on a CLI backend (the Claude CLI, Codex), give the router
-  its own model before you start:
+  Routing defaults to `openai/gpt-5.5` and requires usable OpenAI authentication
+  in ClawWorks. You can also save the same model explicitly:
 
 ```jsonc
 {
   "enterprise": {
-    "routePlanner": { "model": "mistral/mistral-medium-3-5" },
+    "routePlanner": { "model": "openai/gpt-5.5" },
   },
 }
 ```
 
-A CLI backend authenticates itself and lends the router no API credential, so
-without this the run cannot be planned at all and the permissive default tree
-governs — you would build the whole work-map and never route into it. See
+A CLI backend's login alone does not establish that ClawWorks can authenticate
+the router. Without usable router credentials, the default tree governs instead
+of the intended work-map. Verify that the run trace says `matchedBy: planner`. See
 [Giving the router its own model](/concepts/clawworks-enterprise#giving-the-router-its-own-model).
 </Note>
 
@@ -719,9 +719,9 @@ openclaw enterprise runs show <runId>
   <Step title="The run bound the wrong work-map">
     Look at History first — it names the tree each run selected.
 
-    - A CLI-backed agent with no `enterprise.routePlanner.model` cannot be
-      planned at all and falls closed onto the default tree. That is the most
-      common cause.
+    - If `matchedBy` is `unavailable`, check authentication for the configured
+      router (`openai/gpt-5.5` by default). An unavailable router binds the
+      default tree, so an answer alone does not prove the intended route ran.
     - Otherwise it is the `description`. Add the nouns the request used. The
       budget is 600 characters and the distinguishing clause has to survive it.
 

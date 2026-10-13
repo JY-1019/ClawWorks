@@ -253,7 +253,7 @@ export const FIELD_HELP: Record<string, string> = {
   "enterprise.routePlanner":
     "Settings for the model that picks a work-map and route before the tool loop starts.",
   "enterprise.routePlanner.model":
-    "Model ref (\"provider/model\") the route planner uses, instead of the model the run itself dispatches to. Set this when the run has no API-callable credential to plan with (a CLI backend authenticates itself and lends the planner nothing) or to keep routing off the turn's model. The planner resolves its own auth profile, so a router on another provider is fine. Default: the run's own model.",
+    'Model ref ("provider/model") the route planner uses independently of the execution model. Default: openai/gpt-5.5. Routing sends the planning prompt to OpenAI unless you explicitly select another provider here or in the query. The planner resolves its own auth profile; configure usable credentials for its provider. Changing the execution model alone does not change the router.',
   "enterprise.governance.policies":
     "Governance policies. Each policy applies when all of its selectors (trees, nodes, tools, actions) match; matching policies compose order-independently with precedence deny > require_approval > allow > audit, and audit records the decision without changing the outcome.",
   "enterprise.governance.policies[]":

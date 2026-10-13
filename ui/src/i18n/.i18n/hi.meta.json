@@ -364,11 +364,11 @@
     "knowledge.statRemote",
     "knowledge.statSources"
   ],
-  "generatedAt": "2026-10-13T05:00:30.375Z",
+  "generatedAt": "2026-10-13T14:51:12.087Z",
   "locale": "hi",
   "model": "claude-opus-4-6",
   "provider": "anthropic",
-  "sourceHash": "817bce932eb44a334cd7b2bde1f377104583265cbe0d9ae6f4cd26bd94e32f8a",
+  "sourceHash": "60f7063b74b3add645765b0406d02aa86269524b7c355770e1a5d9295a0ea859",
   "totalKeys": 2056,
   "translatedKeys": 1693,
   "workflow": 1
