@@ -643,7 +643,7 @@ target's primary key, and only the steps that write opt into `invoke_action`.
 schema: clawworks.workflow-tree
 schemaVersion: 1
 id: acme.expenses
-version: 1.0.0
+version: 1.1.0
 name: Expense claims
 description: "Review, approve, or reject an employee EXPENSE CLAIM, and answer questions about
   expense policy: what a claim is worth, whether it clears the automatic limit, who submitted it,
@@ -768,9 +768,62 @@ root:
             returns: number
             expression: min($amount, 100)
             description: What this claim can be approved without a human.
-    - id: expenses.policy
-      title: Check the policy
-      description: Answer what the expense handbook says about this kind of claim.
+      children:
+        - id: expenses.policy
+          title: Check the policy
+          description: Answer what the expense handbook says about this kind of claim.
+          ontology:
+            allowedTools:
+              - knowledge_search
+              - message
+            knowledgeFoundations:
+              - acme.expense-policy
+            expectedOutput: The handbook rule that applies, cited.
+            deniedTools: *a1
+          children:
+            - id: expenses.decide
+              title: Approve or reject
+              description: Approve the claim within the limit, or reject it with a reason.
+              ontology:
+                allowedTools:
+                  - search_objects
+                  - compute_function
+                  - invoke_action
+                  - message
+                actions:
+                  - id: approve-claim
+                    title: Approve a claim
+                    tools:
+                      - invoke_action
+                    parameters:
+                      - id: id
+                        type: id
+                        required: true
+                      - id: status
+                        type: string
+                        required: true
+                    preconditions:
+                      - The claim is still in submitted status.
+                    effects:
+                      - entity: claim
+                        kind: update
+                        description: Records the decision.
+                constraints:
+                  - id: claim-cap
+                    description: Claims above 100 need a human approver.
+                expectedOutput: The claim id and the decision, or the reason none was made.
+                audit: true
+                deniedTools: *a1
+                entities: *a2
+                relationships: *a3
+                functions: *a4
+                guidance:
+                  Use the completed claim check and cited policy before deciding. Stop if the claim,
+                  employee, amount, or policy evidence is missing. Do not create a claim during a
+                  review.
+    - id: expenses.policy-only
+      title: Explain expense policy
+      description: Answer a policy-only question without reading, creating, or changing a claim.
       ontology:
         allowedTools:
           - knowledge_search
@@ -778,44 +831,18 @@ root:
         knowledgeFoundations:
           - acme.expense-policy
         expectedOutput: The handbook rule that applies, cited.
-        deniedTools: *a1
-    - id: expenses.decide
-      title: Approve or reject
-      description: Approve the claim within the limit, or reject it with a reason.
-      ontology:
-        allowedTools:
-          - search_objects
-          - compute_function
-          - invoke_action
-          - message
-        actions:
-          - id: approve-claim
-            title: Approve a claim
-            tools:
-              - invoke_action
-            parameters:
-              - id: id
-                type: id
-                required: true
-              - id: status
-                type: string
-                required: true
-            preconditions:
-              - The claim is still in submitted status.
-            effects:
-              - entity: claim
-                kind: update
-                description: Records the decision.
-        constraints:
-          - id: claim-cap
-            description: Claims above 100 need a human approver.
-        expectedOutput: The claim id and the decision, or the reason none was made.
-        audit: true
-        deniedTools: *a1
-        entities: *a2
-        relationships: *a3
-        functions: *a4
+        deniedTools:
+          - exec
+          - process
+          - browser
 ```
+
+Selecting `expenses.decide` runs `expenses` → `expenses.check` →
+`expenses.policy` → `expenses.decide`. Complete each step before entering
+its child. Creation stays on the separate `expenses` → `expenses.intake`
+route, so reviewing an existing claim never recreates it. Policy-only requests
+use `expenses` → `expenses.policy-only` without needing a claim record.
+Selecting check alone stops before policy and decision.
 
 ### The same tree as JSON
 
@@ -826,7 +853,7 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
   "schema": "clawworks.workflow-tree",
   "schemaVersion": 1,
   "id": "acme.expenses",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Expense claims",
   "description": "Review, approve, or reject an employee EXPENSE CLAIM, and answer questions about expense policy: what a claim is worth, whether it clears the automatic limit, who submitted it, and what the handbook says about it. The claims live in this work-map's own object store, never in files or a shell, so a request to list or check claims belongs here even when it is phrased as reading a file or running a command. Not for payroll, invoices, or vendor contracts.",
   "match": {
@@ -1050,128 +1077,149 @@ Identical semantics, no comments, and `schemaVersion` stays a number:
               "description": "What this claim can be approved without a human."
             }
           ]
-        }
+        },
+        "children": [
+          {
+            "id": "expenses.policy",
+            "title": "Check the policy",
+            "description": "Answer what the expense handbook says about this kind of claim.",
+            "ontology": {
+              "allowedTools": ["knowledge_search", "message"],
+              "knowledgeFoundations": ["acme.expense-policy"],
+              "expectedOutput": "The handbook rule that applies, cited.",
+              "deniedTools": ["exec", "process", "browser"]
+            },
+            "children": [
+              {
+                "id": "expenses.decide",
+                "title": "Approve or reject",
+                "description": "Approve the claim within the limit, or reject it with a reason.",
+                "ontology": {
+                  "allowedTools": [
+                    "search_objects",
+                    "compute_function",
+                    "invoke_action",
+                    "message"
+                  ],
+                  "actions": [
+                    {
+                      "id": "approve-claim",
+                      "title": "Approve a claim",
+                      "tools": ["invoke_action"],
+                      "parameters": [
+                        {
+                          "id": "id",
+                          "type": "id",
+                          "required": true
+                        },
+                        {
+                          "id": "status",
+                          "type": "string",
+                          "required": true
+                        }
+                      ],
+                      "preconditions": ["The claim is still in submitted status."],
+                      "effects": [
+                        {
+                          "entity": "claim",
+                          "kind": "update",
+                          "description": "Records the decision."
+                        }
+                      ]
+                    }
+                  ],
+                  "constraints": [
+                    {
+                      "id": "claim-cap",
+                      "description": "Claims above 100 need a human approver."
+                    }
+                  ],
+                  "expectedOutput": "The claim id and the decision, or the reason none was made.",
+                  "audit": true,
+                  "deniedTools": ["exec", "process", "browser"],
+                  "entities": [
+                    {
+                      "id": "employee",
+                      "title": "Employee",
+                      "properties": [
+                        {
+                          "id": "id",
+                          "type": "id",
+                          "primaryKey": true
+                        },
+                        {
+                          "id": "name",
+                          "type": "string",
+                          "required": true
+                        }
+                      ]
+                    },
+                    {
+                      "id": "claim",
+                      "title": "Expense claim",
+                      "properties": [
+                        {
+                          "id": "id",
+                          "type": "id",
+                          "primaryKey": true
+                        },
+                        {
+                          "id": "employee-id",
+                          "type": "id",
+                          "required": true
+                        },
+                        {
+                          "id": "amount",
+                          "type": "number",
+                          "required": true
+                        },
+                        {
+                          "id": "status",
+                          "type": "string",
+                          "required": true
+                        },
+                        {
+                          "id": "submitted-on",
+                          "type": "date"
+                        }
+                      ]
+                    }
+                  ],
+                  "relationships": [
+                    {
+                      "id": "submitted",
+                      "from": "employee",
+                      "to": "claim",
+                      "cardinality": "one-to-many",
+                      "inverse": "submitted-by",
+                      "description": "The employee who submitted the claim."
+                    }
+                  ],
+                  "functions": [
+                    {
+                      "id": "auto-approvable-amount",
+                      "entity": "claim",
+                      "returns": "number",
+                      "expression": "min($amount, 100)",
+                      "description": "What this claim can be approved without a human."
+                    }
+                  ],
+                  "guidance": "Use the completed claim check and cited policy before deciding. Stop if the claim, employee, amount, or policy evidence is missing. Do not create a claim during a review."
+                }
+              }
+            ]
+          }
+        ]
       },
       {
-        "id": "expenses.policy",
-        "title": "Check the policy",
-        "description": "Answer what the expense handbook says about this kind of claim.",
+        "id": "expenses.policy-only",
+        "title": "Explain expense policy",
+        "description": "Answer a policy-only question without reading, creating, or changing a claim.",
         "ontology": {
           "allowedTools": ["knowledge_search", "message"],
           "knowledgeFoundations": ["acme.expense-policy"],
           "expectedOutput": "The handbook rule that applies, cited.",
           "deniedTools": ["exec", "process", "browser"]
-        }
-      },
-      {
-        "id": "expenses.decide",
-        "title": "Approve or reject",
-        "description": "Approve the claim within the limit, or reject it with a reason.",
-        "ontology": {
-          "allowedTools": ["search_objects", "compute_function", "invoke_action", "message"],
-          "actions": [
-            {
-              "id": "approve-claim",
-              "title": "Approve a claim",
-              "tools": ["invoke_action"],
-              "parameters": [
-                {
-                  "id": "id",
-                  "type": "id",
-                  "required": true
-                },
-                {
-                  "id": "status",
-                  "type": "string",
-                  "required": true
-                }
-              ],
-              "preconditions": ["The claim is still in submitted status."],
-              "effects": [
-                {
-                  "entity": "claim",
-                  "kind": "update",
-                  "description": "Records the decision."
-                }
-              ]
-            }
-          ],
-          "constraints": [
-            {
-              "id": "claim-cap",
-              "description": "Claims above 100 need a human approver."
-            }
-          ],
-          "expectedOutput": "The claim id and the decision, or the reason none was made.",
-          "audit": true,
-          "deniedTools": ["exec", "process", "browser"],
-          "entities": [
-            {
-              "id": "employee",
-              "title": "Employee",
-              "properties": [
-                {
-                  "id": "id",
-                  "type": "id",
-                  "primaryKey": true
-                },
-                {
-                  "id": "name",
-                  "type": "string",
-                  "required": true
-                }
-              ]
-            },
-            {
-              "id": "claim",
-              "title": "Expense claim",
-              "properties": [
-                {
-                  "id": "id",
-                  "type": "id",
-                  "primaryKey": true
-                },
-                {
-                  "id": "employee-id",
-                  "type": "id",
-                  "required": true
-                },
-                {
-                  "id": "amount",
-                  "type": "number",
-                  "required": true
-                },
-                {
-                  "id": "status",
-                  "type": "string",
-                  "required": true
-                },
-                {
-                  "id": "submitted-on",
-                  "type": "date"
-                }
-              ]
-            }
-          ],
-          "relationships": [
-            {
-              "id": "submitted",
-              "from": "employee",
-              "to": "claim",
-              "cardinality": "one-to-many",
-              "inverse": "submitted-by",
-              "description": "The employee who submitted the claim."
-            }
-          ],
-          "functions": [
-            {
-              "id": "auto-approvable-amount",
-              "entity": "claim",
-              "returns": "number",
-              "expression": "min($amount, 100)",
-              "description": "What this claim can be approved without a human."
-            }
-          ]
         }
       }
     ]

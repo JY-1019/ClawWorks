@@ -7,7 +7,7 @@ trees:
   - schema: clawworks.workflow-tree
     schemaVersion: 1
     id: demo.combined-return
-    version: 1.0.0
+    version: 1.1.0
     name: Customer operations — combined return assessment
     description: >-
       Fictional Acme customer operations: order tracking, delivery questions, returns policy, and
@@ -16,7 +16,7 @@ trees:
     capabilityGrants: explicit
     root:
       id: operations
-      title: Customer operations
+      title: Confirm customer intent
       ontology:
         audit: true
         allowedTools: &allowedTools_11 [message]
@@ -33,10 +33,8 @@ trees:
             message,
           ]
         guidance: >-
-          Confirm the requested operation, supplied record ids, and explicit exclusions. Ask for missing
-          context; do not perform a downstream action. Complete this step before entering the selected next
-          step.
-        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+          Identify account, order, return, or catalog intent from the request. Preserve exclusions such as no refund or message. Complete this request check before the selected next step.
+        expectedOutput: Requested customer operation and excluded external actions.
       children:
         - id: operations.accounts
           title: Account help
@@ -44,8 +42,8 @@ trees:
           ontology:
             deniedTools: *deniedTools_1
         - id: operations.orders
-          title: Order operations
-          description: Check the request and prerequisites for order operations.
+          title: Check order context
+          description: Confirm the supplied order id for order-specific requests.
           children:
             - id: operations.orders.delivery
               title: Delivery tracking
@@ -57,8 +55,8 @@ trees:
                 allowedTools:
                   [acme-tracker__*, acme_tracker__*, mcp__acme-tracker__*, mcp__acme_tracker__*]
             - id: operations.orders.returns
-              title: Returns
-              description: Check the request and prerequisites for returns.
+              title: Confirm return scope
+              description: Distinguish policy explanation, assessment, and manual-review guidance.
               children:
                 - id: operations.orders.returns.policy
                   title: Explain the return policy
@@ -68,8 +66,8 @@ trees:
                     knowledgeFoundations: &knowledgeFoundations_5 [demo.return-policy]
                     deniedTools: *deniedTools_1
                 - id: operations.orders.returns.cases
-                  title: Return case work
-                  description: Check the request and prerequisites for return case work.
+                  title: Check assessment identifiers
+                  description: Require fresh case and evidence identifiers when a recorded assessment is requested.
                   children:
                     - id: operations.orders.returns.cases.assess
                       title: Assess and record a return
@@ -156,18 +154,15 @@ trees:
                         deniedTools: *deniedTools_1
                   ontology:
                     deniedTools: *deniedTools_1
-                    guidance:
-                      Confirm the context and required inputs for return case work. Use supplied facts and prior step
-                      results; do not execute a child action here. Complete this step before entering the
-                      selected next step.
-                    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                    guidance: >-
+                      For a recorded assessment, require an order id, case-id, and evidence-id. The next assessment step must verify freshness with search_objects before writing. For manual-review guidance no record is created.
+                    expectedOutput: Supplied assessment identifiers, or a read-only manual-review request.
                     allowedTools: *allowedTools_11
               ontology:
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for returns. Use supplied facts and prior step results; do
-                  not execute a child action here. Complete this step before entering the selected next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Confirm whether the user wants policy only, a recorded assessment, or manual-review guidance. Do not imply eligibility or authorize a refund before the assessment step runs.
+                expectedOutput: Return task and whether local assessment records are requested.
                 allowedTools: *allowedTools_11
             - id: operations.orders.billing
               title: Billing questions
@@ -176,18 +171,16 @@ trees:
                 deniedTools: *deniedTools_1
           ontology:
             deniedTools: *deniedTools_1
-            guidance:
-              Confirm the context and required inputs for order operations. Use supplied facts and prior step
-              results; do not execute a child action here. Complete this step before entering the selected
-              next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              For tracking or assessment require an order id; policy-only questions do not require one. Carry the supplied id forward without claiming an MCP lookup has happened.
+            expectedOutput: Supplied order id or an explicitly policy-only request.
             allowedTools: *allowedTools_11
         - id: operations.catalog
           title: Product questions
           description: Product information requests; no order lookup or return assessment.
           ontology:
             deniedTools: *deniedTools_1
-      description: Check the request and prerequisites for customer operations.
+      description: Identify the requested customer operation and explicit exclusions.
 knowledgeFoundations:
   - id: demo.return-policy
     descriptor:

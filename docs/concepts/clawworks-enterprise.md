@@ -186,15 +186,20 @@ root:
         allowedTools: [memory_search, knowledge_search]
         knowledgeFoundations: [acme.support-kb]
         audit: true
-    - id: support.resolve
-      title: Resolve or escalate
-      ontology:
-        allowedTools: [memory_search, message]
-        deniedTools: [exec, process]
-        skills: [refund-playbook]
-        mcpServers: [acme-tracker]
-        expectedOutput: A resolution summary or an escalation note.
+      children:
+        - id: support.resolve
+          title: Resolve or escalate
+          ontology:
+            allowedTools: [memory_search, message]
+            deniedTools: [exec, process]
+            skills: [refund-playbook]
+            mcpServers: [acme-tracker]
+            expectedOutput: A resolution summary or an escalation note.
 ```
+
+Selecting `support.resolve` runs `support` → `support.triage` →
+`support.resolve`; completing the parent is required before the child starts.
+Selecting `support.triage` stops before resolution.
 
 A node's `ontology.skills` names the [skills](/tools/skills) whose know-how the
 step depends on, using flat SKILL.md names (lowercase letters, digits, hyphens).

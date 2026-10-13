@@ -136,10 +136,10 @@ The remaining core tour uses Chat, Worktree, and History.
 
 In **Worktree**, select `demo.service-incident` and check **enforce** mode.
 Its two branches separate internal incident handling from public communications.
-Select a leaf to inspect **Step bindings**, instructions, **Ontology**, **Actions**,
+Select a step to inspect **Step bindings**, instructions, **Ontology**, **Actions**,
 **Objects**, and **Derived values**.
 
-The bundle contains **11 nodes, 8 executable steps, 2 policy corpora with 4 snippets,
+The bundle contains **11 executable nodes (3 checks and 8 operation steps), 2 policy corpora with 4 snippets,
 2 object types, 1 relationship, 4 actions, and 1 function**. It has no required MCP
 servers or skills. Empty Objects tables are expected before you create an incident.
 
@@ -209,7 +209,7 @@ and an embedding binding; `.env.example` includes hosted and local-Ollama option
 
 6. Ask **"Order 1043 arrived last week. Can the customer return it?"**, then inspect the run under
    **Enterprise → History**. Ask **"For return order 1043, list the files in my home directory"**
-   to test the root denial. Confirm that `acme.returns` was selected before grading the refusal.
+   to test the active step's local denial. Confirm that `acme.returns` was selected before grading the refusal.
 7. Tear down the tutorial stack when finished:
 
    ```bash
@@ -229,7 +229,7 @@ ship in this repository:
 | Example                                                                                                        | Use it to prove                                                                                          |
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [`service-incident.clawworks-bundle.yaml`](examples/enterprise/golden/service-incident.clawworks-bundle.yaml)  | Self-contained routing, local records, derived priority, graph links, scoped knowledge, and hard denials |
-| [`tutorial/`](examples/enterprise/tutorial/README.md)                                                          | A real local knowledge service, read-only MCP order data, an installed skill, and inherited grants       |
+| [`tutorial/`](examples/enterprise/tutorial/README.md)                                                          | A real local knowledge service, read-only MCP order data, an installed skill, and local step grants      |
 | [`financial-operations.clawworks-bundle.yaml`](examples/enterprise/financial-operations.clawworks-bundle.yaml) | Multi-domain isolation, external-action contracts, knowledge and skill scope, and lifecycle boundaries   |
 
 The catalog gives copyable requests, required evidence, and regression signals for each example.
@@ -325,7 +325,7 @@ step's rules up front and the prompt cache stays stable.
 lasts as long as its work does, instead of expiring after one provider turn.
 
 **4 · The tool-call gate.** Each governed call is evaluated against the active node's ontology merged
-down the root-to-active path, then against configured governance policies.
+on the active step, then against configured governance policies.
 
 ### The design principle: omissions ask, decisions block
 

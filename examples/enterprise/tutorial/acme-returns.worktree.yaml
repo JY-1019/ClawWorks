@@ -2,13 +2,14 @@
 # openclaw enterprise trees import examples/enterprise/tutorial/acme-returns.worktree.yaml
 # openclaw gateway restart
 # Register acme-tracker and acme.returns-kb before using their bindings.
-# All selected nodes execute: request check, then the requested operation steps.
+# Assessment chain: returns -> triage -> lookup -> decide; each predecessor must complete.
+# Delivery-only requests use returns -> delivery and never enter the assessment chain.
 # Permissions are local. Denials are repeated because they apply to every step.
 # This example uses permissive grants and the embedded per-call MCP runtime.
 schema: clawworks.workflow-tree
 schemaVersion: 1
 id: acme.returns
-version: 1.0.0
+version: 1.1.0
 name: Returns desk
 
 # The routing signal, and the only thing that decides whether a request enters
@@ -27,7 +28,7 @@ match:
 
 root:
   id: returns
-  title: Returns desk
+  title: Confirm the returns request
   description: Check the request and prerequisites for returns desk.
   ontology:
     deniedTools: &deniedTools_1 [exec, write, edit]
@@ -50,20 +51,33 @@ root:
         # Trace every tool decision under this step, including default allows.
         audit: true
         deniedTools: *deniedTools_1
-    - id: returns.lookup
-      title: Look up the order
-      description: Fetch the order and its shipment from the tracker.
+      children:
+        - id: returns.lookup
+          title: Look up the order
+          description: After reading the policy, fetch order and shipment facts for a return assessment.
+          ontology:
+            mcpServers: [acme-tracker]
+            audit: true
+            deniedTools: *deniedTools_1
+          children:
+            - id: returns.decide
+              title: Decide and reply
+              description: After policy and order lookup complete, assess return eligibility and write the answer.
+              ontology:
+                allowedTools: *allowedTools_3
+                # Advisory: selected-route skills are loaded for the run. Apply this
+                # reply style here; the skill does not grant tools.
+                skills: [refund-reply]
+                expectedOutput: The decision, the rule it rests on, and the order id.
+                deniedTools: *deniedTools_1
+    - id: returns.delivery
+      title: Check delivery only
+      description: Read order and shipment status without a policy lookup or return decision.
       ontology:
         mcpServers: [acme-tracker]
         audit: true
         deniedTools: *deniedTools_1
-    - id: returns.decide
-      title: Decide and reply
-      description: Apply the rule to the order and write the answer.
-      ontology:
-        allowedTools: *allowedTools_3
-        # Advisory: the skill's SKILL.md body is inlined into this step's digest
-        # at run start. It never grants a tool the step withholds.
-        skills: [refund-reply]
-        expectedOutput: The decision, the rule it rests on, and the order id.
-        deniedTools: *deniedTools_1
+        guidance: >-
+          Fetch only the requested order and shipment facts. Report a missing order honestly.
+          Do not assess return eligibility, retrieve policy, or claim a refund.
+        expectedOutput: Actual order status, shipment facts, or the tracker's not-found result.

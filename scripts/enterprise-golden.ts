@@ -24,9 +24,8 @@
  * below open with a write.
  *
  * Three small work-maps are still built INLINE at the end, for semantics one tree
- * cannot carry: the inherited (non-explicit) grant mode, a root tool grant
- * inherited by a step that grants none, and the CLI overlay's plugin/attachment
- * filter order.
+ * cannot carry: permissive local grants, a root-only grant that does not pass
+ * to its child, and the CLI overlay's plugin/attachment filter order.
  *
  * It is hermetic: `OPENCLAW_STATE_DIR` points at a fresh temp dir, so it never
  * reads or writes the operator's real state database.
@@ -142,9 +141,45 @@ async function main(): Promise<number> {
   const toolError = (result: unknown): string =>
     (result as { details?: { error?: string } }).details?.error ?? "";
 
-  /** Open a mediated run on one route of the shipped example. */
-  const openRun = (runId: string, prompt: string, routes: string[]) =>
-    beginEnterpriseRun({
+  // These are deterministic tool/gate checks with supplied fixture context. The
+  // helper completes each prerequisite through the public transition API; it
+  // does not claim that a model performed the prerequisite's business analysis.
+  const advanceTo = (runId: string, nodeId: string) => {
+    const run = getEnterpriseActiveRun(runId);
+    if (!run?.plan.nodes.some((node) => node.nodeId === nodeId)) {
+      throw new Error(`Missing selected step ${nodeId}`);
+    }
+    while (getEnterpriseActiveRun(runId)?.plan.activeNodeId !== nodeId) {
+      const active = getEnterpriseActiveRun(runId)?.plan.activeNodeId;
+      if (!active) {
+        throw new Error(`Route ended before ${nodeId}`);
+      }
+      const advance = completeEnterpriseStep({
+        runId,
+        summary: `Fixture prerequisites supplied for ${active}`,
+      });
+      if (advance.kind !== "advanced") {
+        throw new Error(`Cannot advance from ${active} to ${nodeId}: ${advance.kind}`);
+      }
+    }
+  };
+  const finishRun = (runId: string) => {
+    const active = getEnterpriseActiveRun(runId)?.plan.activeNodeId;
+    if (active) {
+      completeEnterpriseStep({ runId, summary: `Golden tool assertions finished for ${active}` });
+    }
+    // Some fixtures test a launch ceiling for several steps without exercising
+    // every business operation. Do not record those partial routes as completed.
+    const status = getEnterpriseActiveRun(runId)?.routeCompleted ? "completed" : "aborted";
+    endEnterpriseRun({ runId, status });
+  };
+  const openRun = async (
+    runId: string,
+    prompt: string,
+    routes: [string, ...string[]],
+    startAt = routes[0],
+  ) => {
+    const mediation = await beginEnterpriseRun({
       runId,
       prompt,
       config: MCP_CONFIG as never,
@@ -155,6 +190,14 @@ async function main(): Promise<number> {
         rationale: "golden",
       }),
     });
+    expectEqual(
+      `${runId} starts at the request step`,
+      getEnterpriseActiveRun(runId)?.plan.activeNodeId,
+      "finops",
+    );
+    advanceTo(runId, startAt);
+    return mediation;
+  };
 
   // ---- 1. The shipped example imports, and everything it promises arrives with
   // it: the six corpora inlined and registered, no dangling reference, and no
@@ -241,7 +284,7 @@ async function main(): Promise<number> {
       ),
       [["CS-9001", "AL-9001", "open", "Mina Park"]],
     );
-    endEnterpriseRun({ runId: caseRunId, status: "completed" });
+    finishRun(caseRunId);
 
     const dispositionRunId = "golden-case-disposition";
     await openRun(dispositionRunId, "CS-9001 보고 가능으로 처분", [
@@ -259,7 +302,7 @@ async function main(): Promise<number> {
         ),
       JSON.stringify(disposed).slice(0, 120),
     );
-    endEnterpriseRun({ runId: dispositionRunId, status: "completed" });
+    finishRun(dispositionRunId);
 
     const runId = "golden-reads";
     await openRun(runId, "CS-9001 케이스 SAR 초안 작성", ["finops.risk.monitoring.sar-filing"]);
@@ -375,7 +418,7 @@ async function main(): Promise<number> {
       offBranchText.includes("not in the ontology of this workflow step"),
       offBranchText.slice(0, 140),
     );
-    endEnterpriseRun({ runId, status: "completed" });
+    finishRun(runId);
   }
 
   // ---- 2b. The derived-value tool, and the lifecycle gap it now sits on.
@@ -410,7 +453,7 @@ async function main(): Promise<number> {
         !computedText.includes("standard"),
       computedText.slice(0, 140),
     );
-    endEnterpriseRun({ runId, status: "completed" });
+    finishRun(runId);
   }
 
   // ---- 3. No planner: the DEFAULT tree governs, not this work-map.
@@ -428,7 +471,7 @@ async function main(): Promise<number> {
     // ...and its scope is permissive, so an unrelated request is not restricted.
     const verdict = evaluateEnterpriseToolCall({ runId, toolName: "exec" });
     expectEqual("no planner -> tools stay open", verdict?.blocked ?? false, false);
-    endEnterpriseRun({ runId, status: "completed" });
+    finishRun(runId);
   }
 
   // ---- 4. A planner route narrows a 46-node work-map to the branches it chose,
@@ -436,24 +479,25 @@ async function main(): Promise<number> {
   // one.
   {
     const runId = "golden-routed";
-    const mediation = await openRun(runId, "CL-6101 접수 분류하고 지급 처리해줘", [
-      "finops.claims.intake.triage",
-      "finops.claims.settlement.payment",
-    ]);
+    const mediation = await openRun(
+      runId,
+      "CL-6101 접수 분류하고 지급 처리해줘",
+      ["finops.claims.intake.triage", "finops.claims.settlement.authority.payment"],
+      "finops",
+    );
     const plan = mediation.kind === "mediated" ? mediation.plan : null;
     expectEqual(
-      "the route keeps the chosen branches and the ancestors that govern them",
+      "the route keeps chosen endpoints and executable prerequisites",
       plan?.nodes.map((node) => node.nodeId),
       [
-        // Ancestors are kept on purpose: governance merges every ontology down the
-        // root→active path, so dropping one would drop the tool ceiling, the object
-        // types and the corpora it declares.
+        // Shared request checks run once, before either selected operation.
         "finops",
         "finops.claims",
         "finops.claims.intake",
         "finops.claims.intake.triage",
         "finops.claims.settlement",
-        "finops.claims.settlement.payment",
+        "finops.claims.settlement.authority",
+        "finops.claims.settlement.authority.payment",
       ],
     );
     expectEqual("matchedBy records the model chose", plan?.matchedBy, "planner");
@@ -482,7 +526,7 @@ async function main(): Promise<number> {
       unroutedLeaked
         ? "an unrouted step leaked into the digest"
         : routedInDigest
-          ? `${digest.length} chars, 28 unrouted steps omitted`
+          ? `${digest.length} chars, unrelated branches omitted`
           : "a routed step is missing from the digest",
     );
     // The declared types have to reach the model too, or it cannot name a real id.
@@ -496,19 +540,13 @@ async function main(): Promise<number> {
       `claim=${declaresClaim} payment=${declaresPayment}`,
     );
 
-    // Mediation already opened the run on its first routed leaf.
-    expectEqual(
-      "the run opens on the first routed step",
-      plan?.activeNodeId,
-      "finops.claims.intake.triage",
-    );
-    // "blocked" alone would stay green if inheritance regressed, because the leaf
-    // excludes exec through its own allow-list too. The reason names the step that
-    // decided, so assert it is the ROOT.
+    expectEqual("the run opens on the request step", plan?.activeNodeId, "finops");
+    advanceTo(runId, "finops.claims.intake.triage");
     const execVerdict = evaluateEnterpriseToolCall({ runId, toolName: "exec" });
     record(
-      "the root's hard denial is inherited by the step",
-      Boolean(execVerdict?.blocked) && execVerdict?.decision.reason.includes('step "finops"'),
+      "the active step enforces its own hard denial",
+      Boolean(execVerdict?.blocked) &&
+        execVerdict?.decision.reason.includes('step "finops.claims.intake.triage"'),
       execVerdict?.decision.reason ?? "no verdict",
     );
     expectEqual(
@@ -536,11 +574,11 @@ async function main(): Promise<number> {
     );
 
     // ---- 5. Advancing the step moves the scope with it.
-    completeEnterpriseStep({ runId }); // advances to finops.claims.settlement.payment
+    advanceTo(runId, "finops.claims.settlement.authority.payment");
     expectEqual(
       "after advancing, the run stands on the next routed step",
       getEnterpriseActiveRun(runId)?.plan.activeNodeId,
-      "finops.claims.settlement.payment",
+      "finops.claims.settlement.authority.payment",
     );
     expectEqual(
       "after advancing, the write step may write",
@@ -611,7 +649,7 @@ async function main(): Promise<number> {
         undeclared.decision.reason.includes("is not one of the outward actions"),
       undeclared?.decision.reason ?? "no verdict",
     );
-    endEnterpriseRun({ runId, status: "completed" });
+    finishRun(runId);
   }
 
   // ---- 7. The LOCAL half of the same step, and the lifecycle rule underneath it.
@@ -625,7 +663,7 @@ async function main(): Promise<number> {
   // because a claim invented here would satisfy no branch's declared shape.
   {
     const settleId = "golden-settle-claim";
-    await openRun(settleId, "CL-6101 지급 기록", ["finops.claims.settlement.payment"]);
+    await openRun(settleId, "CL-6101 지급 기록", ["finops.claims.settlement.authority.payment"]);
     const settled = await createInvokeActionTool({ runId: settleId }).execute("settle-call", {
       action: "settle-claim",
       args: { "claim-id": "CL-6101", status: "settled" },
@@ -641,7 +679,7 @@ async function main(): Promise<number> {
       searchOntologyObjects({ treeId: TREE_ID, entity: "claim", limit: 10 }).length,
       0,
     );
-    endEnterpriseRun({ runId: settleId, status: "completed" });
+    finishRun(settleId);
 
     // The same rule at the other end of the tree, on the step that files. This is
     // the only place a period's return moves to `filed`, and `period` is
@@ -670,7 +708,7 @@ async function main(): Promise<number> {
       ),
       declaredText.slice(0, 140),
     );
-    endEnterpriseRun({ runId: filingId, status: "completed" });
+    finishRun(filingId);
   }
 
   // ---- 8. MCP: five servers, and the attachment is the whole grant. Both
@@ -680,7 +718,7 @@ async function main(): Promise<number> {
     // The ledger step. One branch away from the two steps that reach the screening
     // provider, and the only step in 30 that can move money.
     const ledgerId = "golden-mcp-ledger";
-    await openRun(ledgerId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
+    await openRun(ledgerId, "CL-6101 지급", ["finops.claims.settlement.authority.payment"]);
     expectEqual(
       "the payment step may call the ledger operation its action declares",
       mcpVerdict(ledgerId, "acme-ledger", "post_payment", {
@@ -710,7 +748,7 @@ async function main(): Promise<number> {
       mcpVerdict(ledgerId, "other-tracker", "create_issue")?.blocked ?? false,
       true,
     );
-    endEnterpriseRun({ runId: ledgerId, status: "completed" });
+    finishRun(ledgerId);
 
     // The same server, attached in a SECOND domain. An attachment is per-step: the
     // onboarding screening step reaching it says nothing about this one.
@@ -728,11 +766,11 @@ async function main(): Promise<number> {
       mcpVerdict(screeningId, "acme-ledger", "transfer")?.blocked ?? false,
       true,
     );
-    endEnterpriseRun({ runId: screeningId, status: "completed" });
+    finishRun(screeningId);
 
     // The immediate SIBLING of an attaching step. This is the case a tool-scope
     // check cannot catch: adjudicate sits under the same parent as the screening
-    // step and inherits everything except the attachment.
+    // step with independent local declarations and no screening attachment.
     const siblingId = "golden-mcp-sibling";
     await openRun(siblingId, "CU-1002 심사 판정", [
       "finops.customer.onboarding.kyc-review.adjudicate",
@@ -747,7 +785,7 @@ async function main(): Promise<number> {
       mcpVerdict(siblingId, "acme-screening", "lookup")?.blocked ?? false,
       true,
     );
-    endEnterpriseRun({ runId: siblingId, status: "completed" });
+    finishRun(siblingId);
 
     // A denial outranks the attachment. The dispute step attaches the tracker and
     // then takes ONE destructive operation back — refused outright rather than
@@ -766,7 +804,7 @@ async function main(): Promise<number> {
         takenBack.decision.reason.includes("ontology.deniedTools"),
       takenBack?.decision.reason ?? "no verdict",
     );
-    endEnterpriseRun({ runId: disputeId, status: "completed" });
+    finishRun(disputeId);
 
     // What a HOOKLESS runtime actually receives, which is not the route's union.
     // The server is handed to the subprocess ONCE, before it connects, and nothing
@@ -779,51 +817,46 @@ async function main(): Promise<number> {
     // a much weaker claim than it reads as.
     const { enterpriseRunAttachedMcpServers } = await import("../src/enterprise/active-runs.js");
     const soloId = "golden-mcp-native-solo";
-    await openRun(soloId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
+    await openRun(soloId, "CL-6101 지급", ["finops.claims.settlement.authority.payment"]);
     expectEqual(
-      "a route that is only the ledger step hands the ledger over at launch",
+      "ledger launch is withheld because its prerequisite steps do not attach it",
       [...(enterpriseRunAttachedMcpServers(soloId, []) ?? ["<not governed>"])],
-      ["acme-ledger"],
+      [],
     );
-    endEnterpriseRun({ runId: soloId, status: "completed" });
+    finishRun(soloId);
 
     const mixedId = "golden-mcp-native-mixed";
     await openRun(mixedId, "CL-6101 분류 후 지급", [
       "finops.claims.intake.triage",
-      "finops.claims.settlement.payment",
+      "finops.claims.settlement.authority.payment",
     ]);
     expectEqual(
       "adding a step that must not reach it withholds it from the whole run",
       [...(enterpriseRunAttachedMcpServers(mixedId, []) ?? ["<not governed>"])],
       [],
     );
-    endEnterpriseRun({ runId: mixedId, status: "completed" });
+    finishRun(mixedId);
 
-    // And the sharper half of the same rule: a server carrying ANY per-operation
-    // denial is never handed to a hookless runtime at all. `deniedTools` is read
-    // TREE-WIDE, and a native harness renames tools by rules OpenClaw cannot
-    // invert, so `acme-tracker__delete_issue` costs the tracker on EVERY route —
-    // including this one, which is the tracker's other attaching step and denies
-    // nothing itself. That price is the reason the example says so at the denial.
+    // The escalation endpoint also includes executable prerequisites without
+    // this attachment. Unselected sibling denials do not determine this ceiling.
     const trackerId = "golden-mcp-native-partial-deny";
     await openRun(trackerId, "CL-6102 사람에게 넘겨줘", ["finops.claims.intake.escalation"]);
     expectEqual(
-      "a partially denied server is withheld from a hookless run on every route",
+      "the tracker is withheld when selected prerequisites do not attach it",
       [...(enterpriseRunAttachedMcpServers(trackerId, []) ?? ["<not governed>"])],
       [],
     );
-    endEnterpriseRun({ runId: trackerId, status: "completed" });
+    finishRun(trackerId);
 
-    // The control: same shape, no per-operation denial, so it is handed over.
-    // Without this the check above would pass on any bug that withheld everything.
+    // No per-operation denial is necessary: every selected step must attach it.
     const filingId = "golden-mcp-native-undenied";
     await openRun(filingId, "Q3 신고 제출", ["finops.reporting.regulatory.submission"]);
     expectEqual(
-      "a server with no operation denied is still handed over",
+      "filing launch also requires its prerequisite steps to attach the server",
       [...(enterpriseRunAttachedMcpServers(filingId, []) ?? ["<not governed>"])],
-      ["acme-filing"],
+      [],
     );
-    endEnterpriseRun({ runId: filingId, status: "completed" });
+    finishRun(filingId);
   }
 
   // ---- 9. Knowledge: six corpora, each scoped to the steps that may query it.
@@ -869,8 +902,10 @@ async function main(): Promise<number> {
     // not the handbook's number, and that the tool refuses to produce a cap for a
     // claim nothing opened rather than falling back on the passage it just read.
     const settlementScope = getEnterpriseActiveRun(claimsId)
-      ?.plan.nodes.flatMap((node) => node.ontology.functions ?? [])
-      .find((fn) => fn.id === "auto-payable-amount");
+      ?.plan.nodes.find(
+        (node) => node.nodeId === getEnterpriseActiveRun(claimsId)?.plan.activeNodeId,
+      )
+      ?.ontology.functions?.find((fn) => fn.id === "auto-payable-amount");
     record(
       "the derived cap is declared over the record, not copied from the handbook",
       Boolean(settlementScope?.expression.includes("2500")) &&
@@ -887,7 +922,7 @@ async function main(): Promise<number> {
       capText.includes("error") && !capText.includes("5000") && !capText.includes("2500"),
       capText.slice(0, 140),
     );
-    endEnterpriseRun({ runId: claimsId, status: "completed" });
+    finishRun(claimsId);
 
     // The cross-domain corpus. acme.aml-policy is granted to the whole risk domain
     // AND to reporting, so the filing step answers from it and from the regulatory
@@ -908,15 +943,15 @@ async function main(): Promise<number> {
       ].toSorted(),
       ["acme.aml-policy", "acme.regulatory-code"],
     );
-    endEnterpriseRun({ runId: filingId, status: "completed" });
+    finishRun(filingId);
 
     // The other half of the rule: a grant made by an ANCESTOR reaches a step that
     // names no corpus of its own. Every other step here narrows; coverage-check is
-    // the one that inherits.
+    // the one that explicitly declares the coverage corpus.
     const inheritId = "golden-knowledge-inherited";
     await openRun(inheritId, "CL-6102 보장 범위", ["finops.claims.adjudication.coverage-check"]);
     expectEqual(
-      "a step that names no corpus inherits its domain's grant",
+      "the coverage step retrieves only its locally declared corpus",
       [
         ...new Set(
           (
@@ -937,7 +972,7 @@ async function main(): Promise<number> {
       ],
       ["acme.privacy-standard"],
     );
-    endEnterpriseRun({ runId: inheritId, status: "completed" });
+    finishRun(inheritId);
 
     // The step that actually sends customer data to an outside provider holds the
     // standard that says how much may go, and its sibling — which never leaves the
@@ -961,7 +996,7 @@ async function main(): Promise<number> {
       ].toSorted(),
       ["acme.kyc-manual", "acme.privacy-standard"],
     );
-    endEnterpriseRun({ runId: outboundId, status: "completed" });
+    finishRun(outboundId);
 
     const inboundId = "golden-knowledge-inbound";
     await openRun(inboundId, "CU-1002 심사 판정", [
@@ -978,7 +1013,7 @@ async function main(): Promise<number> {
       ).skipped.map((entry) => entry.foundationId),
       ["acme.privacy-standard"],
     );
-    endEnterpriseRun({ runId: inboundId, status: "completed" });
+    finishRun(inboundId);
 
     // A step must be able to read the rule its own title rests on. The
     // underwriting branch is the case that proves it: the risk domain's AML corpus
@@ -986,7 +1021,7 @@ async function main(): Promise<number> {
     // so a decision step holding only that could not decide anything the root's
     // no-invented-policy constraint permits.
     const creditId = "golden-knowledge-credit";
-    await openRun(creditId, "CU-1002 여신 판단", ["finops.risk.underwriting.decision"]);
+    await openRun(creditId, "CU-1002 여신 판단", ["finops.risk.underwriting.scoring.decision"]);
     expectEqual(
       "the underwriting step reads the corpus its decision rests on",
       [
@@ -1012,7 +1047,7 @@ async function main(): Promise<number> {
       ).skipped.map((entry) => entry.foundationId),
       ["acme.claims-handbook"],
     );
-    endEnterpriseRun({ runId: creditId, status: "completed" });
+    finishRun(creditId);
 
     const monitorId = "golden-knowledge-monitoring";
     await openRun(monitorId, "AL-6002 분류", ["finops.risk.monitoring.alert-triage"]);
@@ -1027,19 +1062,19 @@ async function main(): Promise<number> {
       ).skipped.map((entry) => entry.foundationId),
       ["acme.credit-policy"],
     );
-    endEnterpriseRun({ runId: monitorId, status: "completed" });
+    finishRun(monitorId);
 
     // A step that drops knowledge_search cannot retrieve at all, even though its
-    // ancestors still scope a corpus to it. The two gates are independent.
+    // its own declaration still names a corpus. The two gates are independent.
     const noRetrievalId = "golden-knowledge-closed";
-    await openRun(noRetrievalId, "CL-6101 지급", ["finops.claims.settlement.payment"]);
+    await openRun(noRetrievalId, "CL-6101 지급", ["finops.claims.settlement.authority.payment"]);
     expectEqual(
       "a step without knowledge_search cannot retrieve, whatever it was granted",
       evaluateEnterpriseToolCall({ runId: noRetrievalId, toolName: "knowledge_search" })
         ?.requiresApproval ?? false,
       true,
     );
-    endEnterpriseRun({ runId: noRetrievalId, status: "completed" });
+    finishRun(noRetrievalId);
   }
 
   // ---- 10. Skills. A declared skill travels with the work-map, is named under its
@@ -1095,7 +1130,7 @@ async function main(): Promise<number> {
       getEnterpriseActiveRun(runId)?.plan.grantedSkills,
       ["taskflow-inbox-triage"],
     );
-    endEnterpriseRun({ runId, status: "completed" });
+    finishRun(runId);
 
     // The instructions themselves, inlined. The claims escalation step declares
     // `taskflow` and never grants `read`, so this is the case that would otherwise
@@ -1148,7 +1183,7 @@ async function main(): Promise<number> {
       // floor says so, not because a skill declaration granted it.
       "allow",
     );
-    endEnterpriseRun({ runId: inlinedId, status: "completed" });
+    finishRun(inlinedId);
 
     // A step can only surface a skill the AGENT already has: the work-map
     // declaration narrows the runner's set, it can never add to it.
@@ -1204,7 +1239,7 @@ async function main(): Promise<number> {
       enterpriseRunAdmitsHostedTool("golden-not-a-run", "web_search"),
       true,
     );
-    endEnterpriseRun({ runId: unknownId, status: "completed" });
+    finishRun(unknownId);
   }
 
   // ---- 11. A run-level deny blocks the run BEFORE any model contact, even
@@ -1245,7 +1280,7 @@ async function main(): Promise<number> {
     // example was wrongly admitted, so the check could not see the regression.
     const runId = "golden-builtin";
     let offered: string[] = [];
-    const mediation = await beginEnterpriseRun({
+    await beginEnterpriseRun({
       runId,
       prompt: "고객 지원 티켓 절차대로 처리해줘",
       routePlanner: async ({ trees }) => {
@@ -1259,19 +1294,15 @@ async function main(): Promise<number> {
       false,
     );
     expectEqual(
-      "the shipped example never binds a run",
-      mediation.kind === "mediated" ? mediation.plan.treeId : null,
-      // The planner named a tree that is not a candidate, so selection fails
-      // closed onto the installed work-map rather than the example.
-      TREE_ID,
+      "an invalid built-in selection starts no business run",
+      getEnterpriseActiveRun(runId),
+      undefined,
     );
-    endEnterpriseRun({ runId, status: "completed" });
+    finishRun(runId);
   }
 
-  // ---- 13. The INHERITED grant mode, which the shipped example cannot carry: a
-  // work-map declares one mode or the other, and the example is explicit. Built
-  // inline because the point is a tree where a step scopes nothing and therefore
-  // allows everything — the opposite of every step in the example.
+  // ---- 13. Permissive local grants: an empty child list does not inherit a
+  // parent allowlist. The root and both selected children execute in order.
   {
     const INHERITED_TREE_ID = "golden.inherited";
     const inheritedTree = {
@@ -1279,8 +1310,8 @@ async function main(): Promise<number> {
       schemaVersion: 1,
       id: INHERITED_TREE_ID,
       version: "1.0.0",
-      name: "Inherited grants",
-      description: "Work-map that narrows within what an ancestor allowed.",
+      name: "Permissive local grants",
+      description: "Sequential steps with independent local tool lists.",
       match: { triggers: ["user"], priority: 70 },
       root: {
         id: "inherit",
@@ -1307,7 +1338,7 @@ async function main(): Promise<number> {
           {
             id: "inherit.narrow",
             title: "Narrow to replying",
-            description: "A step that narrows within the root's list.",
+            description: "A step with its own reply allowlist.",
             ontology: { allowedTools: ["message"] },
           },
         ],
@@ -1318,7 +1349,7 @@ async function main(): Promise<number> {
       format: "json",
     });
     record(
-      "an inherited-grants work-map imports cleanly",
+      "a permissive local-grants work-map imports cleanly",
       importedInherited.ok,
       importedInherited.ok ? INHERITED_TREE_ID : JSON.stringify(importedInherited.issues),
     );
@@ -1331,29 +1362,35 @@ async function main(): Promise<number> {
         routePlanner: async () => ({
           kind: "decided",
           treeId: INHERITED_TREE_ID,
-          routes: [],
-          rationale: "inherited",
+          routes: ["inherit.open", "inherit.narrow"],
+          rationale: "local scopes",
         }),
       });
       expectEqual(
-        "the run opens on the step that scopes nothing",
+        "custom root executes first",
+        getEnterpriseActiveRun(runId)?.plan.activeNodeId,
+        "inherit",
+      );
+      completeEnterpriseStep({ runId, summary: "Widget request confirmed" });
+      expectEqual(
+        "the next step declares no tool restrictions",
         getEnterpriseActiveRun(runId)?.plan.activeNodeId,
         "inherit.open",
       );
       expectEqual(
-        "under inherited grants, a step that scopes nothing keeps the root's list",
+        "permissive local scope allows unlisted ordinary tools",
         evaluateEnterpriseToolCall({ runId, toolName: "search_objects" })?.blocked ?? false,
         false,
       );
       expectEqual(
-        "and is still bounded by it",
+        "the root tool list does not restrict the child",
         evaluateEnterpriseToolCall({ runId, toolName: "exec" })?.requiresApproval ?? false,
-        true,
+        false,
       );
       // The precedence gloss is CONDITIONAL, so a work-map with only one retrieval
       // family pays no prompt bytes for a choice it never faces. This tree carries
       // objects and no corpus, which is the case the shipped example cannot show —
-      // every route through it inherits a domain's knowledge grant.
+      // business steps explicitly declare their own knowledge grants.
       record(
         "a work-map with no knowledge source is not given the store-vs-corpus rule",
         !(mediation.kind === "mediated" ? mediation.promptSection : "").includes(
@@ -1373,14 +1410,12 @@ async function main(): Promise<number> {
         evaluateEnterpriseToolCall({ runId, toolName: "message" })?.blocked ?? false,
         false,
       );
-      endEnterpriseRun({ runId, status: "completed" });
+      finishRun(runId);
     }
   }
 
-  // ---- 14. A ROOT tool grant inherited by a step that grants none of its own.
-  // Inline, because the shipped example's root deliberately grants no tools: the
-  // ontology write opt-in is existential over the root→step path, so an
-  // `invoke_action` there would hand write consent to all 30 steps.
+  // ---- 14. Explicit local grants do not pass from a root into its child.
+  // Selected-route skills still load once for the run, including root skills.
   {
     const ROOT_GRANT_TREE_ID = "golden.root-grant";
     const rootGrantTree = {
@@ -1389,7 +1424,7 @@ async function main(): Promise<number> {
       id: ROOT_GRANT_TREE_ID,
       version: "1.0.0",
       name: "Root grant",
-      description: "Explicit work-map whose root carries the grant its steps rely on.",
+      description: "Explicit work-map whose root grants only its own tools.",
       match: { triggers: ["user"], priority: 80 },
       capabilityGrants: "explicit",
       root: {
@@ -1400,7 +1435,7 @@ async function main(): Promise<number> {
         children: [
           {
             id: "grant.narrow",
-            title: "Work within the root grant",
+            title: "Check the independent child scope",
             description: "A step that attaches nothing of its own.",
             ontology: { skills: ["taskflow"] },
           },
@@ -1432,9 +1467,21 @@ async function main(): Promise<number> {
         }),
       });
       expectEqual(
-        "a tool the root grants is callable from a step that grants none of its own",
+        "the explicit root executes first",
+        getEnterpriseActiveRun(runId)?.plan.activeNodeId,
+        "grant",
+      );
+      expectEqual(
+        "the root can call its own declared tool",
         evaluateEnterpriseToolCall({ runId, toolName: "knowledge_search" })?.blocked ?? false,
         false,
+      );
+      completeEnterpriseStep({ runId, summary: "Root request check complete" });
+      expectEqual(
+        "the child needs approval for the root's knowledge tool",
+        evaluateEnterpriseToolCall({ runId, toolName: "knowledge_search" })?.requiresApproval ??
+          false,
+        true,
       );
       expectEqual(
         "a tool no step grants cannot just run, even though no list excludes it",
@@ -1451,7 +1498,7 @@ async function main(): Promise<number> {
         mcpVerdict(runId, "acme-tracker", "create_issue")?.blocked ?? false,
         true,
       );
-      endEnterpriseRun({ runId, status: "completed" });
+      finishRun(runId);
     }
   }
 
@@ -1502,7 +1549,7 @@ async function main(): Promise<number> {
         routePlanner: async () => ({
           kind: "decided",
           treeId: ORDER_TREE_ID,
-          routes: [],
+          routes: ["order"],
           rationale: "order",
         }),
       });
@@ -1520,7 +1567,7 @@ async function main(): Promise<number> {
         [...(enterpriseRunAttachedMcpServers(orderRunId, ["my:server"]) ?? [])],
         [],
       );
-      endEnterpriseRun({ runId: orderRunId, status: "completed" });
+      finishRun(orderRunId);
     }
   }
 

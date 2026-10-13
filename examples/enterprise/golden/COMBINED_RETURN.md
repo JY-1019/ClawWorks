@@ -1,5 +1,7 @@
 # A complete assessment inside one deep node
 
+[전체 예제의 단계별 실행 순서 · 2026-10-13](../STEP_BY_STEP.ko.md)
+
 This example routes through five levels to
 `operations.orders.returns.cases.assess`. The root and three intermediate nodes each confirm the request and prerequisites
 before this assessment step starts. That **one assessment node** owns its MCP server,

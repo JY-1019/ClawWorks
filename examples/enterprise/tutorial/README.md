@@ -19,6 +19,26 @@ review it, and **Save** with confirmation.
 | `skills/refund-reply/`       | The skill the tutorial installs by hand.                               |
 | `acme-returns.worktree.yaml` | The finished work-map, as an answer key.                               |
 
+## Step-by-step routes (2026-10-13)
+
+```text
+returns (confirm request)
+├─ returns.triage (read policy)
+│  └─ returns.lookup (fetch order)
+│     └─ returns.decide (assess and reply)
+└─ returns.delivery (delivery lookup only)
+```
+
+Each edge means **finish the parent before starting the child**. Selecting
+`returns.decide` runs all four assessment steps; `returns.triage` stops after
+policy retrieval; `returns.delivery` runs only request confirmation and delivery
+lookup. Call `complete_step` after each active step. A missing order or failed
+policy lookup is an unresolved prerequisite, not a successful assessment.
+
+Import version **1.1.0** again when replacing the earlier sibling layout. Node
+ids stay stable except for the new `returns.delivery` endpoint; delivery-only
+queries now use that endpoint. Every node declares its own bindings and denials.
+
 ## Services
 
 For a LightRAG-only setup and 12 manual checks covering indexing, cited retrieval,

@@ -161,7 +161,7 @@ second terminal. In **Worktree**, select `demo.service-incident` and confirm
 
 > In the demo service-incident desk, what makes an incident urgent? Retrieve the incident playbook and cite the source. Do not open an incident yet.
 
-Expected route: `desk.incidents.triage`.
+Expected route: `desk` → `desk.incidents` → `desk.incidents.triage`.
 
 Pass evidence:
 
@@ -178,7 +178,7 @@ call for a policy-only question.
 
 > Open fictional demo incident INC-1001 for the Checkout service. Title: Checkout requests are timing out. Status: open. Affected users: 240. Elapsed minutes: 45. Record only these supplied test facts.
 
-Expected route: `desk.incidents.intake`; action: `open-incident`.
+Expected route: `desk` → `desk.incidents` → `desk.incidents.intake`; action: `open-incident`.
 
 Verify `INC-1001` through `search_objects` or **Worktree → Objects**, then repeat
 the same create. The second request must not overwrite the row or silently choose
@@ -188,7 +188,7 @@ Next ask:
 
 > For demo incident INC-1001, read the stored impact fields and run incident-priority. Explain the result and cite the playbook. Do not change the record.
 
-Expected route: `desk.incidents.triage`. `compute_function` must target
+Expected route: `desk` → `desk.incidents` → `desk.incidents.triage`. `compute_function` must target
 `INC-1001` and return `urgent`; the stored values remain `240` and `45`. A fresh
 incident with 12 affected users and five elapsed minutes returns `standard`.
 
@@ -200,7 +200,7 @@ thresholds.
 
 > Assign demo incident INC-1001 to Mina Park and mark it investigating. Keep its service, title, affected-user count, and elapsed minutes unchanged.
 
-Expected route: `desk.incidents.assign`; action: `assign-incident`.
+Expected route: `desk` → `desk.incidents` → `desk.incidents.assign`; action: `assign-incident`.
 
 Pass evidence: the owner and status change, while the original service, title,
 and impact fields survive. The action records a local assignment; it does not
@@ -213,7 +213,7 @@ notification was sent.
 
 > Add evidence note NOTE-1001 to demo incident INC-1001. Summary: Synthetic trace review found timeout responses on the Checkout request path. Create the local note and link it to the incident; do not run commands or contact another system.
 
-Expected route: `desk.incidents.evidence`; action: `add-incident-note`.
+Expected route: `desk` → `desk.incidents` → `desk.incidents.evidence`; action: `add-incident-note`.
 
 Then ask:
 
@@ -232,7 +232,7 @@ Use a fresh Chat session so earlier private facts are not already in context:
 
 > Draft a public status update for demo incident INC-1001 under the communication policy. Use only the public incident fields available to this step. Do not publish it or include internal notes, personal names, or a speculative recovery time.
 
-Expected route: `desk.communications.draft`.
+Expected route: `desk` → `desk.communications` → `desk.communications.draft`.
 
 Pass evidence:
 
@@ -249,13 +249,13 @@ playbook, promising recovery, or claiming delivery.
 
 > Record demo incident INC-1001 as resolved. Resolution: Synthetic retry-limit correction verified in the test scenario. This is a local exercise; do not claim a real production repair.
 
-Expected route: `desk.incidents.resolve`; action: `resolve-incident`.
+Expected route: `desk` → `desk.incidents` → `desk.incidents.resolve`; action: `resolve-incident`.
 
 Then ask:
 
 > Produce a read-only final report for demo incident INC-1001: stored status and owner, linked evidence, resolution, and policy citations. Do not create, update, or delete anything.
 
-Expected route: `desk.incidents.report`.
+Expected route: `desk` → `desk.incidents` → `desk.incidents.report`.
 
 Pass evidence: the report names the stored incident, owner, note, and resolution;
 the report step performs no action. The local `resolved` value is not proof that
@@ -275,7 +275,7 @@ a production service was repaired.
 
 > 서비스 장애 고객 공지에 어떤 필드만 넣을 수 있어? 통신 정책을 검색해서 출처와 함께 설명해줘. 장애를 조회하거나 공지를 작성·발송하지 마.
 
-Expected route: `desk.communications.policy`. The only allowed tool is
+Expected route: `desk` → `desk.communications` → `desk.communications.policy`. The only allowed tool is
 `knowledge_search`; the source is `communications/customer-updates.md` from
 `demo.communication-policy`. The answer permits incident ID, service, and status
 only, with no invented recovery time or delivery claim. This completes the
@@ -296,8 +296,8 @@ Then start a new Chat session and ask:
 
 > INC-BOUND-A, INC-BOUND-B, INC-BOUND-C를 저장소에서 각각 읽고 incident-priority 함수를 각각 호출해줘. 입력 필드와 실제 반환값을 표로 보여줘. 레코드는 바꾸지 마.
 
-Expected create route: `desk.incidents.intake`; compute route:
-`desk.incidents.triage`. Require three separate function results:
+Expected create route: `desk` → `desk.incidents` → `desk.incidents.intake`; compute route:
+`desk` → `desk.incidents` → `desk.incidents.triage`. Require three separate function results:
 
 | Object ID     | Stored users | Stored minutes | Function value |
 | ------------- | ------------ | -------------- | -------------- |
@@ -372,15 +372,15 @@ The tracker cannot issue refunds, send labels, or create escalations. A correct
 reply describes the next action and its owner; it never claims that action was
 completed.
 
-### RET-5 — Inspect all three nodes separately
+### RET-5 — Inspect policy, delivery, and full return routes
 
 Run these as separate requests before the combined eligibility cases:
 
-| Node             | Copyable request                                                                                                   | Expected result and evidence                                                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `returns.triage` | “Acme 반품 정책에서 반품 기한과 250달러 초과 환불 승인 규칙을 찾아 출처와 함께 알려줘. 주문 조회는 하지 마.”       | `knowledge_search` in `acme.returns-kb`; 30 days after delivery and manager approval above 250 USD. No invented order facts.                                                                 |
-| `returns.lookup` | “Acme 주문 1044의 주문 상태와 배송 추적을 실제 tracker에서 조회해줘. 반환된 운송사와 추적번호만 알려줘.”           | `order_status` and `shipment_track` with `orderId: "1044"`; `in_transit`, 45.5 USD, Northwind Post, `NW7781209911`. No `search_objects` substitute.                                          |
-| `returns.decide` | “앞서 확인한 1043의 실제 조회 결과와 반품 규칙을 사용해 refund-reply 방식으로 고객 답변 초안을 써줘. 발송하지 마.” | After RET-1 in the same session: skill body available on decide; four short paragraphs: decision, order, rule, one next step and owner; no headings/bullets or completed refund/label claim. |
+| Node                                                               | Copyable request                                                                                                   | Expected result and evidence                                                                                                                                                                 |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `returns` → `returns.triage`                                       | “Acme 반품 정책에서 반품 기한과 250달러 초과 환불 승인 규칙을 찾아 출처와 함께 알려줘. 주문 조회는 하지 마.”       | `knowledge_search` in `acme.returns-kb`; 30 days after delivery and manager approval above 250 USD. No invented order facts.                                                                 |
+| `returns` → `returns.delivery`                                     | “Acme 주문 1044의 주문 상태와 배송 추적을 실제 tracker에서 조회해줘. 반환된 운송사와 추적번호만 알려줘.”           | `order_status` and `shipment_track` with `orderId: "1044"`; `in_transit`, 45.5 USD, Northwind Post, `NW7781209911`. No `search_objects` substitute.                                          |
+| `returns` → `returns.triage` → `returns.lookup` → `returns.decide` | “앞서 확인한 1043의 실제 조회 결과와 반품 규칙을 사용해 refund-reply 방식으로 고객 답변 초안을 써줘. 발송하지 마.” | After RET-1 in the same session: skill body available on decide; four short paragraphs: decision, order, rule, one next step and owner; no headings/bullets or completed refund/label claim. |
 
 A four-paragraph answer alone does not prove skill loading: inspect the step's
 skill attachment and run context where available. A skill is instructions, not
@@ -397,7 +397,7 @@ not evidence that the MCP server is broken.
 ## Financial operations: the contract golden path
 
 The financial bundle is the broad, multi-domain fixture used by
-`pnpm enterprise:golden`. It currently declares 46 nodes, 30 executable steps,
+`pnpm enterprise:golden`. It currently declares 46 executable nodes (16 checks and 30 business operations),
 four domains, 12 object types, 13 relationships, six inline corpora, six derived
 functions, five named MCP servers, and two bundled skills.
 
@@ -438,7 +438,7 @@ work-map's local object tools; positive record-dependent cases are blocked.
 | “AL-6002 alert triage”              | `finops.risk.monitoring.alert-triage`; if no alert record exists, say so instead of inventing a score or priority |
 | “CL-6102 claim intake triage”       | `finops.claims.intake.triage`; use `claim-triage-band` only after reading the claim row                           |
 | “Handle a SAR”                      | Ask whether the user means risk-side drafting or reporting-side submission                                        |
-| “CU-1002 underwriting decision”     | `finops.risk.underwriting.decision`, not the claims decision sibling                                              |
+| “CU-1002 underwriting decision”     | `finops.risk.underwriting.scoring.decision`, not the claims decision sibling                                      |
 | “Check evidence for CL-6102”        | `finops.claims.intake.evidence`, not customer identity or risk case-file evidence                                 |
 | “Open a card double-charge dispute” | `finops.customer.servicing.dispute`; ask which transaction when none is identified                                |
 
@@ -505,7 +505,7 @@ reason missing, the correct behavior is to ask for those values and stop. The
 model must not invent them to satisfy the call.
 
 For the outward contract itself, the machine lane supplies a complete candidate
-call to `finops.claims.settlement.payment`. It verifies that
+call to `finops.claims.settlement.authority.payment`. It verifies that
 `acme-ledger__post_payment` requires `claim-id`, numeric `paid-amount`, and
 `reason` before the call leaves. It also verifies that other ledger operations
 remain closed.
@@ -592,14 +592,14 @@ semantic search. Include the indicated English keywords in the retrieval query.
 If a Korean-only tool query returns no snippets, retry with these words before
 concluding that the corpus is missing. Keep the user-facing answer in Korean.
 
-| Copyable question                                                                                                                   | Expected active node                              | Retrieval target and expected answer                                                                                                                          |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| “고객 신원 확인에 필요한 증빙 규칙을 two forms photographic government로 검색해서 한국어로 설명해줘. 고객 기록은 조회하지 마.”      | `finops.customer.onboarding.identity-check`       | `acme.kyc-manual`, `kyc/evidence.md`: two identity documents, at least one government-issued photo document; unverified address proof does not count.         |
-| “SAR 작성 규칙의 reportable disposition 30 calendar days를 검색해줘. 실제 SAR는 만들지 마.”                                         | `finops.risk.monitoring.sar-filing`               | `acme.aml-policy`, `aml/sar.md`: reportable disposition triggers filing within 30 calendar days. No fabricated case.                                          |
-| “청구 지급 권한 정책에서 desk authority derived cap을 검색해 일반 한도와 개별 청구 한도를 구분해줘. 청구를 계산하거나 지급하지 마.” | `finops.claims.settlement.authority`              | `acme.claims-handbook`, `claims/authority.md`: general desk authority 5,000 USD after coverage confirmation; individual cap requires its own record/function. |
-| “여신 예외 규칙을 human credit officer exception high로 검색해줘. 고객에 대한 결정을 내리지는 마.”                                  | `finops.risk.underwriting.exception`              | `acme.credit-policy`, `credit/exceptions.md`: only a human credit officer grants exceptions; no exception for high risk-rating.                               |
-| “규제 보고 준비 단계에서 quarterly 45 days period ends를 검색해서 분기 보고 기한을 알려줘. 제출하지 마.”                            | `finops.reporting.regulatory.preparation`         | `acme.regulatory-code`, `code/deadlines.md`: 45 days after period end; SAR has a separate 30-day clock.                                                       |
-| “고객 KYC 외부 스크리닝 전에 name jurisdiction last four를 검색해서 전달 가능한 개인정보를 알려줘. 외부 호출하지 마.”               | `finops.customer.onboarding.kyc-review.screening` | `acme.privacy-standard`, `privacy/disclosure.md`: name and jurisdiction for screening; no full account/card number.                                           |
+| Copyable question                                                                                                                                            | Full execution path           | Retrieval target and expected answer                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| “고객 신원 확인에 필요한 증빙 규칙을 two forms photographic government로 검색해서 한국어로 설명해줘. 고객 기록은 조회하지 마.”                               | `finops` → `finops.customer`  | `acme.kyc-manual`, `kyc/evidence.md`: two identity documents, at least one government-issued photo document; unverified address proof does not count.         |
+| “SAR 작성 규칙의 reportable disposition 30 calendar days를 검색해줘. 실제 SAR는 만들지 마.”                                                                  | `finops` → `finops.risk`      | `acme.aml-policy`, `aml/sar.md`: reportable disposition triggers filing within 30 calendar days. No fabricated case.                                          |
+| “청구 지급 권한 정책에서 desk authority derived cap을 검색해 일반 한도와 개별 청구 한도를 구분해줘. 청구를 계산하거나 지급하지 마.”                          | `finops` → `finops.claims`    | `acme.claims-handbook`, `claims/authority.md`: general desk authority 5,000 USD after coverage confirmation; individual cap requires its own record/function. |
+| “일반 여신 예외 정책만 human credit officer exception high로 검색해서 설명해줘. 고객 기록 조회, 점수 계산, 심사 결정, 고객별 예외 메모 작성은 모두 하지 마.” | `finops` → `finops.risk`      | `acme.credit-policy`, `credit/exceptions.md`: only a human credit officer grants exceptions; no exception for high risk-rating.                               |
+| “일반 규제 보고 기한 정책만 quarterly 45 days period ends로 검색해서 알려줘. 특정 보고서 조회, 수치 수집, 보고 준비, 제출은 모두 하지 마.”                   | `finops` → `finops.reporting` | `acme.regulatory-code`, `code/deadlines.md`: 45 days after period end; SAR has a separate 30-day clock.                                                       |
+| “일반 개인정보 전달 정책만 name jurisdiction last four로 검색해서 설명해줘. 고객 기록 조회, 신청자 신원 검증, 스크리닝 준비, 외부 호출은 모두 하지 마.”      | `finops` → `finops.customer`  | `acme.privacy-standard`, `privacy/disclosure.md`: name and jurisdiction for screening; no full account/card number.                                           |
 
 Inspect `knowledge_search` inputs, returned `foundationId`, `source`, and `text`.
 Then ask the adjudication sibling to retrieve `acme.privacy-standard` without
@@ -636,30 +636,30 @@ steps may precede it. The question's node name is not proof of the route.
 
 #### Customer nodes
 
-| Expected node                                      | Copyable question                                                                                                                                               | Evidence to inspect                                                                                                                                                                    |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finops.customer.onboarding.identity-check`        | “고객 C-GC-01의 신원확인 서류 ID, 종류, 검증 여부와 부족한 서류를 조회하고 규정을 인용해줘.”                                                                    | Customer/document reads and `customer-evidenced-by-document` traversal; `kyc/evidence.md`; no invented evidence.                                                                       |
-| `finops.customer.onboarding.kyc-review.screening`  | “테스트 신청자 이름은 Golden Test Applicant, 관할은 KR이야. 제재·PEP 목록을 조회하고 외부로 보낸 필드, 목록 버전, 후보 매치를 보여줘. 최종 승인하지 마.”        | KYC/privacy retrieval; actual `acme-screening` call with supplied name/jurisdiction only. Requires sandbox server; these supplied fields do not require a local customer row.          |
-| `finops.customer.onboarding.kyc-review.adjudicate` | “C-GC-01의 저장된 증빙과 앞서 받은 실제 스크리닝 결과로 KYC 통과 여부를 판단해줘. 스크리닝은 다시 호출하지 마.”                                                 | Object/neighbor reads plus KYC citation. No sibling screening MCP or privacy corpus; absent evidence means no clearance.                                                               |
-| `finops.customer.onboarding.risk-rating`           | “C-GC-01의 관할, 상품, 연결 서류의 검증 여부로 온보딩 위험등급을 판단해줘. 없는 기본등급이나 함수를 만들지 마.”                                                 | Customer/account/document reads and `kyc/rating.md`. No customer-rating function or persistence action exists. If the starting band is unspecified, final rating remains undetermined. |
-| `finops.customer.onboarding.account-opening`       | “C-GC-01의 KYC와 위험등급 확인 증거가 있으면 product=checking, reason=approved onboarding으로 테스트 계좌 개설을 요청해줘. 계좌 ID는 서비스 응답에서만 가져와.” | `open-account` contract → `acme-core-banking__open_account` with customer-id/product/reason. Not a local create; no invented account ID or clearance.                                  |
-| `finops.customer.servicing.profile-update`         | “C-GC-01의 현재 tier를 읽고 gold로 바꿔줘. reason=customer requested upgrade야. 다른 필드는 바꾸지 마.”                                                         | Current customer read; `update-customer-profile` → `acme-core-banking__update_customer` with customer-id/field/value/reason. External success is not proof the local row synchronized. |
-| `finops.customer.servicing.dispute`                | “거래 T-GC-01의 저장된 금액과 상대방을 확인하고 테스트 분쟁 티켓을 만들어줘. 최소 정보와 실제 티켓 참조만 알려줘.”                                              | Transaction read, privacy rule, actual issue-tracker result. `delete_issue` remains denied. Tutorial order tracker cannot create this ticket.                                          |
-| `finops.customer.servicing.closure`                | “A-GC-01의 상태와 잔액을 읽고 account-in-good-standing을 계산해줘. 잔액 0과 미해결 분쟁 없음이 확인될 때만 reason=customer requested closure로 해지해줘.”       | Stored status function plus separate balance/dispute evidence; only then `acme-core-banking__close_account`. Function `true` alone is insufficient.                                    |
+| Expected node                                                                                                                                              | Copyable question                                                                                                                                               | Evidence to inspect                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finops` → `finops.customer` → `finops.customer.onboarding` → `finops.customer.onboarding.identity-check`                                                  | “고객 C-GC-01의 신원확인 서류 ID, 종류, 검증 여부와 부족한 서류를 조회하고 규정을 인용해줘.”                                                                    | Customer/document reads and `customer-evidenced-by-document` traversal; `kyc/evidence.md`; no invented evidence.                                                                       |
+| `finops` → `finops.customer` → `finops.customer.onboarding` → `finops.customer.onboarding.kyc-review` → `finops.customer.onboarding.kyc-review.screening`  | “테스트 신청자 이름은 Golden Test Applicant, 관할은 KR이야. 제재·PEP 목록을 조회하고 외부로 보낸 필드, 목록 버전, 후보 매치를 보여줘. 최종 승인하지 마.”        | KYC/privacy retrieval; actual `acme-screening` call with supplied name/jurisdiction only. Requires sandbox server; these supplied fields do not require a local customer row.          |
+| `finops` → `finops.customer` → `finops.customer.onboarding` → `finops.customer.onboarding.kyc-review` → `finops.customer.onboarding.kyc-review.adjudicate` | “C-GC-01의 저장된 증빙과 앞서 받은 실제 스크리닝 결과로 KYC 통과 여부를 판단해줘. 스크리닝은 다시 호출하지 마.”                                                 | Object/neighbor reads plus KYC citation. No sibling screening MCP or privacy corpus; absent evidence means no clearance.                                                               |
+| `finops` → `finops.customer` → `finops.customer.onboarding` → `finops.customer.onboarding.risk-rating`                                                     | “C-GC-01의 관할, 상품, 연결 서류의 검증 여부로 온보딩 위험등급을 판단해줘. 없는 기본등급이나 함수를 만들지 마.”                                                 | Customer/account/document reads and `kyc/rating.md`. No customer-rating function or persistence action exists. If the starting band is unspecified, final rating remains undetermined. |
+| `finops` → `finops.customer` → `finops.customer.onboarding` → `finops.customer.onboarding.account-opening`                                                 | “C-GC-01의 KYC와 위험등급 확인 증거가 있으면 product=checking, reason=approved onboarding으로 테스트 계좌 개설을 요청해줘. 계좌 ID는 서비스 응답에서만 가져와.” | `open-account` contract → `acme-core-banking__open_account` with customer-id/product/reason. Not a local create; no invented account ID or clearance.                                  |
+| `finops` → `finops.customer` → `finops.customer.servicing` → `finops.customer.servicing.profile-update`                                                    | “C-GC-01의 현재 tier를 읽고 gold로 바꿔줘. reason=customer requested upgrade야. 다른 필드는 바꾸지 마.”                                                         | Current customer read; `update-customer-profile` → `acme-core-banking__update_customer` with customer-id/field/value/reason. External success is not proof the local row synchronized. |
+| `finops` → `finops.customer` → `finops.customer.servicing` → `finops.customer.servicing.dispute`                                                           | “거래 T-GC-01의 저장된 금액과 상대방을 확인하고 테스트 분쟁 티켓을 만들어줘. 최소 정보와 실제 티켓 참조만 알려줘.”                                              | Transaction read, privacy rule, actual issue-tracker result. `delete_issue` remains denied. Tutorial order tracker cannot create this ticket.                                          |
+| `finops` → `finops.customer` → `finops.customer.servicing` → `finops.customer.servicing.closure`                                                           | “A-GC-01의 상태와 잔액을 읽고 account-in-good-standing을 계산해줘. 잔액 0과 미해결 분쟁 없음이 확인될 때만 reason=customer requested closure로 해지해줘.”       | Stored status function plus separate balance/dispute evidence; only then `acme-core-banking__close_account`. Function `true` alone is insufficient.                                    |
 
 #### Risk nodes
 
-| Expected node                                                | Copyable question                                                                                                                                                                                 | Evidence to inspect                                                                                                                                                                   |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finops.risk.monitoring.alert-triage`                        | “AL-GC-01을 조회하고 alert-priority로 큐 등급을 계산해줘. taskflow-inbox-triage 지침과 AML 규정으로 우선순위를 설명해줘.”                                                                         | Alert read, actual function value, AML source, scoped skill. Low priority does not itself update or auto-close an alert.                                                              |
-| `finops.risk.monitoring.investigation.link-analysis`         | “AL-GC-01의 계좌와 연결 거래를 따라 상대방을 정리하고 워치리스트 후보를 확인해줘. 관계와 외부 전달 필드를 보여줘.”                                                                                | Alert/account/transaction rows and edges; actual `get_neighbors`, screening call, AML/privacy retrieval.                                                                              |
-| `finops.risk.monitoring.investigation.transaction-review`    | “A-GC-01의 거래 ID, 금액, booked-on, 상대방을 읽고 5일 내 같은 상대방에게 보고기준 바로 아래 금액을 반복 송금했는지 확인해줘.”                                                                    | Stored dated transactions and graph, `aml/patterns.md`; no conclusions solely from alert score and no screening MCP.                                                                  |
-| `finops.risk.monitoring.investigation.case-file.evidence`    | “CASE-GC-01에 대한 저장된 조사 자료와 연결 경보·거래를 모아 실제로 확인한 것과 부족한 증거를 구분해줘. 없는 객체를 만들지 마.”                                                                    | Object/neighbor reads plus AML/privacy sources. A case with only alert-id metadata does not establish an alert object, edge, or investigated transactions.                            |
-| `finops.risk.monitoring.investigation.case-file.disposition` | “CASE-GC-01의 수집된 증거가 보고 필요성을 뒷받침하면 status=reportable, analyst=Golden Analyst로 기록해줘. 증거가 없으면 중단해줘.”                                                               | Existing case/evidence; `close-investigation` update and readback. `attach-case-to-alert` is a separate action and requires both endpoints; metadata alone is not a link.             |
-| `finops.risk.monitoring.sar-filing`                          | “CASE-GC-01의 실제 reportable 결론을 확인한 뒤 SAR-GC-01을 작성해줘. narrative=Confirmed test investigation findings supplied by the analyst야. 케이스와 연결하고 다시 읽어줘. 외부 제출하지 마.” | `draft-sar`, then `attach-sar-to-case`, then row/neighbor readback. Missing case evidence blocks success. Duplicate SAR ID refused; different SAR IDs for one case are not forbidden. |
-| `finops.risk.underwriting.scoring`                           | “C-GC-01에 연결된 CR-GC-01을 읽고 bureau-band로 등급을 계산해줘. 보고서 ID, 저장된 score, 실제 반환값을 보여줘.”                                                                                  | Customer/report edge and `compute_function` on the report ID. `knowledge_search` is not allowed on this leaf.                                                                         |
-| `finops.risk.underwriting.decision`                          | “C-GC-01의 앞서 계산한 신용등급과 계좌 상태로 여신 판단을 기록해줘. credit-decision과 credit-rating만 기록하고 risk-rating은 바꾸지 마.”                                                          | Prior scoring/affordability evidence, credit policy, actual `acme-core-banking__record_lending_decision`. Ask for requested exposure or choice if missing; do not re-invent the band. |
-| `finops.risk.underwriting.exception`                         | “C-GC-01의 실제 신용등급과 위험등급으로 taskflow 방식의 한도 유지 예외 검토 메모를 써줘. 추가 사실은 별도 검증 필요로 표시하고 승인하지 마.”                                                      | Actual customer/report evidence, `credit/exceptions.md`, scoped taskflow instructions. Human-only exception; no granted exception for high risk.                                      |
+| Expected node                                                                                                                                                                                                  | Copyable question                                                                                                                                                                                 | Evidence to inspect                                                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finops` → `finops.risk` → `finops.risk.monitoring` → `finops.risk.monitoring.alert-triage`                                                                                                                    | “AL-GC-01을 조회하고 alert-priority로 큐 등급을 계산해줘. taskflow-inbox-triage 지침과 AML 규정으로 우선순위를 설명해줘.”                                                                         | Alert read, actual function value, AML source, scoped skill. Low priority does not itself update or auto-close an alert.                                                              |
+| `finops` → `finops.risk` → `finops.risk.monitoring` → `finops.risk.monitoring.investigation` → `finops.risk.monitoring.investigation.link-analysis`                                                            | “AL-GC-01의 계좌와 연결 거래를 따라 상대방을 정리하고 워치리스트 후보를 확인해줘. 관계와 외부 전달 필드를 보여줘.”                                                                                | Alert/account/transaction rows and edges; actual `get_neighbors`, screening call, AML/privacy retrieval.                                                                              |
+| `finops` → `finops.risk` → `finops.risk.monitoring` → `finops.risk.monitoring.investigation` → `finops.risk.monitoring.investigation.transaction-review`                                                       | “A-GC-01의 거래 ID, 금액, booked-on, 상대방을 읽고 5일 내 같은 상대방에게 보고기준 바로 아래 금액을 반복 송금했는지 확인해줘.”                                                                    | Stored dated transactions and graph, `aml/patterns.md`; no conclusions solely from alert score and no screening MCP.                                                                  |
+| `finops` → `finops.risk` → `finops.risk.monitoring` → `finops.risk.monitoring.investigation` → `finops.risk.monitoring.investigation.case-file` → `finops.risk.monitoring.investigation.case-file.evidence`    | “CASE-GC-01에 대한 저장된 조사 자료와 연결 경보·거래를 모아 실제로 확인한 것과 부족한 증거를 구분해줘. 없는 객체를 만들지 마.”                                                                    | Object/neighbor reads plus AML/privacy sources. A case with only alert-id metadata does not establish an alert object, edge, or investigated transactions.                            |
+| `finops` → `finops.risk` → `finops.risk.monitoring` → `finops.risk.monitoring.investigation` → `finops.risk.monitoring.investigation.case-file` → `finops.risk.monitoring.investigation.case-file.disposition` | “CASE-GC-01의 수집된 증거가 보고 필요성을 뒷받침하면 status=reportable, analyst=Golden Analyst로 기록해줘. 증거가 없으면 중단해줘.”                                                               | Existing case/evidence; `close-investigation` update and readback. `attach-case-to-alert` is a separate action and requires both endpoints; metadata alone is not a link.             |
+| `finops` → `finops.risk` → `finops.risk.monitoring` → `finops.risk.monitoring.sar-filing`                                                                                                                      | “CASE-GC-01의 실제 reportable 결론을 확인한 뒤 SAR-GC-01을 작성해줘. narrative=Confirmed test investigation findings supplied by the analyst야. 케이스와 연결하고 다시 읽어줘. 외부 제출하지 마.” | `draft-sar`, then `attach-sar-to-case`, then row/neighbor readback. Missing case evidence blocks success. Duplicate SAR ID refused; different SAR IDs for one case are not forbidden. |
+| `finops` → `finops.risk` → `finops.risk.underwriting` → `finops.risk.underwriting.scoring`                                                                                                                     | “C-GC-01에 연결된 CR-GC-01을 읽고 bureau-band로 등급을 계산해줘. 보고서 ID, 저장된 score, 실제 반환값을 보여줘.”                                                                                  | Customer/report edge and `compute_function` on the report ID. `knowledge_search` is not allowed on this step.                                                                         |
+| `finops` → `finops.risk` → `finops.risk.underwriting` → `finops.risk.underwriting.scoring` → `finops.risk.underwriting.scoring.decision`                                                                       | “C-GC-01의 앞서 계산한 신용등급과 계좌 상태로 여신 판단을 기록해줘. credit-decision과 credit-rating만 기록하고 risk-rating은 바꾸지 마.”                                                          | Prior scoring/affordability evidence, credit policy, actual `acme-core-banking__record_lending_decision`. Ask for requested exposure or choice if missing; do not re-invent the band. |
+| `finops` → `finops.risk` → `finops.risk.underwriting` → `finops.risk.underwriting.scoring` → `finops.risk.underwriting.scoring.exception`                                                                      | “C-GC-01의 실제 신용등급과 위험등급으로 taskflow 방식의 한도 유지 예외 검토 메모를 써줘. 추가 사실은 별도 검증 필요로 표시하고 승인하지 마.”                                                      | Actual customer/report evidence, `credit/exceptions.md`, scoped taskflow instructions. Human-only exception; no granted exception for high risk.                                      |
 
 The evidence node may have `open-investigation-case` in a locally modified
 bundle. Inspect the imported node before relying on it: that action only creates
@@ -668,26 +668,26 @@ Do not count a locally modified example as proof for the checked-in revision.
 
 #### Claims nodes
 
-| Expected node                               | Copyable question                                                                                                                              | Evidence to inspect                                                                                                                                                                                             |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finops.claims.intake.triage`               | “CL-GC-01의 금액과 fraud-score를 읽고 claim-triage-band와 claim-amount-or-zero를 실행해줘. taskflow-inbox-triage 지침으로 분류해줘.”           | Actual stored inputs and both function results, handbook, scoped skill. Missing claim is not a zero-valued claim.                                                                                               |
-| `finops.claims.intake.evidence`             | “CL-GC-01의 연결 증빙 ID, 종류, 검증 여부를 조회하고 필요한 서류와 비교해줘. 부족할 때 보류인지 거절인지 규정을 인용해줘.”                     | Claim/document edges and `claims/evidence.md`; known loss type required. Unverified evidence insufficient; missing evidence means hold, not decline.                                                            |
-| `finops.claims.intake.escalation`           | “CL-GC-01 고객이 사람 담당자를 요청했어. 저장된 청구와 이관 규정을 확인하고 taskflow 방식으로 테스트 담당자 티켓을 만들어 실제 참조를 알려줘.” | Claim read, `claims/escalation.md`, skill, actual issue-tracker response. No invented ticket.                                                                                                                   |
-| `finops.claims.adjudication.coverage-check` | “CL-GC-01에 연결된 보험증권과 coverage-limit를 읽고 청구액과 비교해줘. 한도 초과 처리 규정을 인용해줘.”                                        | `claim-against-policy` traversal and `claims/coverage.md`. Excess alone means cap at limit, not outright rejection.                                                                                             |
-| `finops.claims.adjudication.fraud-review`   | “CL-GC-01의 claim-triage-band와 증빙을 확인하고 검토팀 이관 기준에 해당하는지 알려줘. 사기를 저질렀다고 단정하지 마.”                          | Actual function/evidence and `claims/fraud.md`. No screening server on this leaf; duplicate-loss claims need real history.                                                                                      |
-| `finops.claims.adjudication.decision`       | “CL-GC-01의 실제 보장·사기 검토 결과가 모두 지급을 뒷받침할 때만 status=approved로 기록하고 다시 조회해줘.”                                    | Prior findings, `decide-claim` update, row readback. Missing row or findings must not become approval.                                                                                                          |
-| `finops.claims.settlement.authority`        | “CL-GC-01의 amount와 auto-payable-amount를 읽고 일반 데스크 한도와 비교해줘. 지급하지 마.”                                                     | Function gives min(amount,2500); `claims/authority.md` describes 5000 general authority. No ledger or write.                                                                                                    |
-| `finops.claims.settlement.payment`          | “CL-GC-01의 승인액, 상한, 기존 지급 여부가 확인될 때만 테스트 원장에 지급해줘. 성공 참조를 받은 뒤 settled로 기록하고 다시 읽어줘.”            | Actual `post_payment` with claim-id/paid-amount/reason, then `settle-claim`. No knowledge-search grant here; authority evidence must already be available. No local payment row is created by settlement alone. |
-| `finops.claims.settlement.recovery`         | “정산된 CL-GC-01과 연결 지급을 읽고 회수액, 상대방, 근거를 알려줘. 대위회수 1,000달러 기준도 검색하고 실제 회수는 하지 마.”                    | Stored claim/payment edges and fault/overpayment evidence, `claims/recovery.md`; original claim amount alone is not recoverable amount. No ledger/write.                                                        |
+| Expected node                                                                                                                                                                                                                          | Copyable question                                                                                                                              | Evidence to inspect                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finops` → `finops.claims` → `finops.claims.intake` → `finops.claims.intake.triage`                                                                                                                                                    | “CL-GC-01의 금액과 fraud-score를 읽고 claim-triage-band와 claim-amount-or-zero를 실행해줘. taskflow-inbox-triage 지침으로 분류해줘.”           | Actual stored inputs and both function results, handbook, scoped skill. Missing claim is not a zero-valued claim.                                                                                               |
+| `finops` → `finops.claims` → `finops.claims.intake` → `finops.claims.intake.evidence`                                                                                                                                                  | “CL-GC-01의 연결 증빙 ID, 종류, 검증 여부를 조회하고 필요한 서류와 비교해줘. 부족할 때 보류인지 거절인지 규정을 인용해줘.”                     | Claim/document edges and `claims/evidence.md`; known loss type required. Unverified evidence insufficient; missing evidence means hold, not decline.                                                            |
+| `finops` → `finops.claims` → `finops.claims.intake` → `finops.claims.intake.escalation`                                                                                                                                                | “CL-GC-01 고객이 사람 담당자를 요청했어. 저장된 청구와 이관 규정을 확인하고 taskflow 방식으로 테스트 담당자 티켓을 만들어 실제 참조를 알려줘.” | Claim read, `claims/escalation.md`, skill, actual issue-tracker response. No invented ticket.                                                                                                                   |
+| `finops` → `finops.claims` → `finops.claims.adjudication` → `finops.claims.adjudication.coverage-check`                                                                                                                                | “CL-GC-01에 연결된 보험증권과 coverage-limit를 읽고 청구액과 비교해줘. 한도 초과 처리 규정을 인용해줘.”                                        | `claim-against-policy` traversal and `claims/coverage.md`. Excess alone means cap at limit, not outright rejection.                                                                                             |
+| `finops` → `finops.claims` → `finops.claims.adjudication` → `finops.claims.adjudication.coverage-check` → `finops.claims.adjudication.coverage-check.fraud-review`                                                                     | “CL-GC-01의 claim-triage-band와 증빙을 확인하고 검토팀 이관 기준에 해당하는지 알려줘. 사기를 저질렀다고 단정하지 마.”                          | Actual function/evidence and `claims/fraud.md`. No screening server on this step; duplicate-loss claims need real history.                                                                                      |
+| `finops` → `finops.claims` → `finops.claims.adjudication` → `finops.claims.adjudication.coverage-check` → `finops.claims.adjudication.coverage-check.fraud-review` → `finops.claims.adjudication.coverage-check.fraud-review.decision` | “CL-GC-01의 실제 보장·사기 검토 결과가 모두 지급을 뒷받침할 때만 status=approved로 기록하고 다시 조회해줘.”                                    | Prior findings, `decide-claim` update, row readback. Missing row or findings must not become approval.                                                                                                          |
+| `finops` → `finops.claims` → `finops.claims.settlement` → `finops.claims.settlement.authority`                                                                                                                                         | “CL-GC-01의 amount와 auto-payable-amount를 읽고 일반 데스크 한도와 비교해줘. 지급하지 마.”                                                     | Function gives min(amount,2500); `claims/authority.md` describes 5000 general authority. No ledger or write.                                                                                                    |
+| `finops` → `finops.claims` → `finops.claims.settlement` → `finops.claims.settlement.authority` → `finops.claims.settlement.authority.payment`                                                                                          | “CL-GC-01의 승인액, 상한, 기존 지급 여부가 확인될 때만 테스트 원장에 지급해줘. 성공 참조를 받은 뒤 settled로 기록하고 다시 읽어줘.”            | Actual `post_payment` with claim-id/paid-amount/reason, then `settle-claim`. No knowledge-search grant here; authority evidence must already be available. No local payment row is created by settlement alone. |
+| `finops` → `finops.claims` → `finops.claims.settlement` → `finops.claims.settlement.recovery`                                                                                                                                          | “정산된 CL-GC-01과 연결 지급을 읽고 회수액, 상대방, 근거를 알려줘. 대위회수 1,000달러 기준도 검색하고 실제 회수는 하지 마.”                    | Stored claim/payment edges and fault/overpayment evidence, `claims/recovery.md`; original claim amount alone is not recoverable amount. No ledger/write.                                                        |
 
 #### Reporting nodes
 
-| Expected node                             | Copyable question                                                                                                                                           | Evidence to inspect                                                                                                                                                                 |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finops.reporting.regulatory.submission`  | “REG-GC-01의 기간, 연결 SAR·케이스 참조와 기한을 확인하고 완비됐을 때만 테스트 제출 서비스로 전송해줘. 성공 후 status=filed로 기록하되 period는 바꾸지 마.” | Existing report/edges, regulatory/AML sources, actual `acme-filing` reference, then `file-regulatory-report` update and readback. No report-create owner exists in this example.    |
-| `finops.reporting.regulatory.preparation` | “2026-Q3 보고 준비자료에서 실제 보고서와 연결 SAR·케이스 중 있는 것과 부족한 것을 조회하고 필요한 구성을 규정에서 찾아줘. 제출하지 마.”                     | Actual rows/edges and `code/contents.md`; no filing/write. Empty store is not proof of a complete zero-activity return.                                                             |
-| `finops.reporting.management`             | “내부 보고용으로 저장된 경보·케이스·청구 ID와 조회된 건수를 정리해줘. 2026-Q3로 한정할 날짜 필드가 없으면 명시하고 민감한 상세정보는 제외해줘.”             | Scoped rows/IDs; returned count is limited, not a verified total. No scoped function exists despite the compute tool allowance; period-specific totals lack sufficient date fields. |
-| `finops.reporting.audit-trail`            | “REG-GC-01의 실제 기록과 제공된 실행 이력에서 확인되는 결정·규정·미실행 단계를 구분해줘. 없는 승인자나 이유를 재구성하지 마.”                               | Records/edges, regulatory sources, actual visible/supplied trace. This leaf declares no historical-audit retrieval tool; missing history must remain unknown.                       |
+| Expected node                                                                                             | Copyable question                                                                                                                                           | Evidence to inspect                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finops` → `finops.reporting` → `finops.reporting.regulatory` → `finops.reporting.regulatory.submission`  | “REG-GC-01의 기간, 연결 SAR·케이스 참조와 기한을 확인하고 완비됐을 때만 테스트 제출 서비스로 전송해줘. 성공 후 status=filed로 기록하되 period는 바꾸지 마.” | Existing report/edges, regulatory/AML sources, actual `acme-filing` reference, then `file-regulatory-report` update and readback. No report-create owner exists in this example.    |
+| `finops` → `finops.reporting` → `finops.reporting.regulatory` → `finops.reporting.regulatory.preparation` | “2026-Q3 보고 준비자료에서 실제 보고서와 연결 SAR·케이스 중 있는 것과 부족한 것을 조회하고 필요한 구성을 규정에서 찾아줘. 제출하지 마.”                     | Actual rows/edges and `code/contents.md`; no filing/write. Empty store is not proof of a complete zero-activity return.                                                             |
+| `finops` → `finops.reporting` → `finops.reporting.management`                                             | “내부 보고용으로 저장된 경보·케이스·청구 ID와 조회된 건수를 정리해줘. 2026-Q3로 한정할 날짜 필드가 없으면 명시하고 민감한 상세정보는 제외해줘.”             | Scoped rows/IDs; returned count is limited, not a verified total. No scoped function exists despite the compute tool allowance; period-specific totals lack sufficient date fields. |
+| `finops` → `finops.reporting` → `finops.reporting.audit-trail`                                            | “REG-GC-01의 실제 기록과 제공된 실행 이력에서 확인되는 결정·규정·미실행 단계를 구분해줘. 없는 승인자나 이유를 재구성하지 마.”                               | Records/edges, regulatory sources, actual visible/supplied trace. This step declares no historical-audit retrieval tool; missing history must remain unknown.                       |
 
 ### Keep a manual result sheet
 
@@ -718,10 +718,10 @@ paths without a model or network. It checks:
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Import                | Inline corpora, required servers and skills, and no unreachable declarations                                                 |
 | Objects and graph     | Action-created rows, duplicate IDs, links, neighbor traversal, and sibling type isolation                                    |
-| Routing and lifecycle | Routed ancestors, active-step movement, default fallback, and update-not-upsert                                              |
+| Routing and lifecycle | Sequential prerequisites, active-step movement, invalid-route blocking, unavailable-planner default, and update-not-upsert   |
 | Outward actions       | Required parameters, parameter types, action identity, and undeclared-operation denial                                       |
 | MCP                   | Step attachments, sibling isolation, explicit operation denial, and hookless launch ceilings                                 |
-| Knowledge and skills  | Corpus inheritance and narrowing, retrieval-tool independence, skill digest inlining, and catalog narrowing                  |
+| Knowledge and skills  | Local corpus grants, retrieval-tool independence, run-scoped skill inlining, and catalog narrowing                           |
 | Governance            | Local denials, write opt-in, approvals for omissions, the core floor, hosted-tool withholding, and pre-planner policy denial |
 
 The example file and the machine fixture are intentionally the same file. A

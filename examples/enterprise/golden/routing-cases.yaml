@@ -25,7 +25,7 @@ cases:
       treeId: acme.returns
       steps:
         - returns
-        - returns.lookup
+        - returns.delivery
   - id: ROUTE03
     category: minimal-route
     request: Acme 반품 기간은 주문일부터 세는지 배송일부터 세는지 정책만 찾아줘. 특정 주문은 조회하지 마.
@@ -176,7 +176,7 @@ cases:
       treeId: acme.returns
       steps:
         - returns
-        - returns.lookup
+        - returns.delivery
   - id: ROUTE16
     category: scope-conflict
     request:
@@ -207,4 +207,53 @@ cases:
         - finops
         - finops.reporting
         - finops.reporting.regulatory
+        - finops.reporting.regulatory.submission
+  - id: ROUTE20
+    category: sequential-prerequisites
+    request: 고객 C-42의 저장된 신용 보고서 점수로 bureau-band를 계산한 뒤 그 결과로 신용 심사 결정을 기록해줘. 예외 검토 요청은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      steps:
+        - finops
+        - finops.risk
+        - finops.risk.underwriting
+        - finops.risk.underwriting.scoring
+        - finops.risk.underwriting.scoring.decision
+  - id: ROUTE21
+    category: sequential-prerequisites
+    request: 보험 청구 CL-42의 보장 여부와 사기 검토 결과를 순서대로 확인한 뒤, 두 결과가 허용하면 청구 결정을 기록해줘. 실제 지급은 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      steps:
+        - finops
+        - finops.claims
+        - finops.claims.adjudication
+        - finops.claims.adjudication.coverage-check
+        - finops.claims.adjudication.coverage-check.fraud-review
+        - finops.claims.adjudication.coverage-check.fraud-review.decision
+  - id: ROUTE22
+    category: sequential-prerequisites
+    request: 지급 승인이 끝난 청구 CL-42를 담당 창구의 지급 권한과 한도를 확인한 뒤 허용되면 지급해줘. 회수 검토나 청구 재심사는 하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      steps:
+        - finops
+        - finops.claims
+        - finops.claims.settlement
+        - finops.claims.settlement.authority
+        - finops.claims.settlement.authority.payment
+  - id: ROUTE23
+    category: sequential-branches
+    request: 저장된 2026년 3분기 감독기관 정기보고서 RR-2026-Q3를 제출하기 전에, 먼저 보고 수치 수집과 누락 항목 확인이라는 준비 작업도 수행해줘. 준비 결과가 완전할 때만 이 보고서를 제출해줘. SAR 제출은 하지 마. 미완성이면 제출하지 마.
+    expected:
+      kind: execute
+      treeId: acme.financial-operations
+      steps:
+        - finops
+        - finops.reporting
+        - finops.reporting.regulatory
+        - finops.reporting.regulatory.preparation
         - finops.reporting.regulatory.submission

@@ -4,7 +4,7 @@ trees:
   - schema: clawworks.workflow-tree
     schemaVersion: 1
     id: acme.financial-operations
-    version: 2.0.0
+    version: 2.1.0
     name: Financial operations
     # Since keywords retired, THIS TEXT is the routing signal, and the planner
     # digest truncates it at 600 characters — so it has to name the domain's nouns
@@ -13,12 +13,11 @@ trees:
     # whose cue was cut let an `ls`-phrased request about its own records escape
     # into the permissive default tree with exec wide open.
     description: >-
-      Customer lifecycle, financial-crime risk, claims handling, and regulatory reporting for a retail
-      financial-services operation. Owns the records — customers, accounts, transactions, alerts,
-      investigation cases, SARs, policies, claims, payments, filings — and the rules over them: KYC evidence,
-      AML thresholds, claims authority, filing deadlines, and what data may leave. A request naming one of
-      those records, or asking the rule about one, belongs here — including when phrased as reading a file,
-      listing a directory, or querying a database, because the records live in this work-map's own store.
+      Customer lifecycle, financial-crime risk, claims, and regulatory reporting. Owns customer, account,
+      transaction, alert, case, SAR, policy, claim, payment, and filing records; KYC, AML, payment authority,
+      and filing rules. Requests for those records or rules belong here, including file, directory, or
+      database-style queries. Every node is an executable step. Select the requested stopping points;
+      their ancestors execute first, and unselected descendants do not execute.
     match:
       # Whether THIS TREE is the right tree is a model judgement; picking the branch
       # inside it is the route planner's job. So the description above and the step
@@ -32,9 +31,8 @@ trees:
     capabilityGrants: explicit
     root:
       id: finops
-      title: Financial operations
-      description: >-
-        Check the request and prerequisites for financial operations.
+      title: Confirm the financial request
+      description: Identify the business record, requested operation, and forbidden side effects.
       ontology:
         deniedTools: &deniedTools_1 [exec, process, browser]
         constraints:
@@ -47,16 +45,14 @@ trees:
         contextHints:
           - Name every record id you read or wrote, and the corpus section any rule came from.
         audit: true
-        guidance:
-          Confirm the requested operation, supplied record ids, and explicit exclusions. Ask for missing
-          context; do not perform a downstream action. Complete this step before entering the selected next
-          step.
-        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+        guidance: >-
+          Identify the customer, account, claim, incident, or report ids and requested outcome. Preserve explicit exclusions. Ask for missing operation details before entering a business branch.
+        expectedOutput: Requested operation, supplied ids, and excluded writes or external calls.
         allowedTools: [message]
       children:
         - id: finops.customer
-          title: Customer lifecycle
-          description: Check the request and prerequisites for customer lifecycle.
+          title: Explain customer policy or confirm the customer case
+          description: Answer general KYC or disclosure rules without records, or confirm ids for onboarding or servicing.
           ontology:
             entities:
               - &entities_finops_customer_onboarding_customer
@@ -125,17 +121,15 @@ trees:
                 description: Whether the account may transact today.
             knowledgeFoundations: &knowledgeFoundations_2 [acme.kyc-manual, acme.privacy-standard]
             deniedTools: *deniedTools_1
-            guidance:
-              Confirm the context and required inputs for customer lifecycle. Use supplied facts and prior step
-              results; do not execute a child action here. Complete this step before entering the selected
-              next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              For general KYC or disclosure-policy questions, retrieve the requested rule and source without customer records, then finish here. Otherwise confirm the customer or account ids and whether this is onboarding or servicing; read only the records needed to verify the target and report missing records.
+            expectedOutput: Sourced KYC/disclosure rule, or verified customer/account target and requested operation.
             allowedTools:
               &allowedTools_6 [message, search_objects, compute_function, knowledge_search]
           children:
             - id: finops.customer.onboarding
-              title: Onboard a new customer
-              description: Check the request and prerequisites for onboard a new customer.
+              title: Check onboarding prerequisites
+              description: Confirm identity evidence and whether existing KYC and risk decisions are available.
               children:
                 - id: finops.customer.onboarding.identity-check
                   title: Check the identity evidence
@@ -159,11 +153,11 @@ trees:
                     deniedTools: *deniedTools_1
 
                 - id: finops.customer.onboarding.kyc-review
-                  title: Review the applicant against sanctions and PEP lists
-                  description: Check the request and prerequisites for review the applicant against sanctions and pep lists.
+                  title: Check screening inputs
+                  description: Confirm the applicant, purpose, and data permitted for a KYC review.
                   ontology:
                     # Both corpora reach this branch, and the privacy one is not
-                    # decoration: the leaf below sends a customer's name to an
+                    # decoration: the screening step sends a customer's name to an
                     # outside provider, which is the rule's own subject. The
                     # narrowing happens one level DOWN instead, on the sibling
                     # that never leaves the building.
@@ -180,11 +174,9 @@ trees:
                     functions:
                       - *functions_finops_customer_onboarding_account_in_good_standing
                     deniedTools: *deniedTools_1
-                    guidance:
-                      Confirm the context and required inputs for review the applicant against sanctions and pep lists.
-                      Use supplied facts and prior step results; do not execute a child action here. Complete
-                      this step before entering the selected next step.
-                    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                    guidance: >-
+                      Verify the applicant identity and the data allowed by the privacy standard. For an adjudication-only request, require an actual supplied or stored screening result; otherwise ask for screening first.
+                    expectedOutput: Verified applicant and minimal screening inputs, or existing screening evidence.
                     allowedTools: *allowedTools_6
                   children:
                     - id: finops.customer.onboarding.kyc-review.screening
@@ -358,16 +350,14 @@ trees:
                 functions:
                   - *functions_finops_customer_onboarding_account_in_good_standing
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for onboard a new customer. Use supplied facts and prior
-                  step results; do not execute a child action here. Complete this step before entering the
-                  selected next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Confirm the applicant and supplied evidence. For checks selected later in this run, validate their inputs now. For account opening without those checks, require supplied or stored identity, KYC, and risk results. Account opening must verify the completed results before acting; sibling definitions alone prove nothing.
+                expectedOutput: Applicant id, available identity/KYC/risk evidence, and any missing prerequisites.
                 allowedTools: &allowedTools_22 [message, search_objects, compute_function]
 
             - id: finops.customer.servicing
-              title: Service an existing customer
-              description: Check the request and prerequisites for service an existing customer.
+              title: Verify the service request
+              description: Verify the existing customer/account and requested change before servicing.
               children:
                 - id: finops.customer.servicing.profile-update
                   title: Update the customer profile
@@ -507,11 +497,9 @@ trees:
                 functions:
                   - *functions_finops_customer_onboarding_account_in_good_standing
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for service an existing customer. Use supplied facts and
-                  prior step results; do not execute a child action here. Complete this step before entering
-                  the selected next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Read the customer/account identified by the request. Confirm the exact fields or operation authorized and keep closure, profile edits, and dispute handling distinct.
+                expectedOutput: Existing target record, requested operation, and authorized change fields.
                 allowedTools: *allowedTools_22
 
         # =====================================================================
@@ -522,8 +510,8 @@ trees:
         # tier or jurisdiction. The property types have to agree across every
         # declaration or the import fails, because the object graph merges them.
         - id: finops.risk
-          title: Financial-crime risk
-          description: Check the request and prerequisites for financial-crime risk.
+          title: Confirm the risk task or explain AML and credit policy
+          description: Explain general AML or credit-exception rules without records, or identify inputs for a record-specific analysis.
           ontology:
             entities:
               - &entities_finops_risk_monitoring_customer
@@ -558,16 +546,14 @@ trees:
                 description: The customer who owns the account.
             knowledgeFoundations: [acme.aml-policy, acme.credit-policy, acme.privacy-standard]
             deniedTools: *deniedTools_1
-            guidance:
-              Confirm the context and required inputs for financial-crime risk. Use supplied facts and prior step
-              results; do not execute a child action here. Complete this step before entering the selected
-              next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              For policy-only questions retrieve the AML, credit, or disclosure rule and source without requiring business records; finish here without scoring or writing. For record-specific work, identify the account, customer, alert, or report ids and requested analysis. Do not infer authorization to write a decision.
+            expectedOutput: Sourced policy answer, or risk task, record ids, and analysis/write boundary.
             allowedTools: &allowedTools_88 [message, search_objects, knowledge_search]
           children:
             - id: finops.risk.monitoring
-              title: Transaction monitoring
-              description: Check the request and prerequisites for transaction monitoring.
+              title: Check monitoring inputs
+              description: Check supplied alerts, accounts, or investigation ids before monitoring work.
               ontology:
                 entities:
                   # `transaction` at its full width here: monitoring needs the
@@ -643,11 +629,9 @@ trees:
                     expression: "$score >= 80 ? 'urgent' : ($score >= 50 ? 'standard' : 'low')"
                     description: Queue band for an alert, from its model score.
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for transaction monitoring. Use supplied facts and prior
-                  step results; do not execute a child action here. Complete this step before entering the
-                  selected next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  For a new local case, validate the supplied alert reference and case metadata without requiring stored alert, account, or case rows. For analysis, reads, or updates of existing targets, verify the relevant records and stop if missing. SAR drafting requires an existing case and actual evidence. This check creates no records and infers no suspicious activity.
+                expectedOutput: Verified existing monitoring target, or supplied inputs for a new local case; any evidence gaps remain explicit.
                 allowedTools: *allowedTools_22
               children:
                 - id: finops.risk.monitoring.alert-triage
@@ -684,8 +668,8 @@ trees:
                     deniedTools: *deniedTools_1
 
                 - id: finops.risk.monitoring.investigation
-                  title: Investigate a surfaced alert
-                  description: >-
+                  title: Confirm investigation scope
+                  description: Identify the alert/account and which evidence analyses are requested.
                     Check the request and prerequisites for investigate a surfaced alert.
                   ontology:
                     knowledgeFoundations:
@@ -706,11 +690,9 @@ trees:
                     functions:
                       - *functions_finops_risk_monitoring_alert-triage_alert_priority
                     deniedTools: *deniedTools_1
-                    guidance:
-                      Confirm the context and required inputs for investigate a surfaced alert. Use supplied facts and
-                      prior step results; do not execute a child action here. Complete this step before
-                      entering the selected next step.
-                    expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                    guidance: >-
+                      For local case creation, carry forward the supplied alert reference and metadata without claiming they prove a stored alert or investigated transactions. For other investigations, read the available alert/account or supplied evidence. Confirm the requested analysis or case operation; do not add other branches.
+                    expectedOutput: Investigation target, available evidence, and selected analysis scope.
                     allowedTools: *allowedTools_6
                   children:
                     - id: finops.risk.monitoring.investigation.link-analysis
@@ -777,8 +759,8 @@ trees:
                         deniedTools: *deniedTools_1
 
                     - id: finops.risk.monitoring.investigation.case-file
-                      title: Build the case file
-                      description: Check the request and prerequisites for build the case file.
+                      title: Check the case evidence
+                      description: Distinguish new-case creation from disposition of an existing case.
                       children:
                         - id: finops.risk.monitoring.investigation.case-file.evidence
                           title: Assemble the evidence
@@ -812,9 +794,9 @@ trees:
                                       description: Opens the local case file.,
                                     }
                             guidance: >-
-                              Open a case only from evidence actually supplied by the investigation. Record
-                              the known alert identifier and case metadata; do not fabricate alert, account,
-                              or transaction data.
+                              Create the local case only from explicitly supplied alert-reference and case metadata.
+                              Those inputs do not prove that an alert, account, or transaction exists locally,
+                              and creating the case does not verify investigation evidence. Never fabricate those records.
                             expectedOutput: The case id, its supplied evidence metadata, and the records it rests on.
                             entities:
                               - *entities_finops_risk_monitoring_customer
@@ -877,9 +859,9 @@ trees:
                                     relationship: case-investigates-alert
                                     description: Relates the case to the alert that raised it.
                             guidance: >-
-                              Close the case only against evidence already recorded on it. If the evidence
-                              step has not run, say so and stop — a disposition written from the alert alone
-                              is a case file nobody can defend.
+                              Close an existing case only against actual recorded or supplied investigation evidence.
+                              Case metadata or an alert reference alone is insufficient; report that gap and stop.
+                              Do not recreate the case or require its creation step to run again before disposition.
                             expectedOutput: The case id, its disposition, and whether a SAR follows.
                             audit: true
                             entities:
@@ -915,11 +897,9 @@ trees:
                         functions:
                           - *functions_finops_risk_monitoring_alert-triage_alert_priority
                         deniedTools: *deniedTools_1
-                        guidance:
-                          Confirm the context and required inputs for build the case file. Use supplied facts and prior step
-                          results; do not execute a child action here. Complete this step before entering the
-                          selected next step.
-                        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                        guidance: >-
+                          For a new case, confirm a fresh case id and supplied alert metadata. For disposition, read the existing case and require recorded or supplied evidence; stop if it is missing. Never recreate an existing case to reach disposition.
+                        expectedOutput: Fresh-case inputs or verified existing-case evidence for disposition.
                         allowedTools: *allowedTools_22
 
                 - id: finops.risk.monitoring.sar-filing
@@ -989,8 +969,8 @@ trees:
                     deniedTools: *deniedTools_1
 
             - id: finops.risk.underwriting
-              title: Credit underwriting
-              description: Check the request and prerequisites for credit underwriting.
+              title: Verify the credit report
+              description: Find the applicant and stored credit report before scoring.
               ontology:
                 entities:
                   # Bureau data lives ONLY here. Monitoring one level up cannot
@@ -1029,11 +1009,9 @@ trees:
                 # AML material could not do what its title says.
                 knowledgeFoundations: &knowledgeFoundations_48 [acme.aml-policy, acme.credit-policy]
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for credit underwriting. Use supplied facts and prior step
-                  results; do not execute a child action here. Complete this step before entering the selected
-                  next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Read the applicant and linked credit report. Confirm the report id and stored score, and stop on missing records. The next scoring step computes the band before decision or exception handling.
+                expectedOutput: Applicant id, actual report id, and stored score for scoring.
                 allowedTools: *allowedTools_6
               children:
                 - id: finops.risk.underwriting.scoring
@@ -1052,72 +1030,75 @@ trees:
                     functions:
                       - *functions_finops_risk_underwriting_scoring_bureau_band
                     deniedTools: *deniedTools_1
-
-                - id: finops.risk.underwriting.decision
-                  title: Decide the exposure
-                  description: Approve, decline, or refer the application and record the rating.
-                  ontology:
-                    allowedTools:
-                      &allowedTools_51 [search_objects, compute_function, knowledge_search, message]
-                    knowledgeFoundations: *knowledgeFoundations_48
-                    mcpServers: *mcpServers_15
-                    actions:
-                      - id: record-underwriting-decision
-                        title: Record the underwriting decision
-                        description: Store the decision and the rating it rests on.
-                        parameters:
-                          - { id: customer-id, type: id, required: true }
-                          # Both, because the step promises both. An action writes
-                          # only its declared parameters, so a rating-only version
-                          # would leave the outcome unrecoverable from the store —
-                          # the expectedOutput would be a claim nothing backs.
-                          - { id: credit-decision, type: string, required: true }
-                          # The LENDING band, not the onboarding desk's KYC rating.
-                          # Named apart from the onboarding desk's KYC rating on
-                          # purpose: one word from another vocabulary landing in the
-                          # wrong field is the failure this parameter list prevents.
-                          - { id: credit-rating, type: string, required: true }
-                        effects:
-                          - kind: call
-                            tool: "acme-core-banking__record_lending_decision"
-                            description: Stores the decision where the customer record lives.
-                    guidance: >-
-                      Record the decision the scoring step reached, together with the lending band it rested
-                      on. Do not re-derive the band here: the derived value on the credit report is the one
-                      the credit policy is written against. The band goes in `credit-rating`; `risk-rating` is
-                      the onboarding desk's and is not yours to change.
-                    expectedOutput: The decision, the lending band stored, and what drove it.
-                    audit: true
-                    entities:
-                      - *entities_finops_risk_monitoring_customer
-                      - *entities_finops_risk_monitoring_account
-                      - *entities_finops_risk_underwriting_scoring_credit_report
-                    relationships:
-                      - *relationships_finops_risk_monitoring_customer_holds_account
-                      - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
-                    functions:
-                      - *functions_finops_risk_underwriting_scoring_bureau_band
-                    deniedTools: *deniedTools_1
-
-                - id: finops.risk.underwriting.exception
-                  title: Request an underwriting exception
-                  description: Write up a case for a human credit officer when the policy bar is not met.
-                  ontology:
-                    allowedTools: *allowedTools_51
-                    knowledgeFoundations: *knowledgeFoundations_48
-                    skills: [taskflow]
-                    expectedOutput: A short exception memo naming the customer, the band, and the ask.
-                    entities:
-                      - *entities_finops_risk_monitoring_customer
-                      - *entities_finops_risk_monitoring_account
-                      - *entities_finops_risk_underwriting_scoring_credit_report
-                    relationships:
-                      - *relationships_finops_risk_monitoring_customer_holds_account
-                      - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
-                    functions:
-                      - *functions_finops_risk_underwriting_scoring_bureau_band
-                    deniedTools: *deniedTools_1
-
+                  children:
+                    - id: finops.risk.underwriting.scoring.decision
+                      title: Decide the exposure
+                      description: Approve, decline, or refer the application and record the rating.
+                      ontology:
+                        allowedTools:
+                          &allowedTools_51 [
+                            search_objects,
+                            compute_function,
+                            knowledge_search,
+                            message,
+                          ]
+                        knowledgeFoundations: *knowledgeFoundations_48
+                        mcpServers: *mcpServers_15
+                        actions:
+                          - id: record-underwriting-decision
+                            title: Record the underwriting decision
+                            description: Store the decision and the rating it rests on.
+                            parameters:
+                              - { id: customer-id, type: id, required: true }
+                              # Both, because the step promises both. An action writes
+                              # only its declared parameters, so a rating-only version
+                              # would leave the outcome unrecoverable from the store —
+                              # the expectedOutput would be a claim nothing backs.
+                              - { id: credit-decision, type: string, required: true }
+                              # The LENDING band, not the onboarding desk's KYC rating.
+                              # Named apart from the onboarding desk's KYC rating on
+                              # purpose: one word from another vocabulary landing in the
+                              # wrong field is the failure this parameter list prevents.
+                              - { id: credit-rating, type: string, required: true }
+                            effects:
+                              - kind: call
+                                tool: "acme-core-banking__record_lending_decision"
+                                description: Stores the decision where the customer record lives.
+                        guidance: >-
+                          Record the decision the scoring step reached, together with the lending band it rested
+                          on. Do not re-derive the band here: the derived value on the credit report is the one
+                          the credit policy is written against. The band goes in `credit-rating`; `risk-rating` is
+                          the onboarding desk's and is not yours to change.
+                        expectedOutput: The decision, the lending band stored, and what drove it.
+                        audit: true
+                        entities:
+                          - *entities_finops_risk_monitoring_customer
+                          - *entities_finops_risk_monitoring_account
+                          - *entities_finops_risk_underwriting_scoring_credit_report
+                        relationships:
+                          - *relationships_finops_risk_monitoring_customer_holds_account
+                          - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
+                        functions:
+                          - *functions_finops_risk_underwriting_scoring_bureau_band
+                        deniedTools: *deniedTools_1
+                    - id: finops.risk.underwriting.scoring.exception
+                      title: Request an underwriting exception
+                      description: Write up a case for a human credit officer when the policy bar is not met.
+                      ontology:
+                        allowedTools: *allowedTools_51
+                        knowledgeFoundations: *knowledgeFoundations_48
+                        skills: [taskflow]
+                        expectedOutput: A short exception memo naming the customer, the band, and the ask.
+                        entities:
+                          - *entities_finops_risk_monitoring_customer
+                          - *entities_finops_risk_monitoring_account
+                          - *entities_finops_risk_underwriting_scoring_credit_report
+                        relationships:
+                          - *relationships_finops_risk_monitoring_customer_holds_account
+                          - *relationships_finops_risk_underwriting_scoring_customer_assessed_by_report
+                        functions:
+                          - *functions_finops_risk_underwriting_scoring_bureau_band
+                        deniedTools: *deniedTools_1
         # =====================================================================
         # DOMAIN 3 — CLAIMS
         # =====================================================================
@@ -1128,8 +1109,8 @@ trees:
         # answer is still wrong, which is why the step titles here are written to be
         # told apart from risk's.
         - id: finops.claims
-          title: Claims handling
-          description: Check the request and prerequisites for claims handling.
+          title: Explain claims policy or confirm claim inputs
+          description: Answer general coverage or payment-authority rules without records; otherwise read the claim for the requested operation.
           ontology:
             entities:
               - &entities_finops_claims_intake_customer
@@ -1197,16 +1178,14 @@ trees:
             knowledgeFoundations:
               &knowledgeFoundations_59 [acme.claims-handbook, acme.privacy-standard]
             deniedTools: *deniedTools_1
-            guidance:
-              Confirm the context and required inputs for claims handling. Use supplied facts and prior step
-              results; do not execute a child action here. Complete this step before entering the selected
-              next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              For general coverage, payment-authority, or disclosure-policy questions, retrieve the handbook rule and source without claim records and finish here. For a record-specific request read the claim and identify its policy where available. Confirm whether the request is intake, adjudication, or settlement, retaining all excluded actions. Do not invent missing claim data.
+            expectedOutput: Sourced claims-policy answer, or claim/policy ids, availability, and requested operation.
             allowedTools: *allowedTools_6
           children:
             - id: finops.claims.intake
-              title: Take the claim in
-              description: Check the request and prerequisites for take the claim in.
+              title: Verify claim intake data
+              description: Check claim identity and supplied loss evidence before intake work.
               children:
                 - id: finops.claims.intake.triage
                   title: Triage the claim
@@ -1301,16 +1280,14 @@ trees:
                   - *functions_finops_claims_intake_claim_triage_band
                   - *functions_finops_claims_intake_claim_amount_or_zero
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for take the claim in. Use supplied facts and prior step
-                  results; do not execute a child action here. Complete this step before entering the selected
-                  next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Verify the claim id, loss details, and documents supplied or stored. Identify whether the request needs classification, evidence review, or escalation. Do not create external tracker issues during this check.
+                expectedOutput: Known claim facts, evidence availability, and requested intake operation.
                 allowedTools: *allowedTools_22
 
             - id: finops.claims.adjudication
-              title: Adjudicate the claim
-              description: Check the request and prerequisites for adjudicate the claim.
+              title: Prepare claim adjudication
+              description: Verify the claim/policy inputs before coverage and fraud review.
               children:
                 - id: finops.claims.adjudication.coverage-check
                   title: Check coverage
@@ -1332,78 +1309,78 @@ trees:
                       - *functions_finops_claims_intake_claim_amount_or_zero
                     knowledgeFoundations: *knowledgeFoundations_59
                     deniedTools: *deniedTools_1
-
-                - id: finops.claims.adjudication.fraud-review
-                  title: Review the claim for fraud
-                  description: Judge the claim's fraud indicators against the handbook's referral bar.
-                  ontology:
-                    allowedTools: *allowedTools_26
-                    knowledgeFoundations: *knowledgeFoundations_63
-                    constraints:
-                      - id: refer-do-not-accuse
-                        description: Refer a suspect claim to the fraud team; never state fraud as a finding to the customer.
-                    expectedOutput: The band, the indicators behind it, and whether it is referred.
-                    entities:
-                      - *entities_finops_claims_intake_customer
-                      - *entities_finops_claims_intake_policy
-                      - *entities_finops_claims_intake_claim
-                      - *entities_finops_claims_intake_document
-                    relationships:
-                      - *relationships_finops_claims_intake_customer_holds_policy
-                      - *relationships_finops_claims_intake_claim_against_policy
-                      - *relationships_finops_claims_intake_claim_evidenced_by_document
-                    functions:
-                      - *functions_finops_claims_intake_claim_triage_band
-                      - *functions_finops_claims_intake_claim_amount_or_zero
-                    deniedTools: *deniedTools_1
-
-                - id: finops.claims.adjudication.decision
-                  title: Decide the claim
-                  description: Accept, reduce, or decline the claim and record the outcome.
-                  ontology:
-                    allowedTools:
-                      [
-                        search_objects,
-                        get_neighbors,
-                        compute_function,
-                        invoke_action,
-                        knowledge_search,
-                        message,
-                      ]
-                    knowledgeFoundations: *knowledgeFoundations_63
-                    actions:
-                      - id: decide-claim
-                        title: Record the claim decision
-                        parameters:
-                          - { id: claim-id, type: id, required: true }
-                          - { id: status, type: string, required: true }
-                        preconditions:
-                          - Coverage was checked and the fraud review did not refer it.
-                        effects:
-                          - {
-                              entity: claim,
-                              kind: update,
-                              description: Records the adjudicated outcome.,
-                            }
-                    guidance: >-
-                      Decide only once both the coverage check and the fraud review have answered. Their
-                      outcomes are the inputs to this write, and a decision recorded without one of them is
-                      one the audit trail cannot explain.
-                    expectedOutput: The claim id, the decision, and the handbook section behind it.
-                    audit: true
-                    entities:
-                      - *entities_finops_claims_intake_customer
-                      - *entities_finops_claims_intake_policy
-                      - *entities_finops_claims_intake_claim
-                      - *entities_finops_claims_intake_document
-                    relationships:
-                      - *relationships_finops_claims_intake_customer_holds_policy
-                      - *relationships_finops_claims_intake_claim_against_policy
-                      - *relationships_finops_claims_intake_claim_evidenced_by_document
-                    functions:
-                      - *functions_finops_claims_intake_claim_triage_band
-                      - *functions_finops_claims_intake_claim_amount_or_zero
-                    deniedTools: *deniedTools_1
+                  children:
+                    - id: finops.claims.adjudication.coverage-check.fraud-review
+                      title: Review the claim for fraud
+                      description: Judge the claim's fraud indicators against the handbook's referral bar.
+                      ontology:
+                        allowedTools: *allowedTools_26
+                        knowledgeFoundations: *knowledgeFoundations_63
+                        constraints:
+                          - id: refer-do-not-accuse
+                            description: Refer a suspect claim to the fraud team; never state fraud as a finding to the customer.
+                        expectedOutput: The band, the indicators behind it, and whether it is referred.
+                        entities:
+                          - *entities_finops_claims_intake_customer
+                          - *entities_finops_claims_intake_policy
+                          - *entities_finops_claims_intake_claim
+                          - *entities_finops_claims_intake_document
+                        relationships:
+                          - *relationships_finops_claims_intake_customer_holds_policy
+                          - *relationships_finops_claims_intake_claim_against_policy
+                          - *relationships_finops_claims_intake_claim_evidenced_by_document
+                        functions:
+                          - *functions_finops_claims_intake_claim_triage_band
+                          - *functions_finops_claims_intake_claim_amount_or_zero
+                        deniedTools: *deniedTools_1
+                      children:
+                        - id: finops.claims.adjudication.coverage-check.fraud-review.decision
+                          title: Decide the claim
+                          description: After the preceding coverage and fraud checks, record acceptance, reduction, or refusal. This step does not pay.
+                          ontology:
+                            allowedTools:
+                              [
+                                search_objects,
+                                get_neighbors,
+                                compute_function,
+                                invoke_action,
+                                knowledge_search,
+                                message,
+                              ]
+                            knowledgeFoundations: *knowledgeFoundations_63
+                            actions:
+                              - id: decide-claim
+                                title: Record the claim decision
+                                parameters:
+                                  - { id: claim-id, type: id, required: true }
+                                  - { id: status, type: string, required: true }
+                                preconditions:
+                                  - Coverage was checked and the fraud review did not refer it.
+                                effects:
+                                  - {
+                                      entity: claim,
+                                      kind: update,
+                                      description: Records the adjudicated outcome.,
+                                    }
+                            guidance: >-
+                              Decide only once both the coverage check and the fraud review have answered. Their
+                              outcomes are the inputs to this write, and a decision recorded without one of them is
+                              one the audit trail cannot explain.
+                            expectedOutput: The claim id, the decision, and the handbook section behind it.
+                            audit: true
+                            entities:
+                              - *entities_finops_claims_intake_customer
+                              - *entities_finops_claims_intake_policy
+                              - *entities_finops_claims_intake_claim
+                              - *entities_finops_claims_intake_document
+                            relationships:
+                              - *relationships_finops_claims_intake_customer_holds_policy
+                              - *relationships_finops_claims_intake_claim_against_policy
+                              - *relationships_finops_claims_intake_claim_evidenced_by_document
+                            functions:
+                              - *functions_finops_claims_intake_claim_triage_band
+                              - *functions_finops_claims_intake_claim_amount_or_zero
+                            deniedTools: *deniedTools_1
               ontology:
                 entities:
                   - *entities_finops_claims_intake_customer
@@ -1418,16 +1395,14 @@ trees:
                   - *functions_finops_claims_intake_claim_triage_band
                   - *functions_finops_claims_intake_claim_amount_or_zero
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for adjudicate the claim. Use supplied facts and prior step
-                  results; do not execute a child action here. Complete this step before entering the selected
-                  next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Confirm the claim and policy records are available. A decision route must then complete coverage checking and fraud review in order; do not decide the claim in this preparation step.
+                expectedOutput: Existing claim/policy inputs and any unresolved adjudication prerequisite.
                 allowedTools: *allowedTools_22
 
             - id: finops.claims.settlement
-              title: Settle the claim
-              description: Check the request and prerequisites for settle the claim.
+              title: Verify settlement inputs
+              description: Read claim status and amount for authority, payment, or recovery checks; this prerequisite does not decide or pay.
               ontology:
                 entities:
                   # Money movement gets its own object type, one branch deep, so no
@@ -1475,11 +1450,9 @@ trees:
                     description: What this claim pays without a human approver.
                 knowledgeFoundations: *knowledgeFoundations_63
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for settle the claim. Use supplied facts and prior step
-                  results; do not execute a child action here. Complete this step before entering the selected
-                  next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  Read the existing claim and requested amount. Identify payment or recovery intent; do not infer payment authorization from a request for authority or recovery analysis.
+                expectedOutput: Claim status, requested amount, and requested settlement operation.
                 allowedTools: *allowedTools_6
               children:
                 - id: finops.claims.settlement.authority
@@ -1491,7 +1464,7 @@ trees:
                     # The step that holds BOTH retrieval families, which is the only
                     # place the model's choice between them is real. It reads and
                     # judges; it does not pay, so `invoke_action` is absent and the
-                    # write stays on the sibling below.
+                    # write stays on the following payment step.
                     allowedTools: *allowedTools_26
                     knowledgeFoundations: *knowledgeFoundations_63
                     guidance: >-
@@ -1519,92 +1492,93 @@ trees:
                       - *functions_finops_claims_intake_claim_amount_or_zero
                       - *functions_finops_claims_settlement_authority_auto_payable_amount
                     deniedTools: *deniedTools_1
-
-                - id: finops.claims.settlement.payment
-                  title: Pay the claim
-                  description: Move the money on the ledger and record the payment.
-                  ontology:
-                    allowedTools:
-                      [
-                        search_objects,
-                        compute_function,
-                        invoke_action,
-                        message,
-                        "acme-ledger__*",
-                        "mcp__acme-ledger__*",
-                        "acme_ledger__*",
-                        "mcp__acme_ledger__*",
-                      ]
-                    # The only step in all 30 that reaches the ledger. Nothing else
-                    # in this work-map can move money, and no route can widen that:
-                    # an attachment grants the step it is written on and the steps
-                    # beneath it, never a sibling.
-                    #
-                    # On a HOOKLESS runtime that costs the capability rather than
-                    # leaking it. The server is handed to the subprocess once, before
-                    # it connects, and nothing judges its calls afterwards, so the
-                    # launch ceiling admits it only when EVERY step in the plan grants
-                    # it whole — a route that pairs this step with any sibling
-                    # withholds the ledger outright. Fixing that by adding the ledger
-                    # globs to the siblings would hand THEM the ledger, so the answer
-                    # is a narrow route, not a wider grant.
-                    mcpServers: [acme-ledger]
-                    actions:
-                      # TWO actions, because paying is two facts that cannot be one
-                      # write: the money leaves the ledger, and the claim file this
-                      # workflow owns records that it did. An outward call cannot be
-                      # rolled back into a local transaction, so an action is either
-                      # outward or local — never both.
-                      - id: issue-claim-payment
-                        title: Issue a claim payment
-                        description: Move the money in the ledger that holds it.
-                        parameters:
-                          - { id: claim-id, type: id, required: true }
-                          - { id: paid-amount, type: number, required: true }
-                          - { id: reason, type: string, required: true }
-                        preconditions:
-                          - The authority step cleared the amount against the claim's derived cap.
-                          - The claim is decided and not referred to fraud.
-                        effects:
-                          - kind: call
-                            tool: "acme-ledger__post_payment"
-                            description: Records the money leaving, in the ledger that owns it.
-                      - id: settle-claim
-                        title: Settle the claim
-                        description: Record on the claim file that the payment went out.
-                        parameters:
-                          - { id: claim-id, type: id, required: true }
-                          - { id: status, type: string, required: true }
-                        preconditions:
-                          - The payment call returned, and its reference is in hand.
-                        effects:
-                          - { entity: claim, kind: update, description: Marks the claim settled. }
-                    guidance: >-
-                      The authority step beside this one decides whether the desk may pay and up to what cap.
-                      Move exactly that amount on the ledger and then record the payment; if the two figures
-                      disagree, report the gap instead of paying the smaller one.
-                    constraints:
-                      - id: one-payment-per-claim
-                        description: A claim settles once; check for an existing payment before issuing another.
-                    expectedOutput: The payment id, the amount, and the claim it settled.
-                    audit: true
-                    entities:
-                      - *entities_finops_claims_intake_customer
-                      - *entities_finops_claims_intake_policy
-                      - *entities_finops_claims_intake_claim
-                      - *entities_finops_claims_intake_document
-                      - *entities_finops_claims_settlement_authority_payment
-                    relationships:
-                      - *relationships_finops_claims_intake_customer_holds_policy
-                      - *relationships_finops_claims_intake_claim_against_policy
-                      - *relationships_finops_claims_intake_claim_evidenced_by_document
-                      - *relationships_finops_claims_settlement_authority_payment_settles_claim
-                    functions:
-                      - *functions_finops_claims_intake_claim_triage_band
-                      - *functions_finops_claims_intake_claim_amount_or_zero
-                      - *functions_finops_claims_settlement_authority_auto_payable_amount
-                    deniedTools: *deniedTools_1
-
+                  children:
+                    - id: finops.claims.settlement.authority.payment
+                      title: Pay the claim
+                      description: Move the money on the ledger and record the payment.
+                      ontology:
+                        allowedTools:
+                          [
+                            search_objects,
+                            compute_function,
+                            invoke_action,
+                            message,
+                            "acme-ledger__*",
+                            "mcp__acme-ledger__*",
+                            "acme_ledger__*",
+                            "mcp__acme_ledger__*",
+                          ]
+                        # The only step in all 30 that reaches the ledger. Nothing else
+                        # in this work-map can move money, and no route can widen that:
+                        # an attachment grants only the step it is written on.
+                        #
+                        # On a HOOKLESS runtime that costs the capability rather than
+                        # leaking it. The server is handed to the subprocess once, before
+                        # it connects, and nothing judges its calls afterwards, so the
+                        # launch ceiling admits it only when EVERY selected step grants
+                        # it whole. The prerequisite checks here do not attach the ledger,
+                        # so even payment alone withholds it on a hookless runtime.
+                        # Use a runtime with per-call gates for this example.
+                        mcpServers: [acme-ledger]
+                        actions:
+                          # TWO actions, because paying is two facts that cannot be one
+                          # write: the money leaves the ledger, and the claim file this
+                          # workflow owns records that it did. An outward call cannot be
+                          # rolled back into a local transaction, so an action is either
+                          # outward or local — never both.
+                          - id: issue-claim-payment
+                            title: Issue a claim payment
+                            description: Move the money in the ledger that holds it.
+                            parameters:
+                              - { id: claim-id, type: id, required: true }
+                              - { id: paid-amount, type: number, required: true }
+                              - { id: reason, type: string, required: true }
+                            preconditions:
+                              - The authority step cleared the amount against the claim's derived cap.
+                              - The claim is decided and not referred to fraud.
+                            effects:
+                              - kind: call
+                                tool: "acme-ledger__post_payment"
+                                description: Records the money leaving, in the ledger that owns it.
+                          - id: settle-claim
+                            title: Settle the claim
+                            description: Record on the claim file that the payment went out.
+                            parameters:
+                              - { id: claim-id, type: id, required: true }
+                              - { id: status, type: string, required: true }
+                            preconditions:
+                              - The payment call returned, and its reference is in hand.
+                            effects:
+                              - {
+                                  entity: claim,
+                                  kind: update,
+                                  description: Marks the claim settled.,
+                                }
+                        guidance: >-
+                          The preceding authority step decides whether the desk may pay and up to what cap.
+                          Move exactly that amount on the ledger and then record the payment; if the two figures
+                          disagree, report the gap instead of paying the smaller one.
+                        constraints:
+                          - id: one-payment-per-claim
+                            description: A claim settles once; check for an existing payment before issuing another.
+                        expectedOutput: The payment id, the amount, and the claim it settled.
+                        audit: true
+                        entities:
+                          - *entities_finops_claims_intake_customer
+                          - *entities_finops_claims_intake_policy
+                          - *entities_finops_claims_intake_claim
+                          - *entities_finops_claims_intake_document
+                          - *entities_finops_claims_settlement_authority_payment
+                        relationships:
+                          - *relationships_finops_claims_intake_customer_holds_policy
+                          - *relationships_finops_claims_intake_claim_against_policy
+                          - *relationships_finops_claims_intake_claim_evidenced_by_document
+                          - *relationships_finops_claims_settlement_authority_payment_settles_claim
+                        functions:
+                          - *functions_finops_claims_intake_claim_triage_band
+                          - *functions_finops_claims_intake_claim_amount_or_zero
+                          - *functions_finops_claims_settlement_authority_auto_payable_amount
+                        deniedTools: *deniedTools_1
                 - id: finops.claims.settlement.recovery
                   title: Pursue recovery
                   description: Work a subrogation or overpayment recovery on a settled claim.
@@ -1637,8 +1611,8 @@ trees:
         # account it fired on. Reporting aggregates; it must not be able to read the
         # fields the operating domains use to decide.
         - id: finops.reporting
-          title: Regulatory reporting
-          description: Check the request and prerequisites for regulatory reporting.
+          title: Explain reporting policy or confirm report inputs
+          description: Answer general filing deadlines without records, or identify the report and period for preparation or filing.
           ontology:
             entities:
               - &entities_finops_reporting_regulatory_regulatory_report
@@ -1690,26 +1664,38 @@ trees:
                 description: The claims a filing summarizes.
             knowledgeFoundations: &knowledgeFoundations_89 [acme.regulatory-code, acme.aml-policy]
             deniedTools: *deniedTools_1
-            guidance:
-              Confirm the context and required inputs for regulatory reporting. Use supplied facts and prior step
-              results; do not execute a child action here. Complete this step before entering the selected
-              next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              For general reporting-rule or deadline questions, retrieve the rule and source without a report id or period and finish here. Otherwise confirm the report id or reporting period and audience. Distinguish internal summaries, evidence review, preparation, and authorized external filing.
+            expectedOutput: Sourced reporting-rule answer, or report scope, period/id, audience, and filing intent.
             allowedTools: *allowedTools_88
           children:
             - id: finops.reporting.regulatory
-              title: File with the regulator
-              description: Check the request and prerequisites for file with the regulator.
+              title: Check filing prerequisites
+              description: Verify period and whether a completed return or SAR is available for submission.
               children:
-                - id: finops.reporting.regulatory.submission
-                  # The title carries the VERB and the artifacts, because a step line
-                  # is `id — title: description` and the description is clipped. A
-                  # title naming only the artifact loses "submit" to the sibling that
-                  # happens to share the noun.
-                  title: Submit a SAR or a periodic return to the regulator
+                - id: finops.reporting.regulatory.preparation
+                  title: Prepare report figures and missing items
                   description: >-
-                    File a drafted SAR or a period's return with the regulator and move it to filed. The only
-                    step that can submit anything.
+                    Compile figures and gaps. When preparation and filing are requested, select this step and submission separately.
+                  ontology:
+                    allowedTools: *allowedTools_9
+                    knowledgeFoundations: &knowledgeFoundations_95 [acme.regulatory-code]
+                    expectedOutput: The return's contents for the period, and what is still outstanding.
+                    entities:
+                      - *entities_finops_reporting_regulatory_regulatory_report
+                      - *entities_finops_reporting_regulatory_sar
+                      - *entities_finops_reporting_regulatory_investigation_case
+                      - *entities_finops_reporting_regulatory_claim
+                      - *entities_finops_reporting_regulatory_alert
+                    relationships:
+                      - *relationships_finops_reporting_regulatory_report_covers_sar
+                      - *relationships_finops_reporting_regulatory_report_covers_claim
+                    deniedTools: *deniedTools_1
+
+                - id: finops.reporting.regulatory.submission
+                  title: Submit a prepared SAR or periodic return
+                  description: >-
+                    Submit a prepared report. If figures must also be compiled, select preparation too; it is not an ancestor.
                   ontology:
                     allowedTools:
                       [
@@ -1762,28 +1748,6 @@ trees:
                       - *relationships_finops_reporting_regulatory_report_covers_claim
                     deniedTools: *deniedTools_1
 
-                - id: finops.reporting.regulatory.preparation
-                  # Deliberately does NOT carry the word "return". Its sibling is the
-                  # step that files returns, and a title sharing the artifact noun
-                  # outranks the verb every time a request names both.
-                  title: Compile a period's figures before anything is filed
-                  description: >-
-                    Gather what a period's filing must contain and what is still outstanding. Preparation only
-                    — filing is a separate step.
-                  ontology:
-                    allowedTools: *allowedTools_9
-                    knowledgeFoundations: &knowledgeFoundations_95 [acme.regulatory-code]
-                    expectedOutput: The return's contents for the period, and what is still outstanding.
-                    entities:
-                      - *entities_finops_reporting_regulatory_regulatory_report
-                      - *entities_finops_reporting_regulatory_sar
-                      - *entities_finops_reporting_regulatory_investigation_case
-                      - *entities_finops_reporting_regulatory_claim
-                      - *entities_finops_reporting_regulatory_alert
-                    relationships:
-                      - *relationships_finops_reporting_regulatory_report_covers_sar
-                      - *relationships_finops_reporting_regulatory_report_covers_claim
-                    deniedTools: *deniedTools_1
               ontology:
                 entities:
                   - *entities_finops_reporting_regulatory_regulatory_report
@@ -1795,11 +1759,9 @@ trees:
                   - *relationships_finops_reporting_regulatory_report_covers_sar
                   - *relationships_finops_reporting_regulatory_report_covers_claim
                 deniedTools: *deniedTools_1
-                guidance:
-                  Confirm the context and required inputs for file with the regulator. Use supplied facts and prior
-                  step results; do not execute a child action here. Complete this step before entering the
-                  selected next step.
-                expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+                guidance: >-
+                  For preparation, confirm the reporting period and available records. If preparation is also selected, validate its inputs now and let submission verify its result later. For submission without preparation, verify the completed return or SAR and required filing inputs are supplied or stored. Stop on missing evidence; never submit an unfinished draft.
+                expectedOutput: Reporting inputs or verified completed filing artifact and submission authorization.
                 allowedTools: [message, search_objects]
 
             - id: finops.reporting.management

@@ -9,7 +9,7 @@ trees:
   - schema: clawworks.workflow-tree
     schemaVersion: 1
     id: demo.service-incident
-    version: 1.0.0
+    version: 1.1.0
     name: Service incident desk (golden case)
     description: >-
       Fictional service incident exercises: register, prioritize, assign, record evidence, resolve, and report
@@ -17,7 +17,7 @@ trees:
     capabilityGrants: explicit
     root:
       id: desk
-      title: Service incident desk
+      title: Confirm the incident request
       ontology:
         audit: true
         deniedTools:
@@ -33,15 +33,13 @@ trees:
             message,
           ]
         guidance: >-
-          Confirm the requested operation, supplied record ids, and explicit exclusions. Ask for missing
-          context; do not perform a downstream action. Complete this step before entering the selected next
-          step.
-        expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+          Distinguish internal record work from customer communications. Confirm supplied ids and exclusions; do not create records or contact anyone during this request check.
+        expectedOutput: Requested incident operation, supplied ids, and excluded changes or messages.
         allowedTools: [message]
       children:
         - id: desk.incidents
-          title: Incident operations
-          description: Check the request and prerequisites for incident operations.
+          title: Check incident prerequisites
+          description: Verify the supplied incident context before the requested internal operation.
           ontology:
             knowledgeFoundations: &knowledgeFoundations_3 [demo.incident-playbook]
             entities:
@@ -73,11 +71,9 @@ trees:
                 inverse: evidence-for-incident
                 description: Internal evidence recorded for a local incident.
             deniedTools: *deniedTools_1
-            guidance:
-              Confirm the context and required inputs for incident operations. Use supplied facts and prior step
-              results; do not execute a child action here. Complete this step before entering the selected
-              next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              For creation require a fresh incident id and supplied service, title, status, affected-users, and elapsed-minutes. For operations on an existing incident read it first and stop if missing. A policy-only query needs no record. Complete this check before the selected operation.
+            expectedOutput: Creation inputs, verified existing incident, or a policy-only question.
             allowedTools: &allowedTools_12 [message, search_objects, knowledge_search]
           children:
             - id: desk.incidents.intake
@@ -245,8 +241,8 @@ trees:
                   - *relationships_desk_incidents_intake_incident_has_note
                 knowledgeFoundations: *knowledgeFoundations_3
         - id: desk.communications
-          title: Customer communications
-          description: Check the request and prerequisites for customer communications.
+          title: Check the public audience
+          description: Confirm policy-only or public-draft intent and the permitted audience.
           ontology:
             knowledgeFoundations: &knowledgeFoundations_13 [demo.communication-policy]
             deniedTools: *deniedTools_11
@@ -260,11 +256,9 @@ trees:
                   - { id: incident-id, type: id, primaryKey: true, required: true }
                   - { id: service, type: string, required: true }
                   - { id: status, type: string, required: true }
-            guidance:
-              Confirm the context and required inputs for customer communications. Use supplied facts and prior
-              step results; do not execute a child action here. Complete this step before entering the
-              selected next step.
-            expectedOutput: Confirmed scope, known inputs, and any unresolved prerequisite.
+            guidance: >-
+              Confirm that the audience may receive only incident-id, service, and status. For a draft read only these local public fields; policy-only questions need no record. Do not read internal evidence or send messages.
+            expectedOutput: Policy-only scope or verified public incident fields for an unsent draft.
             allowedTools: *allowedTools_12
           children:
             - id: desk.communications.policy
@@ -295,7 +289,7 @@ trees:
                   - *entities_desk_communications_policy_incident
                 knowledgeFoundations: *knowledgeFoundations_13
                 deniedTools: *deniedTools_1
-      description: Check the request and prerequisites for service incident desk.
+      description: Confirm incident intent, record ids, and excluded external actions.
 knowledgeFoundations:
   - id: demo.incident-playbook
     descriptor:

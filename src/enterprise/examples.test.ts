@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildPlanCandidateDigest } from "@openclaw/enterprise-planner";
+import { buildPlanCandidateDigest, resolveRouteNodeIds } from "@openclaw/enterprise-planner";
 import { describe, expect, it } from "vitest";
 import { parseWorkflowBundleContent } from "./bundle-io.js";
 import { parseWorkflowTreeContent } from "./tree-io.js";
@@ -24,7 +24,7 @@ const MCP_ATTACHMENTS: Record<string, string[]> = {
     "finops.risk.monitoring.investigation.link-analysis",
   ],
   "acme-tracker": ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
-  "acme-ledger": ["finops.claims.settlement.payment"],
+  "acme-ledger": ["finops.claims.settlement.authority.payment"],
   "acme-filing": ["finops.reporting.regulatory.submission"],
   // Attached by the four steps whose actions perform an OUTWARD call: core
   // banking owns customers and accounts, so those steps write nothing locally.
@@ -32,7 +32,7 @@ const MCP_ATTACHMENTS: Record<string, string[]> = {
     "finops.customer.onboarding.account-opening",
     "finops.customer.servicing.profile-update",
     "finops.customer.servicing.closure",
-    "finops.risk.underwriting.decision",
+    "finops.risk.underwriting.scoring.decision",
   ],
 };
 
@@ -110,33 +110,25 @@ function pathsByNode(root: WorkflowNodeDefinition): Map<string, string[]> {
 
 type NodeScope = { entities: Set<string>; relationships: Set<string> };
 
-/**
- * The object + link types each node can actually address: its own declarations
- * merged with every ancestor's, which is how governance merges the root→node
- * path (src/enterprise/governance.ts) and what the Control UI node inspector
- * renders (collectNodeOntologyGraph). Declaring a type at the root therefore
- * puts it on EVERY node's scope, which is what these tests exist to catch.
- */
+/** Resolve only local declarations, matching runtime and the node inspector. */
 function scopesByNode(root: WorkflowNodeDefinition): Map<string, NodeScope> {
-  const scopes = new Map<string, NodeScope>();
-  const visit = (node: WorkflowNodeDefinition, inherited: NodeScope): void => {
-    const scope: NodeScope = {
-      entities: new Set(inherited.entities),
-      relationships: new Set(inherited.relationships),
-    };
-    for (const entity of node.ontology?.entities ?? []) {
-      scope.entities.add(entity.id);
-    }
-    for (const relationship of node.ontology?.relationships ?? []) {
-      scope.relationships.add(relationship.id);
-    }
-    scopes.set(node.id, scope);
-    for (const child of node.children ?? []) {
-      visit(child, scope);
-    }
-  };
-  visit(root, { entities: new Set(), relationships: new Set() });
-  return scopes;
+  return new Map(
+    flatten(root).map((node) => [
+      node.id,
+      {
+        entities: new Set((node.ontology?.entities ?? []).map((entity) => entity.id)),
+        relationships: new Set((node.ontology?.relationships ?? []).map((link) => link.id)),
+      },
+    ]),
+  );
+}
+
+function selectedSteps(tree: WorkflowTreeDefinition, endpoints: string[]): string[] {
+  const route = resolveRouteNodeIds(tree, endpoints);
+  expect(route.invalid).toEqual([]);
+  return flatten(tree.root)
+    .filter((node) => route.nodeIds.has(node.id))
+    .map((node) => node.id);
 }
 
 describe("the shipped enterprise example", () => {
@@ -229,8 +221,14 @@ describe("the shipped enterprise example", () => {
     const ids = new Set(flatten(tree.root).map((node) => node.id));
     for (const [a, b] of [
       ["finops.risk.monitoring.alert-triage", "finops.claims.intake.triage"],
-      ["finops.risk.underwriting.decision", "finops.claims.adjudication.decision"],
-      ["finops.risk.monitoring.investigation", "finops.claims.adjudication.fraud-review"],
+      [
+        "finops.risk.underwriting.scoring.decision",
+        "finops.claims.adjudication.coverage-check.fraud-review.decision",
+      ],
+      [
+        "finops.risk.monitoring.investigation",
+        "finops.claims.adjudication.coverage-check.fraud-review",
+      ],
       ["finops.risk.monitoring.sar-filing", "finops.reporting.regulatory.submission"],
       ["finops.customer.onboarding.risk-rating", "finops.risk.underwriting.scoring"],
       ["finops.customer.servicing.dispute", "finops.claims.intake.escalation"],
@@ -238,6 +236,94 @@ describe("the shipped enterprise example", () => {
       expect(ids, `${a} is missing`).toContain(a);
       expect(ids, `${b} is missing`).toContain(b);
     }
+  });
+
+  it.each([
+    [
+      "finops.risk.underwriting.scoring.decision",
+      [
+        "finops",
+        "finops.risk",
+        "finops.risk.underwriting",
+        "finops.risk.underwriting.scoring",
+        "finops.risk.underwriting.scoring.decision",
+      ],
+    ],
+    [
+      "finops.risk.underwriting.scoring.exception",
+      [
+        "finops",
+        "finops.risk",
+        "finops.risk.underwriting",
+        "finops.risk.underwriting.scoring",
+        "finops.risk.underwriting.scoring.exception",
+      ],
+    ],
+    [
+      "finops.claims.adjudication.coverage-check.fraud-review.decision",
+      [
+        "finops",
+        "finops.claims",
+        "finops.claims.adjudication",
+        "finops.claims.adjudication.coverage-check",
+        "finops.claims.adjudication.coverage-check.fraud-review",
+        "finops.claims.adjudication.coverage-check.fraud-review.decision",
+      ],
+    ],
+    [
+      "finops.claims.settlement.authority.payment",
+      [
+        "finops",
+        "finops.claims",
+        "finops.claims.settlement",
+        "finops.claims.settlement.authority",
+        "finops.claims.settlement.authority.payment",
+      ],
+    ],
+    [
+      "finops.claims.settlement.recovery",
+      ["finops", "finops.claims", "finops.claims.settlement", "finops.claims.settlement.recovery"],
+    ],
+    [
+      "finops.reporting.regulatory.submission",
+      [
+        "finops",
+        "finops.reporting",
+        "finops.reporting.regulatory",
+        "finops.reporting.regulatory.submission",
+      ],
+    ],
+    [
+      "finops.risk.monitoring.investigation.case-file.disposition",
+      [
+        "finops",
+        "finops.risk",
+        "finops.risk.monitoring",
+        "finops.risk.monitoring.investigation",
+        "finops.risk.monitoring.investigation.case-file",
+        "finops.risk.monitoring.investigation.case-file.disposition",
+      ],
+    ],
+  ] satisfies Array<[string, string[]]>)(
+    "executes the prerequisites for %s without unrelated writes",
+    (endpoint, expected) => {
+      expect(selectedSteps(parseExample(), [endpoint])).toEqual(expected);
+    },
+  );
+
+  it("prepares before submitting when both regulatory endpoints are selected", () => {
+    expect(
+      selectedSteps(parseExample(), [
+        "finops.reporting.regulatory.submission",
+        "finops.reporting.regulatory.preparation",
+      ]),
+    ).toEqual([
+      "finops",
+      "finops.reporting",
+      "finops.reporting.regulatory",
+      "finops.reporting.regulatory.preparation",
+      "finops.reporting.regulatory.submission",
+    ]);
   });
 
   it("declares a Palantir-style ontology: typed properties, link cardinality, action effects", () => {
@@ -255,7 +341,7 @@ describe("the shipped enterprise example", () => {
     // The money-movement step is the one governance must be able to gate. Paying
     // is an OUTWARD action — the ledger owns the money, so nothing is written
     // here — and its declaration is what the gate holds the call to.
-    const payment = nodes.find((node) => node.id === "finops.claims.settlement.payment");
+    const payment = nodes.find((node) => node.id === "finops.claims.settlement.authority.payment");
     const issue = payment?.ontology?.actions?.find((action) => action.id === "issue-claim-payment");
     expect(issue?.effects).toEqual(
       expect.arrayContaining([
@@ -286,8 +372,7 @@ describe("the shipped enterprise example", () => {
     );
     expect(signatures.size).toBeGreaterThanOrEqual(5);
 
-    // The root declares no object types: one that lived here would be addressable
-    // from all 30 steps, which is the collapse this test guards.
+    // Intake does not inspect records. Business steps declare their own types.
     expect(tree.root.ontology?.entities ?? []).toHaveLength(0);
     expect(tree.root.ontology?.relationships ?? []).toHaveLength(0);
   });
@@ -298,7 +383,7 @@ describe("the shipped enterprise example", () => {
     // reach its own types and must NOT reach the sibling's.
     const cases = [
       {
-        node: "finops.claims.settlement.payment",
+        node: "finops.claims.settlement.authority.payment",
         reaches: ["payment", "claim", "policy"],
         blocked: ["sar", "credit-report", "alert"],
       },
@@ -381,21 +466,13 @@ describe("the shipped enterprise example", () => {
     expect(unguided).toEqual([]);
   });
 
-  it("grants capabilities explicitly, and keeps the write opt-in off every ancestor", () => {
+  it("grants each local writer its own explicit write opt-in", () => {
     const tree = parseExample();
     expect(tree.capabilityGrants).toBe("explicit");
     const nodes = flatten(tree.root);
     const writers = nodes.filter((node) => node.ontology?.actions?.length);
     expect(writers.length).toBeGreaterThanOrEqual(5);
 
-    // `invoke_action` is EXISTENTIAL over the root→step path
-    // (runtime.ts explicitlyAllowsOntologyWrites), so naming it on an interior
-    // node hands write consent to every step beneath it. Only leaves may.
-    const interiorWriters = nodes
-      .filter((node) => node.children?.length)
-      .filter((node) => (node.ontology?.allowedTools ?? []).includes("invoke_action"))
-      .map((node) => node.id);
-    expect(interiorWriters).toEqual([]);
     // And every step with a LOCAL action opts in LITERALLY: a glob such as
     // `invoke_*` satisfies the ordinary tool gate and is still refused as a write.
     // An outward-only step is exempt because it never calls invoke_action — the
@@ -468,10 +545,7 @@ describe("the shipped enterprise example", () => {
   });
 
   it("scopes each corpus to the domains that may query it", () => {
-    // Knowledge narrows the same way tools do: each node with a non-empty list is
-    // an independent gate, so a corpus is reachable only where some node on the
-    // path names it and no node on the path drops it. A corpus granted at the root
-    // would be queryable from all 30 steps, which is what this guards.
+    // Group local grants by business area without treating ancestry as a grant.
     const tree = parseExample();
     expect(tree.root.ontology?.knowledgeFoundations ?? []).toHaveLength(0);
     const paths = pathsByNode(tree.root);
@@ -491,23 +565,6 @@ describe("the shipped enterprise example", () => {
         domains.toSorted(),
       );
     }
-
-    // A step that narrows can only ever be a SUBSET of what its ancestors grant:
-    // adding an id an ancestor does not name makes it unqueryable, so the
-    // declaration reads as a grant and behaves as nothing.
-    const unreachable: string[] = [];
-    const visit = (node: WorkflowNodeDefinition, inherited: string[] | null): void => {
-      const declared = node.ontology?.knowledgeFoundations ?? [];
-      if (inherited && declared.some((id) => !inherited.includes(id))) {
-        unreachable.push(node.id);
-      }
-      const next = declared.length ? declared : inherited;
-      for (const child of node.children ?? []) {
-        visit(child, next);
-      }
-    };
-    visit(tree.root, null);
-    expect(unreachable).toEqual([]);
   });
 });
 
@@ -542,15 +599,26 @@ describe("the tutorial work-map", () => {
     // The denial is the lesson: a tool left out only asks, so the three the
     // tutorial promises are refused everywhere have to be named here.
     expect(root.ontology?.deniedTools).toEqual(["exec", "write", "edit"]);
-    const steps = new Map((root.children ?? []).map((child) => [child.id, child]));
-    expect([...steps.keys()]).toEqual(["returns.triage", "returns.lookup", "returns.decide"]);
+    const steps = new Map(flatten(root).map((node) => [node.id, node]));
     expect(steps.get("returns.triage")?.ontology?.knowledgeFoundations).toEqual([
       "acme.returns-kb",
     ]);
     expect(steps.get("returns.lookup")?.ontology?.mcpServers).toEqual(["acme-tracker"]);
     expect(steps.get("returns.decide")?.ontology?.skills).toEqual(["refund-reply"]);
-    // Fewer than five nodes is never route-planned, which is what makes the
-    // tutorial's traces predictable: every run walks all three steps in order.
-    expect(walk(root, 1).count).toBeLessThan(5);
+    expect(steps.get("returns.delivery")?.ontology?.mcpServers).toEqual(["acme-tracker"]);
+    expect(selectedSteps(parsed.tree, ["returns.decide"])).toEqual([
+      "returns",
+      "returns.triage",
+      "returns.lookup",
+      "returns.decide",
+    ]);
+    expect(selectedSteps(parsed.tree, ["returns.triage"])).toEqual(["returns", "returns.triage"]);
+    expect(selectedSteps(parsed.tree, ["returns.delivery"])).toEqual([
+      "returns",
+      "returns.delivery",
+    ]);
+    for (const step of steps.values()) {
+      expect(step.ontology?.deniedTools, step.id).toEqual(["exec", "write", "edit"]);
+    }
   });
 });

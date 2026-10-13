@@ -11,7 +11,7 @@ read_when:
 # Enterprise tutorial
 
 [ClawWorks Enterprise](/concepts/clawworks-enterprise) explains the model.
-This builds one: a returns desk with a request-check step and three operation steps assembled from the Control UI,
+This builds one: a returns desk with a four-step assessment chain and a separate delivery-only branch assembled from the Control UI,
 running against two containers on your own machine.
 
 New to the service? Start with the
@@ -24,19 +24,20 @@ By the end, a customer question walks a route where each step works with what it
 was given — the policy handbook, the order tracker, the reply — and `exec`,
 `write`, and `edit` are refused on every one of them.
 
-| Step             | Runs without asking           | May retrieve      | Know-how       |
-| ---------------- | ----------------------------- | ----------------- | -------------- |
-| `returns`        | `message`                     | —                 | —              |
-| `returns.triage` | `knowledge_search`            | `acme.returns-kb` | —              |
-| `returns.lookup` | the `acme-tracker` MCP server | —                 | —              |
-| `returns.decide` | `message`                     | —                 | `refund-reply` |
+| Step               | Runs without asking           | May retrieve      | Know-how       |
+| ------------------ | ----------------------------- | ----------------- | -------------- |
+| `returns`          | `message`                     | —                 | —              |
+| `returns.triage`   | `knowledge_search`            | `acme.returns-kb` | —              |
+| `returns.lookup`   | the `acme-tracker` MCP server | —                 | —              |
+| `returns.decide`   | `message`                     | —                 | `refund-reply` |
+| `returns.delivery` | the `acme-tracker` MCP server | —                 | —              |
 
 Read that first column precisely, because it is the lesson the rest of the
 tutorial rests on. This work-map uses **permissive grants**, the default: a
 step's allow-list is what it may call _without asking_. An omitted tool list
 narrows nothing; an unlisted tool on a step with an allow-list asks for approval.
 Each step declares its own `deniedTools` wall. Bindings never inherit from the
-parent. The lookup step owns the tracker attachment.
+parent. Lookup and delivery each own a tracker attachment; one does not grant it to the other.
 
 Deny-by-default — where an unlisted skill, server, or corpus is withheld outright
 rather than raising a prompt — is
@@ -407,15 +408,17 @@ and the enterprise layer never installs one.
     requires YAML or JSON.
 
   </Step>
-  <Step title="Add the three steps">
-    Select the root node in the tree view. Under **Execution steps**, press
-    **Add child node** and enter each row:
+  <Step title="Connect the assessment steps in order">
+    Under **Execution steps**, use **Add child node** on the parent specified
+    in each row. Select the newly created policy node before adding lookup,
+    then select lookup before adding decide. These links are prerequisites.
 
-    | Node id          | Title             | Description                                                   |
-    | ---------------- | ----------------- | ------------------------------------------------------------- |
-    | `returns.triage` | Read the policy | Find the handbook rule that applies to this request. |
-    | `returns.lookup` | Look up the order | Fetch the order and its shipment from the tracker. |
-    | `returns.decide` | Decide and reply | Apply the rule to the order and write the answer. |
+    | Select this parent | New node id | Title | Description |
+    | --- | --- | --- | --- |
+    | `returns` | `returns.triage` | Read the policy | Find the handbook rule that applies to this request. |
+    | `returns.triage` | `returns.lookup` | Look up the order | After reading the policy, fetch order and shipment facts for a return assessment. |
+    | `returns.lookup` | `returns.decide` | Decide and reply | After policy and order lookup complete, assess return eligibility and write the answer. |
+    | `returns` | `returns.delivery` | Check delivery only | Read order and shipment status without a policy lookup or return decision. |
 
     Press **Add step** after each row. Each add re-exports the stored tree,
     inserts the child, saves it through the whole-tree import path, and records
@@ -432,9 +435,11 @@ and the enterprise layer never installs one.
 
 <Note>
   **Every selected node executes.** The root confirms the request first. A
-  delivery-only question selects the root and lookup; a policy-only question
-  selects the root and triage. A full assessment selects all four steps in
-  definition order. `complete_step` must complete each active step before the
+  delivery-only question selects `returns` → `returns.delivery`; a policy-only question
+  selects `returns` → `returns.triage` and stops there. Selecting
+  `returns.decide` for a full assessment includes its three predecessors:
+  `returns` → `returns.triage` → `returns.lookup` → `returns.decide`.
+  It does not include the delivery-only branch. `complete_step` must complete each active step before the
   next begins. Selecting the root alone does not select its children.
 </Note>
 
@@ -465,14 +470,14 @@ without asking, and what is it refused outright?
 
 <Steps>
   <Step title="Deny the dangerous tools on every step">
-    Select **Returns desk** (the root). In the **Tools** block, use the
+    Select the root step (`returns`). In the **Tools** block, use the
     **Denied** row's Add button and add `exec`, `write`, and `edit`.
 
     Denials are the wall. A tool that is merely *left out* of an allow-list is
     not refused — it raises a one-off approval and runs if someone allows it. If
     a step must never touch something, deny it.
 
-    Repeat these denials on triage, lookup, and decide: each step owns its own
+    Repeat these denials on triage, lookup, decide, and delivery: each step owns its own
     scope. For a deployment-wide rule, use a tree-scoped governance policy with no
     node selector. Matching is case-insensitive; `exec` also covers `bash`.
 
@@ -525,7 +530,7 @@ without asking, and what is it refused outright?
     </Frame>
 
   </Step>
-  <Step title="Attach the tracker to the lookup step">
+  <Step title="Attach the tracker to lookup and delivery">
     Select **Look up the order**, then **MCP servers -> Add** -> `acme-tracker`.
 
     Read the warning it shows. This is the first MCP attachment in the
@@ -545,9 +550,12 @@ without asking, and what is it refused outright?
     </Frame>
 
     **Use the embedded per-call runtime for this tutorial's isolated attachments.**
+    Repeat the tracker attachment and Audit setting on **Check delivery only**
+    (`returns.delivery`). Keep that node under the root, outside the policy chain.
+
     Native launch exposure requires every selected step, including the root, to
     attach the server and admit its complete tool surface. This map deliberately
-    attaches the tracker only to lookup, so a native run withholds it. Broadening
+    attaches the tracker only to lookup and delivery, so a native run withholds it. Broadening
     every step would change the intended permission boundary. If that broader
     access is intended for another map, each selected step needs the attachment
     and every tool-name spelling, for example:
@@ -581,7 +589,7 @@ without asking, and what is it refused outright?
     reaches the step — but naming a skill never grants a tool the step
     withholds. If guidance and enforcement disagree, enforcement wins.
 
-    <Frame caption="returns.decide: the only step that may speak, and the only one carrying the house style">
+    <Frame caption="returns.decide: the assessment answer step carrying the house style">
       <img
         src="/assets/screens/tutorial/bindings-decide.png"
         alt="Step bindings for returns.decide: allowed tools holds message and the skills row declares refund-reply"
@@ -635,9 +643,10 @@ fresh test of the routing description as much as of the bindings.
    below the manager-approval threshold.
 
 3. **"Where is order 1044?"**
-   `shipment_track` plus the SLA document: carrier, tracking number, last scan,
-   and that it shipped three calendar days ago. The standard target is 3–5
-   **business** days; the seven-calendar-day escalation threshold has not passed.
+   `returns` → `returns.delivery`: use `order_status` and `shipment_track`
+   to report the carrier, tracking number, last scan, and actual order status.
+   This delivery-only route does not retrieve policy or judge refund eligibility.
+   Ask a separate policy question to retrieve the shipping SLA.
 
 4. **"Can we refund order 1051?"**
    Two rules colliding. Refused — 96 days is out of window, and 310 USD would
