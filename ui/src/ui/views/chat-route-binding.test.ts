@@ -129,6 +129,33 @@ describe("resolveEnterpriseRouteGroupKey", () => {
     ).toBeNull();
   });
 
+  it("keeps a completed route after tool history trims the run's prompt", () => {
+    expect(
+      resolveEnterpriseRouteGroupKey({
+        runCreatedAt: 100,
+        runEndedAt: 200,
+        runStatus: "completed",
+        groups: [
+          group("tools", "tool", 120),
+          group("g-reply", "assistant", 190),
+          group("u-later", "user", 300),
+          group("g-later", "assistant", 400),
+        ],
+      }),
+    ).toBe("g-reply");
+  });
+
+  it("does not use retained tool activity to claim a later answer", () => {
+    expect(
+      resolveEnterpriseRouteGroupKey({
+        runCreatedAt: 100,
+        runEndedAt: 200,
+        runStatus: "completed",
+        groups: [group("tools", "tool", 120), group("g-later", "assistant", 400)],
+      }),
+    ).toBeNull();
+  });
+
   it("shows nothing without a run", () => {
     expect(
       resolveEnterpriseRouteGroupKey({

@@ -2052,34 +2052,39 @@ function renderSlashMenu(
  */
 export function resolveEnterpriseRouteGroupKey(params: {
   runCreatedAt: number | null;
+  runEndedAt?: number | null;
   runStatus: string | null;
   groups: readonly { key: string; role: string; timestamp: number; lastTimestamp: number }[];
 }): string | null {
-  const { runCreatedAt, runStatus, groups } = params;
+  const { runCreatedAt, runEndedAt, runStatus, groups } = params;
   if (runCreatedAt === null) {
     return null;
   }
-  // Only a COMPLETED run wrote a reply. That is the upper bound — not a
-  // timestamp: `endedAt` is stamped before the transcript is persisted (CLI
-  // runs), so a time bound would reject the run's own reply. And without SOME
-  // bound, an aborted/blocked run would grab whatever answer came next and claim
-  // it took a route it never took.
+  // Aborted/blocked runs must not claim whatever answer came next.
   if (runStatus !== "completed") {
     return null;
   }
-  // The rendered history can be truncated. If the oldest MESSAGE on screen already
-  // starts after the run did, the run's own reply may have been trimmed away — and
-  // the first visible assistant group would then be some later answer. Only bind
-  // when we can see back past the run's start, which proves the reply (which came
-  // after it) is on screen too.
+  // If history starts inside the run, an assistant group starting before it
+  // ended still proves ownership. Tool-heavy turns can trim their own prompt
+  // from the history window; requiring that prompt would hide their route.
   //
   // Messages only: the truncation notice is not one. buildChatItems stamps it with
   // the BROWSER clock, so it always looks newer than the run and would suppress the
   // card on every long thread — the exact case it is meant to guard.
   const oldestMessage = groups.find((group) => group.role === "user" || group.role === "assistant");
-  if (!oldestMessage || oldestMessage.timestamp > runCreatedAt) {
+  if (!oldestMessage) {
     return null;
   }
+  if (oldestMessage.timestamp > runCreatedAt) {
+    return (
+      groups.find(
+        (group) =>
+          group.role === "assistant" && runEndedAt != null && group.timestamp <= runEndedAt,
+      )?.key ?? null
+    );
+  }
+  // With history reaching the run's start, retain replies persisted after
+  // endedAt (CLI-backed runs). Applying the upper bound here would hide them.
   // The FIRST assistant group at or after the run started is the reply the run
   // wrote; anything later belongs to a subsequent turn (possibly an ungoverned
   // one, which must never wear a governed route).
@@ -2181,6 +2186,7 @@ export function renderChat(props: ChatProps) {
     ? null
     : resolveEnterpriseRouteGroupKey({
         runCreatedAt: props.enterpriseRun?.createdAt ?? null,
+        runEndedAt: props.enterpriseRun?.endedAt ?? null,
         runStatus: props.enterpriseRun?.status ?? null,
         groups: chatItems.filter(
           (item): item is Extract<typeof item, { kind: "group" }> => item.kind === "group",
