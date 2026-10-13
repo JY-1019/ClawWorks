@@ -81,7 +81,17 @@ describe("shared three-step prefix with distinct two-step tails", () => {
       const fixture = await openSharedPrefixFixture(scenario);
       try {
         await executeSharedPrefixScenario(fixture, scenario);
-        expect(fixture.finish().passed).toBe(true);
+        const proof = fixture.finish();
+        expect(proof.passed).toBe(true);
+        if (proof.steps.length === 5) {
+          // Keep the complete graph/citation proof within a bounded demo budget.
+          expect(fixture.calls.length).toBeLessThanOrEqual(35);
+          expect(fixture.calls.filter((call) => call.name === "knowledge_search")).toHaveLength(5);
+          expect(fixture.calls.filter((call) => call.name === "proof-orders__lookup")).toHaveLength(
+            1,
+          );
+          expect(fixture.calls.filter((call) => call.name === "compute_function")).toHaveLength(5);
+        }
       } finally {
         await fixture.cleanup();
       }

@@ -485,7 +485,11 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
             `${node.nodeId}/${action.id} must execute once`,
           );
         }
-        for (const fn of node.ontology.functions ?? []) {
+        // Preparation consumes the shared calculation; finalization recomputes
+        // against the reread assessment after its fresh risk/stock check.
+        const computesHere =
+          node.nodeId === "case.order.assess" || node.nodeId.endsWith(".finalize");
+        for (const fn of computesHere ? (node.ontology.functions ?? []) : []) {
           const computed = nodeCalls.filter(
             (entry) =>
               entry.name === "compute_function" &&
@@ -511,8 +515,6 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
           "get_neighbors",
         ],
         "case.order.assess": [
-          "proof-orders__lookup",
-          "proof-risk__lookup",
           "proof-stock__lookup",
           "knowledge_search",
           "invoke_action",
@@ -530,7 +532,7 @@ export async function openSharedPrefixFixture(scenario: Scenario, decision?: Wor
                 "compute_function",
                 nodeId.includes(".refund.") ? "proof-risk__lookup" : "proof-stock__lookup",
               ]
-            : ["search_objects", "knowledge_search", "compute_function", "invoke_action"]);
+            : ["search_objects", "knowledge_search", "invoke_action"]);
         for (const name of names) {
           assert.ok(
             calls.some((entry) => entry.nodeId === nodeId && entry.name === name && !entry.error),
@@ -595,16 +597,25 @@ export async function executeSharedPrefixScenario(
   };
   const search = (ids: string[]) =>
     call("knowledge_search", { query: "eligibility evidence", foundations: ids });
-  const neighbors = (entity: string, objectId: string, relationship: string) =>
-    call("get_neighbors", { entity, objectId, relationship });
-  const compute = (fn: string) =>
-    call("compute_function", { function: fn, objectId: `${scenario.caseId}-assessment` });
+  const neighbors = (entity: string, objectId: string) =>
+    call("get_neighbors", { entity, objectId, limit: 50 });
+  const computedValues = new Map<string, boolean | number>();
+  const compute = async (fn: string) => {
+    const result = await call("compute_function", {
+      function: fn,
+      objectId: `${scenario.caseId}-assessment`,
+    });
+    const { value } = z.object({ value: z.union([z.boolean(), z.number()]) }).parse(result.details);
+    computedValues.set(fn, value);
+    return result;
+  };
   const lookup = async (service: string) => {
     const result = await call(`proof-${service}__lookup`, { orderId: scenario.orderId });
     const text = result.content.find((block) => block.type === "text");
     assert.ok(text && text.type === "text");
     return z.record(z.string(), z.union([z.string(), z.number()])).parse(JSON.parse(text.text));
   };
+  let collectedFacts: Record<string, string | number> | undefined;
   for (const nodeId of scenario.expected.steps) {
     assert.equal(fixture.run.plan.activeNodeId, nodeId);
     if (nodeId === "case") {
@@ -617,48 +628,47 @@ export async function executeSharedPrefixScenario(
         return;
       }
       const risk = await lookup("risk");
+      collectedFacts = { ...order, ...risk };
       await search(["proof.evidence", "proof.privacy"]);
+      await call("search_objects", { entity: "order", match: scenario.orderId });
       await action("record-order", { "case-id": scenario.caseId, ...order, ...risk });
-      await neighbors("case", scenario.caseId, "case-order");
-      await neighbors("customer", String(order["customer-id"]), "customer-order");
-      await neighbors("order", scenario.orderId, "order-item");
-      await neighbors("order", scenario.orderId, "order-signal");
+      await neighbors("order", scenario.orderId);
     } else if (nodeId === "case.order.assess") {
-      const order = await lookup("orders"),
-        risk = await lookup("risk"),
-        stock = await lookup("stock");
+      assert.ok(collectedFacts);
+      const stock = await lookup("stock");
       const knowledge = await search(["proof.refund", "proof.exchange", "proof.evidence"]);
       const snippets = z
         .object({ snippets: z.array(z.object({ source: z.string(), foundationId: z.string() })) })
         .parse(knowledge.details).snippets;
       const source = snippets.find((snippet) => snippet.foundationId === "proof.refund")?.source;
       assert.equal(source, "refund/eligibility.md");
+      await call("search_objects", {
+        entity: "assessment",
+        match: `${scenario.caseId}-assessment`,
+      });
       await action("record-assessment", {
         "case-id": scenario.caseId,
         "order-id": scenario.orderId,
         "assessment-id": `${scenario.caseId}-assessment`,
         "evidence-id": `${scenario.caseId}-evidence`,
         "policy-id": `${scenario.caseId}-policy`,
-        total: order.total,
-        days: order.days,
-        risk: risk.risk,
+        total: collectedFacts.total,
+        days: collectedFacts.days,
+        risk: collectedFacts.risk,
         stock: stock.stock,
-        "signal-id": risk["signal-id"],
+        "signal-id": collectedFacts["signal-id"],
         source,
-        summary: `Returned order ${scenario.orderId}: total=${order.total}, days=${order.days}, risk=${risk.risk}, stock=${stock.stock}`,
+        summary: `Returned order ${scenario.orderId}: total=${collectedFacts.total}, days=${collectedFacts.days}, risk=${collectedFacts.risk}, stock=${stock.stock}`,
       });
       for (const fn of ["refund-eligible", "exchange-eligible", "net-credit"]) {
         const result = await compute(fn);
         assert.deepEqual(
           (result.details as { value: unknown }).value,
-          fn === "net-credit" ? Number(order.total) * 0.9 : scenario.orderId === "1043",
+          fn === "net-credit" ? Number(collectedFacts.total) * 0.9 : scenario.orderId === "1043",
         );
       }
-      await neighbors("case", scenario.caseId, "case-assessment");
-      for (const relation of ["assessment-order", "assessment-signal", "assessment-evidence"]) {
-        await neighbors("assessment", `${scenario.caseId}-assessment`, relation);
-      }
-      await neighbors("evidence", `${scenario.caseId}-evidence`, "evidence-policy");
+      await neighbors("assessment", `${scenario.caseId}-assessment`);
+      await neighbors("evidence", `${scenario.caseId}-evidence`);
     } else {
       const kind = nodeId.includes(".refund") ? "refund" : "exchange";
       const id = `${scenario.caseId}-${kind}`;
@@ -666,26 +676,20 @@ export async function executeSharedPrefixScenario(
       if (nodeId.endsWith(".finalize")) {
         await lookup(kind === "refund" ? "risk" : "stock");
         await call("search_objects", { entity: `${kind}-review`, match: id });
-        await neighbors(`${kind}-review`, id, `${kind}-assessment`);
-        await neighbors("assessment", `${scenario.caseId}-assessment`, "assessment-evidence");
-        await neighbors("evidence", `${scenario.caseId}-evidence`, "evidence-policy");
-        if (kind === "refund") {
-          await neighbors("assessment", `${scenario.caseId}-assessment`, "assessment-signal");
-        }
+        await neighbors(`${kind}-review`, id);
+        await neighbors("assessment", `${scenario.caseId}-assessment`);
+        await neighbors("evidence", `${scenario.caseId}-evidence`);
         await compute(`${kind}-eligible`);
         await compute("net-credit");
         await action(`finalize-${kind}`, { [`${kind}-id`]: id, status: "verified" });
       } else {
-        await call("search_objects", {
-          entity: "assessment",
-          match: `${scenario.caseId}-assessment`,
-        });
-        const result = await compute(`${kind}-eligible`);
-        await compute("net-credit");
+        await call("search_objects", { entity: `${kind}-review`, match: id });
+        const eligible = computedValues.get(`${kind}-eligible`);
+        assert.ok(typeof eligible === "boolean");
         await action(`prepare-${kind}`, {
           [`${kind}-id`]: id,
           "assessment-id": `${scenario.caseId}-assessment`,
-          eligible: (result.details as { value: unknown }).value,
+          eligible,
           status: "prepared",
         });
       }
