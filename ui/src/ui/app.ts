@@ -107,6 +107,7 @@ import type {
   WikiImportInsights,
   WikiMemoryPalace,
 } from "./controllers/dreaming.ts";
+import type { EnterpriseChatRoute } from "./controllers/enterprise-chat.ts";
 import {
   clearEnterpriseChatRoute,
   loadEnterpriseChatMode,
@@ -508,6 +509,7 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseChatModeError: string | null = null;
   @state() enterpriseChatResumeBusy = false;
   @state() enterpriseChatResumeError: string | null = null;
+  @state() enterpriseChatRoutes: EnterpriseChatRoute[] = [];
   @state() enterpriseChatRun: EnterpriseRunDetail | null = null;
   @state() enterpriseChatRunTree: EnterpriseTreeDetail | null = null;
   @state() enterpriseChatStep: EnterpriseChatStep | null = null;

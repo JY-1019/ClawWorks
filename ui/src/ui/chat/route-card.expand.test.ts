@@ -49,6 +49,16 @@ describe("openclaw-chat-route-card expand", () => {
       throw new Error("route card did not mount");
     }
     await element.updateComplete;
+    const disclosure = element.shadowRoot?.querySelector("details");
+    expect(disclosure?.open).toBe(true);
+    element.shadowRoot?.querySelector("summary")?.click();
+    expect(disclosure?.open).toBe(false);
+    expect(disclosure?.querySelector("openclaw-workflow-tree-graph")).not.toBeNull();
+    element.requestUpdate();
+    await element.updateComplete;
+    expect(disclosure?.open).toBe(false);
+    element.shadowRoot?.querySelector("summary")?.click();
+    expect(disclosure?.open).toBe(true);
     // No modal until the user asks for one.
     expect(element.shadowRoot?.querySelector("openclaw-modal-dialog")).toBeNull();
 

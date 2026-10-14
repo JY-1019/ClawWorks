@@ -80,6 +80,10 @@ export class OpenClawChatRouteCard extends LitElement {
       max-width: 100%;
     }
 
+    summary {
+      cursor: pointer;
+    }
+
     .head {
       display: flex;
       align-items: center;
@@ -221,10 +225,12 @@ export class OpenClawChatRouteCard extends LitElement {
         : planNodesToTreeNodes(run);
 
     return html`
-      <div class="card">
-        <div class="head">
+      <details class="card" open>
+        <summary>
           <span class="title">${t("enterprise.routeTitle")}</span>
           <span class="chip">${run.treeName}</span>
+        </summary>
+        <div class="head">
           ${route
             ? html`<span class="chip">
                 ${t("enterprise.routeCoverage", {
@@ -255,7 +261,7 @@ export class OpenClawChatRouteCard extends LitElement {
           .routeNodeIds=${mode === "tree" ? planned : null}
         ></openclaw-workflow-tree-graph>
         ${route ? html`<div class="why">${route.rationale}</div>` : nothing}
-      </div>
+      </details>
       ${this.expanded ? this.renderExpandedModal(nodes, mode === "tree" ? planned : null) : nothing}
     `;
   }

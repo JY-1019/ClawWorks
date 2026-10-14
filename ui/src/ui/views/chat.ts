@@ -65,6 +65,7 @@ import {
   renderFallbackIndicator,
 } from "../chat/status-indicators.ts";
 import { getExpandedToolCards, syncToolCardExpansionState } from "../chat/tool-expansion-state.ts";
+import type { EnterpriseChatRoute } from "../controllers/enterprise-chat.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { formatGoalDetail, formatGoalSummary } from "../session-goal.ts";
@@ -211,6 +212,7 @@ export type ChatProps = {
   composerControls?: TemplateResult | typeof nothing | ReturnType<typeof guard>;
   /** The governed run behind the newest answer, if any (enterprise mode). */
   enterpriseRun?: EnterpriseRunDetail | null;
+  enterpriseRoutes?: EnterpriseChatRoute[];
   /** That run's full tree, when its identity could be proven. */
   enterpriseRunTree?: EnterpriseTreeDetail | null;
   sessionWorkspace?: {
@@ -2174,24 +2176,30 @@ export function renderChat(props: ChatProps) {
     historyRenderLimit,
   });
 
-  // The governed-route card belongs to the answer it describes, so it renders in
-  // the NEWEST assistant bubble. Streaming/queued items are not groups yet, so a
-  // reply still in flight simply has no card until it lands.
-  //
-  // While a search is filtering the thread, the last VISIBLE assistant group is
-  // not necessarily the newest one — attaching the card there would claim an old
-  // answer took the latest route. No card is better than a wrong one.
+  // Bind every retained route to its own answer, never the newest visible bubble.
   const searchFiltering = vs.searchOpen && vs.searchQuery.trim().length > 0;
-  const routeGroupKey = searchFiltering
-    ? null
-    : resolveEnterpriseRouteGroupKey({
-        runCreatedAt: props.enterpriseRun?.createdAt ?? null,
-        runEndedAt: props.enterpriseRun?.endedAt ?? null,
-        runStatus: props.enterpriseRun?.status ?? null,
-        groups: chatItems.filter(
-          (item): item is Extract<typeof item, { kind: "group" }> => item.kind === "group",
-        ),
+  const routeGroups = new Map<string, EnterpriseChatRoute[]>();
+  const routes =
+    props.enterpriseRoutes ??
+    (props.enterpriseRun
+      ? [{ run: props.enterpriseRun, tree: props.enterpriseRunTree ?? null }]
+      : []);
+  if (!searchFiltering) {
+    const groups = chatItems.filter(
+      (item): item is Extract<typeof item, { kind: "group" }> => item.kind === "group",
+    );
+    for (const entry of routes) {
+      const key = resolveEnterpriseRouteGroupKey({
+        runCreatedAt: entry.run.createdAt,
+        runEndedAt: entry.run.endedAt,
+        runStatus: entry.run.status,
+        groups,
       });
+      if (key) {
+        routeGroups.set(key, [...(routeGroups.get(key) ?? []), entry]);
+      }
+    }
+  }
   syncToolCardExpansionState(props.sessionKey, chatItems, Boolean(props.autoExpandToolCalls));
   const expandedToolCards = getExpandedToolCards(props.sessionKey);
   const toggleToolCardExpanded = (toolCardId: string) => {
@@ -2270,7 +2278,8 @@ export function renderChat(props: ChatProps) {
             // Stable identity only. Passing the rendered card here would mint a
             // fresh TemplateResult on every app render and defeat this guard,
             // re-rendering the whole history on each composer keystroke.
-            routeGroupKey,
+            props.enterpriseRoutes,
+            searchFiltering,
             props.enterpriseRun?.executionId ?? null,
             props.enterpriseRunTree?.hash ?? null,
             deletedChatItemsSignature(deleted, chatItems),
@@ -2358,14 +2367,11 @@ export function renderChat(props: ChatProps) {
                     // The route describes the run that produced this answer, so it
                     // rides in that bubble — not above the composer, where it read
                     // as a control rather than as context for the reply.
-                    ...(item.key === routeGroupKey && props.enterpriseRun
-                      ? {
-                          enterpriseRoute: renderEnterpriseRouteCard(
-                            props.enterpriseRun,
-                            props.enterpriseRunTree ?? null,
-                          ),
-                        }
-                      : {}),
+                    enterpriseRoute: html`${repeat(
+                      routeGroups.get(item.key) ?? [],
+                      ({ run }) => run.executionId,
+                      ({ run, tree }) => renderEnterpriseRouteCard(run, tree),
+                    )}`,
                     onOpenSidebar: props.onOpenSidebar,
                     sessionKey: props.sessionKey,
                     agentId: props.fullMessageAgentId,

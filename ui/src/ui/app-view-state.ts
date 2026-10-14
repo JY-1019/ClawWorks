@@ -12,6 +12,7 @@ import type { ChatMessageCache } from "./chat/session-message-cache.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
 import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
+import type { EnterpriseChatRoute } from "./controllers/enterprise-chat.ts";
 import type { EnterpriseChatStep } from "./controllers/enterprise-chat.ts";
 import type { EnterpriseMode } from "./controllers/enterprise-chat.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
@@ -307,6 +308,7 @@ export type AppViewState = {
   enterpriseChatModeError: string | null;
   enterpriseChatResumeBusy: boolean;
   enterpriseChatResumeError: string | null;
+  enterpriseChatRoutes: EnterpriseChatRoute[];
   enterpriseChatRun: EnterpriseRunDetail | null;
   enterpriseChatRunTree: EnterpriseTreeDetail | null;
   enterpriseChatStep: EnterpriseChatStep | null;

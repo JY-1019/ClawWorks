@@ -20,6 +20,11 @@ export type EnterpriseMode = "enforce" | "observe" | "off";
 
 export const ENTERPRISE_MODES: EnterpriseMode[] = ["enforce", "observe", "off"];
 
+export type EnterpriseChatRoute = {
+  run: EnterpriseRunDetail;
+  tree: EnterpriseTreeDetail | null;
+};
+
 export type EnterpriseChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
@@ -33,6 +38,8 @@ export type EnterpriseChatState = {
   enterpriseChatResumeError: string | null;
   /** Route detail of the newest governed run in THIS session, if any. */
   enterpriseChatRun: EnterpriseRunDetail | null;
+  /** Loaded route history; retained across turns, cleared on session switches. */
+  enterpriseChatRoutes?: EnterpriseChatRoute[];
   /**
    * The FULL tree that run bound to, so the card can show the branches the run
    * did NOT take. Null when the live definition cannot be proven to be the one
@@ -168,6 +175,12 @@ const pendingRouteLoads = new WeakMap<
   EnterpriseChatState,
   { sessionKey: string; agentId?: string }
 >();
+// Rejected transcript identities cannot become matches within the same transcript.
+// Forget them when the transcript changes so resets do not refetch old runs each turn.
+const rejectedHistoryRoutes = new WeakMap<
+  EnterpriseChatState,
+  { sessionId: string | null; executions: Set<string> }
+>();
 const activeRouteLoads = new WeakMap<
   EnterpriseChatState,
   { sessionKey: string; agentId?: string; seq: number }
@@ -267,6 +280,9 @@ export async function loadEnterpriseChatRoute(
   if (!state.client || !state.connected || !sessionKey) {
     return;
   }
+  state.enterpriseChatRoutes = (state.enterpriseChatRoutes ?? []).filter(({ run }) =>
+    enterpriseRunMatchesTranscript(run, state.currentSessionId),
+  );
   if (state.enterpriseChatResumeBusy) {
     pendingRouteLoads.set(state, { sessionKey, ...(agentId ? { agentId } : {}) });
     return;
@@ -280,7 +296,7 @@ export async function loadEnterpriseChatRoute(
     // Both filters: under `session.scope: "global"` every agent's store shares
     // the canonical key, so sessionKey alone can return another agent's run.
     const list = await state.client.request<EnterpriseRunsListResult>("enterprise.runs.list", {
-      limit: 1,
+      limit: 500,
       sessionKey,
       ...(agentId ? { agentId } : {}),
       // An internal run borrows this session for storage but is not on screen;
@@ -290,6 +306,13 @@ export async function loadEnterpriseChatRoute(
     if (seq !== routeSeq) {
       return;
     }
+    // Rehydrate completed routes on reload, and reuse immutable completed snapshots
+    // on later turns. Each detail must belong to the current transcript after reset.
+    const routes = new Map(
+      (state.enterpriseChatRoutes ?? [])
+        .filter(({ run }) => enterpriseRunMatchesTranscript(run, state.currentSessionId))
+        .map((entry) => [entry.run.executionId, entry]),
+    );
     const mine = list?.runs?.[0];
     if (!mine) {
       clearEnterpriseChatResume(state);
@@ -333,31 +356,88 @@ export async function loadEnterpriseChatRoute(
     state.enterpriseChatRun = runDetail;
     state.enterpriseChatRunTree = null;
     reconcileEnterpriseChatStep(state, runDetail);
+    const retainRoute = (tree: EnterpriseTreeDetail | null) => {
+      if (
+        runDetail?.status === "completed" &&
+        enterpriseRunMatchesTranscript(runDetail, state.currentSessionId)
+      ) {
+        routes.set(runDetail.executionId, { run: runDetail, tree });
+        state.enterpriseChatRoutes = [...routes.values()];
+      }
+    };
+    retainRoute(null);
 
     // Load the tree too, so the card can offer "show the whole tree" with the
     // untaken branches dimmed. Identity is proven by CONTENT hash: a version
     // match cannot, since a tree is re-importable unchanged and removing an
     // imported override reveals a different built-in.
     const runHash = runDetail?.treeHash;
-    if (!runHash) {
-      return;
+    if (runHash) {
+      const treeRes = await state.client
+        .request<EnterpriseTreesGetResult>("enterprise.trees.get", {
+          treeId: runDetail.treeId,
+        })
+        .catch(() => null);
+      if (seq !== routeSeq) {
+        return;
+      }
+      // The gateway may answer with a STALE fallback tree while reporting importError
+      // (the imported override failed to load) or storeError (the store is unreadable);
+      // the protocol says such a `tree` is not authoritative. Opening the whole-tree
+      // view on it would draw "untaken branches" from a definition the gateway itself
+      // does not trust. Route-only is honest; a wrong tree is not.
+      const trustworthy = !treeRes?.importError && !treeRes?.storeError;
+      const live = trustworthy ? (treeRes?.tree ?? null) : null;
+      state.enterpriseChatRunTree = live && live.hash === runHash ? live : null;
+      retainRoute(state.enterpriseChatRunTree);
     }
-    const treeRes = await state.client
-      .request<EnterpriseTreesGetResult>("enterprise.trees.get", {
-        treeId: runDetail.treeId,
-      })
-      .catch(() => null);
-    if (seq !== routeSeq) {
-      return;
+    // Publish current progress before awaiting history; slow old reads must not
+    // delay reconnect recovery or the latest answer's route.
+    let rejected = rejectedHistoryRoutes.get(state);
+    if (!rejected || rejected.sessionId !== state.currentSessionId) {
+      rejected = { sessionId: state.currentSessionId, executions: new Set() };
+      rejectedHistoryRoutes.set(state, rejected);
     }
-    // The gateway may answer with a STALE fallback tree while reporting importError
-    // (the imported override failed to load) or storeError (the store is unreadable);
-    // the protocol says such a `tree` is not authoritative. Opening the whole-tree
-    // view on it would draw "untaken branches" from a definition the gateway itself
-    // does not trust. Route-only is honest; a wrong tree is not.
-    const trustworthy = !treeRes?.importError && !treeRes?.storeError;
-    const live = trustworthy ? (treeRes?.tree ?? null) : null;
-    state.enterpriseChatRunTree = live && live.hash === runHash ? live : null;
+    for (const summary of list?.runs?.slice(1) ?? []) {
+      if (
+        summary.status !== "completed" ||
+        routes.has(summary.executionId) ||
+        rejected.executions.has(summary.executionId)
+      ) {
+        continue;
+      }
+      const detail = await state.client
+        .request<EnterpriseRunsGetResult>("enterprise.runs.get", {
+          executionId: summary.executionId,
+        })
+        .catch(() => null);
+      if (seq !== routeSeq) {
+        return;
+      }
+      const run = detail?.run;
+      if (!enterpriseRunMatchesTranscript(run, state.currentSessionId)) {
+        if (run && state.currentSessionId) {
+          rejected.executions.add(summary.executionId);
+        }
+        continue;
+      }
+      let tree: EnterpriseTreeDetail | null = null;
+      if (run.treeHash) {
+        const result = await state.client
+          .request<EnterpriseTreesGetResult>("enterprise.trees.get", {
+            treeId: run.treeId,
+          })
+          .catch(() => null);
+        if (seq !== routeSeq) {
+          return;
+        }
+        if (!result?.importError && !result?.storeError && result?.tree?.hash === run.treeHash) {
+          tree = result.tree;
+        }
+      }
+      routes.set(run.executionId, { run, tree });
+    }
+    state.enterpriseChatRoutes = [...routes.values()];
   } catch {
     if (seq === routeSeq) {
       clearEnterpriseChatResume(state);
@@ -573,6 +653,8 @@ export function applyEnterpriseChatStep(
 export function clearEnterpriseChatRoute(state: EnterpriseChatState) {
   pendingRouteLoads.delete(state);
   activeRouteLoads.delete(state);
+  rejectedHistoryRoutes.delete(state);
+  state.enterpriseChatRoutes = [];
   routeSeq++;
   clearEnterpriseChatResume(state);
   state.enterpriseChatRun = null;

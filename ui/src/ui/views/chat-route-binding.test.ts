@@ -1,5 +1,7 @@
+import { render } from "lit";
 import { describe, expect, it } from "vitest";
-import { resolveEnterpriseRouteGroupKey } from "./chat.ts";
+import type { EnterpriseRunDetail } from "../../../../packages/gateway-protocol/src/index.js";
+import { renderChat, resetChatViewState, resolveEnterpriseRouteGroupKey } from "./chat.ts";
 
 const group = (key: string, role: string, timestamp: number, lastTimestamp = timestamp) => ({
   key,
@@ -165,4 +167,92 @@ describe("resolveEnterpriseRouteGroupKey", () => {
       }),
     ).toBeNull();
   });
+});
+
+it("retains each answer's route and its disclosure state when another answer arrives", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const run = (executionId: string, createdAt: number): EnterpriseRunDetail => ({
+    executionId,
+    runId: executionId,
+    sessionKey: "route-history",
+    agentId: "main",
+    treeId: "support",
+    treeVersion: "1",
+    treeName: executionId,
+    mode: "enforce",
+    status: "completed",
+    matchedBy: "planner",
+    requestSummary: "help",
+    activeNodeId: "support",
+    nodes: [],
+    events: [],
+    executionCount: 1,
+    createdAt,
+    updatedAt: createdAt + 10,
+    endedAt: createdAt + 10,
+  });
+  const message = (role: string, timestamp: number) => ({
+    role,
+    timestamp,
+    content: [{ type: "text", text: `${role} ${timestamp}` }],
+  });
+  const first = { run: run("first", 100), tree: null };
+  const second = { run: run("second", 300), tree: null };
+  const props: Parameters<typeof renderChat>[0] = {
+    sessionKey: "route-history",
+    onSessionKeyChange() {},
+    thinkingLevel: null,
+    showThinking: false,
+    showToolCalls: false,
+    loading: false,
+    sending: false,
+    messages: [message("user", 90), message("assistant", 110)],
+    toolMessages: [],
+    streamSegments: [],
+    stream: null,
+    streamStartedAt: null,
+    draft: "",
+    queue: [],
+    connected: true,
+    canSend: true,
+    disabledReason: null,
+    error: null,
+    sessions: null,
+    assistantName: "Assistant",
+    assistantAvatar: null,
+    agentsList: null,
+    currentAgentId: "main",
+    onRefresh() {},
+    onDraftChange() {},
+    onSend() {},
+    onQueueRemove() {},
+    onNewSession() {},
+    onAgentChange() {},
+    enterpriseRoutes: [first],
+  };
+  try {
+    render(renderChat(props), container);
+    const original = container.querySelector("openclaw-chat-route-card")!;
+    await original.updateComplete;
+    original.shadowRoot!.querySelector("summary")!.click();
+    render(
+      renderChat({
+        ...props,
+        messages: [...props.messages, message("user", 290), message("assistant", 310)],
+        enterpriseRoutes: [first, second],
+      }),
+      container,
+    );
+    const cards = container.querySelectorAll("openclaw-chat-route-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toBe(original);
+    expect(cards[0].run?.executionId).toBe("first");
+    expect(cards[1].run?.executionId).toBe("second");
+    expect(original.shadowRoot!.querySelector("details")!.open).toBe(false);
+  } finally {
+    render(null, container);
+    container.remove();
+    resetChatViewState();
+  }
 });

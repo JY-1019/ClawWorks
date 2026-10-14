@@ -4657,6 +4657,7 @@ export function renderApp(state: AppViewState) {
                   onDismissRealtimeTalkError: () => dismissRealtimeTalkError(state),
                   sessions: state.sessionsResult,
                   composerControls: renderGuardedChatControls(state),
+                  enterpriseRoutes: state.enterpriseChatRoutes,
                   enterpriseRun: state.enterpriseChatRun,
                   enterpriseRunTree: state.enterpriseChatRunTree,
                   sessionWorkspace: {

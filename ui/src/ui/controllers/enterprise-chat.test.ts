@@ -310,7 +310,7 @@ describe("loadEnterpriseChatRoute", () => {
         // Server-side, and chat-visible only: an internal run borrows this
         // session for storage but must not be shown in it.
         expect(payload).toEqual({
-          limit: 1,
+          limit: 500,
           sessionKey: "agent:main:me",
           chatVisibleOnly: true,
         });
@@ -1132,4 +1132,58 @@ describe("applyEnterpriseChatStep", () => {
     clearEnterpriseChatRoute(state);
     expect(state.enterpriseChatStep).toBeNull();
   });
+});
+
+describe("chat route history", () => {
+  it("restores older routes, retains them across answers, and clears on session switch", async () => {
+    const { state, request } = createState();
+    const first = { ...resumableRun("first"), status: "completed" as const };
+    const second = { ...resumableRun("second"), status: "completed" as const, createdAt: 10 };
+    let runs = [first];
+    request.mockImplementation(async (method, payload) => {
+      if (method === "enterprise.runs.list") return { runs };
+      const id = (payload as { executionId: string }).executionId;
+      return { run: runs.find((run) => run.executionId === id) };
+    });
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    runs = [second, first];
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    expect(state.enterpriseChatRoutes?.map(({ run }) => run.executionId).sort()).toEqual([
+      "first",
+      "second",
+    ]);
+    clearEnterpriseChatRoute(state);
+    expect(state.enterpriseChatRoutes).toEqual([]);
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    expect(state.enterpriseChatRoutes?.map(({ run }) => run.executionId).sort()).toEqual([
+      "first",
+      "second",
+    ]);
+    state.currentSessionId = "reset-transcript";
+    await loadEnterpriseChatRoute(state, "agent:main:me");
+    expect(state.enterpriseChatRoutes).toEqual([]);
+  });
+});
+
+it("publishes the newest route before slow history and skips rejected transcripts on later turns", async () => {
+  const { state, request } = createState();
+  const newest = { ...resumableRun("newest"), status: "completed" as const };
+  const old = { ...resumableRun("old"), status: "completed" as const, sessionId: "old-transcript" };
+  let resolveHistory: ((value: unknown) => void) | undefined;
+  request.mockImplementation(async (method, payload) => {
+    if (method === "enterprise.runs.list") return { runs: [newest, old] };
+    if ((payload as { executionId: string }).executionId === "newest") return { run: newest };
+    return new Promise((resolve) => {
+      resolveHistory = resolve;
+    });
+  });
+  const loading = loadEnterpriseChatRoute(state, "agent:main:me");
+  await vi.waitFor(() => expect(resolveHistory).toBeDefined());
+  expect(state.enterpriseChatRun).toEqual(newest);
+  expect(state.enterpriseChatRoutes?.map(({ run }) => run.executionId)).toEqual(["newest"]);
+  resolveHistory?.({ run: old });
+  await loading;
+  request.mockClear();
+  await loadEnterpriseChatRoute(state, "agent:main:me");
+  expect(request).not.toHaveBeenCalledWith("enterprise.runs.get", { executionId: "old" });
 });
