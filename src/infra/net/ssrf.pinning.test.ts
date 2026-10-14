@@ -51,7 +51,7 @@ describe("ssrf pinning", () => {
     );
   });
 
-  it("keeps automatic pinned lookups on IPv4 when both address families are available", async () => {
+  it("prefers IPv4 for single-address lookups but keeps both families for Happy Eyeballs", async () => {
     const lookup = createPinnedLookup({
       hostname: "api.anthropic.com",
       addresses: ["160.79.104.10", "2607:6bc0::10"],
@@ -80,16 +80,25 @@ describe("ssrf pinning", () => {
     await expect(lookupDefault()).resolves.toEqual({ address: "160.79.104.10", family: 4 });
     await expect(lookupDefault()).resolves.toEqual({ address: "160.79.104.10", family: 4 });
 
-    const all = await new Promise<unknown>((resolve, reject) => {
-      lookup("api.anthropic.com", { all: true }, (err, addresses) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(addresses);
-        }
+    const ipv4 = { address: "160.79.104.10", family: 4 };
+    const ipv6 = { address: "2607:6bc0::10", family: 6 };
+    for (const [family, expected] of [
+      [undefined, [ipv4, ipv6]],
+      [0, [ipv4, ipv6]],
+      [4, [ipv4]],
+      [6, [ipv6]],
+    ] as const) {
+      const all = await new Promise<unknown>((resolve, reject) => {
+        lookup("api.anthropic.com", { all: true, family }, (err, addresses) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(addresses);
+          }
+        });
       });
-    });
-    expect(all).toEqual([{ address: "160.79.104.10", family: 4 }]);
+      expect(all).toEqual(expected);
+    }
 
     await expect(lookupWithOptions({ family: 6 })).resolves.toEqual({
       address: "2607:6bc0::10",
@@ -104,6 +113,14 @@ describe("ssrf pinning", () => {
   ])("rejects blocked DNS results: $name", async ({ address }) => {
     const lookup = vi.fn(async () => [{ address, family: 4 }]) as unknown as LookupFn;
     await expect(resolvePinnedHostname("example.com", lookup)).rejects.toThrow(/private|internal/i);
+  });
+
+  it("rejects a private IPv6 answer even alongside a public IPv4 answer", async () => {
+    const lookup = vi.fn(async () => [
+      { address: "93.184.216.34", family: 4 },
+      { address: "::1", family: 6 },
+    ]) as unknown as LookupFn;
+    await expect(resolvePinnedHostname("example.com", lookup)).rejects.toThrow(SsrFBlockedError);
   });
 
   it("allows RFC2544 benchmark range addresses only when policy explicitly opts in", async () => {

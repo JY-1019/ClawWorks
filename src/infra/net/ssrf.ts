@@ -474,10 +474,13 @@ export function createPinnedLookup(params: {
         : {};
     const requestedFamily =
       typeof options === "number" ? options : typeof opts.family === "number" ? opts.family : 0;
+    // Node requests all addresses for Happy Eyeballs. Dropping validated IPv6
+    // candidates here makes a broken IPv4 path fail even when IPv6 is reachable.
+    const defaultRecords = opts.all ? records : automaticRecords;
     const candidates =
       requestedFamily === 4 || requestedFamily === 6
         ? records.filter((entry) => entry.family === requestedFamily)
-        : automaticRecords;
+        : defaultRecords;
     const usable = candidates.length > 0 ? candidates : automaticRecords;
     if (opts.all) {
       cb(null, usable as LookupAddress[]);
